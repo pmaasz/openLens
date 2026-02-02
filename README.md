@@ -101,7 +101,7 @@ The script will:
 1. **Clone or download the repository:**
    ```bash
    git clone <repository-url>
-   cd openLense
+   cd openLens
    ```
 
 2. **Set up virtual environment (recommended):**
@@ -512,7 +512,7 @@ For detailed testing documentation, see [TESTING.md](TESTING.md).
 ## Project Structure
 
 ```
-openLense/
+openLens/
 ├── lens_editor.py           # CLI application
 ├── lens_editor_gui.py       # GUI application
 ├── test_lens_editor.py      # Core tests
@@ -547,7 +547,7 @@ sudo dnf install python3-tkinter
 **Solution:**
 ```bash
 # Ensure you're in the project directory
-cd /path/to/openLense
+cd /path/to/openLens
 
 # Run tests with verbose output
 python3 run_all_tests.py

@@ -101,7 +101,7 @@ OpenLense is a complete desktop application for designing and analyzing single g
 ## Files Delivered
 
 ```
-openLense/
+openLens/
 ├── lens_editor.py          (11 KB) - CLI application
 ├── lens_editor_gui.py      (22 KB) - GUI application
 ├── test_lens_editor.py     (16 KB) - Core functionality tests
@@ -203,7 +203,7 @@ openLense/
 ### Installation
 ```bash
 git clone <repository>
-cd openLense
+cd openLens
 python3 verify_setup.py  # Verify installation
 ```
 
