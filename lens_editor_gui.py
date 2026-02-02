@@ -5,7 +5,7 @@ Interactive graphical interface for optical lens creation and modification
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 import json
 import os
 from datetime import datetime
@@ -248,7 +248,7 @@ class LensEditorWindow:
                     data = json.load(f)
                     return [Lens.from_dict(lens_data) for lens_data in data]
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to load lenses: {e}")
+                print(f"Error: Failed to load lenses: {e}")
                 return []
         return []
     
@@ -258,7 +258,7 @@ class LensEditorWindow:
                 json.dump([lens.to_dict() for lens in self.lenses], f, indent=2)
             return True
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to save lenses: {e}")
+            self.update_status(f"Error: Failed to save lenses: {e}")
             return False
     
     def setup_ui(self):
@@ -478,13 +478,15 @@ class LensEditorWindow:
             ttk.Button(viz_controls, text="Update 3D View", 
                       command=self.update_3d_view).pack(side=tk.LEFT, padx=5)
         
-        # Status bar
+        # Status bar - enhanced styling
         status_frame = ttk.Frame(main_frame)
-        status_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=5)
+        status_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=5, padx=5)
         
         self.status_var = tk.StringVar(value="Ready")
         status_label = ttk.Label(status_frame, textvariable=self.status_var, 
-                                 relief=tk.SUNKEN, anchor=tk.W)
+                                 relief=tk.SUNKEN, anchor=tk.W,
+                                 font=('Arial', 9, 'bold'),
+                                 padding=(5, 3))
         status_label.pack(fill=tk.X)
         
         self.update_status("Ready")
@@ -611,7 +613,7 @@ class LensEditorWindow:
     def duplicate_lens(self):
         selection = self.lens_listbox.curselection()
         if not selection:
-            messagebox.showwarning("No Selection", "Please select a lens to duplicate.")
+            self.update_status("Please select a lens to duplicate")
             return
         
         idx = selection[0]
@@ -640,8 +642,7 @@ class LensEditorWindow:
         self.current_lens = new_lens
         self.load_lens_to_form(new_lens)
         
-        messagebox.showinfo("Success", "Lens duplicated successfully!")
-        self.update_status("Lens duplicated")
+        self.update_status("Lens duplicated successfully!")
     
     def save_current_lens(self):
         try:
@@ -700,32 +701,28 @@ class LensEditorWindow:
                         break
                 
                 self.load_lens_to_form(self.current_lens)
-                messagebox.showinfo("Success", message)
                 self.update_status(message)
         
         except ValueError as e:
-            messagebox.showerror("Error", "Invalid numeric value. Please check all numeric fields.")
-            self.update_status("Error: Invalid input")
+            self.update_status("Error: Invalid numeric value. Please check all numeric fields.")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to save lens: {e}")
-            self.update_status(f"Error: {e}")
+            self.update_status(f"Error: Failed to save lens: {e}")
     
     def delete_lens(self):
         selection = self.lens_listbox.curselection()
         if not selection:
-            messagebox.showwarning("No Selection", "Please select a lens to delete.")
+            self.update_status("Please select a lens to delete")
             return
         
         idx = selection[0]
         lens = self.lenses[idx]
         
-        if messagebox.askyesno("Confirm Delete", f"Delete lens '{lens.name}'?"):
-            self.lenses.pop(idx)
-            self.save_lenses()
-            self.clear_form()
-            self.refresh_lens_list()
-            messagebox.showinfo("Success", "Lens deleted successfully!")
-            self.update_status("Lens deleted")
+        # Delete directly without confirmation popup
+        self.lenses.pop(idx)
+        self.save_lenses()
+        self.clear_form()
+        self.refresh_lens_list()
+        self.update_status(f"Lens '{lens.name}' deleted successfully")
     
     def update_status(self, message):
         self.status_var.set(message)
