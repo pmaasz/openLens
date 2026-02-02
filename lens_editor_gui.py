@@ -5,7 +5,7 @@ Interactive graphical interface for optical lens creation and modification
 """
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog, messagebox
 import json
 import os
 from datetime import datetime
@@ -18,6 +18,14 @@ except ImportError:
     VISUALIZATION_AVAILABLE = False
     print("Note: matplotlib not available. 3D visualization disabled.")
     print("Install with: pip install matplotlib numpy")
+
+# Try to import STL export (optional dependency)
+try:
+    from stl_export import export_lens_stl
+    STL_EXPORT_AVAILABLE = True
+except ImportError:
+    STL_EXPORT_AVAILABLE = False
+    print("Note: STL export not available. NumPy required.")
 
 
 class ToolTip:
@@ -472,6 +480,11 @@ class LensEditorWindow:
         ttk.Button(button_frame, text="Delete Lens", 
                   command=self.delete_lens_from_selection,
                   width=20).pack(side=tk.LEFT, padx=5)
+        
+        if STL_EXPORT_AVAILABLE:
+            ttk.Button(button_frame, text="Export to STL", 
+                      command=self.export_lens_to_stl,
+                      width=20).pack(side=tk.LEFT, padx=5)
         
         # Populate the list
         self.refresh_selection_list()
@@ -1292,6 +1305,54 @@ Select a lens from the Editor tab to simulate."""
         self.clear_form()
         self.refresh_selection_list()
         self.update_status(f"Lens '{lens.name}' deleted successfully")
+    
+    def export_lens_to_stl(self):
+        """Export the selected lens to STL file"""
+        selection = self.selection_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("No Selection", "Please select a lens to export")
+            return
+        
+        idx = selection[0]
+        lens = self.lenses[idx]
+        
+        # Ask for filename
+        default_filename = f"{lens.name.replace(' ', '_')}.stl"
+        filename = filedialog.asksaveasfilename(
+            title="Export Lens to STL",
+            defaultextension=".stl",
+            initialfile=default_filename,
+            filetypes=[("STL files", "*.stl"), ("All files", "*.*")]
+        )
+        
+        if not filename:
+            return  # User cancelled
+        
+        try:
+            # Export with resolution based on lens size
+            resolution = 50  # Default resolution
+            if lens.diameter > 100:
+                resolution = 60  # Higher resolution for larger lenses
+            elif lens.diameter < 25:
+                resolution = 40  # Lower resolution for smaller lenses
+            
+            num_triangles = export_lens_stl(lens, filename, resolution=resolution)
+            
+            messagebox.showinfo(
+                "Export Successful",
+                f"Lens '{lens.name}' exported successfully!\n\n"
+                f"File: {os.path.basename(filename)}\n"
+                f"Triangles: {num_triangles}\n"
+                f"Resolution: {resolution} points"
+            )
+            self.update_status(f"Exported '{lens.name}' to {os.path.basename(filename)}")
+        
+        except Exception as e:
+            messagebox.showerror(
+                "Export Failed",
+                f"Failed to export lens:\n{str(e)}"
+            )
+            self.update_status(f"Export failed: {str(e)}")
     
     def on_tab_changed(self, event):
         """Handle tab change events"""
