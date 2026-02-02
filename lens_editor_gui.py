@@ -242,6 +242,25 @@ class LensEditorWindow:
         # Separator style
         style.configure('TSeparator',
                        background=self.COLORS['border'])
+        
+        # Notebook (tab) styles
+        style.configure('TNotebook',
+                       background=self.COLORS['bg'],
+                       bordercolor=self.COLORS['border'],
+                       tabmargins=[2, 5, 2, 0])
+        
+        style.configure('TNotebook.Tab',
+                       background=self.COLORS['bg_dark'],
+                       foreground=self.COLORS['fg'],
+                       padding=[20, 10],
+                       bordercolor=self.COLORS['border'])
+        
+        style.map('TNotebook.Tab',
+                 background=[('selected', self.COLORS['accent']),
+                            ('active', self.COLORS['bg_light'])],
+                 foreground=[('selected', self.COLORS['fg']),
+                            ('active', self.COLORS['fg'])],
+                 expand=[('selected', [1, 1, 1, 0])])
     
     def load_lenses(self):
         if os.path.exists(self.storage_file):
