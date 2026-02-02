@@ -21,11 +21,32 @@ def check_tkinter():
     """Check if tkinter is available"""
     try:
         import tkinter
-        print("✓ tkinter available (GUI will work)")
+        print("✓ tkinter available")
         return True
     except ImportError:
         print("✗ tkinter not found (GUI will not work)")
         print("  Install with: sudo apt-get install python3-tk (Ubuntu/Debian)")
+        return False
+
+def check_display():
+    """Check if display is available for GUI"""
+    try:
+        import tkinter as tk
+        # Try to create a test window
+        root = tk.Tk()
+        root.withdraw()  # Hide the window
+        root.destroy()
+        print("✓ Display available (GUI will work)")
+        return True
+    except Exception as e:
+        if "DISPLAY" in str(e) or "display" in str(e):
+            print("✗ No display available (GUI will not work)")
+            print("  Solutions:")
+            print("  • If using SSH: ssh -X user@host")
+            print("  • If headless: xvfb-run python3 lens_editor_gui.py")
+            print("  • WSL users: Install X server and set DISPLAY=:0")
+        else:
+            print(f"⚠ Display check warning: {e}")
         return False
 
 def check_project_files():
@@ -89,8 +110,14 @@ def main():
     print()
     
     print("Checking tkinter (for GUI)...")
-    results.append(check_tkinter())
+    tkinter_ok = check_tkinter()
+    results.append(tkinter_ok)
     print()
+    
+    if tkinter_ok:
+        print("Checking display availability...")
+        results.append(check_display())
+        print()
     
     print("Checking project files...")
     results.append(check_project_files())

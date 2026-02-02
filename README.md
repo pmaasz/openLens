@@ -66,7 +66,29 @@ openlens is a desktop application for designing and analyzing **single glass opt
 
 - **Python 3.6 or higher**
 - **tkinter** (for GUI version - usually included with Python)
-- **No external dependencies!** All functionality uses Python standard library
+- **X11 display server** (Linux) or native display (Windows/Mac)
+- **Optional**: matplotlib and numpy (for 3D visualization)
+
+### Installing tkinter
+
+**On Ubuntu/Debian:**
+```bash
+sudo apt-get update
+sudo apt-get install python3-tk
+```
+
+**On Fedora/RHEL:**
+```bash
+sudo dnf install python3-tkinter
+```
+
+**On Arch Linux:**
+```bash
+sudo pacman -S tk
+```
+
+**On Windows/Mac:**
+tkinter is included with Python by default.
 
 ### Method 1: Automated Setup (Recommended)
 
@@ -124,30 +146,15 @@ The script will:
    
    Note: The application works without these, but 3D visualization will be disabled.
 
-4. **Check requirements (optional):**
-   ```bash
-   cat requirements.txt
-   # Note: No pip install needed - all dependencies are in standard library
-   ```
-
-4. **Verify Python installation:**
+4. **Verify Python and tkinter:**
    ```bash
    python3 --version
    # Should show Python 3.6 or higher
-   ```
-
-5. **Check tkinter (for GUI):**
-   ```bash
+   
    python3 -c "import tkinter; print('tkinter available')"
    ```
 
-   If tkinter is not available, install it:
-   - **Ubuntu/Debian**: `sudo apt-get install python3-tk`
-   - **Fedora**: `sudo dnf install python3-tkinter`
-   - **macOS**: Included with Python from python.org
-   - **Windows**: Included with standard Python installation
-
-6. **Run the application:**
+5. **Run the application:**
    ```bash
    # GUI version (recommended)
    python3 lens_editor_gui.py
@@ -156,32 +163,10 @@ The script will:
    python3 lens_editor.py
    ```
 
-7. **When done, deactivate virtual environment (if used):**
+6. **When done, deactivate virtual environment (if used):**
    ```bash
    deactivate
    ```
-   ```bash
-   # GUI version (recommended)
-   python3 lens_editor_gui.py
-   
-   # OR CLI version
-   python3 lens_editor.py
-   ```
-
-### Alternative: Make Scripts Executable
-
-```bash
-# Activate venv first (if using)
-source venv/bin/activate  # Linux/macOS
-# venv\Scripts\activate   # Windows
-
-# Make scripts executable
-chmod +x lens_editor_gui.py lens_editor.py
-
-# Run directly
-./lens_editor_gui.py  # Run GUI
-./lens_editor.py      # Run CLI
-```
 
 ---
 
@@ -531,6 +516,26 @@ openLens/
 
 ## Troubleshooting
 
+### Issue: "No display name and no $DISPLAY environment variable"
+
+**Error:** `_tkinter.TclError: no display name and no $DISPLAY environment variable`
+
+This occurs when running on a headless server or via SSH without X11 forwarding.
+
+**Solutions:**
+- **If using SSH**: Connect with X11 forwarding: `ssh -X user@host`
+- **If running locally**: Ensure your display server is running (restart your desktop environment if needed)
+- **For remote headless servers**: Use a virtual display:
+  ```bash
+  sudo apt-get install xvfb
+  xvfb-run python3 lens_editor_gui.py
+  ```
+- **WSL users**: Install an X server like VcXsrv or X410, then:
+  ```bash
+  export DISPLAY=:0
+  python3 lens_editor_gui.py
+  ```
+
 ### Issue: tkinter not found
 
 **Error:** `ModuleNotFoundError: No module named 'tkinter'`
@@ -542,6 +547,9 @@ sudo apt-get install python3-tk
 
 # Fedora
 sudo dnf install python3-tkinter
+
+# Arch Linux
+sudo pacman -S tk
 
 # macOS - reinstall Python from python.org
 ```
@@ -563,6 +571,18 @@ python3 tests/run_all_tests.py
 - Check write permissions in the directory
 - Ensure `lenses.json` is not open in another program
 - Check disk space
+
+### Issue: 3D visualization not working
+
+**Solution:**
+```bash
+# Install required dependencies
+pip install matplotlib numpy
+
+# Or if using venv:
+source venv/bin/activate
+pip install matplotlib numpy
+```
 
 ---
 
