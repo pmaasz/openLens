@@ -270,15 +270,53 @@ class LensEditorWindow:
         
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(1, weight=1)
-        main_frame.columnconfigure(2, weight=1)  # Add third column for visualization
+        main_frame.columnconfigure(0, weight=1)
         main_frame.rowconfigure(0, weight=1)
+        
+        # Create tabbed interface
+        self.notebook = ttk.Notebook(main_frame)
+        self.notebook.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Create Editor tab
+        self.editor_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.editor_tab, text="Editor")
+        
+        # Create Simulation tab
+        self.simulation_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.simulation_tab, text="Simulation")
+        
+        # Configure editor tab grid
+        self.editor_tab.columnconfigure(1, weight=1)
+        self.editor_tab.columnconfigure(2, weight=1)
+        self.editor_tab.rowconfigure(0, weight=1)
         
         # Track visibility state
         self.left_panel_visible = True
         
+        # Setup Editor tab content
+        self.setup_editor_tab()
+        
+        # Setup Simulation tab content
+        self.setup_simulation_tab()
+        
+        # Status bar (below tabs)
+        status_frame = ttk.Frame(main_frame)
+        status_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5, padx=5)
+        
+        self.status_var = tk.StringVar(value="Ready - Press Enter to save")
+        status_label = ttk.Label(status_frame, textvariable=self.status_var, 
+                                 relief=tk.SUNKEN, anchor=tk.W,
+                                 font=('Arial', 9, 'bold'),
+                                 padding=(5, 3))
+        status_label.pack(fill=tk.X)
+        
+        self.update_status("Ready - Press Enter to save")
+    
+    def setup_editor_tab(self):
+        """Setup the Editor tab with lens list and properties"""
+        
         # Left panel - Lens list (collapsible)
-        self.left_frame = ttk.Frame(main_frame, padding="5")
+        self.left_frame = ttk.Frame(self.editor_tab, padding="5")
         self.left_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Header with title and toggle button
@@ -331,7 +369,7 @@ class LensEditorWindow:
         ttk.Button(btn_frame, text="Duplicate", command=self.duplicate_lens).pack(side=tk.LEFT, padx=2)
         
         # Right panel - Editor
-        right_frame = ttk.Frame(main_frame, padding="5")
+        right_frame = ttk.Frame(self.editor_tab, padding="5")
         right_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S))
         right_frame.columnconfigure(1, weight=1)
         
@@ -459,7 +497,7 @@ class LensEditorWindow:
         ttk.Label(info_frame, text=tips_text, justify=tk.LEFT, font=('Arial', 9)).pack(anchor=tk.W)
         
         # Right panel - 3D Visualization
-        viz_frame = ttk.LabelFrame(main_frame, text="3D Lens Visualization", padding="5")
+        viz_frame = ttk.LabelFrame(self.editor_tab, text="3D Lens Visualization", padding="5")
         viz_frame.grid(row=0, column=2, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         if VISUALIZATION_AVAILABLE:
@@ -482,19 +520,98 @@ class LensEditorWindow:
             
             ttk.Button(viz_controls, text="Update 3D View", 
                       command=self.update_3d_view).pack(side=tk.LEFT, padx=5)
+    
+    def setup_simulation_tab(self):
+        """Setup the Simulation tab for ray tracing and optical analysis"""
+        # Configure simulation tab grid
+        self.simulation_tab.columnconfigure(0, weight=1)
+        self.simulation_tab.rowconfigure(0, weight=1)
         
-        # Status bar - enhanced styling
-        status_frame = ttk.Frame(main_frame)
-        status_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=5, padx=5)
+        # Main content frame
+        content_frame = ttk.Frame(self.simulation_tab, padding="10")
+        content_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        content_frame.columnconfigure(0, weight=1)
+        content_frame.rowconfigure(1, weight=1)
         
-        self.status_var = tk.StringVar(value="Ready")
-        status_label = ttk.Label(status_frame, textvariable=self.status_var, 
-                                 relief=tk.SUNKEN, anchor=tk.W,
-                                 font=('Arial', 9, 'bold'),
-                                 padding=(5, 3))
-        status_label.pack(fill=tk.X)
+        # Title
+        ttk.Label(content_frame, text="Optical Simulation", 
+                 font=('Arial', 14, 'bold')).grid(row=0, column=0, pady=10)
         
-        self.update_status("Ready - Press Enter to save")
+        # Simulation canvas area
+        sim_frame = ttk.LabelFrame(content_frame, text="Ray Tracing Simulation", padding="10")
+        sim_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=10)
+        sim_frame.columnconfigure(0, weight=1)
+        sim_frame.rowconfigure(0, weight=1)
+        
+        # Placeholder for simulation visualization
+        if VISUALIZATION_AVAILABLE:
+            try:
+                # Create simulation visualizer
+                self.sim_visualizer = LensVisualizer(sim_frame, width=10, height=8)
+                
+                # Simulation info
+                info_text = """Ray Tracing Simulation
+                
+This tab will display:
+• Light ray paths through the lens
+• Focal point visualization
+• Aberration analysis
+• Optical path differences
+• Image formation
+
+Select a lens from the Editor tab to simulate."""
+                
+                info_label = ttk.Label(sim_frame, text=info_text, 
+                                      justify=tk.CENTER, font=('Arial', 10))
+                info_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+                
+            except Exception as e:
+                ttk.Label(sim_frame, text=f"Simulation error: {e}", 
+                         wraplength=400).pack(pady=20)
+                self.sim_visualizer = None
+        else:
+            msg = "Simulation not available.\n\nInstall dependencies:\n  pip install matplotlib numpy"
+            ttk.Label(sim_frame, text=msg, justify=tk.CENTER, 
+                     font=('Arial', 10)).pack(pady=50)
+            self.sim_visualizer = None
+        
+        # Simulation controls
+        controls_frame = ttk.LabelFrame(content_frame, text="Simulation Controls", padding="10")
+        controls_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=10)
+        
+        # Ray parameters
+        ttk.Label(controls_frame, text="Number of Rays:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.num_rays_var = tk.StringVar(value="10")
+        ttk.Entry(controls_frame, textvariable=self.num_rays_var, width=10).grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        ttk.Label(controls_frame, text="Ray Angle (degrees):").grid(row=0, column=2, sticky=tk.W, padx=5, pady=5)
+        self.ray_angle_var = tk.StringVar(value="0")
+        ttk.Entry(controls_frame, textvariable=self.ray_angle_var, width=10).grid(row=0, column=3, sticky=tk.W, padx=5, pady=5)
+        
+        # Simulation buttons
+        btn_frame = ttk.Frame(controls_frame)
+        btn_frame.grid(row=1, column=0, columnspan=4, pady=10)
+        
+        ttk.Button(btn_frame, text="Run Simulation", 
+                  command=self.run_simulation).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Clear Simulation", 
+                  command=self.clear_simulation).pack(side=tk.LEFT, padx=5)
+    
+    def run_simulation(self):
+        """Run optical simulation for the current lens"""
+        if not self.current_lens:
+            self.update_status("Please select or create a lens first")
+            return
+        
+        self.update_status(f"Running simulation for '{self.current_lens.name}'...")
+        # Placeholder for actual simulation logic
+        # This would implement ray tracing through the lens
+        
+    def clear_simulation(self):
+        """Clear the simulation display"""
+        if hasattr(self, 'sim_visualizer') and self.sim_visualizer:
+            self.sim_visualizer.clear()
+        self.update_status("Simulation cleared")
     
     def toggle_left_panel(self):
         """Toggle visibility of the left panel (lens list)"""
