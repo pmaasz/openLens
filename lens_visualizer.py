@@ -142,6 +142,25 @@ class LensVisualizer:
     
     def draw_lens(self, r1, r2, thickness, diameter):
         """Draw the complete lens in 3D with optimized rendering"""
+        # Validate inputs
+        if diameter <= 0:
+            from tkinter import messagebox
+            messagebox.showwarning(
+                "Invalid Lens Parameters",
+                "Cannot render 3D view: Lens diameter must be greater than 0.\n\n"
+                f"Current diameter: {diameter} mm"
+            )
+            return
+        
+        if thickness <= 0:
+            from tkinter import messagebox
+            messagebox.showwarning(
+                "Invalid Lens Parameters",
+                "Cannot render 3D view: Lens thickness must be greater than 0.\n\n"
+                f"Current thickness: {thickness} mm"
+            )
+            return
+        
         # Recreate 3D axis if needed (in case we switched from 2D)
         if not hasattr(self.ax, 'zaxis'):
             self.figure.clear()
@@ -261,6 +280,25 @@ class LensVisualizer:
     
     def draw_lens_2d(self, r1, r2, thickness, diameter):
         """Draw the lens in 2D side view (cross-section)"""
+        # Validate inputs
+        if diameter <= 0:
+            from tkinter import messagebox
+            messagebox.showwarning(
+                "Invalid Lens Parameters",
+                "Cannot render 2D view: Lens diameter must be greater than 0.\n\n"
+                f"Current diameter: {diameter} mm"
+            )
+            return
+        
+        if thickness <= 0:
+            from tkinter import messagebox
+            messagebox.showwarning(
+                "Invalid Lens Parameters",
+                "Cannot render 2D view: Lens thickness must be greater than 0.\n\n"
+                f"Current thickness: {thickness} mm"
+            )
+            return
+        
         # Clear and reconfigure for 2D
         self.figure.clear()
         self.ax = self.figure.add_subplot(111, facecolor=self.COLORS_3D['bg'])
@@ -342,7 +380,13 @@ class LensVisualizer:
         
         # Set limits with margin
         self.ax.set_xlim(x_min - margin, x_max + margin)
-        self.ax.set_ylim(-y_max * 1.2, y_max * 1.2)
+        
+        # Ensure ylim values are not identical (prevents matplotlib warning)
+        if y_max > 0:
+            self.ax.set_ylim(-y_max * 1.2, y_max * 1.2)
+        else:
+            # Fallback to small default range if y_max is 0
+            self.ax.set_ylim(-1, 1)
         
         # Legend
         legend = self.ax.legend(loc='upper right', fontsize=8, framealpha=0.9)
