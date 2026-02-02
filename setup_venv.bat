@@ -84,7 +84,7 @@ echo    python lens_editor_gui.py    (GUI version)
 echo    python lens_editor.py        (CLI version)
 echo.
 echo To run tests:
-echo    python run_all_tests.py
+echo    python tests/run_all_tests.py
 echo.
 echo To deactivate when done:
 echo    deactivate

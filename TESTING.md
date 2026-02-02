@@ -6,13 +6,13 @@ This document describes the functional tests for the openlens application.
 
 - **test_lens_editor.py** - Core functionality tests for the Lens class and LensManager
 - **test_gui.py** - GUI functionality tests for the graphical editor
-- **run_all_tests.py** - Master test runner that executes all test suites
+- **tests/run_all_tests.py** - Master test runner that executes all test suites
 
 ## Running Tests
 
 ### Run All Tests
 ```bash
-python3 run_all_tests.py
+python3 tests/run_all_tests.py
 ```
 
 ### Run Only Core Tests

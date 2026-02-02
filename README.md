@@ -445,7 +445,7 @@ openlens includes comprehensive functional tests to ensure accuracy and reliabil
 ### Run All Tests
 
 ```bash
-python3 run_all_tests.py
+python3 tests/run_all_tests.py
 ```
 
 ### Test Coverage
@@ -515,9 +515,13 @@ For detailed testing documentation, see [TESTING.md](TESTING.md).
 openLens/
 ├── lens_editor.py           # CLI application
 ├── lens_editor_gui.py       # GUI application
-├── test_lens_editor.py      # Core tests
-├── test_gui.py              # GUI tests
-├── run_all_tests.py         # Test runner
+├── lens_visualizer.py       # 3D visualization
+├── tests/                   # Test directory
+│   ├── __init__.py
+│   ├── run_all_tests.py    # Test runner
+│   ├── test_lens_editor.py # Core tests
+│   ├── test_gui.py         # GUI tests
+│   └── test_visualization.py # Visualization tests
 ├── lenses.json              # Data storage (auto-created)
 ├── README.md                # This file
 └── TESTING.md               # Testing documentation
@@ -550,7 +554,7 @@ sudo dnf install python3-tkinter
 cd /path/to/openLens
 
 # Run tests with verbose output
-python3 run_all_tests.py
+python3 tests/run_all_tests.py
 ```
 
 ### Issue: Lenses not saving

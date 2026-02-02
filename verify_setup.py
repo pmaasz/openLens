@@ -33,9 +33,10 @@ def check_project_files():
     required_files = [
         'lens_editor.py',
         'lens_editor_gui.py',
-        'test_lens_editor.py',
-        'test_gui.py',
-        'run_all_tests.py'
+        'tests/run_all_tests.py',
+        'tests/test_lens_editor.py',
+        'tests/test_gui.py',
+        'tests/test_visualization.py'
     ]
     
     all_present = True
@@ -108,7 +109,7 @@ def main():
         print("Quick start:")
         print("  • Run GUI:  python3 lens_editor_gui.py")
         print("  • Run CLI:  python3 lens_editor.py")
-        print("  • Run tests: python3 run_all_tests.py")
+        print("  • Run tests: python3 tests/run_all_tests.py")
         return 0
     else:
         print("✗✗✗ SOME CHECKS FAILED ✗✗✗")

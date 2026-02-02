@@ -6,8 +6,9 @@ Run all functional tests for openlens application
 import sys
 import os
 
-# Add current directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add project directory to path
+project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_dir)
 
 print("=" * 70)
 print("openlens - Complete Test Suite")

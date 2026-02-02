@@ -37,7 +37,7 @@ openlens is a complete desktop application for designing and analyzing single gl
 ### 3. Test Suite
 - **Core Tests** (`test_lens_editor.py`): 24 tests, ~450 LOC
 - **GUI Tests** (`test_gui.py`): 17 tests, ~370 LOC
-- **Test Runner** (`run_all_tests.py`): Master test orchestrator
+- **Test Runner** (`tests/run_all_tests.py`): Master test orchestrator
 - **Total:** 41 comprehensive functional tests
 - **Coverage:** 100% of core features
 
@@ -104,9 +104,13 @@ openlens is a complete desktop application for designing and analyzing single gl
 openLens/
 ├── lens_editor.py          (11 KB) - CLI application
 ├── lens_editor_gui.py      (22 KB) - GUI application
-├── test_lens_editor.py     (16 KB) - Core functionality tests
-├── test_gui.py             (13 KB) - GUI functionality tests
-├── run_all_tests.py        (1.4 KB) - Master test runner
+├── lens_visualizer.py      (3 KB) - 3D visualization
+├── tests/                  - Test directory
+│   ├── __init__.py
+│   ├── run_all_tests.py    (1.4 KB) - Master test runner
+│   ├── test_lens_editor.py (16 KB) - Core functionality tests
+│   ├── test_gui.py         (13 KB) - GUI functionality tests
+│   └── test_visualization.py - Visualization tests
 ├── verify_setup.py         (3.4 KB) - Setup verification script
 ├── README.md               (25 KB) - Comprehensive documentation
 ├── TESTING.md              (4.0 KB) - Testing documentation
@@ -218,7 +222,7 @@ python3 lens_editor.py
 
 ### Run Tests
 ```bash
-python3 run_all_tests.py
+python3 tests/run_all_tests.py
 ```
 
 ---
