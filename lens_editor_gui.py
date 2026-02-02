@@ -53,7 +53,8 @@ class ToolTip:
 class Lens:
     def __init__(self, name="Untitled", radius_of_curvature_1=100.0, radius_of_curvature_2=-100.0,
                  thickness=5.0, diameter=50.0, refractive_index=1.5168, 
-                 lens_type="Biconvex", material="BK7"):
+                 lens_type="Biconvex", material="BK7", is_fresnel=False, 
+                 groove_pitch=1.0, num_grooves=None):
         self.id = datetime.now().strftime("%Y%m%d%H%M%S%f")
         self.name = name
         self.radius_of_curvature_1 = radius_of_curvature_1  # R1 (front surface, mm)
@@ -63,8 +64,22 @@ class Lens:
         self.refractive_index = refractive_index  # Index of refraction (n)
         self.lens_type = lens_type  # Convex, Concave, Plano-Convex, etc.
         self.material = material  # Glass type
+        self.is_fresnel = is_fresnel  # Is this a Fresnel lens?
+        self.groove_pitch = groove_pitch  # Pitch between grooves (mm)
+        self.num_grooves = num_grooves  # Number of grooves (calculated if None)
         self.created_at = datetime.now().isoformat()
         self.modified_at = datetime.now().isoformat()
+        
+        # Auto-calculate number of grooves if not provided
+        if self.is_fresnel and self.num_grooves is None:
+            self.calculate_num_grooves()
+    
+    def calculate_num_grooves(self):
+        """Calculate the number of grooves based on diameter and pitch"""
+        if self.groove_pitch > 0:
+            self.num_grooves = int((self.diameter / 2) / self.groove_pitch)
+        else:
+            self.num_grooves = 0
     
     def to_dict(self):
         return {
@@ -77,6 +92,9 @@ class Lens:
             "refractive_index": self.refractive_index,
             "type": self.lens_type,
             "material": self.material,
+            "is_fresnel": self.is_fresnel,
+            "groove_pitch": self.groove_pitch,
+            "num_grooves": self.num_grooves,
             "created_at": self.created_at,
             "modified_at": self.modified_at
         }
@@ -91,7 +109,10 @@ class Lens:
             diameter=data.get("diameter", 50.0),
             refractive_index=data.get("refractive_index", 1.5168),
             lens_type=data.get("type", "Biconvex"),
-            material=data.get("material", "BK7")
+            material=data.get("material", "BK7"),
+            is_fresnel=data.get("is_fresnel", False),
+            groove_pitch=data.get("groove_pitch", 1.0),
+            num_grooves=data.get("num_grooves", None)
         )
         lens.id = data.get("id", lens.id)
         lens.created_at = data.get("created_at", lens.created_at)
@@ -116,6 +137,45 @@ class Lens:
         
         focal_length = 1 / power
         return focal_length
+    
+    def calculate_fresnel_efficiency(self):
+        """Calculate theoretical efficiency of Fresnel lens"""
+        if not self.is_fresnel:
+            return None
+        
+        # Simplified efficiency calculation
+        # Fresnel lenses typically have 85-95% efficiency
+        # depending on groove quality and pitch
+        base_efficiency = 0.90
+        
+        # Efficiency decreases with smaller pitch (harder to manufacture)
+        if self.groove_pitch < 0.5:
+            efficiency_factor = 0.85
+        elif self.groove_pitch < 1.0:
+            efficiency_factor = 0.90
+        else:
+            efficiency_factor = 0.95
+        
+        return base_efficiency * efficiency_factor
+    
+    def calculate_fresnel_thickness_reduction(self):
+        """Calculate thickness reduction compared to conventional lens"""
+        if not self.is_fresnel or self.num_grooves is None:
+            return None
+        
+        # Fresnel lens can reduce thickness by removing material between grooves
+        # Each groove saves approximately the groove pitch height
+        # This is a simplified calculation
+        conventional_thickness = self.thickness
+        fresnel_thickness = max(1.0, self.groove_pitch * 2)  # Minimum 1mm
+        
+        reduction_percentage = ((conventional_thickness - fresnel_thickness) / conventional_thickness) * 100
+        return {
+            'conventional_thickness': conventional_thickness,
+            'fresnel_thickness': fresnel_thickness,
+            'reduction_percentage': reduction_percentage,
+            'weight_reduction_percentage': reduction_percentage * 0.9  # Approximate weight reduction
+        }
 
 
 class LensEditorWindow:
@@ -653,6 +713,37 @@ Modified: {lens.modified_at}"""
         material_combo.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
         row += 1
         
+        # Fresnel lens section
+        ttk.Separator(right_frame, orient='horizontal').grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        row += 1
+        
+        ttk.Label(right_frame, text="Fresnel Lens:", font=('Arial', 10, 'bold')).grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        row += 1
+        
+        # Fresnel checkbox
+        self.is_fresnel_var = tk.BooleanVar(value=False)
+        self.is_fresnel_var.trace_add('write', lambda *args: self.on_fresnel_toggle())
+        fresnel_check = ttk.Checkbutton(right_frame, text="Enable Fresnel Lens", 
+                                       variable=self.is_fresnel_var)
+        fresnel_check.grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5, padx=5)
+        row += 1
+        
+        # Groove pitch
+        ttk.Label(right_frame, text="Groove Pitch (mm):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        self.groove_pitch_var = tk.StringVar(value="1.0")
+        self.groove_pitch_var.trace_add('write', lambda *args: self.on_field_change())
+        self.groove_pitch_entry = ttk.Entry(right_frame, textvariable=self.groove_pitch_var, width=40)
+        self.groove_pitch_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        self.groove_pitch_entry.config(state='disabled')  # Disabled by default
+        row += 1
+        
+        # Number of grooves (readonly, calculated)
+        ttk.Label(right_frame, text="Number of Grooves:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        self.num_grooves_var = tk.StringVar(value="0")
+        num_grooves_entry = ttk.Entry(right_frame, textvariable=self.num_grooves_var, width=40, state='readonly')
+        num_grooves_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        row += 1
+        
         # Calculated properties display
         calc_frame = ttk.LabelFrame(right_frame, text="Calculated Properties", padding="10")
         calc_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
@@ -664,6 +755,14 @@ Modified: {lens.modified_at}"""
         self.optical_power_label = ttk.Label(calc_frame, text="Optical Power: Not calculated", 
                                              font=('Arial', 10))
         self.optical_power_label.pack(anchor=tk.W, pady=2)
+        
+        # Fresnel-specific properties
+        self.fresnel_efficiency_label = ttk.Label(calc_frame, text="", font=('Arial', 10))
+        self.fresnel_efficiency_label.pack(anchor=tk.W, pady=2)
+        
+        self.fresnel_thickness_label = ttk.Label(calc_frame, text="", font=('Arial', 10))
+        self.fresnel_thickness_label.pack(anchor=tk.W, pady=2)
+        
         row += 1
         
         # Info panel with tips
@@ -673,7 +772,9 @@ Modified: {lens.modified_at}"""
         tips_text = """• Positive radius = convex (curving outward), Negative = concave (curving inward)
 • R1 is front surface, R2 is back surface
 • Use 'inf' or large value for flat (plano) surfaces
-• Refractive index: Air=1.0, Glass~1.5-1.9, Water=1.33"""
+• Refractive index: Air=1.0, Glass~1.5-1.9, Water=1.33
+• Fresnel lenses reduce thickness and weight while maintaining optical power
+• Groove pitch determines the size of concentric rings"""
         ttk.Label(info_frame, text=tips_text, justify=tk.LEFT, font=('Arial', 9)).pack(anchor=tk.W)
         
         # Right panel - Lens Visualization
@@ -875,6 +976,17 @@ Select a lens from the Editor tab to simulate."""
         self.type_var.set(lens.lens_type)
         self.material_var.set(lens.material)
         
+        # Load Fresnel properties
+        self.is_fresnel_var.set(getattr(lens, 'is_fresnel', False))
+        self.groove_pitch_var.set(str(getattr(lens, 'groove_pitch', 1.0)))
+        self.num_grooves_var.set(str(getattr(lens, 'num_grooves', 0) or 0))
+        
+        # Enable/disable groove pitch field based on Fresnel status
+        if self.is_fresnel_var.get():
+            self.groove_pitch_entry.config(state='normal')
+        else:
+            self.groove_pitch_entry.config(state='disabled')
+        
         self.calculate_and_display_focal_length()
         self.update_3d_view()  # Update 3D visualization
         self._loading_lens = False  # Re-enable autosave
@@ -890,10 +1002,16 @@ Select a lens from the Editor tab to simulate."""
         self.refr_index_var.set("1.5168")
         self.type_var.set("Biconvex")
         self.material_var.set("BK7")
+        self.is_fresnel_var.set(False)
+        self.groove_pitch_var.set("1.0")
+        self.num_grooves_var.set("0")
+        self.groove_pitch_entry.config(state='disabled')
         self.current_lens = None
         
         self.focal_length_label.config(text="Focal Length: Not calculated")
         self.optical_power_label.config(text="Optical Power: Not calculated")
+        self.fresnel_efficiency_label.config(text="")
+        self.fresnel_thickness_label.config(text="")
         
         self._loading_lens = False  # Re-enable autosave
         self.update_status("Form cleared")
@@ -902,6 +1020,24 @@ Select a lens from the Editor tab to simulate."""
         self.clear_form()
         self.name_entry.focus()
         self.update_status("Create new lens")
+    
+    def on_fresnel_toggle(self):
+        """Handle Fresnel lens checkbox toggle"""
+        if self._loading_lens:
+            return
+        
+        is_fresnel = self.is_fresnel_var.get()
+        
+        # Enable/disable groove pitch field
+        if is_fresnel:
+            self.groove_pitch_entry.config(state='normal')
+        else:
+            self.groove_pitch_entry.config(state='disabled')
+            self.fresnel_efficiency_label.config(text="")
+            self.fresnel_thickness_label.config(text="")
+        
+        # Trigger update
+        self.on_field_change()
     
     def calculate_and_display_focal_length(self):
         try:
@@ -917,6 +1053,66 @@ Select a lens from the Editor tab to simulate."""
             
             # Lensmaker's equation
             power = (n - 1) * ((1/r1) - (1/r2) + ((n - 1) * thickness) / (n * r1 * r2))
+            
+            if abs(power) < 1e-10:
+                self.focal_length_label.config(text="Focal Length: Infinite (No optical power)")
+                self.optical_power_label.config(text="Optical Power: 0.00 D")
+            else:
+                focal_length = 1 / power
+                self.focal_length_label.config(text=f"Focal Length: {focal_length:.2f} mm")
+                self.optical_power_label.config(text=f"Optical Power: {power:.4f} mm⁻¹ ({power*1000:.2f} D)")
+            
+            # Calculate Fresnel-specific properties if enabled
+            if self.is_fresnel_var.get():
+                self.calculate_and_display_fresnel_properties()
+            else:
+                self.fresnel_efficiency_label.config(text="")
+                self.fresnel_thickness_label.config(text="")
+        
+        except ValueError:
+            self.focal_length_label.config(text="Focal Length: Invalid input")
+            self.optical_power_label.config(text="Optical Power: Invalid input")
+    
+    def calculate_and_display_fresnel_properties(self):
+        """Calculate and display Fresnel-specific properties"""
+        try:
+            diameter = float(self.diameter_var.get())
+            groove_pitch = float(self.groove_pitch_var.get())
+            thickness = float(self.thickness_var.get())
+            
+            if groove_pitch <= 0:
+                self.num_grooves_var.set("0")
+                return
+            
+            # Calculate number of grooves
+            num_grooves = int((diameter / 2) / groove_pitch)
+            self.num_grooves_var.set(str(num_grooves))
+            
+            # Calculate efficiency
+            base_efficiency = 0.90
+            if groove_pitch < 0.5:
+                efficiency_factor = 0.85
+            elif groove_pitch < 1.0:
+                efficiency_factor = 0.90
+            else:
+                efficiency_factor = 0.95
+            
+            efficiency = base_efficiency * efficiency_factor * 100
+            self.fresnel_efficiency_label.config(
+                text=f"Fresnel Efficiency: {efficiency:.1f}%"
+            )
+            
+            # Calculate thickness reduction
+            fresnel_thickness = max(1.0, groove_pitch * 2)
+            reduction = ((thickness - fresnel_thickness) / thickness) * 100
+            self.fresnel_thickness_label.config(
+                text=f"Thickness Reduction: {reduction:.1f}% ({thickness:.1f}mm → {fresnel_thickness:.1f}mm)"
+            )
+            
+        except ValueError:
+            self.num_grooves_var.set("0")
+            self.fresnel_efficiency_label.config(text="Fresnel Efficiency: Invalid input")
+            self.fresnel_thickness_label.config(text="")
             
             if abs(power) < 1e-10:
                 self.focal_length_label.config(text="Focal Length: Infinite (No optical power)")
@@ -1032,6 +1228,8 @@ Select a lens from the Editor tab to simulate."""
             refractive_index = float(self.refr_index_var.get())
             lens_type = self.type_var.get()
             material = self.material_var.get().strip() or "BK7"
+            is_fresnel = self.is_fresnel_var.get()
+            groove_pitch = float(self.groove_pitch_var.get()) if is_fresnel else 1.0
             
             # Auto-update modified timestamp
             modified_at = datetime.now().isoformat()
@@ -1046,11 +1244,18 @@ Select a lens from the Editor tab to simulate."""
                 self.current_lens.refractive_index = refractive_index
                 self.current_lens.lens_type = lens_type
                 self.current_lens.material = material
+                self.current_lens.is_fresnel = is_fresnel
+                self.current_lens.groove_pitch = groove_pitch
+                if is_fresnel:
+                    self.current_lens.calculate_num_grooves()
+                else:
+                    self.current_lens.num_grooves = 0
                 self.current_lens.modified_at = modified_at
                 message = "Lens autosaved"
             else:
                 # Create new lens
-                lens = Lens(name, r1, r2, thickness, diameter, refractive_index, lens_type, material)
+                lens = Lens(name, r1, r2, thickness, diameter, refractive_index, 
+                           lens_type, material, is_fresnel, groove_pitch)
                 lens.modified_at = modified_at
                 self.lenses.append(lens)
                 self.current_lens = lens
