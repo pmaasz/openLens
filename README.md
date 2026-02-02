@@ -61,7 +61,29 @@ OpenLense is a desktop application for designing and analyzing **single glass op
 - **tkinter** (for GUI version - usually included with Python)
 - **No external dependencies!** All functionality uses Python standard library
 
-### Quick Start
+### Method 1: Automated Setup (Recommended)
+
+Use the provided setup script to automatically create and configure the virtual environment:
+
+**Linux/macOS:**
+```bash
+./setup_venv.sh
+source venv/bin/activate
+```
+
+**Windows:**
+```cmd
+setup_venv.bat
+venv\Scripts\activate
+```
+
+The script will:
+- Check Python installation
+- Create virtual environment
+- Verify tkinter availability
+- Display activation instructions
+
+### Method 2: Manual Setup
 
 1. **Clone or download the repository:**
    ```bash
@@ -69,19 +91,32 @@ OpenLense is a desktop application for designing and analyzing **single glass op
    cd openLense
    ```
 
-2. **Check requirements (optional):**
+2. **Set up virtual environment (recommended):**
+   ```bash
+   # Create virtual environment
+   python3 -m venv venv
+   
+   # Activate virtual environment
+   # On Linux/macOS:
+   source venv/bin/activate
+   
+   # On Windows:
+   venv\Scripts\activate
+   ```
+
+3. **Check requirements (optional):**
    ```bash
    cat requirements.txt
    # Note: No pip install needed - all dependencies are in standard library
    ```
 
-3. **Verify Python installation:**
+4. **Verify Python installation:**
    ```bash
    python3 --version
    # Should show Python 3.6 or higher
    ```
 
-4. **Check tkinter (for GUI):**
+5. **Check tkinter (for GUI):**
    ```bash
    python3 -c "import tkinter; print('tkinter available')"
    ```
@@ -92,7 +127,19 @@ OpenLense is a desktop application for designing and analyzing **single glass op
    - **macOS**: Included with Python from python.org
    - **Windows**: Included with standard Python installation
 
-5. **Run the application:**
+6. **Run the application:**
+   ```bash
+   # GUI version (recommended)
+   python3 lens_editor_gui.py
+   
+   # OR CLI version
+   python3 lens_editor.py
+   ```
+
+7. **When done, deactivate virtual environment (if used):**
+   ```bash
+   deactivate
+   ```
    ```bash
    # GUI version (recommended)
    python3 lens_editor_gui.py
@@ -104,7 +151,14 @@ OpenLense is a desktop application for designing and analyzing **single glass op
 ### Alternative: Make Scripts Executable
 
 ```bash
+# Activate venv first (if using)
+source venv/bin/activate  # Linux/macOS
+# venv\Scripts\activate   # Windows
+
+# Make scripts executable
 chmod +x lens_editor_gui.py lens_editor.py
+
+# Run directly
 ./lens_editor_gui.py  # Run GUI
 ./lens_editor.py      # Run CLI
 ```
