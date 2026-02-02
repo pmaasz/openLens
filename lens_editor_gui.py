@@ -297,6 +297,7 @@ class LensEditorWindow:
         # Create tabbed interface
         self.notebook = ttk.Notebook(main_frame)
         self.notebook.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.notebook.bind('<<NotebookTabChanged>>', self.on_tab_changed)
         
         # Create Lens Selection tab (always enabled)
         self.selection_tab = ttk.Frame(self.notebook)
@@ -493,6 +494,9 @@ Modified: {lens.modified_at}"""
         self.refresh_lens_list()
         self.load_lens_to_form(self.current_lens)
         
+        # Update simulation tab with current lens
+        self.update_simulation_view()
+        
         self.update_status(f"Lens selected: '{self.current_lens.name}' - Ready to edit")
     
     def delete_lens_from_selection(self):
@@ -527,10 +531,45 @@ Modified: {lens.modified_at}"""
     def setup_editor_tab(self):
         """Setup the Editor tab with lens properties"""
         
-        # Single panel - Editor (no lens list)
-        right_frame = ttk.Frame(self.editor_tab, padding="5")
-        right_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # Left panel container with scrollbar
+        left_container = ttk.Frame(self.editor_tab)
+        left_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        left_container.columnconfigure(0, weight=1)
+        left_container.rowconfigure(0, weight=1)
+        
+        # Create canvas for scrolling
+        canvas = tk.Canvas(left_container, bg=self.COLORS['bg'], 
+                          highlightthickness=0, borderwidth=0)
+        canvas.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(left_container, orient="vertical", command=canvas.yview)
+        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        
+        # Configure canvas
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Create frame inside canvas for content
+        right_frame = ttk.Frame(canvas, padding="5")
+        canvas_frame = canvas.create_window((0, 0), window=right_frame, anchor="nw")
+        
+        # Configure right_frame
         right_frame.columnconfigure(1, weight=1)
+        
+        # Update scroll region when frame size changes
+        def configure_scroll_region(event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            # Also resize the canvas window to match canvas width
+            canvas.itemconfig(canvas_frame, width=canvas.winfo_width())
+        
+        right_frame.bind("<Configure>", configure_scroll_region)
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(canvas_frame, width=e.width))
+        
+        # Enable mouse wheel scrolling
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
         
         ttk.Label(right_frame, text="Optical Lens Properties", font=('Arial', 12, 'bold')).grid(
             row=0, column=0, columnspan=2, pady=5, sticky=tk.W)
@@ -695,9 +734,9 @@ This tab will display:
 
 Select a lens from the Editor tab to simulate."""
                 
-                info_label = ttk.Label(sim_frame, text=info_text, 
+                self.sim_info_label = ttk.Label(sim_frame, text=info_text, 
                                       justify=tk.CENTER, font=('Arial', 10))
-                info_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+                self.sim_info_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
                 
             except Exception as e:
                 ttk.Label(sim_frame, text=f"Simulation error: {e}", 
@@ -746,6 +785,30 @@ Select a lens from the Editor tab to simulate."""
         if hasattr(self, 'sim_visualizer') and self.sim_visualizer:
             self.sim_visualizer.clear()
         self.update_status("Simulation cleared")
+    
+    def update_simulation_view(self):
+        """Update the simulation tab with the current lens visualization"""
+        if not hasattr(self, 'sim_visualizer') or not self.sim_visualizer:
+            return
+        
+        if not self.current_lens:
+            return
+        
+        try:
+            # Hide the info label when rendering
+            if hasattr(self, 'sim_info_label') and self.sim_info_label:
+                self.sim_info_label.place_forget()
+            
+            # Draw the lens in the simulation view
+            r1 = self.current_lens.radius_of_curvature_1
+            r2 = self.current_lens.radius_of_curvature_2
+            thickness = self.current_lens.thickness
+            diameter = self.current_lens.diameter
+            
+            self.sim_visualizer.draw_lens(r1, r2, thickness, diameter)
+            self.update_status(f"Simulation updated for '{self.current_lens.name}'")
+        except Exception as e:
+            self.update_status(f"Error updating simulation: {e}")
     
     def refresh_lens_list(self):
         """Refresh the selection list only"""
@@ -912,6 +975,7 @@ Select a lens from the Editor tab to simulate."""
                 self.refresh_selection_list()
                 self.load_lens_to_form(self.current_lens)
                 self.update_3d_view()
+                self.update_simulation_view()
                 self.update_status(message)
         
         except ValueError as e:
@@ -934,6 +998,15 @@ Select a lens from the Editor tab to simulate."""
         self.clear_form()
         self.refresh_selection_list()
         self.update_status(f"Lens '{lens.name}' deleted successfully")
+    
+    def on_tab_changed(self, event):
+        """Handle tab change events"""
+        # Get the currently selected tab index
+        selected_tab = self.notebook.index(self.notebook.select())
+        
+        # If switching to simulation tab (index 2) and we have a current lens
+        if selected_tab == 2 and self.current_lens:
+            self.update_simulation_view()
     
     def update_status(self, message):
         self.status_var.set(message)
