@@ -145,6 +145,10 @@ class LensEditorWindow:
         self.lenses = self.load_lenses()
         self.current_lens = None
         self.visualizer = None  # Will be initialized in setup_ui
+        self.selected_lens_id = None
+        
+        # Initialize status_var early
+        self.status_var = tk.StringVar(value="Welcome to OpenLense")
         
         # Configure dark mode
         self.setup_dark_mode()
@@ -153,8 +157,6 @@ class LensEditorWindow:
         self.refresh_lens_list()
         
         # Keyboard shortcuts
-        self.root.bind('<Control-h>', lambda e: self.toggle_left_panel())
-        self.root.bind('<F1>', lambda e: self.toggle_left_panel())
         self.root.bind('<Return>', lambda e: self.save_current_lens())
         self.root.bind('<KP_Enter>', lambda e: self.save_current_lens())  # Numpad Enter
     
@@ -316,9 +318,6 @@ class LensEditorWindow:
         self.editor_tab.columnconfigure(2, weight=1)
         self.editor_tab.rowconfigure(0, weight=1)
         
-        # Track visibility state
-        self.left_panel_visible = True
-        
         # Setup tab content
         self.setup_selection_tab()
         self.setup_editor_tab()
@@ -382,7 +381,7 @@ class LensEditorWindow:
         info_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=20)
         
         self.selection_info_text = tk.Text(info_frame, 
-                                          height=6, 
+                                          height=9, 
                                           bg=self.COLORS['entry_bg'],
                                           fg=self.COLORS['fg'],
                                           font=('Arial', 10),
@@ -439,15 +438,20 @@ class LensEditorWindow:
         index = selection[0]
         lens = self.lenses[index]
         
-        info = f"""Name: {lens.name}
+        focal_length = lens.calculate_focal_length() or 0
+        
+        info = f"""ID: {lens.id}
+Name: {lens.name}
 Type: {lens.lens_type}
 Material: {lens.material}
-Radius 1: {lens.radius1:.3f} mm
-Radius 2: {lens.radius2:.3f} mm
-Center Thickness: {lens.center_thickness:.3f} mm
+Radius 1: {lens.radius_of_curvature_1:.3f} mm
+Radius 2: {lens.radius_of_curvature_2:.3f} mm
+Center Thickness: {lens.thickness:.3f} mm
 Diameter: {lens.diameter:.3f} mm
 Refractive Index: {lens.refractive_index:.3f}
-Focal Length: {lens.focal_length:.3f} mm"""
+Focal Length: {focal_length:.3f} mm
+Created: {lens.created_at}
+Modified: {lens.modified_at}"""
         
         self.selection_info_text.config(state='normal')
         self.selection_info_text.delete(1.0, tk.END)
@@ -456,11 +460,9 @@ Focal Length: {lens.focal_length:.3f} mm"""
     
     def create_new_lens_from_selection(self):
         """Create a new lens from the selection tab"""
-        new_lens = Lens()
-        self.lenses.append(new_lens)
-        self.save_lenses()
-        self.refresh_selection_list()
-        self.current_lens = new_lens
+        # Clear the form and current lens to start fresh
+        self.current_lens = None
+        self.clear_form()
         
         # Enable editor and simulation tabs
         self.notebook.tab(1, state='normal')  # Editor tab
@@ -468,12 +470,7 @@ Focal Length: {lens.focal_length:.3f} mm"""
         
         # Switch to editor tab
         self.notebook.select(1)
-        
-        # Update editor display
-        self.refresh_lens_list()
-        self.load_lens_to_form(new_lens)
-        
-        self.update_status(f"New lens created: '{new_lens.name}' - Edit properties and press Enter to save")
+        self.update_status("Ready to create new lens")
     
     def select_lens_from_list(self):
         """Select a lens from the selection list and switch to editor"""
@@ -528,64 +525,11 @@ Focal Length: {lens.focal_length:.3f} mm"""
         self.update_status(f"Lens '{lens.name}' deleted")
     
     def setup_editor_tab(self):
-        """Setup the Editor tab with lens list and properties"""
+        """Setup the Editor tab with lens properties"""
         
-        # Left panel - Lens list (collapsible)
-        self.left_frame = ttk.Frame(self.editor_tab, padding="5")
-        self.left_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Header with title and toggle button
-        header_frame = ttk.Frame(self.left_frame)
-        header_frame.pack(fill=tk.X, pady=5)
-        
-        ttk.Label(header_frame, text="Optical Lenses", 
-                 font=('Arial', 12, 'bold')).pack(side=tk.LEFT)
-        
-        # Toggle button (using Unicode arrow)
-        self.toggle_btn = ttk.Button(header_frame, text="◀", width=3,
-                                     command=self.toggle_left_panel)
-        self.toggle_btn.pack(side=tk.RIGHT)
-        
-        # Add tooltip to toggle button
-        ToolTip(self.toggle_btn, "Hide/Show lens list (Ctrl+H or F1)")
-        
-        # Container for collapsible content
-        self.left_content = ttk.Frame(self.left_frame)
-        self.left_content.pack(fill=tk.BOTH, expand=True)
-        
-        # Lens listbox with scrollbar
-        list_frame = ttk.Frame(self.left_content)
-        list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-        
-        scrollbar = ttk.Scrollbar(list_frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.lens_listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set, 
-                                        width=35, font=('Arial', 10),
-                                        bg=self.COLORS['entry_bg'],
-                                        fg=self.COLORS['fg'],
-                                        selectbackground=self.COLORS['accent'],
-                                        selectforeground=self.COLORS['fg'],
-                                        highlightthickness=1,
-                                        highlightcolor=self.COLORS['border'],
-                                        highlightbackground=self.COLORS['border'],
-                                        borderwidth=0)
-        self.lens_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.lens_listbox.yview)
-        
-        self.lens_listbox.bind('<<ListboxSelect>>', self.on_lens_select)
-        
-        # Buttons for list operations
-        btn_frame = ttk.Frame(self.left_content)
-        btn_frame.pack(fill=tk.X, pady=5)
-        
-        ttk.Button(btn_frame, text="New", command=self.new_lens).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_frame, text="Delete", command=self.delete_lens).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_frame, text="Duplicate", command=self.duplicate_lens).pack(side=tk.LEFT, padx=2)
-        
-        # Right panel - Editor
+        # Single panel - Editor (no lens list)
         right_frame = ttk.Frame(self.editor_tab, padding="5")
-        right_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S))
+        right_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         right_frame.columnconfigure(1, weight=1)
         
         ttk.Label(right_frame, text="Optical Lens Properties", font=('Arial', 12, 'bold')).grid(
@@ -593,13 +537,6 @@ Focal Length: {lens.focal_length:.3f} mm"""
         
         # Form fields
         row = 1
-        
-        ttk.Label(right_frame, text="ID:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
-        self.id_var = tk.StringVar()
-        self.id_entry = ttk.Entry(right_frame, textvariable=self.id_var, width=40,
-                                  state='readonly')
-        self.id_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
-        row += 1
         
         ttk.Label(right_frame, text="Name:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
         self.name_var = tk.StringVar()
@@ -657,24 +594,6 @@ Focal Length: {lens.focal_length:.3f} mm"""
                                                   "Crown Glass", "Flint Glass", "Sapphire", "Custom"],
                                           width=37)
         material_combo.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
-        row += 1
-        
-        # Separator
-        ttk.Separator(right_frame, orient='horizontal').grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
-        row += 1
-        
-        ttk.Label(right_frame, text="Created At:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
-        self.created_var = tk.StringVar()
-        self.created_entry = ttk.Entry(right_frame, textvariable=self.created_var, width=40, 
-                                       state='readonly')
-        self.created_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
-        row += 1
-        
-        ttk.Label(right_frame, text="Modified At:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
-        self.modified_var = tk.StringVar()
-        self.modified_entry = ttk.Entry(right_frame, textvariable=self.modified_var, width=40,
-                                        state='readonly')
-        self.modified_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
         row += 1
         
         # Action buttons
@@ -828,43 +747,15 @@ Select a lens from the Editor tab to simulate."""
             self.sim_visualizer.clear()
         self.update_status("Simulation cleared")
     
-    def toggle_left_panel(self):
-        """Toggle visibility of the left panel (lens list)"""
-        if self.left_panel_visible:
-            # Hide the panel - collapse to just the toggle button
-            self.left_content.pack_forget()
-            self.toggle_btn.configure(text="▶")
-            # Don't set width, let it collapse naturally
-            self.left_panel_visible = False
-            self.update_status("Lens list hidden (Ctrl+H or F1 to show)")
-        else:
-            # Show the panel
-            self.left_content.pack(fill=tk.BOTH, expand=True, before=self.toggle_btn.master)
-            self.toggle_btn.configure(text="◀")
-            self.left_panel_visible = True
-            self.update_status("Lens list shown (Ctrl+H or F1 to hide)")
-    
     def refresh_lens_list(self):
-        self.lens_listbox.delete(0, tk.END)
-        for lens in self.lenses:
-            display_text = f"{lens.name} - {lens.material} ({lens.lens_type})"
-            self.lens_listbox.insert(tk.END, display_text)
-        
+        """Refresh the selection list only"""
         # Also refresh selection tab list
         if hasattr(self, 'selection_listbox'):
             self.refresh_selection_list()
         
         self.update_status(f"{len(self.lenses)} lens(es) loaded")
     
-    def on_lens_select(self, event):
-        selection = self.lens_listbox.curselection()
-        if selection:
-            idx = selection[0]
-            self.current_lens = self.lenses[idx]
-            self.load_lens_to_form(self.current_lens)
-    
     def load_lens_to_form(self, lens):
-        self.id_var.set(lens.id)
         self.name_var.set(lens.name)
         self.r1_var.set(str(lens.radius_of_curvature_1))
         self.r2_var.set(str(lens.radius_of_curvature_2))
@@ -873,15 +764,12 @@ Select a lens from the Editor tab to simulate."""
         self.refr_index_var.set(str(lens.refractive_index))
         self.type_var.set(lens.lens_type)
         self.material_var.set(lens.material)
-        self.created_var.set(lens.created_at)
-        self.modified_var.set(lens.modified_at)
         
         self.calculate_and_display_focal_length()
         self.update_3d_view()  # Update 3D visualization
         self.update_status(f"Editing: {lens.name}")
     
     def clear_form(self):
-        self.id_var.set("")
         self.name_var.set("")
         self.r1_var.set("100.0")
         self.r2_var.set("-100.0")
@@ -890,14 +778,11 @@ Select a lens from the Editor tab to simulate."""
         self.refr_index_var.set("1.5168")
         self.type_var.set("Biconvex")
         self.material_var.set("BK7")
-        self.created_var.set("")
-        self.modified_var.set("")
         self.current_lens = None
         
         self.focal_length_label.config(text="Focal Length: Not calculated")
         self.optical_power_label.config(text="Optical Power: Not calculated")
         
-        self.lens_listbox.selection_clear(0, tk.END)
         self.update_status("Form cleared")
     
     def new_lens(self):
@@ -952,7 +837,7 @@ Select a lens from the Editor tab to simulate."""
             self.update_status(f"3D visualization error: {e}")
     
     def duplicate_lens(self):
-        selection = self.lens_listbox.curselection()
+        selection = self.selection_listbox.curselection()
         if not selection:
             self.update_status("Please select a lens to duplicate")
             return
@@ -974,12 +859,12 @@ Select a lens from the Editor tab to simulate."""
         
         self.lenses.append(new_lens)
         self.save_lenses()
-        self.refresh_lens_list()
+        self.refresh_selection_list()
         
         # Select the new lens
-        self.lens_listbox.selection_clear(0, tk.END)
-        self.lens_listbox.selection_set(len(self.lenses) - 1)
-        self.lens_listbox.see(len(self.lenses) - 1)
+        self.selection_listbox.selection_clear(0, tk.END)
+        self.selection_listbox.selection_set(len(self.lenses) - 1)
+        self.selection_listbox.see(len(self.lenses) - 1)
         self.current_lens = new_lens
         self.load_lens_to_form(new_lens)
         
@@ -987,7 +872,6 @@ Select a lens from the Editor tab to simulate."""
     
     def save_current_lens(self):
         try:
-            lens_id = self.id_var.get().strip()
             name = self.name_var.get().strip() or "Untitled"
             r1 = float(self.r1_var.get())
             r2 = float(self.r2_var.get())
@@ -996,14 +880,12 @@ Select a lens from the Editor tab to simulate."""
             refractive_index = float(self.refr_index_var.get())
             lens_type = self.type_var.get()
             material = self.material_var.get().strip() or "BK7"
-            created_at = self.created_var.get().strip()
             
             # Auto-update modified timestamp
             modified_at = datetime.now().isoformat()
             
             if self.current_lens:
                 # Update existing lens
-                self.current_lens.id = lens_id if lens_id else self.current_lens.id
                 self.current_lens.name = name
                 self.current_lens.radius_of_curvature_1 = r1
                 self.current_lens.radius_of_curvature_2 = r2
@@ -1012,36 +894,24 @@ Select a lens from the Editor tab to simulate."""
                 self.current_lens.refractive_index = refractive_index
                 self.current_lens.lens_type = lens_type
                 self.current_lens.material = material
-                self.current_lens.created_at = created_at if created_at else self.current_lens.created_at
                 self.current_lens.modified_at = modified_at
                 message = "Lens updated successfully!"
             else:
                 # Create new lens
                 lens = Lens(name, r1, r2, thickness, diameter, refractive_index, lens_type, material)
-                if lens_id:
-                    lens.id = lens_id
-                if created_at:
-                    lens.created_at = created_at
                 lens.modified_at = modified_at
                 self.lenses.append(lens)
                 self.current_lens = lens
                 message = "Lens created successfully!"
             
             # Auto-calculate focal length before saving
-            self.calculate_and_display_focal_length()
+            if self.current_lens:
+                self.current_lens.focal_length = self.current_lens.calculate_focal_length()
             
             if self.save_lenses():
-                self.refresh_lens_list()
-                
-                # Select the current lens in the list
-                for idx, lens in enumerate(self.lenses):
-                    if lens.id == self.current_lens.id:
-                        self.lens_listbox.selection_clear(0, tk.END)
-                        self.lens_listbox.selection_set(idx)
-                        self.lens_listbox.see(idx)
-                        break
-                
+                self.refresh_selection_list()
                 self.load_lens_to_form(self.current_lens)
+                self.update_3d_view()
                 self.update_status(message)
         
         except ValueError as e:
@@ -1050,7 +920,7 @@ Select a lens from the Editor tab to simulate."""
             self.update_status(f"Error: Failed to save lens: {e}")
     
     def delete_lens(self):
-        selection = self.lens_listbox.curselection()
+        selection = self.selection_listbox.curselection()
         if not selection:
             self.update_status("Please select a lens to delete")
             return
@@ -1062,7 +932,7 @@ Select a lens from the Editor tab to simulate."""
         self.lenses.pop(idx)
         self.save_lenses()
         self.clear_form()
-        self.refresh_lens_list()
+        self.refresh_selection_list()
         self.update_status(f"Lens '{lens.name}' deleted successfully")
     
     def update_status(self, message):
