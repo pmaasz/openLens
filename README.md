@@ -59,6 +59,7 @@ OpenLense is a desktop application for designing and analyzing **single glass op
 
 - **Python 3.6 or higher**
 - **tkinter** (for GUI version - usually included with Python)
+- **No external dependencies!** All functionality uses Python standard library
 
 ### Quick Start
 
@@ -68,13 +69,19 @@ OpenLense is a desktop application for designing and analyzing **single glass op
    cd openLense
    ```
 
-2. **Verify Python installation:**
+2. **Check requirements (optional):**
+   ```bash
+   cat requirements.txt
+   # Note: No pip install needed - all dependencies are in standard library
+   ```
+
+3. **Verify Python installation:**
    ```bash
    python3 --version
    # Should show Python 3.6 or higher
    ```
 
-3. **Check tkinter (for GUI):**
+4. **Check tkinter (for GUI):**
    ```bash
    python3 -c "import tkinter; print('tkinter available')"
    ```
@@ -85,7 +92,7 @@ OpenLense is a desktop application for designing and analyzing **single glass op
    - **macOS**: Included with Python from python.org
    - **Windows**: Included with standard Python installation
 
-4. **Run the application:**
+5. **Run the application:**
    ```bash
    # GUI version (recommended)
    python3 lens_editor_gui.py
