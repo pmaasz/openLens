@@ -60,20 +60,13 @@ class LensVisualizer:
         
         # Redraw
         self.canvas.draw()
-        
-        # Configure dark mode for 3D plot
-        self.configure_dark_mode()
-        
-        # Set up the plot with optimized viewing angle
-        self.ax.view_init(elev=20, azim=45)
-        self.ax.set_xlabel('X (mm)', color=self.COLORS_3D['text'], fontsize=9)
-        self.ax.set_ylabel('Y (mm)', color=self.COLORS_3D['text'], fontsize=9)
-        self.ax.set_zlabel('Z (mm)', color=self.COLORS_3D['text'], fontsize=9)
-        self.ax.set_title('Lens 3D Cross-Section', color=self.COLORS_3D['text'], 
-                         fontsize=11, pad=10)
     
     def configure_dark_mode(self):
         """Configure dark mode styling for the 3D plot"""
+        # Check if this is a 3D axis before configuring panes
+        if not hasattr(self.ax, 'zaxis'):
+            return  # 2D axis, skip 3D-specific configuration
+        
         # Set pane colors with transparency for better depth perception
         self.ax.xaxis.pane.set_facecolor(self.COLORS_3D['pane'])
         self.ax.yaxis.pane.set_facecolor(self.COLORS_3D['pane'])
