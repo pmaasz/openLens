@@ -89,6 +89,24 @@ class Lens:
 
 
 class LensEditorWindow:
+    # Dark mode color scheme
+    COLORS = {
+        'bg': '#1e1e1e',           # Main background
+        'fg': '#e0e0e0',           # Main text
+        'bg_dark': '#252525',      # Darker sections
+        'bg_light': '#2d2d2d',     # Lighter sections
+        'accent': '#0078d4',       # Accent color (blue)
+        'accent_hover': '#1e88e5', # Accent hover
+        'border': '#3f3f3f',       # Border color
+        'success': '#4caf50',      # Success green
+        'warning': '#ff9800',      # Warning orange
+        'error': '#f44336',        # Error red
+        'text_dim': '#b0b0b0',     # Dimmed text
+        'selected': '#37373d',     # Selected item
+        'entry_bg': '#2b2b2b',     # Entry field background
+        'button_bg': '#3c3c3c',    # Button background
+    }
+    
     def __init__(self, root):
         self.root = root
         self.root.title("OpenLense - Optical Lens Editor")
@@ -98,8 +116,93 @@ class LensEditorWindow:
         self.current_lens = None
         self.visualizer = None  # Will be initialized in setup_ui
         
+        # Configure dark mode
+        self.setup_dark_mode()
+        # Configure dark mode
+        self.setup_dark_mode()
+        
         self.setup_ui()
         self.refresh_lens_list()
+    
+    def setup_dark_mode(self):
+        """Configure dark mode theme for the application"""
+        # Configure root window
+        self.root.configure(bg=self.COLORS['bg'])
+        
+        # Create custom ttk style
+        style = ttk.Style()
+        style.theme_use('clam')  # Use clam theme as base
+        
+        # Configure general ttk styles
+        style.configure('.',
+                       background=self.COLORS['bg'],
+                       foreground=self.COLORS['fg'],
+                       bordercolor=self.COLORS['border'],
+                       darkcolor=self.COLORS['bg_dark'],
+                       lightcolor=self.COLORS['bg_light'],
+                       troughcolor=self.COLORS['bg_dark'],
+                       focuscolor=self.COLORS['accent'],
+                       selectbackground=self.COLORS['accent'],
+                       selectforeground=self.COLORS['fg'])
+        
+        # Frame styles
+        style.configure('TFrame',
+                       background=self.COLORS['bg'])
+        
+        style.configure('TLabelframe',
+                       background=self.COLORS['bg'],
+                       foreground=self.COLORS['fg'],
+                       bordercolor=self.COLORS['border'])
+        
+        style.configure('TLabelframe.Label',
+                       background=self.COLORS['bg'],
+                       foreground=self.COLORS['fg'])
+        
+        # Label styles
+        style.configure('TLabel',
+                       background=self.COLORS['bg'],
+                       foreground=self.COLORS['fg'])
+        
+        # Button styles
+        style.configure('TButton',
+                       background=self.COLORS['button_bg'],
+                       foreground=self.COLORS['fg'],
+                       bordercolor=self.COLORS['border'],
+                       focuscolor=self.COLORS['accent'],
+                       lightcolor=self.COLORS['bg_light'],
+                       darkcolor=self.COLORS['bg_dark'])
+        
+        style.map('TButton',
+                 background=[('active', self.COLORS['accent']),
+                           ('pressed', self.COLORS['bg_dark'])],
+                 foreground=[('active', self.COLORS['fg'])])
+        
+        # Entry styles
+        style.configure('TEntry',
+                       fieldbackground=self.COLORS['entry_bg'],
+                       background=self.COLORS['entry_bg'],
+                       foreground=self.COLORS['fg'],
+                       bordercolor=self.COLORS['border'],
+                       insertcolor=self.COLORS['fg'])
+        
+        # Combobox styles
+        style.configure('TCombobox',
+                       fieldbackground=self.COLORS['entry_bg'],
+                       background=self.COLORS['entry_bg'],
+                       foreground=self.COLORS['fg'],
+                       bordercolor=self.COLORS['border'],
+                       arrowcolor=self.COLORS['fg'],
+                       selectbackground=self.COLORS['accent'],
+                       selectforeground=self.COLORS['fg'])
+        
+        style.map('TCombobox',
+                 fieldbackground=[('readonly', self.COLORS['entry_bg'])],
+                 selectbackground=[('readonly', self.COLORS['accent'])],
+                 selectforeground=[('readonly', self.COLORS['fg'])])
+        
+        # Separator style
+        style.configure('TSeparator',
+                       background=self.COLORS['border'])
     
     def load_lenses(self):
         if os.path.exists(self.storage_file):
@@ -146,7 +249,15 @@ class LensEditorWindow:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         self.lens_listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set, 
-                                        width=35, font=('Arial', 10))
+                                        width=35, font=('Arial', 10),
+                                        bg=self.COLORS['entry_bg'],
+                                        fg=self.COLORS['fg'],
+                                        selectbackground=self.COLORS['accent'],
+                                        selectforeground=self.COLORS['fg'],
+                                        highlightthickness=1,
+                                        highlightcolor=self.COLORS['border'],
+                                        highlightbackground=self.COLORS['border'],
+                                        borderwidth=0)
         self.lens_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.config(command=self.lens_listbox.yview)
         
