@@ -155,6 +155,8 @@ class LensEditorWindow:
         # Keyboard shortcuts
         self.root.bind('<Control-h>', lambda e: self.toggle_left_panel())
         self.root.bind('<F1>', lambda e: self.toggle_left_panel())
+        self.root.bind('<Return>', lambda e: self.save_current_lens())
+        self.root.bind('<KP_Enter>', lambda e: self.save_current_lens())  # Numpad Enter
     
     def setup_dark_mode(self):
         """Configure dark mode theme for the application"""
@@ -428,6 +430,9 @@ class LensEditorWindow:
         
         self.save_btn = ttk.Button(action_frame, text="Save", command=self.save_current_lens)
         self.save_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Add tooltip to save button
+        ToolTip(self.save_btn, "Save lens (Enter)")
         row += 1
         
         # Calculated properties display
@@ -489,7 +494,7 @@ class LensEditorWindow:
                                  padding=(5, 3))
         status_label.pack(fill=tk.X)
         
-        self.update_status("Ready")
+        self.update_status("Ready - Press Enter to save")
     
     def toggle_left_panel(self):
         """Toggle visibility of the left panel (lens list)"""
