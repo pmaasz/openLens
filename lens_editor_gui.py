@@ -217,6 +217,11 @@ class LensEditorWindow:
                        bordercolor=self.COLORS['border'],
                        insertcolor=self.COLORS['fg'])
         
+        # Readonly entry style (darker background to indicate readonly)
+        style.map('TEntry',
+                 fieldbackground=[('readonly', self.COLORS['bg_dark'])],
+                 foreground=[('readonly', self.COLORS['text_dim'])])
+        
         # Combobox styles
         style.configure('TCombobox',
                        fieldbackground=self.COLORS['entry_bg'],
@@ -336,7 +341,8 @@ class LensEditorWindow:
         
         ttk.Label(right_frame, text="ID:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
         self.id_var = tk.StringVar()
-        self.id_entry = ttk.Entry(right_frame, textvariable=self.id_var, width=40)
+        self.id_entry = ttk.Entry(right_frame, textvariable=self.id_var, width=40,
+                                  state='readonly')
         self.id_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
         row += 1
         
@@ -404,13 +410,15 @@ class LensEditorWindow:
         
         ttk.Label(right_frame, text="Created At:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
         self.created_var = tk.StringVar()
-        self.created_entry = ttk.Entry(right_frame, textvariable=self.created_var, width=40)
+        self.created_entry = ttk.Entry(right_frame, textvariable=self.created_var, width=40, 
+                                       state='readonly')
         self.created_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
         row += 1
         
         ttk.Label(right_frame, text="Modified At:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
         self.modified_var = tk.StringVar()
-        self.modified_entry = ttk.Entry(right_frame, textvariable=self.modified_var, width=40)
+        self.modified_entry = ttk.Entry(right_frame, textvariable=self.modified_var, width=40,
+                                        state='readonly')
         self.modified_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
         row += 1
         
