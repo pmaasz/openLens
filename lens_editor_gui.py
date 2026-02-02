@@ -677,38 +677,68 @@ Modified: {lens.modified_at}"""
         ttk.Label(info_frame, text=tips_text, justify=tk.LEFT, font=('Arial', 9)).pack(anchor=tk.W)
         
         # Right panel - Lens Visualization
-        viz_frame = ttk.LabelFrame(self.editor_tab, text="Lens Visualization", padding="5")
-        viz_frame.grid(row=0, column=2, sticky=(tk.W, tk.E, tk.N, tk.S))
+        viz_outer_frame = ttk.Frame(self.editor_tab)
+        viz_outer_frame.grid(row=0, column=2, sticky=(tk.W, tk.E, tk.N, tk.S))
+        viz_outer_frame.columnconfigure(0, weight=1)
+        viz_outer_frame.rowconfigure(1, weight=1)
         
-        # Visualization mode toggle
+        # Header with title
+        viz_header = ttk.Frame(viz_outer_frame)
+        viz_header.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        ttk.Label(viz_header, text="Lens Visualization", font=('Arial', 11, 'bold')).pack(side=tk.LEFT)
+        
+        # Visualization mode toggle using tabs
         self.viz_mode_var = tk.StringVar(value="3D")
+        
+        # Create notebook for 2D/3D tabs
+        self.viz_notebook = ttk.Notebook(viz_outer_frame)
+        self.viz_notebook.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=(0, 5))
+        
+        # Create frames for 2D and 3D tabs
+        self.viz_2d_frame = ttk.Frame(self.viz_notebook)
+        self.viz_3d_frame = ttk.Frame(self.viz_notebook)
+        
+        self.viz_notebook.add(self.viz_2d_frame, text="2D")
+        self.viz_notebook.add(self.viz_3d_frame, text="3D")
+        
+        # Bind tab change event
+        self.viz_notebook.bind('<<NotebookTabChanged>>', self.on_viz_tab_changed)
+        
+        # Select 3D tab by default
+        self.viz_notebook.select(1)
         
         if VISUALIZATION_AVAILABLE:
             try:
-                self.visualizer = LensVisualizer(viz_frame, width=6, height=6)
+                # Create visualizer in the 3D frame initially
+                self.visualizer = LensVisualizer(self.viz_3d_frame, width=6, height=6)
             except Exception as e:
-                ttk.Label(viz_frame, text=f"Visualization error: {e}", 
+                ttk.Label(self.viz_3d_frame, text=f"Visualization error: {e}", 
                          wraplength=300).pack(pady=20)
                 self.visualizer = None
         else:
             msg = "Visualization not available.\n\nInstall dependencies:\n  pip install matplotlib numpy"
-            ttk.Label(viz_frame, text=msg, justify=tk.CENTER, 
+            ttk.Label(self.viz_3d_frame, text=msg, justify=tk.CENTER, 
                      font=('Arial', 10)).pack(pady=50)
             self.visualizer = None
+    
+    def on_viz_tab_changed(self, event):
+        """Handle visualization tab change between 2D and 3D"""
+        if not self.visualizer:
+            return
         
-        # Visualization controls
-        if self.visualizer:
-            viz_controls = ttk.Frame(viz_frame)
-            viz_controls.pack(fill=tk.X, pady=5)
-            
-            # 2D/3D Toggle buttons
-            ttk.Label(viz_controls, text="View Mode:", font=('Arial', 9)).pack(side=tk.LEFT, padx=5)
-            
-            ttk.Radiobutton(viz_controls, text="2D", variable=self.viz_mode_var, 
-                           value="2D", command=self.toggle_visualization_mode).pack(side=tk.LEFT, padx=2)
-            
-            ttk.Radiobutton(viz_controls, text="3D", variable=self.viz_mode_var, 
-                           value="3D", command=self.toggle_visualization_mode).pack(side=tk.LEFT, padx=2)
+        # Get selected tab index
+        selected_tab = self.viz_notebook.index(self.viz_notebook.select())
+        
+        # Reparent the canvas to the selected tab's frame
+        if selected_tab == 0:  # 2D tab
+            self.viz_mode_var.set("2D")
+            self.visualizer.reparent_canvas(self.viz_2d_frame)
+        else:  # 3D tab
+            self.viz_mode_var.set("3D")
+            self.visualizer.reparent_canvas(self.viz_3d_frame)
+        
+        # Update the visualization
+        self.toggle_visualization_mode()
     
     def setup_simulation_tab(self):
         """Setup the Simulation tab for ray tracing and optical analysis"""

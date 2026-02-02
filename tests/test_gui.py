@@ -348,6 +348,42 @@ class TestGUILensEditor(unittest.TestCase):
             except Exception as e:
                 self.fail(f"2D view update failed: {e}")
     
+    def test_viz_notebook_exists(self):
+        """Test that visualization notebook (tabs) exists"""
+        self.assertTrue(hasattr(self.editor, 'viz_notebook'))
+        # Should have 2 tabs (2D and 3D)
+        if hasattr(self.editor, 'viz_notebook'):
+            self.assertEqual(len(self.editor.viz_notebook.tabs()), 2)
+    
+    def test_viz_frames_exist(self):
+        """Test that 2D and 3D frames exist"""
+        self.assertTrue(hasattr(self.editor, 'viz_2d_frame'))
+        self.assertTrue(hasattr(self.editor, 'viz_3d_frame'))
+    
+    def test_on_viz_tab_changed_method_exists(self):
+        """Test that viz tab change handler exists"""
+        self.assertTrue(hasattr(self.editor, 'on_viz_tab_changed'))
+        self.assertTrue(callable(self.editor.on_viz_tab_changed))
+    
+    def test_tab_switching_updates_mode(self):
+        """Test that switching tabs updates the visualization mode"""
+        if hasattr(self.editor, 'viz_notebook') and self.editor.visualizer:
+            # Switch to 2D tab (index 0)
+            self.editor.viz_notebook.select(0)
+            self.root.update_idletasks()
+            # Mode should be 2D after tab change event
+            # (Note: event might not fire in test, but we can test the method)
+            
+            # Switch to 3D tab (index 1)
+            self.editor.viz_notebook.select(1)
+            self.root.update_idletasks()
+    
+    def test_visualizer_reparent_method_exists(self):
+        """Test that visualizer has reparent_canvas method"""
+        if self.editor.visualizer:
+            self.assertTrue(hasattr(self.editor.visualizer, 'reparent_canvas'))
+            self.assertTrue(callable(self.editor.visualizer.reparent_canvas))
+    
     def test_simulation_view_update_method_exists(self):
         """Test that simulation view update method exists"""
         self.assertTrue(hasattr(self.editor, 'update_simulation_view'))

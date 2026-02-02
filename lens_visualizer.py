@@ -38,11 +38,28 @@ class LensVisualizer:
                                           facecolor=self.COLORS_3D['bg'],
                                           computed_zorder=False)
         self.canvas = FigureCanvasTkAgg(self.figure, parent_frame)
-        self.canvas.get_tk_widget().pack(fill='both', expand=True)
+        self.canvas_widget = self.canvas.get_tk_widget()
+        self.canvas_widget.pack(fill='both', expand=True)
         
         # Enable blitting for faster updates
         self.canvas.draw()
         self.background = self.canvas.copy_from_bbox(self.ax.bbox)
+    
+    def reparent_canvas(self, new_parent_frame):
+        """Move the canvas to a new parent frame"""
+        # Unpack from current parent
+        self.canvas_widget.pack_forget()
+        
+        # Destroy old canvas widget
+        self.canvas_widget.destroy()
+        
+        # Create new canvas widget with new parent
+        self.canvas = FigureCanvasTkAgg(self.figure, new_parent_frame)
+        self.canvas_widget = self.canvas.get_tk_widget()
+        self.canvas_widget.pack(fill='both', expand=True)
+        
+        # Redraw
+        self.canvas.draw()
         
         # Configure dark mode for 3D plot
         self.configure_dark_mode()
