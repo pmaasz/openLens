@@ -242,6 +242,100 @@ class LensVisualizer:
         from matplotlib.colors import LightSource
         return LightSource(azdeg=315, altdeg=45)
     
+    def draw_lens_2d(self, r1, r2, thickness, diameter):
+        """Draw the lens in 2D side view (cross-section)"""
+        # Clear and reconfigure for 2D
+        self.figure.clear()
+        self.ax = self.figure.add_subplot(111, facecolor=self.COLORS_3D['bg'])
+        
+        # Configure dark mode for 2D
+        self.ax.set_facecolor(self.COLORS_3D['bg'])
+        self.ax.spines['bottom'].set_color(self.COLORS_3D['text'])
+        self.ax.spines['top'].set_color(self.COLORS_3D['text'])
+        self.ax.spines['left'].set_color(self.COLORS_3D['text'])
+        self.ax.spines['right'].set_color(self.COLORS_3D['text'])
+        self.ax.tick_params(axis='x', colors=self.COLORS_3D['text'], labelsize=8)
+        self.ax.tick_params(axis='y', colors=self.COLORS_3D['text'], labelsize=8)
+        self.ax.xaxis.label.set_color(self.COLORS_3D['text'])
+        self.ax.yaxis.label.set_color(self.COLORS_3D['text'])
+        self.ax.title.set_color(self.COLORS_3D['text'])
+        self.ax.grid(True, color=self.COLORS_3D['grid'], linestyle='--', linewidth=0.5, alpha=0.3)
+        
+        # Calculate lens profile
+        y_max = diameter / 2
+        y = np.linspace(-y_max, y_max, 200)
+        
+        # Front surface (R1)
+        if abs(r1) < 10000:
+            # Calculate sag for front surface
+            r1_abs = abs(r1)
+            valid_mask = y**2 <= r1_abs**2
+            y_valid = y[valid_mask]
+            
+            if r1 > 0:  # Convex
+                x1 = -r1_abs + np.sqrt(r1_abs**2 - y_valid**2)
+            else:  # Concave
+                x1 = r1_abs - np.sqrt(r1_abs**2 - y_valid**2)
+        else:
+            # Flat surface
+            y_valid = y
+            x1 = np.zeros_like(y_valid)
+        
+        # Back surface (R2)
+        if abs(r2) < 10000:
+            r2_abs = abs(r2)
+            valid_mask2 = y**2 <= r2_abs**2
+            y_valid2 = y[valid_mask2]
+            
+            if r2 > 0:  # Convex
+                x2 = thickness + r2_abs - np.sqrt(r2_abs**2 - y_valid2**2)
+            else:  # Concave
+                x2 = thickness - r2_abs + np.sqrt(r2_abs**2 - y_valid2**2)
+        else:
+            # Flat surface
+            y_valid2 = y
+            x2 = np.full_like(y_valid2, thickness)
+        
+        # Draw lens surfaces
+        self.ax.plot(x1, y_valid, color=self.COLORS_3D['surface_front'], linewidth=2.5, label='Front Surface')
+        self.ax.plot(x2, y_valid2, color=self.COLORS_3D['surface_back'], linewidth=2.5, label='Back Surface')
+        
+        # Draw edges
+        if len(x1) > 0 and len(x2) > 0:
+            # Top edge
+            self.ax.plot([x1[0], x2[0]], [y_valid[0], y_valid2[0]], 
+                        color=self.COLORS_3D['edge'], linewidth=1.5)
+            # Bottom edge
+            self.ax.plot([x1[-1], x2[-1]], [y_valid[-1], y_valid2[-1]], 
+                        color=self.COLORS_3D['edge'], linewidth=1.5)
+        
+        # Draw optical axis
+        x_min = min(x1.min() if len(x1) > 0 else 0, x2.min() if len(x2) > 0 else thickness)
+        x_max = max(x1.max() if len(x1) > 0 else 0, x2.max() if len(x2) > 0 else thickness)
+        margin = (x_max - x_min) * 0.2
+        self.ax.axhline(0, color=self.COLORS_3D['axis'], linestyle='--', linewidth=1.5, 
+                       alpha=0.7, label='Optical Axis')
+        
+        # Labels and styling
+        self.ax.set_xlabel('Z (mm)', color=self.COLORS_3D['text'], fontsize=10)
+        self.ax.set_ylabel('Y (mm)', color=self.COLORS_3D['text'], fontsize=10)
+        self.ax.set_title('Lens 2D Cross-Section', color=self.COLORS_3D['text'], 
+                         fontsize=11, pad=10)
+        self.ax.set_aspect('equal')
+        
+        # Set limits with margin
+        self.ax.set_xlim(x_min - margin, x_max + margin)
+        self.ax.set_ylim(-y_max * 1.2, y_max * 1.2)
+        
+        # Legend
+        legend = self.ax.legend(loc='upper right', fontsize=8, framealpha=0.9)
+        legend.get_frame().set_facecolor(self.COLORS_3D['pane'])
+        legend.get_frame().set_edgecolor(self.COLORS_3D['grid'])
+        for text in legend.get_texts():
+            text.set_color(self.COLORS_3D['text'])
+        
+        self.canvas.draw_idle()
+    
     def clear(self):
         """Clear the visualization with optimizations"""
         self.ax.clear()

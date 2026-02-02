@@ -676,9 +676,12 @@ Modified: {lens.modified_at}"""
 • Refractive index: Air=1.0, Glass~1.5-1.9, Water=1.33"""
         ttk.Label(info_frame, text=tips_text, justify=tk.LEFT, font=('Arial', 9)).pack(anchor=tk.W)
         
-        # Right panel - 3D Visualization
-        viz_frame = ttk.LabelFrame(self.editor_tab, text="3D Lens Visualization", padding="5")
+        # Right panel - Lens Visualization
+        viz_frame = ttk.LabelFrame(self.editor_tab, text="Lens Visualization", padding="5")
         viz_frame.grid(row=0, column=2, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Visualization mode toggle
+        self.viz_mode_var = tk.StringVar(value="3D")
         
         if VISUALIZATION_AVAILABLE:
             try:
@@ -688,7 +691,7 @@ Modified: {lens.modified_at}"""
                          wraplength=300).pack(pady=20)
                 self.visualizer = None
         else:
-            msg = "3D visualization not available.\n\nInstall dependencies:\n  pip install matplotlib numpy"
+            msg = "Visualization not available.\n\nInstall dependencies:\n  pip install matplotlib numpy"
             ttk.Label(viz_frame, text=msg, justify=tk.CENTER, 
                      font=('Arial', 10)).pack(pady=50)
             self.visualizer = None
@@ -698,8 +701,14 @@ Modified: {lens.modified_at}"""
             viz_controls = ttk.Frame(viz_frame)
             viz_controls.pack(fill=tk.X, pady=5)
             
-            ttk.Button(viz_controls, text="Update 3D View", 
-                      command=self.update_3d_view).pack(side=tk.LEFT, padx=5)
+            # 2D/3D Toggle buttons
+            ttk.Label(viz_controls, text="View Mode:", font=('Arial', 9)).pack(side=tk.LEFT, padx=5)
+            
+            ttk.Radiobutton(viz_controls, text="2D", variable=self.viz_mode_var, 
+                           value="2D", command=self.toggle_visualization_mode).pack(side=tk.LEFT, padx=2)
+            
+            ttk.Radiobutton(viz_controls, text="3D", variable=self.viz_mode_var, 
+                           value="3D", command=self.toggle_visualization_mode).pack(side=tk.LEFT, padx=2)
     
     def setup_simulation_tab(self):
         """Setup the Simulation tab for ray tracing and optical analysis"""
@@ -892,8 +901,12 @@ Select a lens from the Editor tab to simulate."""
             self.optical_power_label.config(text="Optical Power: Invalid input")
     
     
+    def toggle_visualization_mode(self):
+        """Toggle between 2D and 3D visualization"""
+        self.update_3d_view()
+    
     def update_3d_view(self):
-        """Update the 3D visualization with current lens parameters"""
+        """Update the visualization with current lens parameters (2D or 3D based on mode)"""
         if not self.visualizer:
             return
         
@@ -903,12 +916,19 @@ Select a lens from the Editor tab to simulate."""
             thickness = float(self.thickness_var.get())
             diameter = float(self.diameter_var.get())
             
-            self.visualizer.draw_lens(r1, r2, thickness, diameter)
-            self.update_status("3D view updated")
+            # Check which mode is selected
+            mode = self.viz_mode_var.get() if hasattr(self, 'viz_mode_var') else "3D"
+            
+            if mode == "2D":
+                self.visualizer.draw_lens_2d(r1, r2, thickness, diameter)
+                self.update_status("2D view updated")
+            else:
+                self.visualizer.draw_lens(r1, r2, thickness, diameter)
+                self.update_status("3D view updated")
         except ValueError:
-            self.update_status("Invalid lens parameters for 3D view")
+            self.update_status("Invalid lens parameters for visualization")
         except Exception as e:
-            self.update_status(f"3D visualization error: {e}")
+            self.update_status(f"Visualization error: {e}")
     
     def duplicate_lens(self):
         selection = self.selection_listbox.curselection()
