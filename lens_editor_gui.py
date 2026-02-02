@@ -421,8 +421,6 @@ class LensEditorWindow:
         self.save_btn = ttk.Button(action_frame, text="Save", command=self.save_current_lens)
         self.save_btn.pack(side=tk.LEFT, padx=5)
         
-        self.clear_btn = ttk.Button(action_frame, text="Clear", command=self.clear_form)
-        self.clear_btn.pack(side=tk.LEFT, padx=5)
         
         ttk.Button(action_frame, text="Calculate Focal Length", 
                    command=self.calculate_and_display_focal_length).pack(side=tk.LEFT, padx=5)
@@ -478,8 +476,6 @@ class LensEditorWindow:
             
             ttk.Button(viz_controls, text="Update 3D View", 
                       command=self.update_3d_view).pack(side=tk.LEFT, padx=5)
-            ttk.Button(viz_controls, text="Clear View", 
-                      command=lambda: self.visualizer.clear() if self.visualizer else None).pack(side=tk.LEFT, padx=5)
         
         # Status bar
         status_frame = ttk.Frame(main_frame)
