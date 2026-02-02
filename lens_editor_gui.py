@@ -20,6 +20,36 @@ except ImportError:
     print("Install with: pip install matplotlib numpy")
 
 
+class ToolTip:
+    """Simple tooltip for tkinter widgets"""
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip = None
+        self.widget.bind("<Enter>", self.show_tooltip)
+        self.widget.bind("<Leave>", self.hide_tooltip)
+    
+    def show_tooltip(self, event=None):
+        x, y, _, _ = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 25
+        
+        self.tooltip = tk.Toplevel(self.widget)
+        self.tooltip.wm_overrideredirect(True)
+        self.tooltip.wm_geometry(f"+{x}+{y}")
+        
+        label = tk.Label(self.tooltip, text=self.text, 
+                        background="#252525", foreground="#e0e0e0",
+                        relief=tk.SOLID, borderwidth=1, 
+                        font=("Arial", 9), padx=5, pady=3)
+        label.pack()
+    
+    def hide_tooltip(self, event=None):
+        if self.tooltip:
+            self.tooltip.destroy()
+            self.tooltip = None
+
+
 class Lens:
     def __init__(self, name="Untitled", radius_of_curvature_1=100.0, radius_of_curvature_2=-100.0,
                  thickness=5.0, diameter=50.0, refractive_index=1.5168, 
@@ -118,11 +148,13 @@ class LensEditorWindow:
         
         # Configure dark mode
         self.setup_dark_mode()
-        # Configure dark mode
-        self.setup_dark_mode()
         
         self.setup_ui()
         self.refresh_lens_list()
+        
+        # Keyboard shortcuts
+        self.root.bind('<Control-h>', lambda e: self.toggle_left_panel())
+        self.root.bind('<F1>', lambda e: self.toggle_left_panel())
     
     def setup_dark_mode(self):
         """Configure dark mode theme for the application"""
@@ -235,14 +267,34 @@ class LensEditorWindow:
         main_frame.columnconfigure(2, weight=1)  # Add third column for visualization
         main_frame.rowconfigure(0, weight=1)
         
-        # Left panel - Lens list
-        left_frame = ttk.Frame(main_frame, padding="5")
-        left_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # Track visibility state
+        self.left_panel_visible = True
         
-        ttk.Label(left_frame, text="Optical Lenses", font=('Arial', 12, 'bold')).pack(pady=5)
+        # Left panel - Lens list (collapsible)
+        self.left_frame = ttk.Frame(main_frame, padding="5")
+        self.left_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Header with title and toggle button
+        header_frame = ttk.Frame(self.left_frame)
+        header_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(header_frame, text="Optical Lenses", 
+                 font=('Arial', 12, 'bold')).pack(side=tk.LEFT)
+        
+        # Toggle button (using Unicode arrow)
+        self.toggle_btn = ttk.Button(header_frame, text="◀", width=3,
+                                     command=self.toggle_left_panel)
+        self.toggle_btn.pack(side=tk.RIGHT)
+        
+        # Add tooltip to toggle button
+        ToolTip(self.toggle_btn, "Hide/Show lens list (Ctrl+H or F1)")
+        
+        # Container for collapsible content
+        self.left_content = ttk.Frame(self.left_frame)
+        self.left_content.pack(fill=tk.BOTH, expand=True)
         
         # Lens listbox with scrollbar
-        list_frame = ttk.Frame(left_frame)
+        list_frame = ttk.Frame(self.left_content)
         list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
         scrollbar = ttk.Scrollbar(list_frame)
@@ -264,7 +316,7 @@ class LensEditorWindow:
         self.lens_listbox.bind('<<ListboxSelect>>', self.on_lens_select)
         
         # Buttons for list operations
-        btn_frame = ttk.Frame(left_frame)
+        btn_frame = ttk.Frame(self.left_content)
         btn_frame.pack(fill=tk.X, pady=5)
         
         ttk.Button(btn_frame, text="New", command=self.new_lens).pack(side=tk.LEFT, padx=2)
@@ -439,6 +491,22 @@ class LensEditorWindow:
         status_label.pack(fill=tk.X)
         
         self.update_status("Ready")
+    
+    def toggle_left_panel(self):
+        """Toggle visibility of the left panel (lens list)"""
+        if self.left_panel_visible:
+            # Hide the panel - collapse to just the toggle button
+            self.left_content.pack_forget()
+            self.toggle_btn.configure(text="▶")
+            # Don't set width, let it collapse naturally
+            self.left_panel_visible = False
+            self.update_status("Lens list hidden (Ctrl+H or F1 to show)")
+        else:
+            # Show the panel
+            self.left_content.pack(fill=tk.BOTH, expand=True, before=self.toggle_btn.master)
+            self.toggle_btn.configure(text="◀")
+            self.left_panel_visible = True
+            self.update_status("Lens list shown (Ctrl+H or F1 to hide)")
     
     def refresh_lens_list(self):
         self.lens_listbox.delete(0, tk.END)
