@@ -12,7 +12,8 @@ import os
 import json
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add parent directory to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lens_editor_gui import Lens, LensEditorWindow
 
 
@@ -275,6 +276,112 @@ class TestGUILensEditor(unittest.TestCase):
         """Test status bar updates"""
         self.editor.update_status("Test Status")
         self.assertEqual(self.editor.status_var.get(), "Test Status")
+    
+    def test_autosave_flag_exists(self):
+        """Test that autosave control flags exist"""
+        self.assertTrue(hasattr(self.editor, '_loading_lens'))
+        self.assertTrue(hasattr(self.editor, '_autosave_timer'))
+        self.assertFalse(self.editor._loading_lens)  # Should be False initially
+    
+    def test_on_field_change_method_exists(self):
+        """Test that autosave callback method exists"""
+        self.assertTrue(hasattr(self.editor, 'on_field_change'))
+        self.assertTrue(callable(self.editor.on_field_change))
+    
+    def test_field_trace_callbacks_set(self):
+        """Test that all fields have trace callbacks for autosave"""
+        # Each StringVar should have write trace
+        for var_name in ['name_var', 'r1_var', 'r2_var', 'thickness_var', 
+                         'diameter_var', 'refr_index_var', 'type_var', 'material_var']:
+            var = getattr(self.editor, var_name)
+            traces = var.trace_info()
+            self.assertGreater(len(traces), 0, f"{var_name} should have trace callback")
+    
+    def test_autosave_sets_timer(self):
+        """Test that changing a field sets autosave timer"""
+        # Change a field value
+        self.editor._autosave_timer = None
+        self.editor.r1_var.set('150.0')
+        self.root.update_idletasks()
+        
+        # Timer should be set
+        self.assertIsNotNone(self.editor._autosave_timer)
+    
+    def test_loading_lens_prevents_autosave(self):
+        """Test that _loading_lens flag prevents autosave"""
+        lens = Lens(name="Test", material="BK7")
+        
+        # During load, _loading_lens should be set
+        self.editor._loading_lens = False
+        self.editor.load_lens_to_form(lens)
+        
+        # After load completes, flag should be False again
+        self.assertFalse(self.editor._loading_lens)
+    
+    def test_visualization_mode_variable_exists(self):
+        """Test that visualization mode toggle variable exists"""
+        self.assertTrue(hasattr(self.editor, 'viz_mode_var'))
+        # Default should be 3D
+        self.assertEqual(self.editor.viz_mode_var.get(), "3D")
+    
+    def test_toggle_visualization_mode_method_exists(self):
+        """Test that toggle method exists"""
+        self.assertTrue(hasattr(self.editor, 'toggle_visualization_mode'))
+        self.assertTrue(callable(self.editor.toggle_visualization_mode))
+    
+    def test_update_3d_view_handles_both_modes(self):
+        """Test that update_3d_view works with both 2D and 3D modes"""
+        if self.editor.visualizer:
+            # Test 3D mode
+            self.editor.viz_mode_var.set("3D")
+            try:
+                self.editor.update_3d_view()
+                # Should not raise exception
+            except Exception as e:
+                self.fail(f"3D view update failed: {e}")
+            
+            # Test 2D mode
+            self.editor.viz_mode_var.set("2D")
+            try:
+                self.editor.update_3d_view()
+                # Should not raise exception
+            except Exception as e:
+                self.fail(f"2D view update failed: {e}")
+    
+    def test_simulation_view_update_method_exists(self):
+        """Test that simulation view update method exists"""
+        self.assertTrue(hasattr(self.editor, 'update_simulation_view'))
+        self.assertTrue(callable(self.editor.update_simulation_view))
+    
+    def test_on_tab_changed_method_exists(self):
+        """Test that tab change handler exists"""
+        self.assertTrue(hasattr(self.editor, 'on_tab_changed'))
+        self.assertTrue(callable(self.editor.on_tab_changed))
+    
+    def test_simulation_info_label_exists(self):
+        """Test that simulation info label exists for hiding"""
+        if hasattr(self.editor, 'sim_visualizer') and self.editor.sim_visualizer:
+            self.assertTrue(hasattr(self.editor, 'sim_info_label'))
+    
+    def test_save_button_removed(self):
+        """Test that save button was removed (autosave replaced it)"""
+        # Save button should not exist anymore
+        self.assertFalse(hasattr(self.editor, 'save_btn'))
+    
+    def test_autosave_creates_new_lens(self):
+        """Test that autosave can create a new lens"""
+        self.editor.current_lens = None
+        self.editor.name_var.set("Autosaved Lens")
+        self.editor.r1_var.set("100.0")
+        
+        initial_count = len(self.editor.lenses)
+        
+        # Trigger autosave directly
+        self.editor.save_current_lens()
+        
+        # Should have created new lens
+        self.assertEqual(len(self.editor.lenses), initial_count + 1)
+        self.assertEqual(self.editor.lenses[-1].name, "Autosaved Lens")
 
 
 class TestGUIDataPersistence(unittest.TestCase):

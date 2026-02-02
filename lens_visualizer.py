@@ -132,6 +132,13 @@ class LensVisualizer:
     
     def draw_lens(self, r1, r2, thickness, diameter):
         """Draw the complete lens in 3D with optimized rendering"""
+        # Recreate 3D axis if needed (in case we switched from 2D)
+        if not hasattr(self.ax, 'zaxis'):
+            self.figure.clear()
+            self.ax = self.figure.add_subplot(111, projection='3d', 
+                                              facecolor=self.COLORS_3D['bg'],
+                                              computed_zorder=False)
+        
         self.ax.clear()
         self.configure_dark_mode()  # Reapply dark mode after clear
         

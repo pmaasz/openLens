@@ -1,83 +1,208 @@
 #!/usr/bin/env python3
 """
-Test script for 3D lens visualization
-Creates a test window with a sample lens
+Unit tests for lens visualization module
+Tests both 2D and 3D rendering capabilities
 """
 
+import unittest
 import tkinter as tk
-from tkinter import ttk
-from lens_visualizer import LensVisualizer
+import sys
+import os
 
-def test_visualization():
-    """Test the 3D visualization with sample lenses"""
-    root = tk.Tk()
-    root.title("openlens - 3D Visualization Test")
-    root.geometry("800x700")
+# Add parent directory to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+try:
+    from lens_visualizer import LensVisualizer
+    VISUALIZATION_AVAILABLE = True
+except ImportError:
+    VISUALIZATION_AVAILABLE = False
+    print("Warning: Visualization not available for testing")
+
+
+@unittest.skipIf(not VISUALIZATION_AVAILABLE, "Visualization dependencies not available")
+class TestLensVisualizer(unittest.TestCase):
+    """Test cases for LensVisualizer"""
     
-    # Main frame
-    main_frame = ttk.Frame(root, padding="10")
-    main_frame.pack(fill=tk.BOTH, expand=True)
-    
-    # Title
-    ttk.Label(main_frame, text="3D Lens Visualization Test", 
-             font=('Arial', 14, 'bold')).pack(pady=10)
-    
-    # Controls frame
-    controls = ttk.Frame(main_frame)
-    controls.pack(fill=tk.X, pady=10)
-    
-    ttk.Label(controls, text="R1:").grid(row=0, column=0, padx=5)
-    r1_var = tk.StringVar(value="100")
-    ttk.Entry(controls, textvariable=r1_var, width=10).grid(row=0, column=1, padx=5)
-    
-    ttk.Label(controls, text="R2:").grid(row=0, column=2, padx=5)
-    r2_var = tk.StringVar(value="-100")
-    ttk.Entry(controls, textvariable=r2_var, width=10).grid(row=0, column=3, padx=5)
-    
-    ttk.Label(controls, text="Thickness:").grid(row=0, column=4, padx=5)
-    thickness_var = tk.StringVar(value="5")
-    ttk.Entry(controls, textvariable=thickness_var, width=10).grid(row=0, column=5, padx=5)
-    
-    ttk.Label(controls, text="Diameter:").grid(row=0, column=6, padx=5)
-    diameter_var = tk.StringVar(value="50")
-    ttk.Entry(controls, textvariable=diameter_var, width=10).grid(row=0, column=7, padx=5)
-    
-    # Visualization frame
-    viz_frame = ttk.LabelFrame(main_frame, text="3D View", padding="10")
-    viz_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-    
-    visualizer = LensVisualizer(viz_frame, width=8, height=6)
-    
-    def update_view():
+    def setUp(self):
+        """Set up test fixtures"""
+        self.root = tk.Tk()
+        self.root.withdraw()
+        self.frame = tk.Frame(self.root)
+        
+    def tearDown(self):
+        """Clean up test fixtures"""
         try:
-            r1 = float(r1_var.get())
-            r2 = float(r2_var.get())
-            thickness = float(thickness_var.get())
-            diameter = float(diameter_var.get())
-            visualizer.draw_lens(r1, r2, thickness, diameter)
-        except ValueError as e:
-            print(f"Invalid input: {e}")
+            self.root.destroy()
+        except:
+            pass
     
-    # Buttons
-    btn_frame = ttk.Frame(main_frame)
-    btn_frame.pack(pady=10)
+    def test_visualizer_initialization(self):
+        """Test that visualizer initializes correctly"""
+        viz = LensVisualizer(self.frame, width=6, height=5)
+        self.assertIsNotNone(viz)
+        self.assertIsNotNone(viz.figure)
+        self.assertIsNotNone(viz.ax)
+        self.assertIsNotNone(viz.canvas)
     
-    ttk.Button(btn_frame, text="Update View", command=update_view).pack(side=tk.LEFT, padx=5)
-    ttk.Button(btn_frame, text="Biconvex", 
-              command=lambda: (r1_var.set("100"), r2_var.set("-100"), 
-                              thickness_var.set("5"), update_view())).pack(side=tk.LEFT, padx=5)
-    ttk.Button(btn_frame, text="Plano-Convex", 
-              command=lambda: (r1_var.set("100"), r2_var.set("10000"), 
-                              thickness_var.set("5"), update_view())).pack(side=tk.LEFT, padx=5)
-    ttk.Button(btn_frame, text="Clear", 
-              command=visualizer.clear).pack(side=tk.LEFT, padx=5)
+    def test_draw_lens_3d(self):
+        """Test 3D lens drawing"""
+        viz = LensVisualizer(self.frame, width=6, height=5)
+        
+        # Should not raise exception
+        try:
+            viz.draw_lens(r1=100.0, r2=-100.0, thickness=5.0, diameter=50.0)
+        except Exception as e:
+            self.fail(f"3D draw_lens raised exception: {e}")
     
-    # Draw initial lens
-    update_view()
+    def test_draw_lens_2d(self):
+        """Test 2D lens drawing"""
+        viz = LensVisualizer(self.frame, width=6, height=5)
+        
+        # Test that draw_lens_2d method exists
+        self.assertTrue(hasattr(viz, 'draw_lens_2d'))
+        
+        # Should not raise exception
+        try:
+            viz.draw_lens_2d(r1=100.0, r2=-100.0, thickness=5.0, diameter=50.0)
+        except Exception as e:
+            self.fail(f"2D draw_lens_2d raised exception: {e}")
     
-    root.mainloop()
+    def test_draw_biconvex_lens_3d(self):
+        """Test drawing biconvex lens in 3D"""
+        viz = LensVisualizer(self.frame, width=6, height=5)
+        viz.draw_lens(r1=100.0, r2=-100.0, thickness=5.0, diameter=50.0)
+        # Test passes if no exception
+    
+    def test_draw_biconvex_lens_2d(self):
+        """Test drawing biconvex lens in 2D"""
+        viz = LensVisualizer(self.frame, width=6, height=5)
+        viz.draw_lens_2d(r1=100.0, r2=-100.0, thickness=5.0, diameter=50.0)
+        # Test passes if no exception
+    
+    def test_draw_plano_convex_lens_3d(self):
+        """Test drawing plano-convex lens in 3D"""
+        viz = LensVisualizer(self.frame, width=6, height=5)
+        viz.draw_lens(r1=100.0, r2=10000.0, thickness=5.0, diameter=50.0)
+        # Test passes if no exception
+    
+    def test_draw_plano_convex_lens_2d(self):
+        """Test drawing plano-convex lens in 2D"""
+        viz = LensVisualizer(self.frame, width=6, height=5)
+        viz.draw_lens_2d(r1=100.0, r2=10000.0, thickness=5.0, diameter=50.0)
+        # Test passes if no exception
+    
+    def test_draw_biconcave_lens_3d(self):
+        """Test drawing biconcave lens in 3D"""
+        viz = LensVisualizer(self.frame, width=6, height=5)
+        viz.draw_lens(r1=-100.0, r2=100.0, thickness=5.0, diameter=50.0)
+        # Test passes if no exception
+    
+    def test_draw_biconcave_lens_2d(self):
+        """Test drawing biconcave lens in 2D"""
+        viz = LensVisualizer(self.frame, width=6, height=5)
+        viz.draw_lens_2d(r1=-100.0, r2=100.0, thickness=5.0, diameter=50.0)
+        # Test passes if no exception
+    
+    def test_clear_visualization(self):
+        """Test clearing the visualization"""
+        viz = LensVisualizer(self.frame, width=6, height=5)
+        viz.draw_lens(r1=100.0, r2=-100.0, thickness=5.0, diameter=50.0)
+        
+        try:
+            viz.clear()
+        except Exception as e:
+            self.fail(f"Clear raised exception: {e}")
+    
+    def test_switch_between_2d_and_3d(self):
+        """Test switching between 2D and 3D views"""
+        viz = LensVisualizer(self.frame, width=6, height=5)
+        
+        # Draw 3D
+        viz.draw_lens(r1=100.0, r2=-100.0, thickness=5.0, diameter=50.0)
+        
+        # Switch to 2D
+        viz.draw_lens_2d(r1=100.0, r2=-100.0, thickness=5.0, diameter=50.0)
+        
+        # Switch back to 3D
+        viz.draw_lens(r1=100.0, r2=-100.0, thickness=5.0, diameter=50.0)
+        
+        # Test passes if no exception
+    
+    def test_various_lens_parameters_3d(self):
+        """Test 3D rendering with various parameters"""
+        viz = LensVisualizer(self.frame, width=6, height=5)
+        
+        test_cases = [
+            (50.0, -50.0, 3.0, 25.0),
+            (200.0, -200.0, 10.0, 75.0),
+            (75.0, -125.0, 6.0, 40.0),
+        ]
+        
+        for r1, r2, thickness, diameter in test_cases:
+            with self.subTest(r1=r1, r2=r2, thickness=thickness, diameter=diameter):
+                viz.draw_lens(r1, r2, thickness, diameter)
+    
+    def test_various_lens_parameters_2d(self):
+        """Test 2D rendering with various parameters"""
+        viz = LensVisualizer(self.frame, width=6, height=5)
+        
+        test_cases = [
+            (50.0, -50.0, 3.0, 25.0),
+            (200.0, -200.0, 10.0, 75.0),
+            (75.0, -125.0, 6.0, 40.0),
+        ]
+        
+        for r1, r2, thickness, diameter in test_cases:
+            with self.subTest(r1=r1, r2=r2, thickness=thickness, diameter=diameter):
+                viz.draw_lens_2d(r1, r2, thickness, diameter)
+    
+    def test_dark_mode_colors(self):
+        """Test that dark mode colors are defined"""
+        viz = LensVisualizer(self.frame, width=6, height=5)
+        
+        self.assertIsNotNone(viz.COLORS_3D)
+        self.assertIn('bg', viz.COLORS_3D)
+        self.assertIn('surface_front', viz.COLORS_3D)
+        self.assertIn('surface_back', viz.COLORS_3D)
+        self.assertIn('axis', viz.COLORS_3D)
+
+
+def run_visualization_tests():
+    """Run all visualization tests and return results"""
+    loader = unittest.TestLoader()
+    suite = unittest.TestSuite()
+    
+    suite.addTests(loader.loadTestsFromTestCase(TestLensVisualizer))
+    
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+    
+    return result
+
 
 if __name__ == "__main__":
-    print("Starting 3D Visualization Test...")
-    print("Testing matplotlib and numpy integration...")
-    test_visualization()
+    print("=" * 70)
+    print("openlens Visualization Unit Tests")
+    print("=" * 70)
+    print()
+    
+    if not VISUALIZATION_AVAILABLE:
+        print("Visualization dependencies not available. Skipping tests.")
+        sys.exit(0)
+    
+    result = run_visualization_tests()
+    
+    print()
+    print("=" * 70)
+    print(f"Tests run: {result.testsRun}")
+    print(f"Failures: {len(result.failures)}")
+    print(f"Errors: {len(result.errors)}")
+    print(f"Skipped: {len(result.skipped)}")
+    
+    if result.wasSuccessful():
+        print("\n✓ ALL VISUALIZATION TESTS PASSED!")
+        sys.exit(0)
+    else:
+        print("\n✗ SOME VISUALIZATION TESTS FAILED!")
+        sys.exit(1)
