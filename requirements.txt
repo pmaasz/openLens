@@ -1,0 +1,30 @@
+# OpenLense Requirements
+# Python 3.6+ required
+
+# No external dependencies required!
+# All functionality uses Python standard library only:
+# - tkinter (GUI) - included with most Python installations
+# - json (data storage) - standard library
+# - datetime (timestamps) - standard library
+# - os (file operations) - standard library
+# - unittest (testing) - standard library
+
+# Optional: Development tools (not required for application use)
+# These are suggestions if you want additional development tools
+
+# Code formatting
+# black>=22.0.0
+
+# Linting
+# pylint>=2.12.0
+# flake8>=4.0.0
+
+# Type checking
+# mypy>=0.950
+
+# Testing enhancements
+# pytest>=7.0.0
+# pytest-cov>=3.0.0
+
+# Documentation generation
+# sphinx>=4.5.0
