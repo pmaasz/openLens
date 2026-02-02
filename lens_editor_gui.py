@@ -146,6 +146,8 @@ class LensEditorWindow:
         self.current_lens = None
         self.visualizer = None  # Will be initialized in setup_ui
         self.selected_lens_id = None
+        self._loading_lens = False  # Flag to prevent autosave during load
+        self._autosave_timer = None  # Timer for debounced autosave
         
         # Initialize status_var early
         self.status_var = tk.StringVar(value="Welcome to openlens")
@@ -156,9 +158,9 @@ class LensEditorWindow:
         self.setup_ui()
         self.refresh_lens_list()
         
-        # Keyboard shortcuts
-        self.root.bind('<Return>', lambda e: self.save_current_lens())
-        self.root.bind('<KP_Enter>', lambda e: self.save_current_lens())  # Numpad Enter
+        # Remove keyboard shortcuts for save (autosave now)
+        # self.root.bind('<Return>', lambda e: self.save_current_lens())
+        # self.root.bind('<KP_Enter>', lambda e: self.save_current_lens())  # Numpad Enter
     
     def setup_dark_mode(self):
         """Configure dark mode theme for the application"""
@@ -531,19 +533,30 @@ Modified: {lens.modified_at}"""
     def setup_editor_tab(self):
         """Setup the Editor tab with lens properties"""
         
-        # Left panel container with scrollbar
+        # Left panel container
         left_container = ttk.Frame(self.editor_tab)
         left_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         left_container.columnconfigure(0, weight=1)
-        left_container.rowconfigure(0, weight=1)
+        left_container.rowconfigure(1, weight=1)
+        
+        # Fixed header at the top
+        header_frame = ttk.Frame(left_container, padding="5")
+        header_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E))
+        ttk.Label(header_frame, text="Optical Lens Properties", font=('Arial', 12, 'bold')).pack(anchor=tk.W)
+        
+        # Scrollable content area
+        scroll_container = ttk.Frame(left_container)
+        scroll_container.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        scroll_container.columnconfigure(0, weight=1)
+        scroll_container.rowconfigure(0, weight=1)
         
         # Create canvas for scrolling
-        canvas = tk.Canvas(left_container, bg=self.COLORS['bg'], 
+        canvas = tk.Canvas(scroll_container, bg=self.COLORS['bg'], 
                           highlightthickness=0, borderwidth=0)
         canvas.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Add scrollbar
-        scrollbar = ttk.Scrollbar(left_container, orient="vertical", command=canvas.yview)
+        scrollbar = ttk.Scrollbar(scroll_container, orient="vertical", command=canvas.yview)
         scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
         
         # Configure canvas
@@ -571,14 +584,12 @@ Modified: {lens.modified_at}"""
         
         canvas.bind_all("<MouseWheel>", on_mousewheel)
         
-        ttk.Label(right_frame, text="Optical Lens Properties", font=('Arial', 12, 'bold')).grid(
-            row=0, column=0, columnspan=2, pady=5, sticky=tk.W)
-        
         # Form fields
-        row = 1
+        row = 0
         
         ttk.Label(right_frame, text="Name:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
         self.name_var = tk.StringVar()
+        self.name_var.trace_add('write', lambda *args: self.on_field_change())
         self.name_entry = ttk.Entry(right_frame, textvariable=self.name_var, width=40)
         self.name_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
         row += 1
@@ -589,36 +600,42 @@ Modified: {lens.modified_at}"""
         
         ttk.Label(right_frame, text="Radius of Curvature 1 (mm):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
         self.r1_var = tk.StringVar(value="100.0")
+        self.r1_var.trace_add('write', lambda *args: self.on_field_change())
         self.r1_entry = ttk.Entry(right_frame, textvariable=self.r1_var, width=40)
         self.r1_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
         row += 1
         
         ttk.Label(right_frame, text="Radius of Curvature 2 (mm):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
         self.r2_var = tk.StringVar(value="-100.0")
+        self.r2_var.trace_add('write', lambda *args: self.on_field_change())
         self.r2_entry = ttk.Entry(right_frame, textvariable=self.r2_var, width=40)
         self.r2_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
         row += 1
         
         ttk.Label(right_frame, text="Center Thickness (mm):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
         self.thickness_var = tk.StringVar(value="5.0")
+        self.thickness_var.trace_add('write', lambda *args: self.on_field_change())
         self.thickness_entry = ttk.Entry(right_frame, textvariable=self.thickness_var, width=40)
         self.thickness_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
         row += 1
         
         ttk.Label(right_frame, text="Diameter (mm):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
         self.diameter_var = tk.StringVar(value="50.0")
+        self.diameter_var.trace_add('write', lambda *args: self.on_field_change())
         self.diameter_entry = ttk.Entry(right_frame, textvariable=self.diameter_var, width=40)
         self.diameter_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
         row += 1
         
         ttk.Label(right_frame, text="Refractive Index (n):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
         self.refr_index_var = tk.StringVar(value="1.5168")
+        self.refr_index_var.trace_add('write', lambda *args: self.on_field_change())
         self.refr_index_entry = ttk.Entry(right_frame, textvariable=self.refr_index_var, width=40)
         self.refr_index_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
         row += 1
         
         ttk.Label(right_frame, text="Lens Type:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
         self.type_var = tk.StringVar(value="Biconvex")
+        self.type_var.trace_add('write', lambda *args: self.on_field_change())
         type_combo = ttk.Combobox(right_frame, textvariable=self.type_var, 
                                    values=["Biconvex", "Biconcave", "Plano-Convex", "Plano-Concave", 
                                           "Meniscus Convex", "Meniscus Concave"], 
@@ -628,22 +645,12 @@ Modified: {lens.modified_at}"""
         
         ttk.Label(right_frame, text="Material:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
         self.material_var = tk.StringVar(value="BK7")
+        self.material_var.trace_add('write', lambda *args: self.on_field_change())
         material_combo = ttk.Combobox(right_frame, textvariable=self.material_var,
                                           values=["BK7", "Fused Silica", "SF11", "N-BK7", 
                                                   "Crown Glass", "Flint Glass", "Sapphire", "Custom"],
                                           width=37)
         material_combo.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
-        row += 1
-        
-        # Action buttons
-        action_frame = ttk.Frame(right_frame)
-        action_frame.grid(row=row, column=0, columnspan=2, pady=20)
-        
-        self.save_btn = ttk.Button(action_frame, text="Save", command=self.save_current_lens)
-        self.save_btn.pack(side=tk.LEFT, padx=5)
-        
-        # Add tooltip to save button
-        ToolTip(self.save_btn, "Save lens (Enter)")
         row += 1
         
         # Calculated properties display
@@ -819,6 +826,7 @@ Select a lens from the Editor tab to simulate."""
         self.update_status(f"{len(self.lenses)} lens(es) loaded")
     
     def load_lens_to_form(self, lens):
+        self._loading_lens = True  # Prevent autosave during load
         self.name_var.set(lens.name)
         self.r1_var.set(str(lens.radius_of_curvature_1))
         self.r2_var.set(str(lens.radius_of_curvature_2))
@@ -830,9 +838,11 @@ Select a lens from the Editor tab to simulate."""
         
         self.calculate_and_display_focal_length()
         self.update_3d_view()  # Update 3D visualization
+        self._loading_lens = False  # Re-enable autosave
         self.update_status(f"Editing: {lens.name}")
     
     def clear_form(self):
+        self._loading_lens = True  # Prevent autosave during clear
         self.name_var.set("")
         self.r1_var.set("100.0")
         self.r2_var.set("-100.0")
@@ -846,6 +856,7 @@ Select a lens from the Editor tab to simulate."""
         self.focal_length_label.config(text="Focal Length: Not calculated")
         self.optical_power_label.config(text="Optical Power: Not calculated")
         
+        self._loading_lens = False  # Re-enable autosave
         self.update_status("Form cleared")
     
     def new_lens(self):
@@ -933,6 +944,34 @@ Select a lens from the Editor tab to simulate."""
         
         self.update_status("Lens duplicated successfully!")
     
+    def on_field_change(self):
+        """Called when any field changes - handles autosave and visualization update"""
+        if self._loading_lens:
+            return  # Don't autosave while loading
+        
+        # Cancel any existing timer
+        if self._autosave_timer:
+            self.root.after_cancel(self._autosave_timer)
+        
+        # Schedule autosave and update after 500ms of no changes (debounce)
+        self._autosave_timer = self.root.after(500, self._perform_autosave_and_update)
+    
+    def _perform_autosave_and_update(self):
+        """Perform the actual autosave and visualization update"""
+        try:
+            # Update calculated properties
+            self.calculate_and_display_focal_length()
+            
+            # Update 3D visualization
+            self.update_3d_view()
+            
+            # Autosave if we have a current lens
+            if self.current_lens:
+                self.save_current_lens()
+        except Exception as e:
+            # Silently handle errors during autosave
+            pass
+    
     def save_current_lens(self):
         try:
             name = self.name_var.get().strip() or "Untitled"
@@ -958,14 +997,14 @@ Select a lens from the Editor tab to simulate."""
                 self.current_lens.lens_type = lens_type
                 self.current_lens.material = material
                 self.current_lens.modified_at = modified_at
-                message = "Lens updated successfully!"
+                message = "Lens autosaved"
             else:
                 # Create new lens
                 lens = Lens(name, r1, r2, thickness, diameter, refractive_index, lens_type, material)
                 lens.modified_at = modified_at
                 self.lenses.append(lens)
                 self.current_lens = lens
-                message = "Lens created successfully!"
+                message = "Lens created and autosaved"
             
             # Auto-calculate focal length before saving
             if self.current_lens:
@@ -973,15 +1012,15 @@ Select a lens from the Editor tab to simulate."""
             
             if self.save_lenses():
                 self.refresh_selection_list()
-                self.load_lens_to_form(self.current_lens)
-                self.update_3d_view()
                 self.update_simulation_view()
                 self.update_status(message)
         
         except ValueError as e:
-            self.update_status("Error: Invalid numeric value. Please check all numeric fields.")
+            # Silent fail for autosave on invalid values
+            pass
         except Exception as e:
-            self.update_status(f"Error: Failed to save lens: {e}")
+            # Silent fail for autosave errors
+            pass
     
     def delete_lens(self):
         selection = self.selection_listbox.curselection()
