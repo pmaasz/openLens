@@ -1,13 +1,17 @@
 # OpenLense Requirements
 # Python 3.6+ required
 
-# No external dependencies required!
-# All functionality uses Python standard library only:
+# Core dependencies: None!
+# All core functionality uses Python standard library only:
 # - tkinter (GUI) - included with most Python installations
 # - json (data storage) - standard library
 # - datetime (timestamps) - standard library
 # - os (file operations) - standard library
 # - unittest (testing) - standard library
+
+# Optional: 3D Visualization (recommended)
+matplotlib>=3.3.0
+numpy>=1.19.0
 
 # Optional: Development tools (not required for application use)
 # These are suggestions if you want additional development tools

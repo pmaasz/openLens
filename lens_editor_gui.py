@@ -10,6 +10,15 @@ import json
 import os
 from datetime import datetime
 
+# Try to import visualization (optional dependency)
+try:
+    from lens_visualizer import LensVisualizer
+    VISUALIZATION_AVAILABLE = True
+except ImportError:
+    VISUALIZATION_AVAILABLE = False
+    print("Note: matplotlib not available. 3D visualization disabled.")
+    print("Install with: pip install matplotlib numpy")
+
 
 class Lens:
     def __init__(self, name="Untitled", radius_of_curvature_1=100.0, radius_of_curvature_2=-100.0,
@@ -83,10 +92,11 @@ class LensEditorWindow:
     def __init__(self, root):
         self.root = root
         self.root.title("OpenLense - Optical Lens Editor")
-        self.root.geometry("1000x700")
+        self.root.geometry("1400x800")  # Increased width for 3D view
         self.storage_file = "lenses.json"
         self.lenses = self.load_lenses()
         self.current_lens = None
+        self.visualizer = None  # Will be initialized in setup_ui
         
         self.setup_ui()
         self.refresh_lens_list()
@@ -119,11 +129,12 @@ class LensEditorWindow:
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(1, weight=1)
+        main_frame.columnconfigure(2, weight=1)  # Add third column for visualization
+        main_frame.rowconfigure(0, weight=1)
         
         # Left panel - Lens list
         left_frame = ttk.Frame(main_frame, padding="5")
-        left_frame.grid(row=0, column=0, rowspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
+        left_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         ttk.Label(left_frame, text="Optical Lenses", font=('Arial', 12, 'bold')).pack(pady=5)
         
@@ -280,9 +291,36 @@ class LensEditorWindow:
 • Refractive index: Air=1.0, Glass~1.5-1.9, Water=1.33"""
         ttk.Label(info_frame, text=tips_text, justify=tk.LEFT, font=('Arial', 9)).pack(anchor=tk.W)
         
+        # Right panel - 3D Visualization
+        viz_frame = ttk.LabelFrame(main_frame, text="3D Lens Visualization", padding="5")
+        viz_frame.grid(row=0, column=2, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        if VISUALIZATION_AVAILABLE:
+            try:
+                self.visualizer = LensVisualizer(viz_frame, width=6, height=6)
+            except Exception as e:
+                ttk.Label(viz_frame, text=f"Visualization error: {e}", 
+                         wraplength=300).pack(pady=20)
+                self.visualizer = None
+        else:
+            msg = "3D visualization not available.\n\nInstall dependencies:\n  pip install matplotlib numpy"
+            ttk.Label(viz_frame, text=msg, justify=tk.CENTER, 
+                     font=('Arial', 10)).pack(pady=50)
+            self.visualizer = None
+        
+        # Visualization controls
+        if self.visualizer:
+            viz_controls = ttk.Frame(viz_frame)
+            viz_controls.pack(fill=tk.X, pady=5)
+            
+            ttk.Button(viz_controls, text="Update 3D View", 
+                      command=self.update_3d_view).pack(side=tk.LEFT, padx=5)
+            ttk.Button(viz_controls, text="Clear View", 
+                      command=lambda: self.visualizer.clear() if self.visualizer else None).pack(side=tk.LEFT, padx=5)
+        
         # Status bar
         status_frame = ttk.Frame(main_frame)
-        status_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        status_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=5)
         
         self.status_var = tk.StringVar(value="Ready")
         status_label = ttk.Label(status_frame, textvariable=self.status_var, 
@@ -320,6 +358,7 @@ class LensEditorWindow:
         self.modified_var.set(lens.modified_at)
         
         self.calculate_and_display_focal_length()
+        self.update_3d_view()  # Update 3D visualization
         self.update_status(f"Editing: {lens.name}")
     
     def clear_form(self):
@@ -377,6 +416,24 @@ class LensEditorWindow:
     def auto_update_modified(self):
         self.modified_var.set(datetime.now().isoformat())
         self.update_status("Modified timestamp updated")
+    
+    def update_3d_view(self):
+        """Update the 3D visualization with current lens parameters"""
+        if not self.visualizer:
+            return
+        
+        try:
+            r1 = float(self.r1_var.get())
+            r2 = float(self.r2_var.get())
+            thickness = float(self.thickness_var.get())
+            diameter = float(self.diameter_var.get())
+            
+            self.visualizer.draw_lens(r1, r2, thickness, diameter)
+            self.update_status("3D view updated")
+        except ValueError:
+            self.update_status("Invalid lens parameters for 3D view")
+        except Exception as e:
+            self.update_status(f"3D visualization error: {e}")
     
     def duplicate_lens(self):
         selection = self.lens_listbox.curselection()

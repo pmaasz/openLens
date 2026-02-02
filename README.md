@@ -36,6 +36,13 @@ OpenLense is a desktop application for designing and analyzing **single glass op
 - Optical power display in diopters
 - Instant updates as you modify parameters
 
+### 🎨 **3D Visualization** (New!)
+- Interactive 3D rendering of lens cross-section
+- Real-time visualization updates
+- Visualize spherical surfaces and lens geometry
+- Rotate and zoom to inspect lens design
+- Requires: matplotlib and numpy (optional)
+
 ### 💾 **Data Management**
 - Save/load lens designs to JSON format
 - Duplicate existing lenses for variations
@@ -69,12 +76,18 @@ Use the provided setup script to automatically create and configure the virtual 
 ```bash
 ./setup_venv.sh
 source venv/bin/activate
+
+# Install 3D visualization dependencies (optional but recommended)
+pip install matplotlib numpy
 ```
 
 **Windows:**
 ```cmd
 setup_venv.bat
 venv\Scripts\activate
+
+REM Install 3D visualization dependencies (optional but recommended)
+pip install matplotlib numpy
 ```
 
 The script will:
@@ -104,7 +117,14 @@ The script will:
    venv\Scripts\activate
    ```
 
-3. **Check requirements (optional):**
+3. **Install optional 3D visualization dependencies (recommended):**
+   ```bash
+   pip install matplotlib numpy
+   ```
+   
+   Note: The application works without these, but 3D visualization will be disabled.
+
+4. **Check requirements (optional):**
    ```bash
    cat requirements.txt
    # Note: No pip install needed - all dependencies are in standard library
@@ -262,6 +282,44 @@ Optical Lens Details:
   Focal Length: 97.58mm
   Material: BK7
   ...
+```
+
+---
+
+## 3D Visualization
+
+The GUI includes an interactive 3D visualization panel that displays the lens geometry in real-time.
+
+### Features
+- **Real-time rendering**: Updates automatically when you select or modify a lens
+- **Interactive view**: Rotate, zoom, and pan the 3D model
+- **Color-coded surfaces**: 
+  - Blue: Front surface (R1)
+  - Green: Back surface (R2)
+  - Gray: Lens edge
+  - Red dashed line: Optical axis
+
+### Requirements
+The 3D visualization requires matplotlib and numpy:
+```bash
+pip install matplotlib numpy
+```
+
+If these libraries are not installed, the application will still work but the 3D panel will show an installation message.
+
+### Using the Visualization
+1. Select or create a lens in the editor
+2. The 3D view updates automatically
+3. Click **"Update 3D View"** to manually refresh
+4. Use mouse to rotate the view:
+   - Left-click + drag: Rotate
+   - Right-click + drag: Zoom
+   - Middle-click + drag: Pan
+
+### Testing the Visualization
+Test the 3D rendering separately:
+```bash
+python test_visualization.py
 ```
 
 ---
