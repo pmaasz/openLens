@@ -1,0 +1,508 @@
+#!/usr/bin/env python3
+"""
+OpenLense - GUI Editor Window
+Interactive graphical interface for optical lens creation and modification
+"""
+
+import tkinter as tk
+from tkinter import ttk, messagebox
+import json
+import os
+from datetime import datetime
+
+
+class Lens:
+    def __init__(self, name="Untitled", radius_of_curvature_1=100.0, radius_of_curvature_2=-100.0,
+                 thickness=5.0, diameter=50.0, refractive_index=1.5168, 
+                 lens_type="Biconvex", material="BK7"):
+        self.id = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        self.name = name
+        self.radius_of_curvature_1 = radius_of_curvature_1  # R1 (front surface, mm)
+        self.radius_of_curvature_2 = radius_of_curvature_2  # R2 (back surface, mm)
+        self.thickness = thickness  # Center thickness (mm)
+        self.diameter = diameter  # Lens diameter (mm)
+        self.refractive_index = refractive_index  # Index of refraction (n)
+        self.lens_type = lens_type  # Convex, Concave, Plano-Convex, etc.
+        self.material = material  # Glass type
+        self.created_at = datetime.now().isoformat()
+        self.modified_at = datetime.now().isoformat()
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "radius_of_curvature_1": self.radius_of_curvature_1,
+            "radius_of_curvature_2": self.radius_of_curvature_2,
+            "thickness": self.thickness,
+            "diameter": self.diameter,
+            "refractive_index": self.refractive_index,
+            "type": self.lens_type,
+            "material": self.material,
+            "created_at": self.created_at,
+            "modified_at": self.modified_at
+        }
+    
+    @classmethod
+    def from_dict(cls, data):
+        lens = cls(
+            name=data.get("name", "Untitled"),
+            radius_of_curvature_1=data.get("radius_of_curvature_1", 100.0),
+            radius_of_curvature_2=data.get("radius_of_curvature_2", -100.0),
+            thickness=data.get("thickness", 5.0),
+            diameter=data.get("diameter", 50.0),
+            refractive_index=data.get("refractive_index", 1.5168),
+            lens_type=data.get("type", "Biconvex"),
+            material=data.get("material", "BK7")
+        )
+        lens.id = data.get("id", lens.id)
+        lens.created_at = data.get("created_at", lens.created_at)
+        lens.modified_at = data.get("modified_at", lens.modified_at)
+        return lens
+    
+    def calculate_focal_length(self):
+        """Calculate focal length using the lensmaker's equation"""
+        n = self.refractive_index
+        R1 = self.radius_of_curvature_1
+        R2 = self.radius_of_curvature_2
+        d = self.thickness
+        
+        if R1 == 0 or R2 == 0:
+            return None
+        
+        # Lensmaker's equation
+        power = (n - 1) * ((1/R1) - (1/R2) + ((n - 1) * d) / (n * R1 * R2))
+        
+        if power == 0:
+            return None
+        
+        focal_length = 1 / power
+        return focal_length
+
+
+class LensEditorWindow:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("OpenLense - Optical Lens Editor")
+        self.root.geometry("1000x700")
+        self.storage_file = "lenses.json"
+        self.lenses = self.load_lenses()
+        self.current_lens = None
+        
+        self.setup_ui()
+        self.refresh_lens_list()
+    
+    def load_lenses(self):
+        if os.path.exists(self.storage_file):
+            try:
+                with open(self.storage_file, 'r') as f:
+                    data = json.load(f)
+                    return [Lens.from_dict(lens_data) for lens_data in data]
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load lenses: {e}")
+                return []
+        return []
+    
+    def save_lenses(self):
+        try:
+            with open(self.storage_file, 'w') as f:
+                json.dump([lens.to_dict() for lens in self.lenses], f, indent=2)
+            return True
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save lenses: {e}")
+            return False
+    
+    def setup_ui(self):
+        # Main container
+        main_frame = ttk.Frame(self.root, padding="10")
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=1)
+        main_frame.rowconfigure(1, weight=1)
+        
+        # Left panel - Lens list
+        left_frame = ttk.Frame(main_frame, padding="5")
+        left_frame.grid(row=0, column=0, rowspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        ttk.Label(left_frame, text="Optical Lenses", font=('Arial', 12, 'bold')).pack(pady=5)
+        
+        # Lens listbox with scrollbar
+        list_frame = ttk.Frame(left_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        scrollbar = ttk.Scrollbar(list_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.lens_listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set, 
+                                        width=35, font=('Arial', 10))
+        self.lens_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.lens_listbox.yview)
+        
+        self.lens_listbox.bind('<<ListboxSelect>>', self.on_lens_select)
+        
+        # Buttons for list operations
+        btn_frame = ttk.Frame(left_frame)
+        btn_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Button(btn_frame, text="New", command=self.new_lens).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_frame, text="Delete", command=self.delete_lens).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_frame, text="Duplicate", command=self.duplicate_lens).pack(side=tk.LEFT, padx=2)
+        
+        # Right panel - Editor
+        right_frame = ttk.Frame(main_frame, padding="5")
+        right_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S))
+        right_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(right_frame, text="Optical Lens Properties", font=('Arial', 12, 'bold')).grid(
+            row=0, column=0, columnspan=2, pady=5, sticky=tk.W)
+        
+        # Form fields
+        row = 1
+        
+        ttk.Label(right_frame, text="ID:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        self.id_var = tk.StringVar()
+        self.id_entry = ttk.Entry(right_frame, textvariable=self.id_var, width=40)
+        self.id_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        row += 1
+        
+        ttk.Label(right_frame, text="Name:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        self.name_var = tk.StringVar()
+        self.name_entry = ttk.Entry(right_frame, textvariable=self.name_var, width=40)
+        self.name_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        row += 1
+        
+        # Separator
+        ttk.Separator(right_frame, orient='horizontal').grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        row += 1
+        
+        ttk.Label(right_frame, text="Radius of Curvature 1 (mm):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        self.r1_var = tk.StringVar(value="100.0")
+        self.r1_entry = ttk.Entry(right_frame, textvariable=self.r1_var, width=40)
+        self.r1_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        row += 1
+        
+        ttk.Label(right_frame, text="Radius of Curvature 2 (mm):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        self.r2_var = tk.StringVar(value="-100.0")
+        self.r2_entry = ttk.Entry(right_frame, textvariable=self.r2_var, width=40)
+        self.r2_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        row += 1
+        
+        ttk.Label(right_frame, text="Center Thickness (mm):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        self.thickness_var = tk.StringVar(value="5.0")
+        self.thickness_entry = ttk.Entry(right_frame, textvariable=self.thickness_var, width=40)
+        self.thickness_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        row += 1
+        
+        ttk.Label(right_frame, text="Diameter (mm):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        self.diameter_var = tk.StringVar(value="50.0")
+        self.diameter_entry = ttk.Entry(right_frame, textvariable=self.diameter_var, width=40)
+        self.diameter_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        row += 1
+        
+        ttk.Label(right_frame, text="Refractive Index (n):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        self.refr_index_var = tk.StringVar(value="1.5168")
+        self.refr_index_entry = ttk.Entry(right_frame, textvariable=self.refr_index_var, width=40)
+        self.refr_index_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        row += 1
+        
+        ttk.Label(right_frame, text="Lens Type:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        self.type_var = tk.StringVar(value="Biconvex")
+        type_combo = ttk.Combobox(right_frame, textvariable=self.type_var, 
+                                   values=["Biconvex", "Biconcave", "Plano-Convex", "Plano-Concave", 
+                                          "Meniscus Convex", "Meniscus Concave"], 
+                                   width=37, state="readonly")
+        type_combo.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        row += 1
+        
+        ttk.Label(right_frame, text="Material:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        self.material_var = tk.StringVar(value="BK7")
+        material_combo = ttk.Combobox(right_frame, textvariable=self.material_var,
+                                          values=["BK7", "Fused Silica", "SF11", "N-BK7", 
+                                                  "Crown Glass", "Flint Glass", "Sapphire", "Custom"],
+                                          width=37)
+        material_combo.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        row += 1
+        
+        # Separator
+        ttk.Separator(right_frame, orient='horizontal').grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        row += 1
+        
+        ttk.Label(right_frame, text="Created At:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        self.created_var = tk.StringVar()
+        self.created_entry = ttk.Entry(right_frame, textvariable=self.created_var, width=40)
+        self.created_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        row += 1
+        
+        ttk.Label(right_frame, text="Modified At:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        self.modified_var = tk.StringVar()
+        self.modified_entry = ttk.Entry(right_frame, textvariable=self.modified_var, width=40)
+        self.modified_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        row += 1
+        
+        # Action buttons
+        action_frame = ttk.Frame(right_frame)
+        action_frame.grid(row=row, column=0, columnspan=2, pady=20)
+        
+        self.save_btn = ttk.Button(action_frame, text="Save", command=self.save_current_lens)
+        self.save_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.clear_btn = ttk.Button(action_frame, text="Clear", command=self.clear_form)
+        self.clear_btn.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(action_frame, text="Calculate Focal Length", 
+                   command=self.calculate_and_display_focal_length).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(action_frame, text="Auto-Update Modified", 
+                   command=self.auto_update_modified).pack(side=tk.LEFT, padx=5)
+        row += 1
+        
+        # Calculated properties display
+        calc_frame = ttk.LabelFrame(right_frame, text="Calculated Properties", padding="10")
+        calc_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        
+        self.focal_length_label = ttk.Label(calc_frame, text="Focal Length: Not calculated", 
+                                            font=('Arial', 10))
+        self.focal_length_label.pack(anchor=tk.W, pady=2)
+        
+        self.optical_power_label = ttk.Label(calc_frame, text="Optical Power: Not calculated", 
+                                             font=('Arial', 10))
+        self.optical_power_label.pack(anchor=tk.W, pady=2)
+        row += 1
+        
+        # Info panel with tips
+        info_frame = ttk.LabelFrame(right_frame, text="Tips", padding="10")
+        info_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        
+        tips_text = """• Positive radius = convex (curving outward), Negative = concave (curving inward)
+• R1 is front surface, R2 is back surface
+• Use 'inf' or large value for flat (plano) surfaces
+• Refractive index: Air=1.0, Glass~1.5-1.9, Water=1.33"""
+        ttk.Label(info_frame, text=tips_text, justify=tk.LEFT, font=('Arial', 9)).pack(anchor=tk.W)
+        
+        # Status bar
+        status_frame = ttk.Frame(main_frame)
+        status_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        
+        self.status_var = tk.StringVar(value="Ready")
+        status_label = ttk.Label(status_frame, textvariable=self.status_var, 
+                                 relief=tk.SUNKEN, anchor=tk.W)
+        status_label.pack(fill=tk.X)
+        
+        self.update_status("Ready")
+    
+    def refresh_lens_list(self):
+        self.lens_listbox.delete(0, tk.END)
+        for lens in self.lenses:
+            display_text = f"{lens.name} - {lens.material} ({lens.lens_type})"
+            self.lens_listbox.insert(tk.END, display_text)
+        
+        self.update_status(f"{len(self.lenses)} lens(es) loaded")
+    
+    def on_lens_select(self, event):
+        selection = self.lens_listbox.curselection()
+        if selection:
+            idx = selection[0]
+            self.current_lens = self.lenses[idx]
+            self.load_lens_to_form(self.current_lens)
+    
+    def load_lens_to_form(self, lens):
+        self.id_var.set(lens.id)
+        self.name_var.set(lens.name)
+        self.r1_var.set(str(lens.radius_of_curvature_1))
+        self.r2_var.set(str(lens.radius_of_curvature_2))
+        self.thickness_var.set(str(lens.thickness))
+        self.diameter_var.set(str(lens.diameter))
+        self.refr_index_var.set(str(lens.refractive_index))
+        self.type_var.set(lens.lens_type)
+        self.material_var.set(lens.material)
+        self.created_var.set(lens.created_at)
+        self.modified_var.set(lens.modified_at)
+        
+        self.calculate_and_display_focal_length()
+        self.update_status(f"Editing: {lens.name}")
+    
+    def clear_form(self):
+        self.id_var.set("")
+        self.name_var.set("")
+        self.r1_var.set("100.0")
+        self.r2_var.set("-100.0")
+        self.thickness_var.set("5.0")
+        self.diameter_var.set("50.0")
+        self.refr_index_var.set("1.5168")
+        self.type_var.set("Biconvex")
+        self.material_var.set("BK7")
+        self.created_var.set("")
+        self.modified_var.set("")
+        self.current_lens = None
+        
+        self.focal_length_label.config(text="Focal Length: Not calculated")
+        self.optical_power_label.config(text="Optical Power: Not calculated")
+        
+        self.lens_listbox.selection_clear(0, tk.END)
+        self.update_status("Form cleared")
+    
+    def new_lens(self):
+        self.clear_form()
+        self.name_entry.focus()
+        self.update_status("Create new lens")
+    
+    def calculate_and_display_focal_length(self):
+        try:
+            r1 = float(self.r1_var.get())
+            r2 = float(self.r2_var.get())
+            thickness = float(self.thickness_var.get())
+            n = float(self.refr_index_var.get())
+            
+            if r1 == 0 or r2 == 0:
+                self.focal_length_label.config(text="Focal Length: Undefined (R cannot be 0)")
+                self.optical_power_label.config(text="Optical Power: Undefined")
+                return
+            
+            # Lensmaker's equation
+            power = (n - 1) * ((1/r1) - (1/r2) + ((n - 1) * thickness) / (n * r1 * r2))
+            
+            if abs(power) < 1e-10:
+                self.focal_length_label.config(text="Focal Length: Infinite (No optical power)")
+                self.optical_power_label.config(text="Optical Power: 0.00 D")
+            else:
+                focal_length = 1 / power
+                self.focal_length_label.config(text=f"Focal Length: {focal_length:.2f} mm")
+                self.optical_power_label.config(text=f"Optical Power: {power:.4f} mm⁻¹ ({power*1000:.2f} D)")
+        
+        except ValueError:
+            self.focal_length_label.config(text="Focal Length: Invalid input")
+            self.optical_power_label.config(text="Optical Power: Invalid input")
+    
+    def auto_update_modified(self):
+        self.modified_var.set(datetime.now().isoformat())
+        self.update_status("Modified timestamp updated")
+    
+    def duplicate_lens(self):
+        selection = self.lens_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("No Selection", "Please select a lens to duplicate.")
+            return
+        
+        idx = selection[0]
+        original_lens = self.lenses[idx]
+        
+        # Create a new lens with same properties
+        new_lens = Lens(
+            name=f"{original_lens.name} (Copy)",
+            radius_of_curvature_1=original_lens.radius_of_curvature_1,
+            radius_of_curvature_2=original_lens.radius_of_curvature_2,
+            thickness=original_lens.thickness,
+            diameter=original_lens.diameter,
+            refractive_index=original_lens.refractive_index,
+            lens_type=original_lens.lens_type,
+            material=original_lens.material
+        )
+        
+        self.lenses.append(new_lens)
+        self.save_lenses()
+        self.refresh_lens_list()
+        
+        # Select the new lens
+        self.lens_listbox.selection_clear(0, tk.END)
+        self.lens_listbox.selection_set(len(self.lenses) - 1)
+        self.lens_listbox.see(len(self.lenses) - 1)
+        self.current_lens = new_lens
+        self.load_lens_to_form(new_lens)
+        
+        messagebox.showinfo("Success", "Lens duplicated successfully!")
+        self.update_status("Lens duplicated")
+    
+    def save_current_lens(self):
+        try:
+            lens_id = self.id_var.get().strip()
+            name = self.name_var.get().strip() or "Untitled"
+            r1 = float(self.r1_var.get())
+            r2 = float(self.r2_var.get())
+            thickness = float(self.thickness_var.get())
+            diameter = float(self.diameter_var.get())
+            refractive_index = float(self.refr_index_var.get())
+            lens_type = self.type_var.get()
+            material = self.material_var.get().strip() or "BK7"
+            created_at = self.created_var.get().strip()
+            modified_at = self.modified_var.get().strip()
+            
+            if self.current_lens:
+                # Update existing lens
+                self.current_lens.id = lens_id if lens_id else self.current_lens.id
+                self.current_lens.name = name
+                self.current_lens.radius_of_curvature_1 = r1
+                self.current_lens.radius_of_curvature_2 = r2
+                self.current_lens.thickness = thickness
+                self.current_lens.diameter = diameter
+                self.current_lens.refractive_index = refractive_index
+                self.current_lens.lens_type = lens_type
+                self.current_lens.material = material
+                self.current_lens.created_at = created_at if created_at else self.current_lens.created_at
+                self.current_lens.modified_at = modified_at if modified_at else datetime.now().isoformat()
+                message = "Lens updated successfully!"
+            else:
+                # Create new lens
+                lens = Lens(name, r1, r2, thickness, diameter, refractive_index, lens_type, material)
+                if lens_id:
+                    lens.id = lens_id
+                if created_at:
+                    lens.created_at = created_at
+                if modified_at:
+                    lens.modified_at = modified_at
+                self.lenses.append(lens)
+                self.current_lens = lens
+                message = "Lens created successfully!"
+            
+            if self.save_lenses():
+                self.refresh_lens_list()
+                
+                # Select the current lens in the list
+                for idx, lens in enumerate(self.lenses):
+                    if lens.id == self.current_lens.id:
+                        self.lens_listbox.selection_clear(0, tk.END)
+                        self.lens_listbox.selection_set(idx)
+                        self.lens_listbox.see(idx)
+                        break
+                
+                self.load_lens_to_form(self.current_lens)
+                messagebox.showinfo("Success", message)
+                self.update_status(message)
+        
+        except ValueError as e:
+            messagebox.showerror("Error", "Invalid numeric value. Please check all numeric fields.")
+            self.update_status("Error: Invalid input")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save lens: {e}")
+            self.update_status(f"Error: {e}")
+    
+    def delete_lens(self):
+        selection = self.lens_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("No Selection", "Please select a lens to delete.")
+            return
+        
+        idx = selection[0]
+        lens = self.lenses[idx]
+        
+        if messagebox.askyesno("Confirm Delete", f"Delete lens '{lens.name}'?"):
+            self.lenses.pop(idx)
+            self.save_lenses()
+            self.clear_form()
+            self.refresh_lens_list()
+            messagebox.showinfo("Success", "Lens deleted successfully!")
+            self.update_status("Lens deleted")
+    
+    def update_status(self, message):
+        self.status_var.set(message)
+        self.root.update_idletasks()
+
+
+def main():
+    root = tk.Tk()
+    app = LensEditorWindow(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
