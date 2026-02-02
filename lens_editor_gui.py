@@ -428,13 +428,6 @@ class LensEditorWindow:
         
         self.save_btn = ttk.Button(action_frame, text="Save", command=self.save_current_lens)
         self.save_btn.pack(side=tk.LEFT, padx=5)
-        
-        
-        ttk.Button(action_frame, text="Calculate Focal Length", 
-                   command=self.calculate_and_display_focal_length).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(action_frame, text="Auto-Update Modified", 
-                   command=self.auto_update_modified).pack(side=tk.LEFT, padx=5)
         row += 1
         
         # Calculated properties display
@@ -596,9 +589,6 @@ class LensEditorWindow:
             self.focal_length_label.config(text="Focal Length: Invalid input")
             self.optical_power_label.config(text="Optical Power: Invalid input")
     
-    def auto_update_modified(self):
-        self.modified_var.set(datetime.now().isoformat())
-        self.update_status("Modified timestamp updated")
     
     def update_3d_view(self):
         """Update the 3D visualization with current lens parameters"""
@@ -665,7 +655,9 @@ class LensEditorWindow:
             lens_type = self.type_var.get()
             material = self.material_var.get().strip() or "BK7"
             created_at = self.created_var.get().strip()
-            modified_at = self.modified_var.get().strip()
+            
+            # Auto-update modified timestamp
+            modified_at = datetime.now().isoformat()
             
             if self.current_lens:
                 # Update existing lens
@@ -679,7 +671,7 @@ class LensEditorWindow:
                 self.current_lens.lens_type = lens_type
                 self.current_lens.material = material
                 self.current_lens.created_at = created_at if created_at else self.current_lens.created_at
-                self.current_lens.modified_at = modified_at if modified_at else datetime.now().isoformat()
+                self.current_lens.modified_at = modified_at
                 message = "Lens updated successfully!"
             else:
                 # Create new lens
@@ -688,11 +680,13 @@ class LensEditorWindow:
                     lens.id = lens_id
                 if created_at:
                     lens.created_at = created_at
-                if modified_at:
-                    lens.modified_at = modified_at
+                lens.modified_at = modified_at
                 self.lenses.append(lens)
                 self.current_lens = lens
                 message = "Lens created successfully!"
+            
+            # Auto-calculate focal length before saving
+            self.calculate_and_display_focal_length()
             
             if self.save_lenses():
                 self.refresh_lens_list()
