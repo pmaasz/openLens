@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-GUI functional tests for OpenLense application
+GUI functional tests for openlens application
 Tests the GUI components and interactions
 """
 
@@ -389,7 +389,7 @@ def run_gui_tests():
 
 if __name__ == "__main__":
     print("=" * 70)
-    print("OpenLense GUI Functional Tests")
+    print("openlens GUI Functional Tests")
     print("=" * 70)
     print()
     

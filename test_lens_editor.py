@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Functional tests for OpenLense application
+Functional tests for openlens application
 Tests the Lens class and LensManager functionality
 """
 
@@ -416,7 +416,7 @@ def run_tests():
 
 if __name__ == "__main__":
     print("=" * 70)
-    print("OpenLense Functional Tests")
+    print("openlens Functional Tests")
     print("=" * 70)
     print()
     

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run all functional tests for OpenLense application
+Run all functional tests for openlens application
 """
 
 import sys
@@ -10,7 +10,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 print("=" * 70)
-print("OpenLense - Complete Test Suite")
+print("openlens - Complete Test Suite")
 print("=" * 70)
 print()
 
@@ -47,7 +47,7 @@ print("=" * 70)
 
 if core_passed and gui_passed:
     print("\n✓✓✓ ALL TESTS PASSED! ✓✓✓")
-    print("\nThe OpenLense application is working correctly!")
+    print("\nThe openlens application is working correctly!")
     sys.exit(0)
 else:
     print("\n✗✗✗ SOME TESTS FAILED ✗✗✗")

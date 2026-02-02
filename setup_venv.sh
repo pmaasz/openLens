@@ -1,12 +1,12 @@
 #!/bin/bash
-# OpenLense Setup Script
+# openlens Setup Script
 # Automates the virtual environment setup process
 
 set -e  # Exit on error
 
 echo "╔════════════════════════════════════════════════════════════════════╗"
 echo "║                                                                    ║"
-echo "║              OpenLense - Virtual Environment Setup                ║"
+echo "║              openlens - Virtual Environment Setup                ║"
 echo "║                                                                    ║"
 echo "╚════════════════════════════════════════════════════════════════════╝"
 echo ""

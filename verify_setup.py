@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpenLense Setup Verification Script
+openlens Setup Verification Script
 Run this to verify your installation is ready to use
 """
 
@@ -77,7 +77,7 @@ def run_quick_test():
 
 def main():
     print("=" * 70)
-    print("OpenLense Setup Verification")
+    print("openlens Setup Verification")
     print("=" * 70)
     print()
     
@@ -103,7 +103,7 @@ def main():
     if all(results):
         print("✓✓✓ ALL CHECKS PASSED! ✓✓✓")
         print()
-        print("Your OpenLense installation is ready to use!")
+        print("Your openlens installation is ready to use!")
         print()
         print("Quick start:")
         print("  • Run GUI:  python3 lens_editor_gui.py")
@@ -113,7 +113,7 @@ def main():
     else:
         print("✗✗✗ SOME CHECKS FAILED ✗✗✗")
         print()
-        print("Please fix the issues above before using OpenLense.")
+        print("Please fix the issues above before using openlens.")
         print("See README.md for detailed installation instructions.")
         return 1
 

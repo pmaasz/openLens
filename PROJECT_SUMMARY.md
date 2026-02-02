@@ -1,4 +1,4 @@
-# OpenLense Project Summary
+# openlens Project Summary
 
 **Created:** February 2, 2026  
 **Version:** 1.0  
@@ -8,7 +8,7 @@
 
 ## Project Overview
 
-OpenLense is a complete desktop application for designing and analyzing single glass optical lenses. It provides both GUI and CLI interfaces for creating lens designs, calculating optical properties using the lensmaker's equation, and managing lens libraries.
+openlens is a complete desktop application for designing and analyzing single glass optical lenses. It provides both GUI and CLI interfaces for creating lens designs, calculating optical properties using the lensmaker's equation, and managing lens libraries.
 
 ---
 
@@ -263,7 +263,7 @@ Potential areas for expansion:
 
 ## Conclusion
 
-OpenLense is a complete, tested, and documented application for optical lens design. It successfully implements:
+openlens is a complete, tested, and documented application for optical lens design. It successfully implements:
 
 1. ✅ Full lens creation and modification
 2. ✅ Accurate optical calculations

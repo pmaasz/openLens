@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpenLense - Interactive Optical Lens Creation and Modification Tool
+openlens - Interactive Optical Lens Creation and Modification Tool
 """
 
 import json
@@ -264,7 +264,7 @@ def main():
     manager = LensManager()
     
     print("=" * 60)
-    print("   OpenLense - Optical Lens Creation & Modification Tool")
+    print("   openlens - Optical Lens Creation & Modification Tool")
     print("=" * 60)
     
     while True:

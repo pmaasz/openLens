@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpenLense - GUI Editor Window
+openlens - GUI Editor Window
 Interactive graphical interface for optical lens creation and modification
 """
 
@@ -139,7 +139,7 @@ class LensEditorWindow:
     
     def __init__(self, root):
         self.root = root
-        self.root.title("OpenLense - Optical Lens Editor")
+        self.root.title("openlens - Optical Lens Editor")
         self.root.geometry("1400x800")  # Increased width for 3D view
         self.storage_file = "lenses.json"
         self.lenses = self.load_lenses()
@@ -148,7 +148,7 @@ class LensEditorWindow:
         self.selected_lens_id = None
         
         # Initialize status_var early
-        self.status_var = tk.StringVar(value="Welcome to OpenLense")
+        self.status_var = tk.StringVar(value="Welcome to openlens")
         
         # Configure dark mode
         self.setup_dark_mode()

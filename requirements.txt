@@ -1,4 +1,4 @@
-# OpenLense Requirements
+# openlens Requirements
 # Python 3.6+ required
 
 # Core dependencies: None!

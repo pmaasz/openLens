@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpenLense - 3D Lens Visualization Module
+openlens - 3D Lens Visualization Module
 Renders 3D cross-section of optical lenses
 """
 

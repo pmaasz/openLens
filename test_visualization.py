@@ -11,7 +11,7 @@ from lens_visualizer import LensVisualizer
 def test_visualization():
     """Test the 3D visualization with sample lenses"""
     root = tk.Tk()
-    root.title("OpenLense - 3D Visualization Test")
+    root.title("openlens - 3D Visualization Test")
     root.geometry("800x700")
     
     # Main frame

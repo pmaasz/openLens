@@ -1,4 +1,4 @@
-# OpenLense
+# openlens
 
 <div align="center">
 
@@ -14,9 +14,9 @@
 
 ---
 
-## What is OpenLense?
+## What is openlens?
 
-OpenLense is a desktop application for designing and analyzing **single glass optical lenses**. Whether you're a student learning optics, an engineer designing optical systems, or a hobbyist exploring lens physics, OpenLense provides an intuitive interface to:
+openlens is a desktop application for designing and analyzing **single glass optical lenses**. Whether you're a student learning optics, an engineer designing optical systems, or a hobbyist exploring lens physics, openlens provides an intuitive interface to:
 
 - Design optical lenses with precise physical parameters
 - Calculate optical properties using the lensmaker's equation
@@ -199,7 +199,7 @@ python3 lens_editor_gui.py
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  OpenLense - Optical Lens Editor                             │
+│  openlens - Optical Lens Editor                             │
 ├─────────────────┬────────────────────────────────────────────┤
 │ Optical Lenses  │  Optical Lens Properties                   │
 │                 │                                            │
@@ -258,7 +258,7 @@ python3 lens_editor.py
 $ python3 lens_editor.py
 
 ==================================================
-   OpenLense - Optical Lens Creation Tool
+   openlens - Optical Lens Creation Tool
 ==================================================
 
 --- Menu ---
@@ -376,7 +376,7 @@ python test_visualization.py
 
 ## The Lensmaker's Equation
 
-OpenLense uses the **thick lens lensmaker's equation** to calculate focal length:
+openlens uses the **thick lens lensmaker's equation** to calculate focal length:
 
 ```
 1/f = (n-1) * [1/R1 - 1/R2 + (n-1)*d/(n*R1*R2)]
@@ -440,7 +440,7 @@ To share lenses with others, simply copy the `lenses.json` file.
 
 ## Testing
 
-OpenLense includes comprehensive functional tests to ensure accuracy and reliability.
+openlens includes comprehensive functional tests to ensure accuracy and reliability.
 
 ### Run All Tests
 
@@ -602,6 +602,6 @@ For questions, issues, or suggestions:
 
 **Happy Lens Designing! 🔬**
 
-*OpenLense - Making optical design accessible*
+*openlens - Making optical design accessible*
 
 </div>

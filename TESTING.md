@@ -1,6 +1,6 @@
-# OpenLense Testing Guide
+# openlens Testing Guide
 
-This document describes the functional tests for the OpenLense application.
+This document describes the functional tests for the openlens application.
 
 ## Test Files
 
