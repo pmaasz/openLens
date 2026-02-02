@@ -296,15 +296,22 @@ class LensEditorWindow:
         self.notebook = ttk.Notebook(main_frame)
         self.notebook.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # Create Editor tab
+        # Create Lens Selection tab (always enabled)
+        self.selection_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.selection_tab, text="Lens Selection")
+        
+        # Create Editor tab (disabled until lens selected)
         self.editor_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.editor_tab, text="Editor")
+        self.notebook.add(self.editor_tab, text="Editor", state='disabled')
         
-        # Create Simulation tab
+        # Create Simulation tab (disabled until lens selected)
         self.simulation_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.simulation_tab, text="Simulation")
+        self.notebook.add(self.simulation_tab, text="Simulation", state='disabled')
         
-        # Configure editor tab grid
+        # Configure tabs grid
+        self.selection_tab.columnconfigure(0, weight=1)
+        self.selection_tab.rowconfigure(0, weight=1)
+        
         self.editor_tab.columnconfigure(1, weight=1)
         self.editor_tab.columnconfigure(2, weight=1)
         self.editor_tab.rowconfigure(0, weight=1)
@@ -312,24 +319,213 @@ class LensEditorWindow:
         # Track visibility state
         self.left_panel_visible = True
         
-        # Setup Editor tab content
+        # Setup tab content
+        self.setup_selection_tab()
         self.setup_editor_tab()
-        
-        # Setup Simulation tab content
         self.setup_simulation_tab()
         
         # Status bar (below tabs)
         status_frame = ttk.Frame(main_frame)
         status_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5, padx=5)
         
-        self.status_var = tk.StringVar(value="Ready - Press Enter to save")
+        self.status_var = tk.StringVar(value="Select or create a lens to begin")
         status_label = ttk.Label(status_frame, textvariable=self.status_var, 
                                  relief=tk.SUNKEN, anchor=tk.W,
                                  font=('Arial', 9, 'bold'),
                                  padding=(5, 3))
         status_label.pack(fill=tk.X)
         
-        self.update_status("Ready - Press Enter to save")
+        self.update_status("Select or create a lens to begin")
+    
+    def setup_selection_tab(self):
+        """Setup the Lens Selection tab"""
+        
+        # Main content frame
+        content_frame = ttk.Frame(self.selection_tab, padding="20")
+        content_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        content_frame.columnconfigure(0, weight=1)
+        content_frame.rowconfigure(1, weight=1)
+        
+        # Title
+        title_label = ttk.Label(content_frame, text="Lens Library", 
+                               font=('Arial', 16, 'bold'))
+        title_label.grid(row=0, column=0, pady=(0, 20))
+        
+        # Create a frame for the lens list and buttons
+        list_frame = ttk.LabelFrame(content_frame, text="Available Lenses", padding="10")
+        list_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        list_frame.columnconfigure(0, weight=1)
+        list_frame.rowconfigure(0, weight=1)
+        
+        # Lens listbox with scrollbar
+        scrollbar = ttk.Scrollbar(list_frame)
+        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        
+        self.selection_listbox = tk.Listbox(list_frame, 
+                                           yscrollcommand=scrollbar.set,
+                                           bg=self.COLORS['entry_bg'],
+                                           fg=self.COLORS['fg'],
+                                           selectbackground=self.COLORS['accent'],
+                                           selectforeground=self.COLORS['fg'],
+                                           font=('Arial', 11),
+                                           height=15,
+                                           borderwidth=1,
+                                           relief=tk.SOLID)
+        self.selection_listbox.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 5))
+        scrollbar.config(command=self.selection_listbox.yview)
+        
+        # Bind double-click to select lens
+        self.selection_listbox.bind('<Double-Button-1>', lambda e: self.select_lens_from_list())
+        
+        # Lens info panel
+        info_frame = ttk.LabelFrame(content_frame, text="Lens Information", padding="10")
+        info_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=20)
+        
+        self.selection_info_text = tk.Text(info_frame, 
+                                          height=6, 
+                                          bg=self.COLORS['entry_bg'],
+                                          fg=self.COLORS['fg'],
+                                          font=('Arial', 10),
+                                          wrap=tk.WORD,
+                                          borderwidth=1,
+                                          relief=tk.SOLID,
+                                          state='disabled')
+        self.selection_info_text.pack(fill=tk.BOTH, expand=True)
+        
+        # Bind selection change to update info
+        self.selection_listbox.bind('<<ListboxSelect>>', self.update_selection_info)
+        
+        # Button frame
+        button_frame = ttk.Frame(content_frame)
+        button_frame.grid(row=3, column=0, pady=20)
+        
+        ttk.Button(button_frame, text="Create New Lens", 
+                  command=self.create_new_lens_from_selection,
+                  width=20).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(button_frame, text="Select & Edit", 
+                  command=self.select_lens_from_list,
+                  width=20).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(button_frame, text="Delete Lens", 
+                  command=self.delete_lens_from_selection,
+                  width=20).pack(side=tk.LEFT, padx=5)
+        
+        # Populate the list
+        self.refresh_selection_list()
+    
+    def refresh_selection_list(self):
+        """Refresh the lens selection list"""
+        self.selection_listbox.delete(0, tk.END)
+        for lens in self.lenses:
+            display_name = f"{lens.name} ({lens.lens_type})"
+            self.selection_listbox.insert(tk.END, display_name)
+        
+        if self.lenses:
+            self.update_status(f"{len(self.lenses)} lens(es) available - Select one to edit or create new")
+        else:
+            self.update_status("No lenses available - Create a new lens to begin")
+    
+    def update_selection_info(self, event=None):
+        """Update the lens information panel when selection changes"""
+        selection = self.selection_listbox.curselection()
+        if not selection:
+            self.selection_info_text.config(state='normal')
+            self.selection_info_text.delete(1.0, tk.END)
+            self.selection_info_text.insert(1.0, "Select a lens to view details")
+            self.selection_info_text.config(state='disabled')
+            return
+        
+        index = selection[0]
+        lens = self.lenses[index]
+        
+        info = f"""Name: {lens.name}
+Type: {lens.lens_type}
+Material: {lens.material}
+Radius 1: {lens.radius1:.3f} mm
+Radius 2: {lens.radius2:.3f} mm
+Center Thickness: {lens.center_thickness:.3f} mm
+Diameter: {lens.diameter:.3f} mm
+Refractive Index: {lens.refractive_index:.3f}
+Focal Length: {lens.focal_length:.3f} mm"""
+        
+        self.selection_info_text.config(state='normal')
+        self.selection_info_text.delete(1.0, tk.END)
+        self.selection_info_text.insert(1.0, info)
+        self.selection_info_text.config(state='disabled')
+    
+    def create_new_lens_from_selection(self):
+        """Create a new lens from the selection tab"""
+        new_lens = Lens()
+        self.lenses.append(new_lens)
+        self.save_lenses()
+        self.refresh_selection_list()
+        self.current_lens = new_lens
+        
+        # Enable editor and simulation tabs
+        self.notebook.tab(1, state='normal')  # Editor tab
+        self.notebook.tab(2, state='normal')  # Simulation tab
+        
+        # Switch to editor tab
+        self.notebook.select(1)
+        
+        # Update editor display
+        self.refresh_lens_list()
+        self.load_lens_to_form(new_lens)
+        
+        self.update_status(f"New lens created: '{new_lens.name}' - Edit properties and press Enter to save")
+    
+    def select_lens_from_list(self):
+        """Select a lens from the selection list and switch to editor"""
+        selection = self.selection_listbox.curselection()
+        if not selection:
+            self.update_status("Please select a lens first")
+            return
+        
+        index = selection[0]
+        self.current_lens = self.lenses[index]
+        
+        # Enable editor and simulation tabs
+        self.notebook.tab(1, state='normal')  # Editor tab
+        self.notebook.tab(2, state='normal')  # Simulation tab
+        
+        # Switch to editor tab
+        self.notebook.select(1)
+        
+        # Update editor display
+        self.refresh_lens_list()
+        self.load_lens_to_form(self.current_lens)
+        
+        self.update_status(f"Lens selected: '{self.current_lens.name}' - Ready to edit")
+    
+    def delete_lens_from_selection(self):
+        """Delete a lens from the selection list"""
+        selection = self.selection_listbox.curselection()
+        if not selection:
+            self.update_status("Please select a lens to delete")
+            return
+        
+        index = selection[0]
+        lens = self.lenses[index]
+        
+        # Remove the lens
+        self.lenses.pop(index)
+        self.save_lenses()
+        self.refresh_selection_list()
+        
+        # Clear selection info
+        self.selection_info_text.config(state='normal')
+        self.selection_info_text.delete(1.0, tk.END)
+        self.selection_info_text.insert(1.0, "Select a lens to view details")
+        self.selection_info_text.config(state='disabled')
+        
+        # If current lens was deleted, clear it and disable tabs
+        if self.current_lens == lens:
+            self.current_lens = None
+            self.notebook.tab(1, state='disabled')  # Editor tab
+            self.notebook.tab(2, state='disabled')  # Simulation tab
+        
+        self.update_status(f"Lens '{lens.name}' deleted")
     
     def setup_editor_tab(self):
         """Setup the Editor tab with lens list and properties"""
@@ -653,6 +849,10 @@ Select a lens from the Editor tab to simulate."""
         for lens in self.lenses:
             display_text = f"{lens.name} - {lens.material} ({lens.lens_type})"
             self.lens_listbox.insert(tk.END, display_text)
+        
+        # Also refresh selection tab list
+        if hasattr(self, 'selection_listbox'):
+            self.refresh_selection_list()
         
         self.update_status(f"{len(self.lenses)} lens(es) loaded")
     
