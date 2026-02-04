@@ -34,37 +34,42 @@ class LensVisualizer:
         self.figure = Figure(figsize=(width, height), dpi=100, facecolor=self.COLORS_3D['bg'])
         self.figure.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
         
-        self.ax = self.figure.add_subplot(111, projection='3d', 
-                                          facecolor=self.COLORS_3D['bg'],
-                                          computed_zorder=False)
+        # Create TWO overlaid 3D axes:
+        # 1. ax_coords: Fixed coordinate system (background)
+        # 2. ax_lens: Rotatable lens geometry (foreground)
         
-        # Keep rotation enabled for lens, but fix axis labels
-        # Axis labels will be redrawn in fixed positions after rotation
+        # Fixed coordinate system (background)
+        self.ax_coords = self.figure.add_subplot(111, projection='3d', 
+                                                  facecolor=self.COLORS_3D['bg'],
+                                                  computed_zorder=False)
+        self.ax_coords.view_init(elev=20, azim=45)  # Fixed view angle
+        self.ax_coords.disable_mouse_rotation()  # Prevent rotation
+        
+        # Rotatable lens geometry (foreground)
+        self.ax_lens = self.figure.add_subplot(111, projection='3d',
+                                                facecolor='none',  # Transparent background
+                                                computed_zorder=False)
+        self.ax_lens.set_position(self.ax_coords.get_position())  # Same position
+        self.ax_lens.patch.set_alpha(0)  # Transparent patch
+        self.ax_lens.view_init(elev=20, azim=45)  # Start with same view
+        
+        # Hide axes on lens subplot (only show geometry)
+        self.ax_lens.set_axis_off()
+        
+        # Keep reference to main axis for compatibility (use lens axis)
+        self.ax = self.ax_lens
         
         self.canvas = FigureCanvasTkAgg(self.figure, parent_frame)
         self.canvas_widget = self.canvas.get_tk_widget()
         self.canvas_widget.pack(fill='both', expand=True)
-        
-        # Connect to draw event to fix axis labels after rotation
-        self.canvas.mpl_connect('draw_event', self._fix_axis_labels)
         
         # Enable blitting for faster updates
         self.canvas.draw()
         self.background = self.canvas.copy_from_bbox(self.ax.bbox)
     
     def _fix_axis_labels(self, event):
-        """Fix axis labels to prevent rotation (keeps them readable)"""
-        if not hasattr(self.ax, 'zaxis'):
-            return  # Only for 3D axes
-        
-        # Force axis labels to stay in fixed, readable orientation
-        # This is called after each draw/rotation event
-        try:
-            # Keep labels horizontal and readable
-            for label in self.ax.get_xticklabels() + self.ax.get_yticklabels() + self.ax.get_zticklabels():
-                label.set_rotation(0)
-        except:
-            pass  # Silently handle any issues
+        """No longer needed - coordinate axes are separate and fixed"""
+        pass
     
     def reparent_canvas(self, new_parent_frame):
         """Move the canvas to a new parent frame"""
@@ -118,6 +123,54 @@ class LensVisualizer:
         self.ax.xaxis.line.set_color(self.COLORS_3D['text'])
         self.ax.yaxis.line.set_color(self.COLORS_3D['text'])
         self.ax.zaxis.line.set_color(self.COLORS_3D['text'])
+    
+    def _configure_coordinate_system(self, diameter, thickness):
+        """Configure the fixed coordinate system (ax_coords)"""
+        # Apply dark mode to coordinate axis
+        self.ax_coords.xaxis.pane.set_facecolor(self.COLORS_3D['pane'])
+        self.ax_coords.yaxis.pane.set_facecolor(self.COLORS_3D['pane'])
+        self.ax_coords.zaxis.pane.set_facecolor(self.COLORS_3D['pane'])
+        self.ax_coords.xaxis.pane.set_alpha(0.9)
+        self.ax_coords.yaxis.pane.set_alpha(0.9)
+        self.ax_coords.zaxis.pane.set_alpha(0.9)
+        
+        self.ax_coords.xaxis.pane.set_edgecolor(self.COLORS_3D['grid'])
+        self.ax_coords.yaxis.pane.set_edgecolor(self.COLORS_3D['grid'])
+        self.ax_coords.zaxis.pane.set_edgecolor(self.COLORS_3D['grid'])
+        
+        # Grid styling
+        self.ax_coords.xaxis._axinfo['grid']['color'] = self.COLORS_3D['grid']
+        self.ax_coords.yaxis._axinfo['grid']['color'] = self.COLORS_3D['grid']
+        self.ax_coords.zaxis._axinfo['grid']['color'] = self.COLORS_3D['grid']
+        self.ax_coords.xaxis._axinfo['grid']['linewidth'] = 0.5
+        self.ax_coords.yaxis._axinfo['grid']['linewidth'] = 0.5
+        self.ax_coords.zaxis._axinfo['grid']['linewidth'] = 0.5
+        
+        # Tick styling
+        self.ax_coords.tick_params(axis='x', colors=self.COLORS_3D['text'], labelsize=8)
+        self.ax_coords.tick_params(axis='y', colors=self.COLORS_3D['text'], labelsize=8)
+        self.ax_coords.tick_params(axis='z', colors=self.COLORS_3D['text'], labelsize=8)
+        
+        # Spine colors
+        self.ax_coords.xaxis.line.set_color(self.COLORS_3D['text'])
+        self.ax_coords.yaxis.line.set_color(self.COLORS_3D['text'])
+        self.ax_coords.zaxis.line.set_color(self.COLORS_3D['text'])
+        
+        # Set limits (same as lens will have)
+        max_dim = max(diameter, thickness) * 0.7
+        self.ax_coords.set_xlim([-max_dim, max_dim])
+        self.ax_coords.set_ylim([-max_dim, max_dim])
+        self.ax_coords.set_zlim([-max_dim/2, thickness + max_dim/2])
+        
+        # Reduce number of tick marks
+        self.ax_coords.locator_params(nbins=5)
+        
+        # Labels
+        self.ax_coords.set_xlabel('X (mm)', color=self.COLORS_3D['text'], fontsize=9)
+        self.ax_coords.set_ylabel('Y (mm)', color=self.COLORS_3D['text'], fontsize=9)
+        self.ax_coords.set_zlabel('Z (mm)', color=self.COLORS_3D['text'], fontsize=9)
+        self.ax_coords.set_title('Lens 3D Cross-Section', color=self.COLORS_3D['text'],
+                                 fontsize=11, pad=10)
         
     def calculate_surface_points(self, radius, diameter, is_front=True):
         """Calculate points for a spherical surface with optimized resolution"""
@@ -182,15 +235,43 @@ class LensVisualizer:
             )
             return
         
-        # Recreate 3D axis if needed (in case we switched from 2D)
-        if not hasattr(self.ax, 'zaxis'):
-            self.figure.clear()
-            self.ax = self.figure.add_subplot(111, projection='3d', 
-                                              facecolor=self.COLORS_3D['bg'],
-                                              computed_zorder=False)
+        # Recreate both axes if needed (in case we switched from 2D)
+        # Check if axes exist, have zaxis, AND are still in the figure
+        needs_recreate = (not hasattr(self, 'ax_lens') or not hasattr(self, 'ax_coords') or
+                          not hasattr(self.ax_lens, 'zaxis') or not hasattr(self.ax_coords, 'zaxis') or
+                          self.ax_lens not in self.figure.axes or self.ax_coords not in self.figure.axes)
         
-        self.ax.clear()
-        self.configure_dark_mode()  # Reapply dark mode after clear
+        if needs_recreate:
+            self.figure.clear()
+            
+            # Recreate fixed coordinate system (background)
+            self.ax_coords = self.figure.add_subplot(111, projection='3d',
+                                                      facecolor=self.COLORS_3D['bg'],
+                                                      computed_zorder=False)
+            self.ax_coords.view_init(elev=20, azim=45)
+            self.ax_coords.disable_mouse_rotation()
+            
+            # Recreate rotatable lens (foreground)
+            self.ax_lens = self.figure.add_subplot(111, projection='3d',
+                                                    facecolor='none',
+                                                    computed_zorder=False)
+            self.ax_lens.set_position(self.ax_coords.get_position())
+            self.ax_lens.patch.set_alpha(0)
+            self.ax_lens.view_init(elev=20, azim=45)
+            self.ax_lens.set_axis_off()
+            
+            # Update main axis reference
+            self.ax = self.ax_lens
+        else:
+            # Just clear both axes if they already exist
+            self.ax_coords.clear()
+            self.ax_lens.clear()
+        
+        # Configure coordinate system appearance
+        self._configure_coordinate_system(diameter, thickness)
+        
+        # Configure lens axis appearance
+        self.configure_dark_mode()  # Apply to lens axis (self.ax)
         
         # Adaptive resolution for edge based on diameter
         edge_res = max(20, min(30, int(40 - diameter / 10)))
@@ -300,29 +381,14 @@ class LensVisualizer:
                     color=self.COLORS_3D['axis'], linestyle='--', 
                     linewidth=2.5, alpha=0.9, label='Optical Axis')
         
-        # Set equal aspect ratio and optimized limits
+        # Set same limits as coordinate system for alignment
         max_dim = max(diameter, thickness) * 0.7
         self.ax.set_xlim([-max_dim, max_dim])
         self.ax.set_ylim([-max_dim, max_dim])
         self.ax.set_zlim([-max_dim/2, thickness + max_dim/2])
         
-        # Reduce number of tick marks for cleaner look
-        self.ax.locator_params(nbins=5)
-        
-        # Labels with dark mode colors and optimized font
-        self.ax.set_xlabel('X (mm)', color=self.COLORS_3D['text'], fontsize=9)
-        self.ax.set_ylabel('Y (mm)', color=self.COLORS_3D['text'], fontsize=9)
-        self.ax.set_zlabel('Z (mm)', color=self.COLORS_3D['text'], fontsize=9)
-        self.ax.set_title('Lens 3D Cross-Section', color=self.COLORS_3D['text'],
-                         fontsize=11, pad=10)
-        
-        # Add legend with dark mode and compact style
-        legend = self.ax.legend(['Optical Axis'], loc='upper right', 
-                               fontsize=8, framealpha=0.9)
-        legend.get_frame().set_facecolor(self.COLORS_3D['pane'])
-        legend.get_frame().set_edgecolor(self.COLORS_3D['grid'])
-        for text in legend.get_texts():
-            text.set_color(self.COLORS_3D['text'])
+        # NOTE: Labels and title are on ax_coords (coordinate system)
+        # ax_lens (self.ax) has set_axis_off(), so no labels here
         
         # Refresh canvas with optimization
         self.canvas.draw_idle()  # Use idle draw for better performance
