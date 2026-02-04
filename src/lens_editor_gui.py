@@ -914,10 +914,20 @@ Modified: {lens.modified_at}"""
                 from matplotlib.figure import Figure
                 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
                 
-                self.sim_figure = Figure(figsize=(10, 8), dpi=100, facecolor='#1e1e1e')
+                self.sim_figure = Figure(figsize=(12, 6), dpi=100, facecolor='#1e1e1e')
+                self.sim_figure.subplots_adjust(left=0.08, right=0.95, top=0.93, bottom=0.10)
                 self.sim_ax = self.sim_figure.add_subplot(111, facecolor='#1e1e1e')
-                self.sim_canvas = FigureCanvasTkAgg(self.sim_figure, sim_frame)
-                self.sim_canvas.get_tk_widget().pack(fill='both', expand=True)
+                
+                # Draw initial empty plot
+                self.sim_ax.set_xlim(-100, 150)
+                self.sim_ax.set_ylim(-30, 30)
+                self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
+                self.sim_ax.set_xlabel('Position (mm)', fontsize=10, color='#e0e0e0')
+                self.sim_ax.set_ylabel('Height (mm)', fontsize=10, color='#e0e0e0')
+                self.sim_ax.set_title('Ray Tracing Simulation\n(Select a lens and click "Run Simulation")', 
+                                     fontsize=12, color='#e0e0e0')
+                self.sim_ax.grid(True, alpha=0.2, color='#3f3f3f')
+                self.sim_ax.set_aspect('equal')
                 
                 # Style the 2D plot
                 self.sim_ax.tick_params(colors='#e0e0e0', labelsize=9)
@@ -926,21 +936,13 @@ Modified: {lens.modified_at}"""
                 self.sim_ax.spines['left'].set_color('#3f3f3f')
                 self.sim_ax.spines['right'].set_color('#3f3f3f')
                 
-                # Simulation info
-                info_text = """Ray Tracing Simulation
+                # Create canvas and pack it
+                self.sim_canvas = FigureCanvasTkAgg(self.sim_figure, sim_frame)
+                self.sim_canvas_widget = self.sim_canvas.get_tk_widget()
+                self.sim_canvas_widget.pack(fill='both', expand=True, padx=5, pady=5)
                 
-This tab will display:
-• Light ray paths through the lens
-• Focal point visualization
-• Aberration analysis
-• Optical path differences
-• Image formation
-
-Select a lens from the Editor tab to simulate."""
-                
-                self.sim_info_label = ttk.Label(sim_frame, text=info_text, 
-                                      justify=tk.CENTER, font=('Arial', 10))
-                self.sim_info_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+                # Draw the initial canvas
+                self.sim_canvas.draw()
                 
                 self.sim_visualizer = True  # Flag to indicate sim is available
                 
@@ -948,6 +950,8 @@ Select a lens from the Editor tab to simulate."""
                 ttk.Label(sim_frame, text=f"Simulation error: {e}", 
                          wraplength=400).pack(pady=20)
                 self.sim_visualizer = None
+                import traceback
+                traceback.print_exc()
         else:
             msg = "Simulation not available.\n\nInstall dependencies:\n  pip install matplotlib numpy"
             ttk.Label(sim_frame, text=msg, justify=tk.CENTER, 
@@ -1128,6 +1132,7 @@ Select a lens from the Editor tab to simulate."""
                 
                 # Refresh canvas
                 self.sim_canvas.draw()
+                self.sim_canvas.flush_events()
                 
                 # Update status
                 focal_str = f" Focal point at {focal_point[0]:.1f} mm" if focal_point else ""
@@ -1198,11 +1203,20 @@ Select a lens from the Editor tab to simulate."""
             if hasattr(self, 'sim_ax'):
                 self.sim_ax.clear()
                 self.sim_ax.set_facecolor('#1e1e1e')
+                
+                # Redraw empty plot with styling
+                self.sim_ax.set_xlim(-100, 150)
+                self.sim_ax.set_ylim(-30, 30)
+                self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
+                self.sim_ax.set_xlabel('Position (mm)', fontsize=10, color='#e0e0e0')
+                self.sim_ax.set_ylabel('Height (mm)', fontsize=10, color='#e0e0e0')
+                self.sim_ax.set_title('Ray Tracing Simulation\n(Select a lens and click "Run Simulation")', 
+                                     fontsize=12, color='#e0e0e0')
+                self.sim_ax.grid(True, alpha=0.2, color='#3f3f3f')
+                self.sim_ax.set_aspect('equal')
+                self.sim_ax.tick_params(colors='#e0e0e0', labelsize=9)
+                
                 self.sim_canvas.draw()
-            
-            # Show info label again
-            if hasattr(self, 'sim_info_label') and self.sim_info_label:
-                self.sim_info_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
         
         self.update_status("Simulation cleared")
     
