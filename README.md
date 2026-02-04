@@ -6,7 +6,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-41%20passing-brightgreen.svg)](TESTING.md)
+[![Tests](https://img.shields.io/badge/tests-41%20passing-brightgreen.svg)](docs/TESTING.md)
 
 [Features](#features) • [Installation](#installation) • [Usage](#usage) • [Documentation](#documentation) • [Testing](#testing)
 
@@ -453,7 +453,7 @@ python3 test_lens_editor.py
 python3 test_gui.py
 ```
 
-For detailed testing documentation, see [TESTING.md](TESTING.md).
+For detailed testing documentation, see [TESTING.md](docs/TESTING.md).
 
 ---
 
@@ -514,7 +514,9 @@ openLens/
 ├── lenses.json              # Data storage (auto-created)
 ├── verify_setup.py          # Setup verification script
 ├── README.md                # This file
-└── TESTING.md               # Testing documentation
+├── docs/                    # Documentation
+│   ├── PROJECT_SUMMARY.md   # Project overview
+│   └── TESTING.md           # Testing documentation
 ```
 
 ---
@@ -622,7 +624,7 @@ This project is open source and available under the MIT License.
 
 For questions, issues, or suggestions:
 - Create an issue in the repository
-- Check [TESTING.md](TESTING.md) for testing details
+- Check [TESTING.md](docs/TESTING.md) for testing details
 - Review the code comments for implementation details
 
 ---
