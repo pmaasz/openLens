@@ -1021,6 +1021,11 @@ Modified: {lens.modified_at}"""
     
     def run_simulation(self):
         """Run ray tracing simulation for the current lens"""
+        print(f"DEBUG: run_simulation called")
+        print(f"DEBUG: current_lens = {self.current_lens}")
+        print(f"DEBUG: RAY_TRACING_AVAILABLE = {RAY_TRACING_AVAILABLE}")
+        print(f"DEBUG: VISUALIZATION_AVAILABLE = {VISUALIZATION_AVAILABLE}")
+        
         if not self.current_lens:
             self.update_status("Please select or create a lens first")
             return
@@ -1032,6 +1037,8 @@ Modified: {lens.modified_at}"""
         if not VISUALIZATION_AVAILABLE:
             self.update_status("Visualization (matplotlib) required for ray tracing display")
             return
+        
+        print(f"DEBUG: Starting ray tracing...")
         
         try:
             # Get simulation parameters
@@ -1054,10 +1061,13 @@ Modified: {lens.modified_at}"""
             # Trace rays based on angle
             if abs(ray_angle) < 0.1:
                 # Parallel rays (collimated beam)
+                print(f"DEBUG: Tracing {num_rays} parallel rays...")
                 rays = tracer.trace_parallel_rays(num_rays=num_rays)
                 focal_point = tracer.find_focal_point(rays)
+                print(f"DEBUG: Traced {len(rays)} rays, focal_point = {focal_point}")
             else:
                 # Point source rays
+                print(f"DEBUG: Tracing {num_rays} point source rays at angle {ray_angle}...")
                 source_x = -100.0  # 100mm before lens
                 source_y = 0
                 rays = tracer.trace_point_source_rays(
@@ -1066,19 +1076,26 @@ Modified: {lens.modified_at}"""
                     max_angle=abs(ray_angle)
                 )
                 focal_point = None
+                print(f"DEBUG: Traced {len(rays)} rays")
             
             # Visualize in simulation view
+            print(f"DEBUG: Checking sim_visualizer: {hasattr(self, 'sim_visualizer')}")
             if hasattr(self, 'sim_visualizer') and self.sim_visualizer:
+                print(f"DEBUG: Starting visualization...")
+                print(f"DEBUG: Has sim_ax: {hasattr(self, 'sim_ax')}")
+                print(f"DEBUG: Has sim_canvas: {hasattr(self, 'sim_canvas')}")
                 # Hide info label
                 if hasattr(self, 'sim_info_label') and self.sim_info_label:
                     self.sim_info_label.place_forget()
                 
                 # Clear previous plot
+                print(f"DEBUG: Clearing plot...")
                 self.sim_ax.clear()
                 self.sim_ax.set_facecolor('#1e1e1e')
                 
                 # Get lens outline
                 lens_outline = tracer.get_lens_outline()
+                print(f"DEBUG: Got lens outline with {len(lens_outline) if lens_outline else 0} points")
                 
                 # Draw lens
                 if lens_outline:
@@ -1131,8 +1148,10 @@ Modified: {lens.modified_at}"""
                 self.sim_ax.tick_params(colors='#e0e0e0', labelsize=9)
                 
                 # Refresh canvas
+                print(f"DEBUG: Drawing canvas...")
                 self.sim_canvas.draw()
                 self.sim_canvas.flush_events()
+                print(f"DEBUG: Canvas drawn!")
                 
                 # Update status
                 focal_str = f" Focal point at {focal_point[0]:.1f} mm" if focal_point else ""
