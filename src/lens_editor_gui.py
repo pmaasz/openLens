@@ -908,10 +908,11 @@ Modified: {lens.modified_at}"""
         print(f"DEBUG: Created title label: {title_label}")
         
         # Simulation canvas area
-        sim_frame = ttk.LabelFrame(content_frame, text="Ray Tracing Simulation", padding="10")
+        sim_frame = ttk.LabelFrame(content_frame, text="Ray Tracing Simulation", padding="10", height=450)
         sim_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=10)
         sim_frame.columnconfigure(0, weight=1)
         sim_frame.rowconfigure(0, weight=1)
+        sim_frame.grid_propagate(False)  # Prevent frame from shrinking to fit contents
         print(f"DEBUG: Created sim_frame: {sim_frame}")
         
         # Placeholder for simulation visualization
@@ -944,19 +945,15 @@ Modified: {lens.modified_at}"""
                 self.sim_ax.spines['left'].set_color('#3f3f3f')
                 self.sim_ax.spines['right'].set_color('#3f3f3f')
                 
-                # Create canvas and grid it instead of pack
+                # Create canvas and pack it instead of grid
                 print("DEBUG: Creating canvas widget...")
                 self.sim_canvas = FigureCanvasTkAgg(self.sim_figure, sim_frame)
                 self.sim_canvas_widget = self.sim_canvas.get_tk_widget()
                 
-                # Configure minimum size
-                self.sim_canvas_widget.config(width=800, height=400)
-                
-                # Use grid with proper sticky
-                self.sim_canvas_widget.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
+                # Use pack to fill the entire frame
+                self.sim_canvas_widget.pack(fill='both', expand=True)
                 
                 print(f"DEBUG: Canvas widget configured: {self.sim_canvas_widget}")
-                print(f"DEBUG: Canvas widget size: {self.sim_canvas_widget.winfo_reqwidth()}x{self.sim_canvas_widget.winfo_reqheight()}")
                 
                 # Draw the initial canvas
                 print("DEBUG: Drawing canvas...")
@@ -1003,7 +1000,7 @@ Modified: {lens.modified_at}"""
         # Aberrations Analysis section
         if ABERRATIONS_AVAILABLE:
             aberr_frame = ttk.LabelFrame(content_frame, text="Aberrations Analysis", padding="10")
-            aberr_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=10)
+            aberr_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=10)  # Removed N, S sticky
             aberr_frame.columnconfigure(0, weight=1)
             aberr_frame.rowconfigure(1, weight=1)
             
@@ -1021,7 +1018,7 @@ Modified: {lens.modified_at}"""
             aberr_scroll = ttk.Scrollbar(aberr_frame)
             aberr_scroll.grid(row=1, column=1, sticky=(tk.N, tk.S))
             
-            self.aberrations_text = tk.Text(aberr_frame, height=20, width=80, 
+            self.aberrations_text = tk.Text(aberr_frame, height=10, width=80, 
                                            wrap=tk.NONE,
                                            bg=self.COLORS['entry_bg'],
                                            fg=self.COLORS['fg'],
