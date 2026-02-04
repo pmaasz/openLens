@@ -235,9 +235,9 @@ class LensVisualizer:
             h_edge = diameter / 2
             if h_edge < r1_abs:
                 sag_front = r1_abs - math.sqrt(r1_abs**2 - h_edge**2)
-                if r1 > 0:  # Convex
+                if r1 > 0:  # Convex front
                     z_front_edge = -sag_front
-                else:  # Concave
+                else:  # Concave front
                     z_front_edge = sag_front
             else:
                 z_front_edge = 0  # Flat at edge
@@ -250,10 +250,12 @@ class LensVisualizer:
             h_edge = diameter / 2
             if h_edge < r2_abs:
                 sag_back = r2_abs - math.sqrt(r2_abs**2 - h_edge**2)
-                if r2 > 0:  # Convex
-                    z_back_edge = thickness - sag_back
-                else:  # Concave
+                # Note: R2 sign convention is opposite for back surface
+                # R2 > 0 means concave from back, R2 < 0 means convex from back
+                if r2 > 0:  # Concave from back (convex from front)
                     z_back_edge = thickness + sag_back
+                else:  # Convex from back (concave from front)
+                    z_back_edge = thickness - sag_back
             else:
                 z_back_edge = thickness  # Flat at edge
         else:
