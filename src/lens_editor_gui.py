@@ -887,25 +887,43 @@ Modified: {lens.modified_at}"""
     
     def setup_simulation_tab(self):
         """Setup the Simulation tab for ray tracing and optical analysis"""
+        print("="*70)
+        print("DEBUG: setup_simulation_tab() called")
+        print("="*70)
+        
         # Configure simulation tab grid
         self.simulation_tab.columnconfigure(0, weight=1)
         self.simulation_tab.rowconfigure(0, weight=1)
         
         # Main content frame
-        content_frame = ttk.Frame(self.simulation_tab, padding="10")
+        content_frame = ttk.Frame(self.simulation_tab, padding="10", style='Debug.TFrame')
         content_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         content_frame.columnconfigure(0, weight=1)
         content_frame.rowconfigure(1, weight=1)
         
         # Title
-        ttk.Label(content_frame, text="Optical Simulation", 
-                 font=('Arial', 14, 'bold')).grid(row=0, column=0, pady=10)
+        title_label = ttk.Label(content_frame, text="Optical Simulation", 
+                 font=('Arial', 14, 'bold'))
+        title_label.grid(row=0, column=0, pady=10)
+        print(f"DEBUG: Created title label: {title_label}")
         
         # Simulation canvas area
         sim_frame = ttk.LabelFrame(content_frame, text="Ray Tracing Simulation", padding="10")
         sim_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=10)
         sim_frame.columnconfigure(0, weight=1)
         sim_frame.rowconfigure(0, weight=1)
+        print(f"DEBUG: Created sim_frame: {sim_frame}")
+        
+        # BIG VISIBLE TEST LABEL
+        test_label = ttk.Label(sim_frame, text=">>> IF YOU SEE THIS, THE FRAME EXISTS <<<", 
+                              font=('Arial', 16, 'bold'), foreground='red')
+        test_label.grid(row=0, column=0, pady=20)
+        print(f"DEBUG: Created test label: {test_label}")
+        
+        # DEBUG: Add a test label to confirm frame is accessible
+        ttk.Label(sim_frame, text=f"DEBUG: VISUALIZATION_AVAILABLE={VISUALIZATION_AVAILABLE}", 
+                 foreground='yellow').grid(row=1, column=0, pady=2)
+        print(f"DEBUG: VISUALIZATION_AVAILABLE = {VISUALIZATION_AVAILABLE}")
         
         # Placeholder for simulation visualization
         if VISUALIZATION_AVAILABLE:
@@ -914,6 +932,7 @@ Modified: {lens.modified_at}"""
                 from matplotlib.figure import Figure
                 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
                 
+                print("DEBUG: Creating matplotlib figure...")
                 self.sim_figure = Figure(figsize=(12, 6), dpi=100, facecolor='#1e1e1e')
                 self.sim_figure.subplots_adjust(left=0.08, right=0.95, top=0.93, bottom=0.10)
                 self.sim_ax = self.sim_figure.add_subplot(111, facecolor='#1e1e1e')
@@ -936,17 +955,22 @@ Modified: {lens.modified_at}"""
                 self.sim_ax.spines['left'].set_color('#3f3f3f')
                 self.sim_ax.spines['right'].set_color('#3f3f3f')
                 
-                # Create canvas and pack it
+                # Create canvas and grid it instead of pack
+                print("DEBUG: Creating canvas widget...")
                 self.sim_canvas = FigureCanvasTkAgg(self.sim_figure, sim_frame)
                 self.sim_canvas_widget = self.sim_canvas.get_tk_widget()
-                self.sim_canvas_widget.pack(fill='both', expand=True, padx=5, pady=5)
+                # Use grid instead of pack for better control
+                self.sim_canvas_widget.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
                 
                 # Draw the initial canvas
+                print("DEBUG: Drawing canvas...")
                 self.sim_canvas.draw()
+                print("DEBUG: Canvas created successfully!")
                 
                 self.sim_visualizer = True  # Flag to indicate sim is available
                 
             except Exception as e:
+                print(f"ERROR creating simulation canvas: {e}")
                 ttk.Label(sim_frame, text=f"Simulation error: {e}", 
                          wraplength=400).pack(pady=20)
                 self.sim_visualizer = None
@@ -1241,27 +1265,10 @@ Modified: {lens.modified_at}"""
     
     def update_simulation_view(self):
         """Update the simulation tab with the current lens visualization"""
-        if not hasattr(self, 'sim_visualizer') or not self.sim_visualizer:
-            return
-        
-        if not self.current_lens:
-            return
-        
-        try:
-            # Hide the info label when rendering
-            if hasattr(self, 'sim_info_label') and self.sim_info_label:
-                self.sim_info_label.place_forget()
-            
-            # Draw the lens in the simulation view
-            r1 = self.current_lens.radius_of_curvature_1
-            r2 = self.current_lens.radius_of_curvature_2
-            thickness = self.current_lens.thickness
-            diameter = self.current_lens.diameter
-            
-            self.sim_visualizer.draw_lens(r1, r2, thickness, diameter)
-            self.update_status(f"Simulation updated for '{self.current_lens.name}'")
-        except Exception as e:
-            self.update_status(f"Error updating simulation: {e}")
+        # NOTE: This function is deprecated - we now use run_simulation() instead
+        # The simulation tab uses 2D matplotlib canvas, not 3D LensVisualizer
+        # Just return silently to avoid errors
+        return
     
     def refresh_lens_list(self):
         """Refresh the selection list only"""
