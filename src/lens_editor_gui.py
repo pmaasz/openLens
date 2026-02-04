@@ -914,17 +914,6 @@ Modified: {lens.modified_at}"""
         sim_frame.rowconfigure(0, weight=1)
         print(f"DEBUG: Created sim_frame: {sim_frame}")
         
-        # BIG VISIBLE TEST LABEL
-        test_label = ttk.Label(sim_frame, text=">>> IF YOU SEE THIS, THE FRAME EXISTS <<<", 
-                              font=('Arial', 16, 'bold'), foreground='red')
-        test_label.grid(row=0, column=0, pady=20)
-        print(f"DEBUG: Created test label: {test_label}")
-        
-        # DEBUG: Add a test label to confirm frame is accessible
-        ttk.Label(sim_frame, text=f"DEBUG: VISUALIZATION_AVAILABLE={VISUALIZATION_AVAILABLE}", 
-                 foreground='yellow').grid(row=1, column=0, pady=2)
-        print(f"DEBUG: VISUALIZATION_AVAILABLE = {VISUALIZATION_AVAILABLE}")
-        
         # Placeholder for simulation visualization
         if VISUALIZATION_AVAILABLE:
             try:
@@ -959,13 +948,20 @@ Modified: {lens.modified_at}"""
                 print("DEBUG: Creating canvas widget...")
                 self.sim_canvas = FigureCanvasTkAgg(self.sim_figure, sim_frame)
                 self.sim_canvas_widget = self.sim_canvas.get_tk_widget()
-                # Use grid instead of pack for better control
+                
+                # Configure minimum size
+                self.sim_canvas_widget.config(width=800, height=400)
+                
+                # Use grid with proper sticky
                 self.sim_canvas_widget.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
+                
+                print(f"DEBUG: Canvas widget configured: {self.sim_canvas_widget}")
+                print(f"DEBUG: Canvas widget size: {self.sim_canvas_widget.winfo_reqwidth()}x{self.sim_canvas_widget.winfo_reqheight()}")
                 
                 # Draw the initial canvas
                 print("DEBUG: Drawing canvas...")
                 self.sim_canvas.draw()
-                print("DEBUG: Canvas created successfully!")
+                print("DEBUG: Canvas drawn successfully!")
                 
                 self.sim_visualizer = True  # Flag to indicate sim is available
                 
