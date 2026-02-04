@@ -37,6 +37,10 @@ class LensVisualizer:
         self.ax = self.figure.add_subplot(111, projection='3d', 
                                           facecolor=self.COLORS_3D['bg'],
                                           computed_zorder=False)
+        
+        # Disable mouse rotation - keep coordinate system fixed
+        self.ax.disable_mouse_rotation()
+        
         self.canvas = FigureCanvasTkAgg(self.figure, parent_frame)
         self.canvas_widget = self.canvas.get_tk_widget()
         self.canvas_widget.pack(fill='both', expand=True)
@@ -167,6 +171,8 @@ class LensVisualizer:
             self.ax = self.figure.add_subplot(111, projection='3d', 
                                               facecolor=self.COLORS_3D['bg'],
                                               computed_zorder=False)
+            # Disable mouse rotation for recreated axis
+            self.ax.disable_mouse_rotation()
         
         self.ax.clear()
         self.configure_dark_mode()  # Reapply dark mode after clear
