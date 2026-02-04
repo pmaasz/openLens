@@ -38,16 +38,33 @@ class LensVisualizer:
                                           facecolor=self.COLORS_3D['bg'],
                                           computed_zorder=False)
         
-        # Disable mouse rotation - keep coordinate system fixed
-        self.ax.disable_mouse_rotation()
+        # Keep rotation enabled for lens, but fix axis labels
+        # Axis labels will be redrawn in fixed positions after rotation
         
         self.canvas = FigureCanvasTkAgg(self.figure, parent_frame)
         self.canvas_widget = self.canvas.get_tk_widget()
         self.canvas_widget.pack(fill='both', expand=True)
         
+        # Connect to draw event to fix axis labels after rotation
+        self.canvas.mpl_connect('draw_event', self._fix_axis_labels)
+        
         # Enable blitting for faster updates
         self.canvas.draw()
         self.background = self.canvas.copy_from_bbox(self.ax.bbox)
+    
+    def _fix_axis_labels(self, event):
+        """Fix axis labels to prevent rotation (keeps them readable)"""
+        if not hasattr(self.ax, 'zaxis'):
+            return  # Only for 3D axes
+        
+        # Force axis labels to stay in fixed, readable orientation
+        # This is called after each draw/rotation event
+        try:
+            # Keep labels horizontal and readable
+            for label in self.ax.get_xticklabels() + self.ax.get_yticklabels() + self.ax.get_zticklabels():
+                label.set_rotation(0)
+        except:
+            pass  # Silently handle any issues
     
     def reparent_canvas(self, new_parent_frame):
         """Move the canvas to a new parent frame"""
@@ -171,8 +188,6 @@ class LensVisualizer:
             self.ax = self.figure.add_subplot(111, projection='3d', 
                                               facecolor=self.COLORS_3D['bg'],
                                               computed_zorder=False)
-            # Disable mouse rotation for recreated axis
-            self.ax.disable_mouse_rotation()
         
         self.ax.clear()
         self.configure_dark_mode()  # Reapply dark mode after clear
