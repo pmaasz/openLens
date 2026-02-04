@@ -98,8 +98,8 @@ class STLExporter:
         
         return triangles
     
-    def generate_edge_triangles(self, diameter, thickness, num_segments=60):
-        """Generate triangles for the cylindrical edge"""
+    def generate_edge_triangles(self, diameter, z_front, z_back, num_segments=60):
+        """Generate triangles for the cylindrical edge with correct z coordinates"""
         triangles = []
         radius = diameter / 2
         angle_step = 2 * math.pi / num_segments
@@ -111,11 +111,11 @@ class STLExporter:
             cos1, sin1 = math.cos(angle1), math.sin(angle1)
             cos2, sin2 = math.cos(angle2), math.sin(angle2)
             
-            # Four corners of the quad
-            p1 = (radius * cos1, radius * sin1, 0)
-            p2 = (radius * cos2, radius * sin2, 0)
-            p3 = (radius * cos2, radius * sin2, thickness)
-            p4 = (radius * cos1, radius * sin1, thickness)
+            # Four corners of the quad with correct z coordinates
+            p1 = (radius * cos1, radius * sin1, z_front)
+            p2 = (radius * cos2, radius * sin2, z_front)
+            p3 = (radius * cos2, radius * sin2, z_back)
+            p4 = (radius * cos1, radius * sin1, z_back)
             
             # Split into two triangles
             triangles.append((p1, p2, p3))
@@ -143,6 +143,38 @@ class STLExporter:
         """Export a lens to STL format"""
         self.triangles = []
         
+        # Calculate edge z-coordinates at the diameter (same logic as visualizer)
+        # For front surface (R1)
+        if abs(r1) < 10000:
+            r1_abs = abs(r1)
+            h_edge = diameter / 2
+            if h_edge < r1_abs:
+                sag_front = r1_abs - math.sqrt(r1_abs**2 - h_edge**2)
+                if r1 > 0:  # Convex front
+                    z_front_edge = -sag_front
+                else:  # Concave front
+                    z_front_edge = sag_front
+            else:
+                z_front_edge = 0  # Flat at edge
+        else:
+            z_front_edge = 0  # Flat surface
+        
+        # For back surface (R2)
+        if abs(r2) < 10000:
+            r2_abs = abs(r2)
+            h_edge = diameter / 2
+            if h_edge < r2_abs:
+                sag_back = r2_abs - math.sqrt(r2_abs**2 - h_edge**2)
+                # Note: R2 sign convention is opposite for back surface
+                if r2 > 0:  # Concave from back
+                    z_back_edge = thickness + sag_back
+                else:  # Convex from back
+                    z_back_edge = thickness - sag_back
+            else:
+                z_back_edge = thickness  # Flat at edge
+        else:
+            z_back_edge = thickness  # Flat surface
+        
         # Generate front surface (R1)
         if abs(r1) < 10000:
             profile1 = self.calculate_surface_profile(r1, diameter, is_front=True, resolution=resolution)
@@ -151,7 +183,7 @@ class STLExporter:
                 self.triangles.extend(front_triangles)
         else:
             # Flat front surface
-            front_triangles = self.generate_flat_surface(diameter, 0)
+            front_triangles = self.generate_flat_surface(diameter, z_front_edge)
             self.triangles.extend(front_triangles)
         
         # Generate back surface (R2)
@@ -162,11 +194,11 @@ class STLExporter:
                 self.triangles.extend(back_triangles)
         else:
             # Flat back surface
-            back_triangles = self.generate_flat_surface(diameter, thickness)
+            back_triangles = self.generate_flat_surface(diameter, z_back_edge)
             self.triangles.extend(back_triangles)
         
-        # Generate edge
-        edge_triangles = self.generate_edge_triangles(diameter, thickness)
+        # Generate edge with correct z coordinates
+        edge_triangles = self.generate_edge_triangles(diameter, z_front_edge, z_back_edge)
         self.triangles.extend(edge_triangles)
         
         # Write to STL file
