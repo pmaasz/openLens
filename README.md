@@ -157,10 +157,10 @@ The script will:
 5. **Run the application:**
    ```bash
    # GUI version (recommended)
-   python3 lens_editor_gui.py
+   python3 openlens.py
    
    # OR CLI version
-   python3 lens_editor.py
+   python3 -m src.lens_editor
    ```
 
 6. **When done, deactivate virtual environment (if used):**
@@ -177,7 +177,7 @@ The script will:
 Launch the graphical interface:
 
 ```bash
-python3 lens_editor_gui.py
+python3 openlens.py
 ```
 
 **Interface Overview:**
@@ -224,7 +224,7 @@ python3 lens_editor_gui.py
 Launch the terminal interface:
 
 ```bash
-python3 lens_editor.py
+python3 -m src.lens_editor
 ```
 
 **Menu Options:**
@@ -240,7 +240,7 @@ python3 lens_editor.py
 
 **Example Session:**
 ```bash
-$ python3 lens_editor.py
+$ python3 -m src.lens_editor
 
 ==================================================
    openlens - Optical Lens Creation Tool
@@ -498,16 +498,21 @@ For detailed testing documentation, see [TESTING.md](TESTING.md).
 
 ```
 openLens/
-├── lens_editor.py           # CLI application
-├── lens_editor_gui.py       # GUI application
-├── lens_visualizer.py       # 3D visualization
+├── openlens.py              # Main entry point
+├── src/                     # Source code directory
+│   ├── __init__.py
+│   ├── lens_editor.py       # CLI application
+│   ├── lens_editor_gui.py   # GUI application
+│   ├── lens_visualizer.py   # 3D visualization
+│   └── stl_export.py        # STL export functionality
 ├── tests/                   # Test directory
 │   ├── __init__.py
-│   ├── run_all_tests.py    # Test runner
-│   ├── test_lens_editor.py # Core tests
-│   ├── test_gui.py         # GUI tests
+│   ├── run_all_tests.py     # Test runner
+│   ├── test_lens_editor.py  # Core tests
+│   ├── test_gui.py          # GUI tests
 │   └── test_visualization.py # Visualization tests
 ├── lenses.json              # Data storage (auto-created)
+├── verify_setup.py          # Setup verification script
 ├── README.md                # This file
 └── TESTING.md               # Testing documentation
 ```
@@ -528,12 +533,12 @@ This occurs when running on a headless server or via SSH without X11 forwarding.
 - **For remote headless servers**: Use a virtual display:
   ```bash
   sudo apt-get install xvfb
-  xvfb-run python3 lens_editor_gui.py
+  xvfb-run python3 openlens.py
   ```
 - **WSL users**: Install an X server like VcXsrv or X410, then:
   ```bash
   export DISPLAY=:0
-  python3 lens_editor_gui.py
+  python3 openlens.py
   ```
 
 ### Issue: tkinter not found

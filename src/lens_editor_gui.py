@@ -12,20 +12,28 @@ from datetime import datetime
 
 # Try to import visualization (optional dependency)
 try:
-    from lens_visualizer import LensVisualizer
+    from .lens_visualizer import LensVisualizer
     VISUALIZATION_AVAILABLE = True
 except ImportError:
-    VISUALIZATION_AVAILABLE = False
-    print("Note: matplotlib not available. 3D visualization disabled.")
-    print("Install with: pip install matplotlib numpy")
+    try:
+        from lens_visualizer import LensVisualizer
+        VISUALIZATION_AVAILABLE = True
+    except ImportError:
+        VISUALIZATION_AVAILABLE = False
+        print("Note: matplotlib not available. 3D visualization disabled.")
+        print("Install with: pip install matplotlib numpy")
 
 # Try to import STL export (optional dependency)
 try:
-    from stl_export import export_lens_stl
+    from .stl_export import export_lens_stl
     STL_EXPORT_AVAILABLE = True
 except ImportError:
-    STL_EXPORT_AVAILABLE = False
-    print("Note: STL export not available. NumPy required.")
+    try:
+        from stl_export import export_lens_stl
+        STL_EXPORT_AVAILABLE = True
+    except ImportError:
+        STL_EXPORT_AVAILABLE = False
+        print("Note: STL export not available. NumPy required.")
 
 
 class ToolTip:
