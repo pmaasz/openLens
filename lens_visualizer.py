@@ -38,81 +38,33 @@ class LensVisualizer:
                                           facecolor=self.COLORS_3D['bg'],
                                           computed_zorder=False)
         
-        # Disable default mouse rotation
-        self.ax.disable_mouse_rotation()
-        
-        # Track lens rotation state
-        self.lens_elevation = 20  # Default elevation
-        self.lens_azimuth = 45    # Default azimuth
-        
-        # Store lens geometry for rotation
-        self.lens_artists = []  # Store all lens surface artists
+        # Keep rotation enabled for lens, but fix axis labels
+        # Axis labels will be redrawn in fixed positions after rotation
         
         self.canvas = FigureCanvasTkAgg(self.figure, parent_frame)
         self.canvas_widget = self.canvas.get_tk_widget()
         self.canvas_widget.pack(fill='both', expand=True)
         
-        # Connect custom mouse events for lens-only rotation
-        self.canvas.mpl_connect('button_press_event', self._on_mouse_press)
-        self.canvas.mpl_connect('motion_notify_event', self._on_mouse_motion)
-        self.canvas.mpl_connect('button_release_event', self._on_mouse_release)
-        
-        # Mouse tracking
-        self._mouse_down = False
-        self._last_mouse_x = None
-        self._last_mouse_y = None
+        # Connect to draw event to fix axis labels after rotation
+        self.canvas.mpl_connect('draw_event', self._fix_axis_labels)
         
         # Enable blitting for faster updates
         self.canvas.draw()
         self.background = self.canvas.copy_from_bbox(self.ax.bbox)
     
-    def _on_mouse_press(self, event):
-        """Handle mouse button press for lens rotation"""
-        if event.inaxes == self.ax and event.button == 1:  # Left button
-            self._mouse_down = True
-            self._last_mouse_x = event.x
-            self._last_mouse_y = event.y
-    
-    def _on_mouse_motion(self, event):
-        """Handle mouse motion for lens rotation"""
-        if self._mouse_down and event.inaxes == self.ax and self._last_mouse_x is not None:
-            # Calculate rotation delta
-            dx = event.x - self._last_mouse_x
-            dy = event.y - self._last_mouse_y
-            
-            # Update lens rotation angles (not axis view)
-            self.lens_azimuth += dx * 0.5
-            self.lens_elevation -= dy * 0.5
-            
-            # Clamp elevation to prevent flipping
-            self.lens_elevation = max(-90, min(90, self.lens_elevation))
-            
-            # Update last position
-            self._last_mouse_x = event.x
-            self._last_mouse_y = event.y
-            
-            # Redraw lens with new rotation
-            self._rotate_lens()
-    
-    def _on_mouse_release(self, event):
-        """Handle mouse button release"""
-        if event.button == 1:  # Left button
-            self._mouse_down = False
-            self._last_mouse_x = None
-            self._last_mouse_y = None
-    
-    def _rotate_lens(self):
-        """Rotate lens geometry without affecting axes"""
-        if not hasattr(self, 'lens_params'):
-            return
-        
-        # Redraw lens with current rotation
-        r1, r2, thickness, diameter = self.lens_params
-        self._draw_lens_geometry(r1, r2, thickness, diameter)
-    
     def _fix_axis_labels(self, event):
-        """No longer needed - axes don't rotate"""
-        pass
+        """Fix axis labels to prevent rotation (keeps them readable)"""
+        if not hasattr(self.ax, 'zaxis'):
+            return  # Only for 3D axes
+        
+        # Force axis labels to stay in fixed, readable orientation
+        # This is called after each draw/rotation event
+        try:
+            # Keep labels horizontal and readable
+            for label in self.ax.get_xticklabels() + self.ax.get_yticklabels() + self.ax.get_zticklabels():
+                label.set_rotation(0)
+        except:
+            pass  # Silently handle any issues
     
     def reparent_canvas(self, new_parent_frame):
         """Move the canvas to a new parent frame"""
@@ -230,86 +182,24 @@ class LensVisualizer:
             )
             return
         
-        # Store lens parameters for rotation
-        self.lens_params = (r1, r2, thickness, diameter)
-        
-        # Reset rotation to default
-        self.lens_elevation = 20
-        self.lens_azimuth = 45
-        
-        # Draw the lens geometry
-        self._draw_lens_geometry(r1, r2, thickness, diameter)
-    
-    def _draw_lens_geometry(self, r1, r2, thickness, diameter):
-        """Internal method to draw lens geometry with current rotation"""
         # Recreate 3D axis if needed (in case we switched from 2D)
         if not hasattr(self.ax, 'zaxis'):
             self.figure.clear()
             self.ax = self.figure.add_subplot(111, projection='3d', 
                                               facecolor=self.COLORS_3D['bg'],
                                               computed_zorder=False)
-            # Disable default mouse rotation for axes
-            self.ax.disable_mouse_rotation()
         
         self.ax.clear()
         self.configure_dark_mode()  # Reapply dark mode after clear
         
-        # IMPORTANT: Keep axes at fixed view (20, 45)
-        # But rotate the LENS GEOMETRY by adjusting our drawing
-        # We keep view_init fixed, but rotate the geometry data
-        self.ax.view_init(elev=20, azim=45)  # Fixed camera view
-        
-        # Calculate rotation matrices for lens geometry
-        # Rotation relative to default view
-        angle_az = np.radians(self.lens_azimuth - 45)
-        angle_el = np.radians(self.lens_elevation - 20)
-        
-        # Rotation matrix around Z axis (azimuth)
-        cos_az, sin_az = np.cos(angle_az), np.sin(angle_az)
-        rot_z = np.array([[cos_az, -sin_az, 0],
-                          [sin_az, cos_az, 0],
-                          [0, 0, 1]])
-        
-        # Rotation matrix around Y axis (elevation)  
-        cos_el, sin_el = np.cos(angle_el), np.sin(angle_el)
-        rot_y = np.array([[cos_el, 0, sin_el],
-                          [0, 1, 0],
-                          [-sin_el, 0, cos_el]])
-        
-        # Combined rotation matrix
-        self.rotation_matrix = rot_z @ rot_y
-        
         # Adaptive resolution for edge based on diameter
         edge_res = max(20, min(30, int(40 - diameter / 10)))
-    
-    def _rotate_geometry(self, x, y, z):
-        """Apply rotation matrix to geometry coordinates"""
-        if not hasattr(self, 'rotation_matrix'):
-            return x, y, z
-        
-        # Reshape for matrix multiplication
-        original_shape = x.shape
-        points = np.stack([x.ravel(), y.ravel(), z.ravel()])
-        
-        # Apply rotation
-        rotated = self.rotation_matrix @ points
-        
-        # Reshape back
-        x_rot = rotated[0].reshape(original_shape)
-        y_rot = rotated[1].reshape(original_shape)
-        z_rot = rotated[2].reshape(original_shape)
-        
-        return x_rot, y_rot, z_rot
         
         # Draw front surface (R1) with improved rendering
         if abs(r1) < 10000:
             points = self.calculate_surface_points(r1, diameter, is_front=True)
             if points:
                 x1, y1, z1, mask1 = points
-                
-                # Apply rotation to geometry
-                x1, y1, z1 = self._rotate_geometry(x1, y1, z1)
-                
                 # Apply mask
                 x1_masked = np.where(mask1, x1, np.nan)
                 y1_masked = np.where(mask1, y1, np.nan)
@@ -327,10 +217,6 @@ class LensVisualizer:
             x1 = np.outer(v, np.cos(u))
             y1 = np.outer(v, np.sin(u))
             z1 = np.zeros_like(x1)
-            
-            # Apply rotation to geometry
-            x1, y1, z1 = self._rotate_geometry(x1, y1, z1)
-            
             self.ax.plot_surface(x1, y1, z1, alpha=0.8, color=self.COLORS_3D['surface_front'],
                                edgecolor=self.COLORS_3D['text'], linewidth=0.15,
                                antialiased=True, shade=True)
@@ -341,9 +227,6 @@ class LensVisualizer:
             if points:
                 x2, y2, z2, mask2 = points
                 z2 = z2 + thickness  # Offset by lens thickness
-                
-                # Apply rotation to geometry
-                x2, y2, z2 = self._rotate_geometry(x2, y2, z2)
                 
                 # Apply mask
                 x2_masked = np.where(mask2, x2, np.nan)
@@ -362,10 +245,6 @@ class LensVisualizer:
             x2 = np.outer(v, np.cos(u))
             y2 = np.outer(v, np.sin(u))
             z2 = np.ones_like(x2) * thickness
-            
-            # Apply rotation to geometry
-            x2, y2, z2 = self._rotate_geometry(x2, y2, z2)
-            
             self.ax.plot_surface(x2, y2, z2, alpha=0.8, color=self.COLORS_3D['surface_back'],
                                edgecolor=self.COLORS_3D['text'], linewidth=0.15,
                                antialiased=True, shade=True)
@@ -410,9 +289,6 @@ class LensVisualizer:
         x_edge = (diameter / 2) * np.cos(theta_grid)
         y_edge = (diameter / 2) * np.sin(theta_grid)
         
-        # Apply rotation to geometry
-        x_edge, y_edge, z_grid = self._rotate_geometry(x_edge, y_edge, z_grid)
-        
         self.ax.plot_surface(x_edge, y_edge, z_grid, 
                            alpha=0.4, color=self.COLORS_3D['edge'],
                            edgecolor=self.COLORS_3D['grid'], linewidth=0.1,
@@ -420,14 +296,7 @@ class LensVisualizer:
         
         # Draw optical axis with improved visibility
         axis_length = max(diameter, thickness) * 1.2
-        axis_x = np.array([0, 0])
-        axis_y = np.array([0, 0])
-        axis_z = np.array([-axis_length/3, thickness + axis_length/3])
-        
-        # Apply rotation to optical axis
-        axis_x, axis_y, axis_z = self._rotate_geometry(axis_x, axis_y, axis_z)
-        
-        self.ax.plot(axis_x, axis_y, axis_z,
+        self.ax.plot([0, 0], [0, 0], [-axis_length/3, thickness + axis_length/3],
                     color=self.COLORS_3D['axis'], linestyle='--', 
                     linewidth=2.5, alpha=0.9, label='Optical Axis')
         
