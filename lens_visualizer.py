@@ -228,9 +228,40 @@ class LensVisualizer:
                                edgecolor=self.COLORS_3D['text'], linewidth=0.15,
                                antialiased=True, shade=True)
         
-        # Draw lens edge (cylindrical surface) with optimized resolution
+        # Calculate edge z-coordinates at the diameter
+        # For front surface (R1)
+        if abs(r1) < 10000:
+            r1_abs = abs(r1)
+            h_edge = diameter / 2
+            if h_edge < r1_abs:
+                sag_front = r1_abs - math.sqrt(r1_abs**2 - h_edge**2)
+                if r1 > 0:  # Convex
+                    z_front_edge = -sag_front
+                else:  # Concave
+                    z_front_edge = sag_front
+            else:
+                z_front_edge = 0  # Flat at edge
+        else:
+            z_front_edge = 0  # Flat surface
+        
+        # For back surface (R2)
+        if abs(r2) < 10000:
+            r2_abs = abs(r2)
+            h_edge = diameter / 2
+            if h_edge < r2_abs:
+                sag_back = r2_abs - math.sqrt(r2_abs**2 - h_edge**2)
+                if r2 > 0:  # Convex
+                    z_back_edge = thickness - sag_back
+                else:  # Concave
+                    z_back_edge = thickness + sag_back
+            else:
+                z_back_edge = thickness  # Flat at edge
+        else:
+            z_back_edge = thickness  # Flat surface
+        
+        # Draw lens edge (cylindrical surface) with correct z coordinates
         theta = np.linspace(0, 2 * np.pi, edge_res)
-        z_edge = np.linspace(0, thickness, 8)
+        z_edge = np.linspace(z_front_edge, z_back_edge, 8)
         theta_grid, z_grid = np.meshgrid(theta, z_edge)
         x_edge = (diameter / 2) * np.cos(theta_grid)
         y_edge = (diameter / 2) * np.sin(theta_grid)
