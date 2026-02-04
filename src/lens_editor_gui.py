@@ -35,6 +35,29 @@ except ImportError:
         STL_EXPORT_AVAILABLE = False
         print("Note: STL export not available. NumPy required.")
 
+# Try to import aberrations calculator
+try:
+    from .aberrations import AberrationsCalculator, analyze_lens_quality
+    ABERRATIONS_AVAILABLE = True
+except ImportError:
+    try:
+        from aberrations import AberrationsCalculator, analyze_lens_quality
+        ABERRATIONS_AVAILABLE = True
+    except ImportError:
+        ABERRATIONS_AVAILABLE = False
+        print("Note: Aberrations calculator not available.")
+
+# Try to import ray tracer
+try:
+    from .ray_tracer import LensRayTracer, Ray
+    RAY_TRACING_AVAILABLE = True
+except ImportError:
+    try:
+        from ray_tracer import LensRayTracer, Ray
+        RAY_TRACING_AVAILABLE = True
+    except ImportError:
+        RAY_TRACING_AVAILABLE = False
+        print("Note: Ray tracer not available.")
 
 class ToolTip:
     """Simple tooltip for tkinter widgets"""
@@ -937,21 +960,228 @@ Select a lens from the Editor tab to simulate."""
                   command=self.run_simulation).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Clear Simulation", 
                   command=self.clear_simulation).pack(side=tk.LEFT, padx=5)
+        
+        # Aberrations Analysis section
+        if ABERRATIONS_AVAILABLE:
+            aberr_frame = ttk.LabelFrame(content_frame, text="Aberrations Analysis", padding="10")
+            aberr_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=10)
+            aberr_frame.columnconfigure(0, weight=1)
+            aberr_frame.rowconfigure(1, weight=1)
+            
+            # Field angle control
+            angle_frame = ttk.Frame(aberr_frame)
+            angle_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=5)
+            
+            ttk.Label(angle_frame, text="Field Angle (degrees):").pack(side=tk.LEFT, padx=5)
+            self.field_angle_var = tk.StringVar(value="5.0")
+            ttk.Entry(angle_frame, textvariable=self.field_angle_var, width=10).pack(side=tk.LEFT, padx=5)
+            ttk.Button(angle_frame, text="Analyze Aberrations", 
+                      command=self.analyze_aberrations).pack(side=tk.LEFT, padx=10)
+            
+            # Aberrations display (scrollable text)
+            aberr_scroll = ttk.Scrollbar(aberr_frame)
+            aberr_scroll.grid(row=1, column=1, sticky=(tk.N, tk.S))
+            
+            self.aberrations_text = tk.Text(aberr_frame, height=20, width=80, 
+                                           wrap=tk.NONE,
+                                           bg=self.COLORS['entry_bg'],
+                                           fg=self.COLORS['fg'],
+                                           font=('Courier', 9),
+                                           yscrollcommand=aberr_scroll.set)
+            self.aberrations_text.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+            aberr_scroll.config(command=self.aberrations_text.yview)
+            
+            # Initial message
+            self.aberrations_text.insert('1.0', "Select a lens and click 'Analyze Aberrations' to calculate optical aberrations.")
+            self.aberrations_text.config(state='disabled')
+        else:
+            msg_frame = ttk.LabelFrame(content_frame, text="Aberrations Analysis", padding="10")
+            msg_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=10)
+            ttk.Label(msg_frame, text="Aberrations calculator module not available.", 
+                     font=('Arial', 10)).pack(pady=5)
     
     def run_simulation(self):
-        """Run optical simulation for the current lens"""
+        """Run ray tracing simulation for the current lens"""
         if not self.current_lens:
             self.update_status("Please select or create a lens first")
             return
         
-        self.update_status(f"Running simulation for '{self.current_lens.name}'...")
-        # Placeholder for actual simulation logic
-        # This would implement ray tracing through the lens
+        if not RAY_TRACING_AVAILABLE:
+            self.update_status("Ray tracer not available")
+            return
+        
+        if not VISUALIZATION_AVAILABLE:
+            self.update_status("Visualization (matplotlib) required for ray tracing display")
+            return
+        
+        try:
+            # Get simulation parameters
+            try:
+                num_rays = int(self.num_rays_var.get())
+                num_rays = max(1, min(50, num_rays))  # Limit to 1-50 rays
+            except ValueError:
+                num_rays = 10
+                self.num_rays_var.set("10")
+            
+            try:
+                ray_angle = float(self.ray_angle_var.get())
+            except ValueError:
+                ray_angle = 0
+                self.ray_angle_var.set("0")
+            
+            # Create ray tracer
+            tracer = LensRayTracer(self.current_lens)
+            
+            # Trace rays based on angle
+            if abs(ray_angle) < 0.1:
+                # Parallel rays (collimated beam)
+                rays = tracer.trace_parallel_rays(num_rays=num_rays)
+                focal_point = tracer.find_focal_point(rays)
+            else:
+                # Point source rays
+                source_x = -100.0  # 100mm before lens
+                source_y = 0
+                rays = tracer.trace_point_source_rays(
+                    source_x, source_y, 
+                    num_rays=num_rays,
+                    max_angle=abs(ray_angle)
+                )
+                focal_point = None
+            
+            # Visualize in simulation view
+            if hasattr(self, 'sim_visualizer') and self.sim_visualizer:
+                # Hide info label
+                if hasattr(self, 'sim_info_label') and self.sim_info_label:
+                    self.sim_info_label.place_forget()
+                
+                # Clear previous plot
+                self.sim_visualizer.clear()
+                
+                # Get lens outline
+                lens_outline = tracer.get_lens_outline()
+                
+                # Draw lens
+                if lens_outline:
+                    xs = [p[0] for p in lens_outline]
+                    ys = [p[1] for p in lens_outline]
+                    self.sim_visualizer.ax.fill(xs, ys, color='lightblue', alpha=0.3, label='Lens')
+                    self.sim_visualizer.ax.plot(xs, ys, color='blue', linewidth=2)
+                
+                # Draw optical axis
+                x_min = -60
+                x_max = max([p[0] for ray in rays for p in ray.path] + [100])
+                self.sim_visualizer.ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.5, alpha=0.5)
+                
+                # Draw rays
+                for i, ray in enumerate(rays):
+                    if len(ray.path) > 1:
+                        xs = [p[0] for p in ray.path]
+                        ys = [p[1] for p in ray.path]
+                        
+                        # Color based on ray height
+                        color = 'red' if i == 0 or i == len(rays)-1 else 'orange'
+                        alpha = 0.7 if i == len(rays)//2 else 0.5
+                        
+                        self.sim_visualizer.ax.plot(xs, ys, color=color, linewidth=1.5, alpha=alpha)
+                
+                # Draw focal point if found
+                if focal_point:
+                    fx, fy = focal_point
+                    self.sim_visualizer.ax.plot(fx, fy, 'go', markersize=10, 
+                                               label=f'Focal Point ({fx:.1f} mm)', zorder=5)
+                    
+                    # Draw vertical line at focal point
+                    self.sim_visualizer.ax.axvline(x=fx, color='green', linestyle=':', 
+                                                   linewidth=1, alpha=0.5)
+                
+                # Set labels and limits
+                self.sim_visualizer.ax.set_xlabel('Position (mm)', fontsize=10)
+                self.sim_visualizer.ax.set_ylabel('Height (mm)', fontsize=10)
+                self.sim_visualizer.ax.set_title(
+                    f'Ray Tracing: {self.current_lens.name}\n'
+                    f'{num_rays} rays, angle={ray_angle}°',
+                    fontsize=11
+                )
+                self.sim_visualizer.ax.legend(loc='best', fontsize=9)
+                self.sim_visualizer.ax.grid(True, alpha=0.3)
+                self.sim_visualizer.ax.set_aspect('equal')
+                
+                # Refresh canvas
+                self.sim_visualizer.canvas.draw()
+                
+                # Update status
+                focal_str = f" Focal point at {focal_point[0]:.1f} mm" if focal_point else ""
+                self.update_status(f"Ray tracing complete: {num_rays} rays traced.{focal_str}")
+            else:
+                self.update_status("Simulation visualizer not available")
+        
+        except Exception as e:
+            self.update_status(f"Simulation error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def analyze_aberrations(self):
+        """Analyze and display lens aberrations"""
+        if not self.current_lens:
+            self.update_status("Please select or create a lens first")
+            return
+        
+        if not ABERRATIONS_AVAILABLE:
+            self.update_status("Aberrations calculator not available")
+            return
+        
+        try:
+            field_angle = float(self.field_angle_var.get())
+        except ValueError:
+            field_angle = 5.0
+            self.field_angle_var.set("5.0")
+        
+        try:
+            # Create aberrations calculator
+            calc = AberrationsCalculator(self.current_lens)
+            
+            # Get aberration summary
+            summary = calc.get_aberration_summary(field_angle=field_angle)
+            
+            # Get quality analysis
+            quality = analyze_lens_quality(self.current_lens, field_angle=field_angle)
+            
+            # Build output text
+            output = summary
+            output += f"\n\n{'='*65}\n"
+            output += f"QUALITY ASSESSMENT\n"
+            output += f"{'='*65}\n"
+            output += f"Overall Quality Score: {quality['quality_score']}/100\n"
+            output += f"Rating: {quality['rating']}\n"
+            output += f"\nIssues Identified:\n"
+            for issue in quality['issues']:
+                output += f"  • {issue}\n"
+            
+            # Display in text widget
+            self.aberrations_text.config(state='normal')
+            self.aberrations_text.delete('1.0', tk.END)
+            self.aberrations_text.insert('1.0', output)
+            self.aberrations_text.config(state='disabled')
+            
+            self.update_status(f"Aberrations analyzed for '{self.current_lens.name}' - Quality: {quality['rating']}")
+            
+        except Exception as e:
+            self.aberrations_text.config(state='normal')
+            self.aberrations_text.delete('1.0', tk.END)
+            self.aberrations_text.insert('1.0', f"Error analyzing aberrations:\n{str(e)}")
+            self.aberrations_text.config(state='disabled')
+            self.update_status(f"Error: {str(e)}")
         
     def clear_simulation(self):
         """Clear the simulation display"""
         if hasattr(self, 'sim_visualizer') and self.sim_visualizer:
             self.sim_visualizer.clear()
+            self.sim_visualizer.canvas.draw()
+            
+            # Show info label again
+            if hasattr(self, 'sim_info_label') and self.sim_info_label:
+                self.sim_info_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+        
         self.update_status("Simulation cleared")
     
     def update_simulation_view(self):

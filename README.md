@@ -36,7 +36,24 @@ openlens is a desktop application for designing and analyzing **single glass opt
 - Optical power display in diopters
 - Instant updates as you modify parameters
 
-### 🎨 **3D Visualization** (New!)
+### 🌈 **Ray Tracing Simulation** (New in v1.2!)
+- Visual ray tracing through lens elements
+- Snell's law physics simulation
+- Parallel rays (collimated beam) and point source modes
+- Automatic focal point detection and display
+- Interactive controls for number of rays and angles
+- See light actually bending through your lens design!
+
+### 🔬 **Aberrations Analysis** (New in v1.1!)
+- Calculate five primary (Seidel) aberrations
+- Chromatic aberration with material-specific Abbe numbers
+- Spherical aberration, coma, astigmatism, field curvature, distortion
+- Automatic quality assessment and scoring
+- Diffraction-limited resolution (Airy disk)
+- Numerical aperture and F-number calculations
+- Professional-grade optical analysis
+
+### 🎨 **3D Visualization**
 - Interactive 3D rendering of lens cross-section
 - Real-time visualization updates
 - Visualize spherical surfaces and lens geometry
@@ -54,8 +71,10 @@ openlens is a desktop application for designing and analyzing **single glass opt
 - **CLI Version**: Command-line interface for quick operations and scripting
 
 ### ✅ **Fully Tested**
-- 41 functional tests covering all features
+- 85+ functional tests covering all features
 - Validated optical calculations
+- Aberrations calculations verified
+- Ray tracing physics validated
 - Error handling and edge case testing
 
 ---
