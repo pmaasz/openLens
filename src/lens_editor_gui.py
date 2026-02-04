@@ -910,8 +910,21 @@ Modified: {lens.modified_at}"""
         # Placeholder for simulation visualization
         if VISUALIZATION_AVAILABLE:
             try:
-                # Create simulation visualizer
-                self.sim_visualizer = LensVisualizer(sim_frame, width=10, height=8)
+                # Create a 2D matplotlib canvas for ray tracing (not 3D)
+                from matplotlib.figure import Figure
+                from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+                
+                self.sim_figure = Figure(figsize=(10, 8), dpi=100, facecolor='#1e1e1e')
+                self.sim_ax = self.sim_figure.add_subplot(111, facecolor='#1e1e1e')
+                self.sim_canvas = FigureCanvasTkAgg(self.sim_figure, sim_frame)
+                self.sim_canvas.get_tk_widget().pack(fill='both', expand=True)
+                
+                # Style the 2D plot
+                self.sim_ax.tick_params(colors='#e0e0e0', labelsize=9)
+                self.sim_ax.spines['bottom'].set_color('#3f3f3f')
+                self.sim_ax.spines['top'].set_color('#3f3f3f')
+                self.sim_ax.spines['left'].set_color('#3f3f3f')
+                self.sim_ax.spines['right'].set_color('#3f3f3f')
                 
                 # Simulation info
                 info_text = """Ray Tracing Simulation
@@ -928,6 +941,8 @@ Select a lens from the Editor tab to simulate."""
                 self.sim_info_label = ttk.Label(sim_frame, text=info_text, 
                                       justify=tk.CENTER, font=('Arial', 10))
                 self.sim_info_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+                
+                self.sim_visualizer = True  # Flag to indicate sim is available
                 
             except Exception as e:
                 ttk.Label(sim_frame, text=f"Simulation error: {e}", 
@@ -1055,7 +1070,8 @@ Select a lens from the Editor tab to simulate."""
                     self.sim_info_label.place_forget()
                 
                 # Clear previous plot
-                self.sim_visualizer.clear()
+                self.sim_ax.clear()
+                self.sim_ax.set_facecolor('#1e1e1e')
                 
                 # Get lens outline
                 lens_outline = tracer.get_lens_outline()
@@ -1064,13 +1080,13 @@ Select a lens from the Editor tab to simulate."""
                 if lens_outline:
                     xs = [p[0] for p in lens_outline]
                     ys = [p[1] for p in lens_outline]
-                    self.sim_visualizer.ax.fill(xs, ys, color='lightblue', alpha=0.3, label='Lens')
-                    self.sim_visualizer.ax.plot(xs, ys, color='blue', linewidth=2)
+                    self.sim_ax.fill(xs, ys, color='lightblue', alpha=0.3, label='Lens')
+                    self.sim_ax.plot(xs, ys, color='blue', linewidth=2)
                 
                 # Draw optical axis
                 x_min = -60
                 x_max = max([p[0] for ray in rays for p in ray.path] + [100])
-                self.sim_visualizer.ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.5, alpha=0.5)
+                self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.5, alpha=0.5)
                 
                 # Draw rays
                 for i, ray in enumerate(rays):
@@ -1082,32 +1098,36 @@ Select a lens from the Editor tab to simulate."""
                         color = 'red' if i == 0 or i == len(rays)-1 else 'orange'
                         alpha = 0.7 if i == len(rays)//2 else 0.5
                         
-                        self.sim_visualizer.ax.plot(xs, ys, color=color, linewidth=1.5, alpha=alpha)
+                        self.sim_ax.plot(xs, ys, color=color, linewidth=1.5, alpha=alpha)
                 
                 # Draw focal point if found
                 if focal_point:
                     fx, fy = focal_point
-                    self.sim_visualizer.ax.plot(fx, fy, 'go', markersize=10, 
+                    self.sim_ax.plot(fx, fy, 'go', markersize=10, 
                                                label=f'Focal Point ({fx:.1f} mm)', zorder=5)
                     
                     # Draw vertical line at focal point
-                    self.sim_visualizer.ax.axvline(x=fx, color='green', linestyle=':', 
+                    self.sim_ax.axvline(x=fx, color='green', linestyle=':', 
                                                    linewidth=1, alpha=0.5)
                 
                 # Set labels and limits
-                self.sim_visualizer.ax.set_xlabel('Position (mm)', fontsize=10)
-                self.sim_visualizer.ax.set_ylabel('Height (mm)', fontsize=10)
-                self.sim_visualizer.ax.set_title(
+                self.sim_ax.set_xlabel('Position (mm)', fontsize=10, color='#e0e0e0')
+                self.sim_ax.set_ylabel('Height (mm)', fontsize=10, color='#e0e0e0')
+                self.sim_ax.set_title(
                     f'Ray Tracing: {self.current_lens.name}\n'
                     f'{num_rays} rays, angle={ray_angle}°',
-                    fontsize=11
+                    fontsize=11, color='#e0e0e0'
                 )
-                self.sim_visualizer.ax.legend(loc='best', fontsize=9)
-                self.sim_visualizer.ax.grid(True, alpha=0.3)
-                self.sim_visualizer.ax.set_aspect('equal')
+                self.sim_ax.legend(loc='best', fontsize=9, facecolor='#2e2e2e', 
+                                  edgecolor='#3f3f3f', labelcolor='#e0e0e0')
+                self.sim_ax.grid(True, alpha=0.3, color='#3f3f3f')
+                self.sim_ax.set_aspect('equal')
+                
+                # Update tick colors
+                self.sim_ax.tick_params(colors='#e0e0e0', labelsize=9)
                 
                 # Refresh canvas
-                self.sim_visualizer.canvas.draw()
+                self.sim_canvas.draw()
                 
                 # Update status
                 focal_str = f" Focal point at {focal_point[0]:.1f} mm" if focal_point else ""
@@ -1175,8 +1195,10 @@ Select a lens from the Editor tab to simulate."""
     def clear_simulation(self):
         """Clear the simulation display"""
         if hasattr(self, 'sim_visualizer') and self.sim_visualizer:
-            self.sim_visualizer.clear()
-            self.sim_visualizer.canvas.draw()
+            if hasattr(self, 'sim_ax'):
+                self.sim_ax.clear()
+                self.sim_ax.set_facecolor('#1e1e1e')
+                self.sim_canvas.draw()
             
             # Show info label again
             if hasattr(self, 'sim_info_label') and self.sim_info_label:
