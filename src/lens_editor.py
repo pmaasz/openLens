@@ -7,22 +7,63 @@ import json
 import os
 from datetime import datetime
 
+# Try to import material database
+try:
+    from .material_database import get_material_database
+    MATERIAL_DB_AVAILABLE = True
+except (ImportError, ValueError):
+    # Fallback for direct script execution
+    try:
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(__file__))
+        from material_database import get_material_database
+        MATERIAL_DB_AVAILABLE = True
+    except ImportError:
+        MATERIAL_DB_AVAILABLE = False
+
 
 class Lens:
     def __init__(self, name="Untitled", radius_of_curvature_1=100.0, radius_of_curvature_2=-100.0,
                  thickness=5.0, diameter=50.0, refractive_index=1.5168, 
-                 lens_type="Biconvex", material="BK7"):
+                 lens_type="Biconvex", material="BK7", wavelength=587.6, temperature=20.0):
         self.id = datetime.now().strftime("%Y%m%d%H%M%S%f")
         self.name = name
         self.radius_of_curvature_1 = radius_of_curvature_1
         self.radius_of_curvature_2 = radius_of_curvature_2
         self.thickness = thickness
         self.diameter = diameter
-        self.refractive_index = refractive_index
-        self.lens_type = lens_type
         self.material = material
+        self.wavelength = wavelength  # Design wavelength in nm
+        self.temperature = temperature  # Operating temperature in °C
+        
+        # Get refractive index from material database if available
+        if MATERIAL_DB_AVAILABLE:
+            db = get_material_database()
+            mat = db.get_material(material)
+            if mat:
+                self.refractive_index = db.get_refractive_index(material, wavelength, temperature)
+            else:
+                self.refractive_index = refractive_index
+        else:
+            self.refractive_index = refractive_index
+        
+        self.lens_type = lens_type
         self.created_at = datetime.now().isoformat()
         self.modified_at = datetime.now().isoformat()
+    
+    def update_refractive_index(self, wavelength=None, temperature=None):
+        """Update refractive index for new wavelength/temperature"""
+        if wavelength is not None:
+            self.wavelength = wavelength
+        if temperature is not None:
+            self.temperature = temperature
+        
+        if MATERIAL_DB_AVAILABLE:
+            db = get_material_database()
+            self.refractive_index = db.get_refractive_index(
+                self.material, self.wavelength, self.temperature
+            )
     
     def to_dict(self):
         return {
@@ -35,6 +76,8 @@ class Lens:
             "refractive_index": self.refractive_index,
             "type": self.lens_type,
             "material": self.material,
+            "wavelength": self.wavelength,
+            "temperature": self.temperature,
             "created_at": self.created_at,
             "modified_at": self.modified_at
         }
@@ -49,7 +92,9 @@ class Lens:
             diameter=data.get("diameter", 50.0),
             refractive_index=data.get("refractive_index", 1.5168),
             lens_type=data.get("type", "Biconvex"),
-            material=data.get("material", "BK7")
+            material=data.get("material", "BK7"),
+            wavelength=data.get("wavelength", 587.6),
+            temperature=data.get("temperature", 20.0)
         )
         lens.id = data.get("id", lens.id)
         lens.created_at = data.get("created_at", lens.created_at)
