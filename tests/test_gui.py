@@ -74,7 +74,8 @@ class TestGUILensEditor(unittest.TestCase):
     def test_tabs_exist(self):
         """Test that all tabs are created"""
         self.assertIsNotNone(self.editor.notebook)
-        self.assertEqual(len(self.editor.notebook.tabs()), 3)
+        # Updated to reflect current GUI with 6 tabs: Selection, Editor, Simulation, Performance, Comparison, Export
+        self.assertEqual(len(self.editor.notebook.tabs()), 6)
         
     def test_tabs_disabled_initially(self):
         """Test that editor and simulation tabs are disabled initially"""

@@ -24,6 +24,7 @@ Thumbs.db
 # Application data
 lenses.json
 *.json.backup
+docs/codereviews
 
 # Testing
 .pytest_cache/
