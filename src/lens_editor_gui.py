@@ -412,6 +412,18 @@ class LensEditorWindow:
         self.simulation_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.simulation_tab, text="Simulation", state='disabled')
         
+        # Create Performance tab (disabled until lens selected)
+        self.performance_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.performance_tab, text="Performance", state='disabled')
+        
+        # Create Comparison tab (always enabled for multi-lens comparison)
+        self.comparison_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.comparison_tab, text="Comparison")
+        
+        # Create Export tab (disabled until lens selected)
+        self.export_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.export_tab, text="Export", state='disabled')
+        
         # Configure tabs grid
         self.selection_tab.columnconfigure(0, weight=1)
         self.selection_tab.rowconfigure(0, weight=1)
@@ -424,6 +436,9 @@ class LensEditorWindow:
         self.setup_selection_tab()
         self.setup_editor_tab()
         self.setup_simulation_tab()
+        self.setup_performance_tab()
+        self.setup_comparison_tab()
+        self.setup_export_tab()
         
         # Status bar (below tabs)
         status_frame = ttk.Frame(main_frame)
@@ -571,9 +586,11 @@ Modified: {lens.modified_at}"""
         self.current_lens = None
         self.clear_form()
         
-        # Enable editor and simulation tabs
+        # Enable editor, simulation, performance and export tabs
         self.notebook.tab(1, state='normal')  # Editor tab
         self.notebook.tab(2, state='normal')  # Simulation tab
+        self.notebook.tab(3, state='normal')  # Performance tab
+        self.notebook.tab(5, state='normal')  # Export tab
         
         # Switch to editor tab
         self.notebook.select(1)
@@ -589,9 +606,11 @@ Modified: {lens.modified_at}"""
         index = selection[0]
         self.current_lens = self.lenses[index]
         
-        # Enable editor and simulation tabs
+        # Enable editor, simulation, performance and export tabs
         self.notebook.tab(1, state='normal')  # Editor tab
         self.notebook.tab(2, state='normal')  # Simulation tab
+        self.notebook.tab(3, state='normal')  # Performance tab
+        self.notebook.tab(5, state='normal')  # Export tab
         
         # Switch to editor tab
         self.notebook.select(1)
@@ -631,6 +650,8 @@ Modified: {lens.modified_at}"""
             self.current_lens = None
             self.notebook.tab(1, state='disabled')  # Editor tab
             self.notebook.tab(2, state='disabled')  # Simulation tab
+            self.notebook.tab(3, state='disabled')  # Performance tab
+            self.notebook.tab(5, state='disabled')  # Export tab
         
         self.update_status(f"Lens '{lens.name}' deleted")
     
@@ -1323,6 +1344,10 @@ Modified: {lens.modified_at}"""
         if hasattr(self, 'selection_listbox'):
             self.refresh_selection_list()
         
+        # Also refresh comparison list
+        if hasattr(self, 'comparison_listbox'):
+            self.refresh_comparison_list()
+        
         self.update_status(f"{len(self.lenses)} lens(es) loaded")
     
     def load_lens_to_form(self, lens):
@@ -1709,6 +1734,466 @@ Modified: {lens.modified_at}"""
         # If switching to simulation tab (index 2) and we have a current lens
         if selected_tab == 2 and self.current_lens:
             self.update_simulation_view()
+    
+    def setup_performance_tab(self):
+        """Setup the Performance Metrics Dashboard tab"""
+        # Configure performance tab grid
+        self.performance_tab.columnconfigure(0, weight=1)
+        self.performance_tab.rowconfigure(1, weight=1)
+        
+        # Main content frame
+        content_frame = ttk.Frame(self.performance_tab, padding="10")
+        content_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        content_frame.columnconfigure(0, weight=1)
+        content_frame.rowconfigure(1, weight=1)
+        
+        # Title
+        title_label = ttk.Label(content_frame, text="Performance Metrics Dashboard", 
+                                font=('Arial', 14, 'bold'))
+        title_label.grid(row=0, column=0, pady=10)
+        
+        # Metrics display area
+        metrics_frame = ttk.LabelFrame(content_frame, text="Optical Performance Metrics", padding="10")
+        metrics_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=10)
+        metrics_frame.columnconfigure(0, weight=1)
+        metrics_frame.rowconfigure(0, weight=1)
+        
+        # Text widget for metrics display
+        metrics_scroll = ttk.Scrollbar(metrics_frame)
+        metrics_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        
+        self.metrics_text = tk.Text(metrics_frame, height=20, width=80,
+                                   wrap=tk.WORD,
+                                   bg=self.COLORS['entry_bg'],
+                                   fg=self.COLORS['fg'],
+                                   font=('Courier', 10),
+                                   yscrollcommand=metrics_scroll.set)
+        self.metrics_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        metrics_scroll.config(command=self.metrics_text.yview)
+        
+        self.metrics_text.insert('1.0', "Select a lens and click 'Calculate Metrics' to view performance data.")
+        self.metrics_text.config(state='disabled')
+        
+        # Controls
+        controls_frame = ttk.LabelFrame(content_frame, text="Calculation Parameters", padding="10")
+        controls_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=10)
+        
+        # Parameter inputs
+        ttk.Label(controls_frame, text="Entrance Pupil Diameter (mm):").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.entrance_pupil_var = tk.StringVar(value="10.0")
+        ttk.Entry(controls_frame, textvariable=self.entrance_pupil_var, width=15).grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        ttk.Label(controls_frame, text="Wavelength (nm):").grid(row=0, column=2, sticky=tk.W, padx=5, pady=5)
+        self.wavelength_var = tk.StringVar(value="550")
+        ttk.Entry(controls_frame, textvariable=self.wavelength_var, width=15).grid(row=0, column=3, sticky=tk.W, padx=5, pady=5)
+        
+        ttk.Label(controls_frame, text="Object Distance (mm):").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        self.object_distance_var = tk.StringVar(value="1000")
+        ttk.Entry(controls_frame, textvariable=self.object_distance_var, width=15).grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        ttk.Label(controls_frame, text="Sensor Size (mm):").grid(row=1, column=2, sticky=tk.W, padx=5, pady=5)
+        self.sensor_size_var = tk.StringVar(value="36")
+        ttk.Entry(controls_frame, textvariable=self.sensor_size_var, width=15).grid(row=1, column=3, sticky=tk.W, padx=5, pady=5)
+        
+        # Calculate button
+        btn_frame = ttk.Frame(controls_frame)
+        btn_frame.grid(row=2, column=0, columnspan=4, pady=10)
+        ttk.Button(btn_frame, text="Calculate Metrics", 
+                  command=self.calculate_performance_metrics).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Export Report", 
+                  command=self.export_performance_report).pack(side=tk.LEFT, padx=5)
+    
+    def setup_comparison_tab(self):
+        """Setup the Comparison Mode tab"""
+        # Configure comparison tab grid
+        self.comparison_tab.columnconfigure(0, weight=1)
+        self.comparison_tab.rowconfigure(1, weight=1)
+        
+        # Main content frame
+        content_frame = ttk.Frame(self.comparison_tab, padding="10")
+        content_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        content_frame.columnconfigure(0, weight=1)
+        content_frame.rowconfigure(1, weight=1)
+        
+        # Title
+        title_label = ttk.Label(content_frame, text="Lens Comparison Tool", 
+                                font=('Arial', 14, 'bold'))
+        title_label.grid(row=0, column=0, pady=10)
+        
+        # Comparison table area
+        table_frame = ttk.LabelFrame(content_frame, text="Side-by-Side Comparison", padding="10")
+        table_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=10)
+        table_frame.columnconfigure(0, weight=1)
+        table_frame.rowconfigure(0, weight=1)
+        
+        # Text widget for comparison table
+        table_scroll = ttk.Scrollbar(table_frame)
+        table_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        
+        self.comparison_text = tk.Text(table_frame, height=20, width=100,
+                                      wrap=tk.NONE,
+                                      bg=self.COLORS['entry_bg'],
+                                      fg=self.COLORS['fg'],
+                                      font=('Courier', 9),
+                                      yscrollcommand=table_scroll.set)
+        self.comparison_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        table_scroll.config(command=self.comparison_text.yview)
+        
+        self.comparison_text.insert('1.0', "Select lenses below and click 'Compare' to view side-by-side comparison.")
+        self.comparison_text.config(state='disabled')
+        
+        # Lens selection area
+        selection_frame = ttk.LabelFrame(content_frame, text="Select Lenses to Compare", padding="10")
+        selection_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=10)
+        
+        # Listbox for lens selection (multiple selection)
+        list_container = ttk.Frame(selection_frame)
+        list_container.pack(fill=tk.BOTH, expand=True)
+        
+        list_scroll = ttk.Scrollbar(list_container)
+        list_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.comparison_listbox = tk.Listbox(list_container,
+                                            selectmode=tk.MULTIPLE,
+                                            yscrollcommand=list_scroll.set,
+                                            bg=self.COLORS['entry_bg'],
+                                            fg=self.COLORS['fg'],
+                                            selectbackground=self.COLORS['accent'],
+                                            selectforeground=self.COLORS['fg'],
+                                            font=('Arial', 10),
+                                            height=6)
+        self.comparison_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        list_scroll.config(command=self.comparison_listbox.yview)
+        
+        # Buttons
+        btn_frame = ttk.Frame(selection_frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Compare Selected", 
+                  command=self.compare_lenses).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Clear Comparison", 
+                  command=self.clear_comparison).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Export Comparison", 
+                  command=self.export_comparison).pack(side=tk.LEFT, padx=5)
+        
+        # Populate list with lenses
+        self.refresh_comparison_list()
+    
+    def setup_export_tab(self):
+        """Setup the Export Enhancements tab"""
+        # Configure export tab grid
+        self.export_tab.columnconfigure(0, weight=1)
+        self.export_tab.rowconfigure(0, weight=1)
+        
+        # Main content frame
+        content_frame = ttk.Frame(self.export_tab, padding="10")
+        content_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        content_frame.columnconfigure(0, weight=1)
+        
+        # Title
+        title_label = ttk.Label(content_frame, text="Professional Export Formats", 
+                                font=('Arial', 14, 'bold'))
+        title_label.grid(row=0, column=0, pady=10)
+        
+        # Export formats
+        export_formats = [
+            ("Zemax (.zmx)", "Export to Zemax OpticStudio format", self.export_to_zemax),
+            ("OpticStudio (.txt)", "Export to CODE V format", self.export_to_opticstudio),
+            ("PDF Technical Drawing", "Generate PDF with lens specifications", self.export_to_pdf),
+            ("SVG Cross-Section", "Export as scalable vector graphics", self.export_to_svg),
+            ("Prescription File (.json)", "Export lens prescription data", self.export_prescription),
+            ("STL 3D Model", "Export as 3D printable model", self.export_lens_to_stl)
+        ]
+        
+        row = 1
+        for format_name, description, command in export_formats:
+            frame = ttk.LabelFrame(content_frame, text=format_name, padding="15")
+            frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=10, padx=20)
+            
+            ttk.Label(frame, text=description, font=('Arial', 10)).pack(side=tk.LEFT, padx=10)
+            ttk.Button(frame, text="Export", command=command, width=15).pack(side=tk.RIGHT, padx=10)
+            
+            row += 1
+        
+        # Status area
+        status_frame = ttk.LabelFrame(content_frame, text="Export Status", padding="10")
+        status_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=10, padx=20)
+        
+        self.export_status_text = tk.Text(status_frame, height=8, width=80,
+                                         wrap=tk.WORD,
+                                         bg=self.COLORS['entry_bg'],
+                                         fg=self.COLORS['fg'],
+                                         font=('Arial', 9),
+                                         state='disabled')
+        self.export_status_text.pack(fill=tk.BOTH, expand=True)
+    
+    def calculate_performance_metrics(self):
+        """Calculate and display performance metrics for current lens"""
+        if not self.current_lens:
+            self.update_status("Please select or create a lens first")
+            return
+        
+        try:
+            from .performance_metrics import PerformanceMetrics
+        except ImportError:
+            try:
+                from performance_metrics import PerformanceMetrics
+            except ImportError:
+                self.update_status("Performance metrics module not available")
+                return
+        
+        try:
+            # Get parameters
+            entrance_pupil = float(self.entrance_pupil_var.get())
+            wavelength = float(self.wavelength_var.get())
+            object_distance = float(self.object_distance_var.get())
+            sensor_size = float(self.sensor_size_var.get())
+            
+            # Calculate metrics
+            calc = PerformanceMetrics(self.current_lens)
+            metrics = calc.get_all_metrics(
+                entrance_pupil_diameter=entrance_pupil,
+                wavelength=wavelength,
+                object_distance=object_distance,
+                sensor_size=sensor_size
+            )
+            report = calc.format_metrics_report(metrics)
+            
+            # Display in text widget
+            self.metrics_text.config(state='normal')
+            self.metrics_text.delete('1.0', tk.END)
+            self.metrics_text.insert('1.0', report)
+            self.metrics_text.config(state='disabled')
+            
+            self.update_status(f"Metrics calculated for '{self.current_lens.name}'")
+            
+        except ValueError as e:
+            self.update_status(f"Invalid parameter value: {e}")
+        except Exception as e:
+            self.update_status(f"Error calculating metrics: {e}")
+    
+    def export_performance_report(self):
+        """Export performance metrics to file"""
+        if not self.current_lens:
+            self.update_status("Please select a lens first")
+            return
+        
+        filename = filedialog.asksaveasfilename(
+            title="Export Performance Report",
+            defaultextension=".txt",
+            initialfile=f"{self.current_lens.name}_performance.txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+        )
+        
+        if filename:
+            try:
+                content = self.metrics_text.get('1.0', tk.END)
+                with open(filename, 'w') as f:
+                    f.write(content)
+                self.update_status(f"Report exported to {os.path.basename(filename)}")
+            except Exception as e:
+                self.update_status(f"Export failed: {e}")
+    
+    def refresh_comparison_list(self):
+        """Refresh the lens list for comparison"""
+        if hasattr(self, 'comparison_listbox'):
+            self.comparison_listbox.delete(0, tk.END)
+            for lens in self.lenses:
+                self.comparison_listbox.insert(tk.END, f"{lens.name} ({lens.lens_type})")
+    
+    def compare_lenses(self):
+        """Compare selected lenses"""
+        selection = self.comparison_listbox.curselection()
+        if len(selection) < 2:
+            self.update_status("Please select at least 2 lenses to compare")
+            return
+        
+        try:
+            from .lens_comparator import LensComparator
+        except ImportError:
+            try:
+                from lens_comparator import LensComparator
+            except ImportError:
+                self.update_status("Lens comparator module not available")
+                return
+        
+        try:
+            selected_lenses = [self.lenses[i] for i in selection]
+            comparator = LensComparator()
+            
+            for lens in selected_lenses:
+                comparator.add_lens(lens)
+            
+            comparison_table = comparator.get_comparison_table()
+            
+            # Display in text widget
+            self.comparison_text.config(state='normal')
+            self.comparison_text.delete('1.0', tk.END)
+            self.comparison_text.insert('1.0', comparison_table)
+            self.comparison_text.config(state='disabled')
+            
+            self.update_status(f"Compared {len(selected_lenses)} lenses")
+            
+        except Exception as e:
+            self.update_status(f"Comparison error: {e}")
+    
+    def clear_comparison(self):
+        """Clear comparison display"""
+        self.comparison_text.config(state='normal')
+        self.comparison_text.delete('1.0', tk.END)
+        self.comparison_text.insert('1.0', "Select lenses below and click 'Compare' to view side-by-side comparison.")
+        self.comparison_text.config(state='disabled')
+        self.update_status("Comparison cleared")
+    
+    def export_comparison(self):
+        """Export comparison table to file"""
+        filename = filedialog.asksaveasfilename(
+            title="Export Comparison",
+            defaultextension=".txt",
+            initialfile="lens_comparison.txt",
+            filetypes=[("Text files", "*.txt"), ("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+        
+        if filename:
+            try:
+                content = self.comparison_text.get('1.0', tk.END)
+                with open(filename, 'w') as f:
+                    f.write(content)
+                self.update_status(f"Comparison exported to {os.path.basename(filename)}")
+            except Exception as e:
+                self.update_status(f"Export failed: {e}")
+    
+    def export_to_zemax(self):
+        """Export current lens to Zemax format"""
+        if not self.current_lens:
+            self.update_status("Please select a lens first")
+            return
+        
+        try:
+            from .export_formats import ZemaxExporter
+        except ImportError:
+            try:
+                from export_formats import ZemaxExporter
+            except ImportError:
+                self.update_status("Export module not available")
+                return
+        
+        filename = filedialog.asksaveasfilename(
+            title="Export to Zemax",
+            defaultextension=".zmx",
+            initialfile=f"{self.current_lens.name}.zmx",
+            filetypes=[("Zemax files", "*.zmx"), ("All files", "*.*")]
+        )
+        
+        if filename:
+            try:
+                ZemaxExporter.export_lens(self.current_lens, filename)
+                self._log_export_status(f"Successfully exported to Zemax format: {os.path.basename(filename)}")
+                self.update_status(f"Exported to {os.path.basename(filename)}")
+            except Exception as e:
+                self._log_export_status(f"Error: {e}")
+                self.update_status(f"Export failed: {e}")
+    
+    def export_to_opticstudio(self):
+        """Export current lens to OpticStudio format"""
+        if not self.current_lens:
+            self.update_status("Please select a lens first")
+            return
+        
+        try:
+            from .export_formats import OpticStudioExporter
+        except ImportError:
+            try:
+                from export_formats import OpticStudioExporter
+            except ImportError:
+                self.update_status("Export module not available")
+                return
+        
+        filename = filedialog.asksaveasfilename(
+            title="Export to OpticStudio",
+            defaultextension=".txt",
+            initialfile=f"{self.current_lens.name}_opticstudio.txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+        )
+        
+        if filename:
+            try:
+                OpticStudioExporter.export_lens(self.current_lens, filename)
+                self._log_export_status(f"Successfully exported to OpticStudio format: {os.path.basename(filename)}")
+                self.update_status(f"Exported to {os.path.basename(filename)}")
+            except Exception as e:
+                self._log_export_status(f"Error: {e}")
+                self.update_status(f"Export failed: {e}")
+    
+    def export_to_pdf(self):
+        """Export lens as PDF technical drawing"""
+        if not self.current_lens:
+            self.update_status("Please select a lens first")
+            return
+        
+        self._log_export_status("PDF export feature coming soon...")
+        self.update_status("PDF export not yet implemented")
+    
+    def export_to_svg(self):
+        """Export lens cross-section as SVG"""
+        if not self.current_lens:
+            self.update_status("Please select a lens first")
+            return
+        
+        try:
+            from .export_formats import SVGExporter
+        except ImportError:
+            try:
+                from export_formats import SVGExporter
+            except ImportError:
+                self.update_status("Export module not available")
+                return
+        
+        filename = filedialog.asksaveasfilename(
+            title="Export to SVG",
+            defaultextension=".svg",
+            initialfile=f"{self.current_lens.name}.svg",
+            filetypes=[("SVG files", "*.svg"), ("All files", "*.*")]
+        )
+        
+        if filename:
+            try:
+                SVGExporter.export_lens(self.current_lens, filename)
+                self._log_export_status(f"Successfully exported to SVG format: {os.path.basename(filename)}")
+                self.update_status(f"Exported to {os.path.basename(filename)}")
+            except Exception as e:
+                self._log_export_status(f"Error: {e}")
+                self.update_status(f"Export failed: {e}")
+    
+    def export_prescription(self):
+        """Export lens prescription file"""
+        if not self.current_lens:
+            self.update_status("Please select a lens first")
+            return
+        
+        filename = filedialog.asksaveasfilename(
+            title="Export Prescription",
+            defaultextension=".json",
+            initialfile=f"{self.current_lens.name}_prescription.json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        
+        if filename:
+            try:
+                with open(filename, 'w') as f:
+                    json.dump(self.current_lens.to_dict(), f, indent=2)
+                self._log_export_status(f"Successfully exported prescription: {os.path.basename(filename)}")
+                self.update_status(f"Prescription exported to {os.path.basename(filename)}")
+            except Exception as e:
+                self._log_export_status(f"Error: {e}")
+                self.update_status(f"Export failed: {e}")
+    
+    def _log_export_status(self, message):
+        """Log message to export status text widget"""
+        if hasattr(self, 'export_status_text'):
+            self.export_status_text.config(state='normal')
+            self.export_status_text.insert(tk.END, f"{datetime.now().strftime('%H:%M:%S')} - {message}\n")
+            self.export_status_text.see(tk.END)
+            self.export_status_text.config(state='disabled')
     
     def update_status(self, message):
         self.status_var.set(message)
