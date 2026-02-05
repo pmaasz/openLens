@@ -1,0 +1,486 @@
+"""
+Functional tests for Interactive Ray Tracer, Image Simulator, and Mechanical Designer
+"""
+
+import pytest
+import numpy as np
+import sys
+from pathlib import Path
+
+# Add src to path
+sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+
+from interactive_ray_tracer import InteractiveRayTracer, InteractiveRay, RayManipulator
+from image_simulator import ImageSimulator
+from mechanical_designer import MechanicalDesigner, LensMount, LensCell, Spacer
+
+
+# Mock optical system for testing
+class MockOpticalSystem:
+    def __init__(self):
+        self.surfaces = []
+        self.lenses = []
+        self.element_spacing = []
+        
+    def effective_focal_length(self, wavelength):
+        return 50.0
+    
+    def get_aberrations(self, wavelength):
+        return {
+            'spherical': 0.1,
+            'coma': 0.05,
+            'astigmatism': 0.03
+        }
+
+
+class MockLens:
+    def __init__(self, diameter=25.4, center_thickness=5.0):
+        self.diameter = diameter
+        self.center_thickness = center_thickness
+
+
+class TestInteractiveRayTracer:
+    """Test interactive ray tracing functionality."""
+    
+    def setup_method(self):
+        self.optical_system = MockOpticalSystem()
+        self.tracer = InteractiveRayTracer(self.optical_system)
+    
+    def test_add_ray(self):
+        """Test adding interactive ray."""
+        ray = self.tracer.add_ray(
+            origin=(0, 0, 0),
+            direction=(1, 0, 0),
+            wavelength=587.6
+        )
+        
+        assert ray is not None
+        assert len(self.tracer.interactive_rays) == 1
+        assert ray.wavelength == 587.6
+        assert np.allclose(ray.origin, [0, 0, 0])
+    
+    def test_remove_ray(self):
+        """Test removing ray."""
+        ray = self.tracer.add_ray((0, 0, 0), (1, 0, 0))
+        assert len(self.tracer.interactive_rays) == 1
+        
+        self.tracer.remove_ray(ray)
+        assert len(self.tracer.interactive_rays) == 0
+    
+    def test_clear_rays(self):
+        """Test clearing all rays."""
+        self.tracer.add_ray((0, 0, 0), (1, 0, 0))
+        self.tracer.add_ray((0, 1, 0), (1, 0, 0))
+        assert len(self.tracer.interactive_rays) == 2
+        
+        self.tracer.clear_rays()
+        assert len(self.tracer.interactive_rays) == 0
+    
+    def test_update_ray_origin(self):
+        """Test updating ray origin."""
+        ray = self.tracer.add_ray((0, 0, 0), (1, 0, 0))
+        original_origin = ray.origin.copy()
+        
+        self.tracer.update_ray_origin(ray, (5, 0, 0))
+        assert not np.allclose(ray.origin, original_origin)
+        assert np.allclose(ray.origin, [5, 0, 0])
+    
+    def test_update_ray_direction(self):
+        """Test updating ray direction."""
+        ray = self.tracer.add_ray((0, 0, 0), (1, 0, 0))
+        
+        self.tracer.update_ray_direction(ray, (0, 1, 0))
+        assert np.allclose(ray.direction, [0, 1, 0])
+    
+    def test_update_ray_angle(self):
+        """Test updating ray by angle."""
+        ray = self.tracer.add_ray((0, 0, 0), (1, 0, 0))
+        
+        self.tracer.update_ray_angle(ray, 45.0)
+        expected = np.array([np.cos(np.radians(45)), 0, np.sin(np.radians(45))])
+        assert np.allclose(ray.direction, expected)
+    
+    def test_ray_normalization(self):
+        """Test that ray directions are normalized."""
+        ray = self.tracer.add_ray((0, 0, 0), (3, 4, 0))
+        assert np.isclose(np.linalg.norm(ray.direction), 1.0)
+    
+    def test_get_ray_info(self):
+        """Test getting ray information."""
+        ray = self.tracer.add_ray((0, 0, 0), (1, 0, 0), wavelength=650)
+        info = self.tracer.get_ray_info(ray)
+        
+        assert 'origin' in info
+        assert 'direction' in info
+        assert 'wavelength' in info
+        assert info['wavelength'] == 650
+        assert 'num_segments' in info
+    
+    def test_get_all_rays_data(self):
+        """Test getting all rays data."""
+        self.tracer.add_ray((0, 0, 0), (1, 0, 0))
+        self.tracer.add_ray((0, 1, 0), (1, 0, 0))
+        
+        data = self.tracer.get_all_rays_data()
+        assert len(data) == 2
+        assert all('origin' in ray for ray in data)
+    
+    def test_ray_colors(self):
+        """Test that rays get different colors."""
+        ray1 = self.tracer.add_ray((0, 0, 0), (1, 0, 0))
+        ray2 = self.tracer.add_ray((0, 1, 0), (1, 0, 0))
+        
+        # Colors should cycle through palette
+        assert ray1.color in self.tracer.ray_colors
+        assert ray2.color in self.tracer.ray_colors
+
+
+class TestRayManipulator:
+    """Test ray manipulation interface."""
+    
+    def setup_method(self):
+        self.optical_system = MockOpticalSystem()
+        self.tracer = InteractiveRayTracer(self.optical_system)
+        self.manipulator = RayManipulator(self.tracer)
+    
+    def test_start_drag(self):
+        """Test starting drag operation."""
+        ray = self.tracer.add_ray((0, 0, 0), (1, 0, 0))
+        
+        self.manipulator.start_drag(ray, 'origin', (5, 5))
+        assert self.tracer.selected_ray == ray
+        assert self.manipulator.drag_mode == 'origin'
+    
+    def test_end_drag(self):
+        """Test ending drag operation."""
+        ray = self.tracer.add_ray((0, 0, 0), (1, 0, 0))
+        self.manipulator.start_drag(ray, 'origin', (5, 5))
+        
+        self.manipulator.end_drag()
+        assert self.manipulator.drag_mode is None
+    
+    def test_find_ray_at_position(self):
+        """Test finding ray near mouse position."""
+        ray = self.tracer.add_ray((10, 0, 5), (1, 0, 0))
+        
+        found = self.manipulator.find_ray_at_position((10, 5), tolerance=1.0)
+        assert found == ray
+        
+        not_found = self.manipulator.find_ray_at_position((100, 100), tolerance=1.0)
+        assert not_found is None
+
+
+class TestImageSimulator:
+    """Test image simulation functionality."""
+    
+    def setup_method(self):
+        self.optical_system = MockOpticalSystem()
+        self.optical_system.aperture_diameter = 10.0
+        self.simulator = ImageSimulator(self.optical_system)
+    
+    def test_simulate_image(self):
+        """Test basic image simulation."""
+        input_image = np.random.rand(100, 100)
+        result = self.simulator.simulate_image(
+            input_image,
+            object_distance=100.0
+        )
+        
+        assert 'output_image' in result
+        assert 'magnification' in result
+        assert 'image_distance' in result
+        assert 'metrics' in result
+        assert result['output_image'].shape == input_image.shape
+    
+    def test_simulate_color_image(self):
+        """Test simulation with color image."""
+        input_image = np.random.rand(100, 100, 3)
+        result = self.simulator.simulate_image(
+            input_image,
+            object_distance=100.0
+        )
+        
+        assert result['output_image'].shape == input_image.shape
+    
+    def test_calculate_image_distance(self):
+        """Test image distance calculation."""
+        distance = self.simulator._calculate_image_distance(100.0, 587.6)
+        assert distance > 0
+        assert np.isfinite(distance)
+    
+    def test_image_metrics(self):
+        """Test image quality metrics calculation."""
+        original = np.random.rand(50, 50)
+        simulated = original + np.random.rand(50, 50) * 0.1
+        
+        metrics = self.simulator._calculate_image_metrics(original, simulated)
+        
+        assert 'psnr' in metrics
+        assert 'ssim' in metrics
+        assert 'mtf_nyquist' in metrics
+        assert 'sharpness' in metrics
+        assert np.isfinite(metrics['psnr'])
+        assert 0 <= metrics['ssim'] <= 1
+    
+    def test_test_patterns(self):
+        """Test all test pattern generators."""
+        patterns = [
+            'grid', 'checkerboard', 'star', 
+            'siemens_star', 'slant_edge'
+        ]
+        
+        for pattern_name in patterns:
+            result = self.simulator.simulate_test_pattern(
+                pattern_name,
+                size=(128, 128),
+                object_distance=100.0
+            )
+            assert 'output_image' in result
+            assert result['output_image'].shape[0] == 128
+    
+    def test_grid_pattern(self):
+        """Test grid pattern generation."""
+        pattern = self.simulator._create_grid_pattern((100, 100), spacing=20)
+        assert pattern.shape == (100, 100)
+        assert pattern.min() == 0
+        assert pattern.max() == 1
+    
+    def test_checkerboard_pattern(self):
+        """Test checkerboard pattern."""
+        pattern = self.simulator._create_checkerboard_pattern((128, 128), square_size=16)
+        assert pattern.shape == (128, 128)
+        # Should have alternating squares
+        assert 0 in pattern
+        assert 1 in pattern
+    
+    def test_siemens_star(self):
+        """Test Siemens star pattern."""
+        pattern = self.simulator._create_siemens_star((256, 256), num_spokes=36)
+        assert pattern.shape == (256, 256)
+    
+    def test_vignetting(self):
+        """Test vignetting application."""
+        image = np.ones((100, 100))
+        vignetted = self.simulator._apply_vignetting(image)
+        
+        # Center should be brighter than edges
+        center_val = vignetted[50, 50]
+        edge_val = vignetted[0, 0]
+        assert center_val > edge_val
+    
+    def test_diffraction(self):
+        """Test diffraction blur."""
+        image = np.zeros((50, 50))
+        image[25, 25] = 1.0  # Point source
+        
+        blurred = self.simulator._apply_diffraction(image, 587.6)
+        
+        # Should spread energy
+        assert blurred[25, 25] < 1.0
+        assert blurred.sum() > 0
+
+
+class TestMechanicalDesigner:
+    """Test mechanical design functionality."""
+    
+    def setup_method(self):
+        self.optical_system = MockOpticalSystem()
+        self.optical_system.lenses = [
+            MockLens(diameter=25.4, center_thickness=5.0),
+            MockLens(diameter=30.0, center_thickness=6.0)
+        ]
+        self.designer = MechanicalDesigner(self.optical_system)
+    
+    def test_design_lens_cells(self):
+        """Test lens cell design."""
+        cells = self.designer.design_lens_cells(wall_thickness=2.0)
+        
+        assert len(cells) == 2
+        assert all(isinstance(cell, LensCell) for cell in cells)
+        assert cells[0].inner_diameter > 25.4
+        assert cells[0].outer_diameter > cells[0].inner_diameter
+    
+    def test_lens_cell_weight(self):
+        """Test lens cell weight calculation."""
+        cell = LensCell(
+            inner_diameter=25.4,
+            outer_diameter=30.0,
+            length=10.0,
+            wall_thickness=2.3,
+            material='aluminum',
+            threads_external=True,
+            threads_internal=False
+        )
+        
+        weight = cell.calculate_weight()
+        assert weight > 0
+        assert np.isfinite(weight)
+    
+    def test_calculate_spacers(self):
+        """Test spacer calculation."""
+        spacers = self.designer.calculate_spacers(
+            target_spacing=[10.0],
+            tolerance=0.1
+        )
+        
+        assert len(spacers) >= 1
+        assert all(isinstance(s, Spacer) for s in spacers)
+        assert spacers[0].thickness == 10.0
+    
+    def test_standard_mounts(self):
+        """Test standard mount specifications."""
+        mount_types = ['C-mount', 'CS-mount', 'M42', 'M39', 'T-mount']
+        
+        for mount_type in mount_types:
+            mount = self.designer.design_mount(mount_type=mount_type)
+            assert isinstance(mount, LensMount)
+            assert mount.mount_type == mount_type
+            assert mount.thread_diameter > 0
+    
+    def test_calculate_total_length(self):
+        """Test total length calculation."""
+        self.designer.design_lens_cells()
+        self.designer.calculate_spacers([5.0])
+        
+        total_length = self.designer.calculate_total_length()
+        assert total_length > 0
+        assert np.isfinite(total_length)
+    
+    def test_calculate_total_weight(self):
+        """Test total weight calculation."""
+        self.designer.design_lens_cells()
+        self.designer.calculate_spacers([5.0])
+        
+        total_weight = self.designer.calculate_total_weight()
+        assert total_weight > 0
+        assert np.isfinite(total_weight)
+    
+    def test_generate_bom(self):
+        """Test BOM generation."""
+        self.designer.design_lens_cells()
+        self.designer.calculate_spacers([5.0])
+        self.designer.design_mount('C-mount')
+        
+        bom = self.designer.generate_bom()
+        
+        assert len(bom) > 0
+        assert all('item' in entry for entry in bom)
+        assert all('part_number' in entry for entry in bom)
+        assert all('quantity' in entry for entry in bom)
+    
+    def test_generate_assembly_instructions(self):
+        """Test assembly instructions generation."""
+        self.designer.design_lens_cells()
+        self.designer.calculate_spacers([5.0])
+        
+        instructions = self.designer.generate_assembly_instructions()
+        
+        assert len(instructions) > 0
+        assert any('Assembly Steps' in line for line in instructions)
+    
+    def test_export_cad_parameters(self):
+        """Test CAD parameter export."""
+        self.designer.design_lens_cells()
+        self.designer.calculate_spacers([5.0])
+        
+        params = self.designer.export_cad_parameters()
+        
+        assert 'lens_cells' in params
+        assert 'spacers' in params
+        assert 'total_length' in params
+        assert 'total_weight' in params
+    
+    def test_check_clearances(self):
+        """Test clearance checking."""
+        self.designer.design_lens_cells()
+        self.designer.calculate_spacers([5.0])
+        
+        issues = self.designer.check_clearances()
+        
+        # Should return list (may be empty if no issues)
+        assert isinstance(issues, list)
+    
+    def test_mount_specifications(self):
+        """Test mount specification retrieval."""
+        mount = self.designer.design_mount('C-mount', lens_diameter=25.4)
+        specs = mount.get_specifications()
+        
+        assert specs['mount_type'] == 'C-mount'
+        assert specs['lens_diameter'] == 25.4
+        assert 'thread_diameter' in specs
+        assert 'flange_distance' in specs
+    
+    def test_different_materials(self):
+        """Test different cell materials."""
+        materials = ['aluminum', 'brass', 'plastic', 'titanium', 'steel']
+        
+        for material in materials:
+            cell = LensCell(
+                inner_diameter=25.0,
+                outer_diameter=30.0,
+                length=10.0,
+                wall_thickness=2.5,
+                material=material,
+                threads_external=True,
+                threads_internal=False
+            )
+            
+            weight = cell.calculate_weight()
+            assert weight > 0
+            assert np.isfinite(weight)
+
+
+class TestIntegration:
+    """Integration tests combining multiple features."""
+    
+    def test_full_mechanical_design_workflow(self):
+        """Test complete mechanical design workflow."""
+        # Setup optical system
+        optical_system = MockOpticalSystem()
+        optical_system.lenses = [MockLens(25.4, 5.0), MockLens(30.0, 6.0)]
+        optical_system.element_spacing = [10.0]
+        
+        # Design mechanics
+        designer = MechanicalDesigner(optical_system)
+        cells = designer.design_lens_cells(wall_thickness=2.0)
+        spacers = designer.calculate_spacers()
+        mount = designer.design_mount('C-mount')
+        
+        # Generate outputs
+        total_length = designer.calculate_total_length()
+        total_weight = designer.calculate_total_weight()
+        bom = designer.generate_bom()
+        instructions = designer.generate_assembly_instructions()
+        
+        # Verify everything was created
+        assert len(cells) == 2
+        assert len(spacers) >= 1
+        assert mount is not None
+        assert total_length > 0
+        assert total_weight > 0
+        assert len(bom) > 0
+        assert len(instructions) > 0
+    
+    def test_ray_tracing_with_image_simulation(self):
+        """Test combining ray tracing and image simulation."""
+        optical_system = MockOpticalSystem()
+        
+        # Setup ray tracer
+        tracer = InteractiveRayTracer(optical_system)
+        ray1 = tracer.add_ray((0, 0, 0), (1, 0, 0))
+        ray2 = tracer.add_ray((0, 1, 0), (1, 0, 0.1))
+        
+        # Setup image simulator
+        simulator = ImageSimulator(optical_system)
+        test_image = np.random.rand(64, 64)
+        
+        # Simulate image
+        result = simulator.simulate_image(test_image, object_distance=100.0)
+        
+        # Verify both systems work together
+        assert len(tracer.interactive_rays) == 2
+        assert result['output_image'] is not None
+
+
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])
