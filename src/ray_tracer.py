@@ -96,27 +96,42 @@ class LensRayTracer:
     
     def _calculate_geometry(self):
         """Calculate lens surface positions and centers"""
-        # Front surface vertex at x=0
-        self.front_vertex_x = 0
+        # Lens offset - front surface starts at x=5
+        self.lens_offset = 5.0
+        
+        # Front surface vertex at x=5
+        self.front_vertex_x = self.lens_offset
         
         # Back surface vertex
-        self.back_vertex_x = self.d
+        self.back_vertex_x = self.lens_offset + self.d
         
         # Calculate surface centers for spherical surfaces
         # Front surface (R1)
+        # For a sphere of radius R centered at Cx, the point at (x,y) satisfies:
+        # (x - Cx)^2 + y^2 = R^2
+        # At vertex (y=0), x = vertex_x, so (vertex_x - Cx)^2 = R^2
+        # Therefore: Cx = vertex_x - R (for R > 0, convex)
+        #            Cx = vertex_x + R (for R < 0, concave)
+        
         if abs(self.R1) > 1e6:  # Essentially flat
-            self.front_center_x = 0
+            self.front_center_x = self.lens_offset
             self.front_is_flat = True
         else:
-            self.front_center_x = -self.R1
+            if self.R1 > 0:  # Convex - center to the left
+                self.front_center_x = self.front_vertex_x - abs(self.R1)
+            else:  # Concave - center to the right
+                self.front_center_x = self.front_vertex_x + abs(self.R1)
             self.front_is_flat = False
         
         # Back surface (R2)
         if abs(self.R2) > 1e6:  # Essentially flat
-            self.back_center_x = self.d
+            self.back_center_x = self.lens_offset + self.d
             self.back_is_flat = True
         else:
-            self.back_center_x = self.d + self.R2
+            if self.R2 < 0:  # Convex (from inside lens) - center to the right
+                self.back_center_x = self.back_vertex_x + abs(self.R2)
+            else:  # Concave - center to the left
+                self.back_center_x = self.back_vertex_x - abs(self.R2)
             self.back_is_flat = False
     
     def _get_surface_normal_angle(self, x, y, surface_type):
@@ -344,8 +359,8 @@ class LensRayTracer:
         rays = []
         min_h, max_h = ray_height_range
         
-        # Starting position (before lens)
-        start_x = -50.0
+        # Starting position (before lens) - rays start at x=0
+        start_x = 0.0
         
         for i in range(num_rays):
             if num_rays == 1:
@@ -443,15 +458,16 @@ class LensRayTracer:
         
         for y in y_values:
             if self.front_is_flat:
-                x = 0
+                x = self.lens_offset
             else:
-                # x = cx + R - sqrt(R^2 - y^2)
+                # Sphere equation: (x - Cx)^2 + y^2 = R^2
+                # x = Cx ± sqrt(R^2 - y^2)
                 R = abs(self.R1)
                 if y*y <= R*R:
-                    if self.R1 > 0:  # Convex
-                        x = self.front_center_x + R - math.sqrt(R*R - y*y)
-                    else:  # Concave
-                        x = self.front_center_x - R + math.sqrt(R*R - y*y)
+                    if self.R1 > 0:  # Convex - use right side of sphere
+                        x = self.front_center_x + math.sqrt(R*R - y*y)
+                    else:  # Concave - use left side of sphere
+                        x = self.front_center_x - math.sqrt(R*R - y*y)
                 else:
                     continue
             
@@ -460,14 +476,14 @@ class LensRayTracer:
         # Back surface (reverse direction)
         for y in reversed(y_values):
             if self.back_is_flat:
-                x = self.d
+                x = self.lens_offset + self.d
             else:
                 R = abs(self.R2)
                 if y*y <= R*R:
-                    if self.R2 < 0:  # Convex (from lens side)
-                        x = self.back_center_x - R + math.sqrt(R*R - y*y)
-                    else:  # Concave
-                        x = self.back_center_x + R - math.sqrt(R*R - y*y)
+                    if self.R2 < 0:  # Convex (from inside) - use left side of sphere
+                        x = self.back_center_x - math.sqrt(R*R - y*y)
+                    else:  # Concave - use right side of sphere
+                        x = self.back_center_x + math.sqrt(R*R - y*y)
                 else:
                     continue
             
