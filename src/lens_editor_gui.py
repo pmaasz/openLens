@@ -1498,18 +1498,6 @@ Modified: {lens.modified_at}"""
             self.num_grooves_var.set("0")
             self.fresnel_efficiency_label.config(text="Fresnel Efficiency: Invalid input")
             self.fresnel_thickness_label.config(text="")
-            
-            if abs(power) < 1e-10:
-                self.focal_length_label.config(text="Focal Length: Infinite (No optical power)")
-                self.optical_power_label.config(text="Optical Power: 0.00 D")
-            else:
-                focal_length = 1 / power
-                self.focal_length_label.config(text=f"Focal Length: {focal_length:.2f} mm")
-                self.optical_power_label.config(text=f"Optical Power: {power:.4f} mm⁻¹ ({power*1000:.2f} D)")
-        
-        except ValueError:
-            self.focal_length_label.config(text="Focal Length: Invalid input")
-            self.optical_power_label.config(text="Optical Power: Invalid input")
     
     
     def toggle_visualization_mode(self):
