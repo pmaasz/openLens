@@ -1114,39 +1114,65 @@ Modified: {lens.modified_at}"""
                 lens_outline = tracer.get_lens_outline()
                 print(f"DEBUG: Got lens outline with {len(lens_outline) if lens_outline else 0} points")
                 
-                # Draw lens
+                # Calculate lens position - center it in view
+                # Lens spans from x=0 to x=thickness, rays start at x=-50
+                # We want to show rays starting well before lens
+                lens_start_x = 0
+                lens_end_x = self.current_lens.thickness
+                
+                # Draw lens at its actual position
                 if lens_outline:
                     xs = [p[0] for p in lens_outline]
                     ys = [p[1] for p in lens_outline]
-                    self.sim_ax.fill(xs, ys, color='lightblue', alpha=0.3, label='Lens')
-                    self.sim_ax.plot(xs, ys, color='blue', linewidth=2)
+                    self.sim_ax.fill(xs, ys, color='lightblue', alpha=0.4, label='Lens', zorder=3)
+                    self.sim_ax.plot(xs, ys, color='#4fc3f7', linewidth=2.5, zorder=4)
                 
-                # Draw optical axis
-                x_min = -60
-                x_max = max([p[0] for ray in rays for p in ray.path] + [100])
-                self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.5, alpha=0.5)
+                # Draw optical axis (full range)
+                ray_x_coords = [p[0] for ray in rays for p in ray.path]
+                x_min = min(ray_x_coords + [-60])
+                x_max = max(ray_x_coords + [lens_end_x + 50])
+                self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.4, zorder=1)
                 
-                # Draw rays
+                # Draw rays with proper z-order
                 for i, ray in enumerate(rays):
                     if len(ray.path) > 1:
                         xs = [p[0] for p in ray.path]
                         ys = [p[1] for p in ray.path]
                         
-                        # Color based on ray height
-                        color = 'red' if i == 0 or i == len(rays)-1 else 'orange'
-                        alpha = 0.7 if i == len(rays)//2 else 0.5
+                        # Color based on ray position
+                        if i == 0 or i == len(rays)-1:
+                            color = '#ff4444'  # Red for edge rays
+                            linewidth = 2.0
+                            alpha = 0.8
+                            label = 'Edge Rays' if i == 0 else None
+                        elif i == len(rays)//2:
+                            color = '#44ff44'  # Green for center ray
+                            linewidth = 2.0
+                            alpha = 0.8
+                            label = 'Center Ray'
+                        else:
+                            color = '#ffaa44'  # Orange for other rays
+                            linewidth = 1.5
+                            alpha = 0.6
+                            label = None
                         
-                        self.sim_ax.plot(xs, ys, color=color, linewidth=1.5, alpha=alpha)
+                        self.sim_ax.plot(xs, ys, color=color, linewidth=linewidth, 
+                                        alpha=alpha, label=label, zorder=5)
                 
                 # Draw focal point if found
                 if focal_point:
                     fx, fy = focal_point
-                    self.sim_ax.plot(fx, fy, 'go', markersize=10, 
-                                               label=f'Focal Point ({fx:.1f} mm)', zorder=5)
+                    self.sim_ax.plot(fx, fy, 'go', markersize=12, markeredgecolor='white',
+                                   markeredgewidth=2, label=f'Focal Point ({fx:.1f} mm)', zorder=6)
                     
                     # Draw vertical line at focal point
                     self.sim_ax.axvline(x=fx, color='green', linestyle=':', 
-                                                   linewidth=1, alpha=0.5)
+                                       linewidth=2, alpha=0.6, zorder=2)
+                
+                # Set proper axis limits to show everything
+                self.sim_ax.set_xlim(x_min - 10, x_max + 10)
+                y_extent = self.current_lens.diameter / 2 * 1.2
+                self.sim_ax.set_ylim(-y_extent, y_extent)
                 
                 # Set labels and limits
                 self.sim_ax.set_xlabel('Position (mm)', fontsize=10, color='#e0e0e0')
