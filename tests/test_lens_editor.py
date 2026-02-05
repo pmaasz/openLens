@@ -27,7 +27,7 @@ class TestLens(unittest.TestCase):
         self.assertEqual(lens.radius_of_curvature_2, -100.0)
         self.assertEqual(lens.thickness, 5.0)
         self.assertEqual(lens.diameter, 50.0)
-        self.assertEqual(lens.refractive_index, 1.5168)
+        self.assertAlmostEqual(lens.refractive_index, 1.5168, places=4)
         self.assertEqual(lens.lens_type, "Biconvex")
         self.assertEqual(lens.material, "BK7")
         self.assertIsNotNone(lens.id)
@@ -268,6 +268,7 @@ class TestLensCalculations(unittest.TestCase):
             radius_of_curvature_1=100.0,
             radius_of_curvature_2=-100.0,
             thickness=5.0,
+            material="Custom",  # Use custom material to avoid database override
             refractive_index=1.9  # High index glass
         )
         focal_length = lens.calculate_focal_length()
@@ -392,7 +393,7 @@ class TestDataIntegrity(unittest.TestCase):
         self.assertEqual(lens.name, "Incomplete Lens")
         self.assertEqual(lens.material, "BK7")
         self.assertEqual(lens.radius_of_curvature_1, 100.0)  # Default
-        self.assertEqual(lens.refractive_index, 1.5168)  # Default
+        self.assertAlmostEqual(lens.refractive_index, 1.5168, places=4)  # Default from material DB
 
 
 def run_tests():
