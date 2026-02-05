@@ -1151,7 +1151,7 @@ Modified: {lens.modified_at}"""
                 print(f"DEBUG: Has sim_ax: {hasattr(self, 'sim_ax')}")
                 print(f"DEBUG: Has sim_canvas: {hasattr(self, 'sim_canvas')}")
                 # Hide info label
-                if hasattr(self, 'sim_info_label') and self.sim_info_label:
+                if hasattr(self, 'sim_info_label'):
                     self.sim_info_label.place_forget()
                 
                 # Clear previous plot
