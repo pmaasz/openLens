@@ -173,7 +173,7 @@ class MaterialDatabase:
             alkali_resistance=2
         )
         
-        # Fused Silica (UV grade)
+        # Fused Silica (UV grade) - Corrected Sellmeier coefficients
         self.materials['FUSEDSILICA'] = MaterialProperties(
             name='FUSEDSILICA',
             catalog='Schott',
@@ -182,9 +182,9 @@ class MaterialDatabase:
             B1=0.6961663,
             B2=0.4079426,
             B3=0.8974794,
-            C1=0.0684043,
-            C2=0.1162414,
-            C3=9.896161,
+            C1=0.0684043**2,  # C values should be squared
+            C2=0.1162414**2,
+            C3=9.896161**2,
             D0=9.7e-6,
             D1=0.0,
             D2=0.0,
