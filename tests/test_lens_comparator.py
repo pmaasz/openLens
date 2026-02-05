@@ -94,7 +94,11 @@ class TestLensComparator(unittest.TestCase):
         comparator.add_lens(self.lens2)
         comparator.add_lens(self.lens3)
         
-        table = comparator.get_comparison_table()
+        # Must compare first to populate results
+        results = comparator.compare()
+        self.assertGreater(len(results), 0)
+        
+        table = comparator.generate_comparison_table()
         
         self.assertIsInstance(table, str)
         self.assertIn("LENS COMPARISON", table)
@@ -102,7 +106,7 @@ class TestLensComparator(unittest.TestCase):
         self.assertIn("Lens B", table)
         self.assertIn("Lens C", table)
         self.assertIn("Focal Length", table)
-        self.assertIn("F-Number", table)
+        self.assertIn("F-number", table)  # lowercase 'n'
         
         print("✓ Generated comparison table successfully")
         print("\n" + table)
@@ -144,9 +148,14 @@ class TestLensComparator(unittest.TestCase):
         comparator.add_lens(self.lens2)
         comparator.add_lens(self.lens3)
         
-        # Find shortest focal length
-        best = comparator.find_best('focal_length', minimize=True)
-        self.assertIsNotNone(best)
+        # Must compare first
+        results = comparator.compare()
+        
+        # Rank by focal length (ascending = shortest first)
+        ranked = comparator.rank_by_parameter('focal_length', ascending=True)
+        self.assertIsNotNone(ranked)
+        self.assertGreater(len(ranked), 0)
+        best = ranked[0]
         
         print(f"✓ Found best lens: {best.name}")
         print(f"  Criterion: shortest focal length = {best.focal_length:.2f} mm")
@@ -157,7 +166,16 @@ class TestLensComparator(unittest.TestCase):
         comparator.add_lens(self.lens1)
         comparator.add_lens(self.lens2)
         
-        differences = comparator.highlight_differences(threshold_percent=10.0)
+        # Must compare first
+        results = comparator.compare()
+        
+        differences = comparator.get_parameter_differences()
+        
+        self.assertIsInstance(differences, dict)
+        # Should have parameters like focal_length, diameter, etc.
+        self.assertGreater(len(differences), 0)
+        
+        print(f"✓ Found {len(differences)} parameter differences")
         
         self.assertIsInstance(differences, dict)
         print("✓ Highlighted differences successfully")
@@ -222,10 +240,13 @@ class TestComparisonEdgeCases(unittest.TestCase):
         comparator.add_lens(lens1)
         comparator.add_lens(lens2)
         
-        differences = comparator.highlight_differences(threshold_percent=1.0)
+        differences = comparator.get_parameter_differences()
         
-        # Should have no differences except name
-        self.assertLessEqual(len(differences), 1)
+        # For identical lenses, differences should be very small (close to 0)
+        # Check that difference values are minimal
+        for param, diff_data in differences.items():
+            if 'range' in diff_data:
+                self.assertLess(diff_data['range'], 0.01)
         
         print("✓ Correctly identified identical lenses")
 

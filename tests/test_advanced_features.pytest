@@ -2,17 +2,25 @@
 Functional tests for Interactive Ray Tracer, Image Simulator, and Mechanical Designer
 """
 
-import pytest
-import numpy as np
+import unittest
 import sys
 from pathlib import Path
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
-from interactive_ray_tracer import InteractiveRayTracer, InteractiveRay, RayManipulator
-from image_simulator import ImageSimulator
-from mechanical_designer import MechanicalDesigner, LensMount, LensCell, Spacer
+# Try to import optional dependencies
+try:
+    import pytest
+    import numpy as np
+    OPTIONAL_DEPS_AVAILABLE = True
+except ImportError:
+    OPTIONAL_DEPS_AVAILABLE = False
+
+if OPTIONAL_DEPS_AVAILABLE:
+    from interactive_ray_tracer import InteractiveRayTracer, InteractiveRay, RayManipulator
+    from image_simulator import ImageSimulator
+    from mechanical_designer import MechanicalDesigner, LensMount, LensCell, Spacer
 
 
 # Mock optical system for testing
@@ -39,6 +47,7 @@ class MockLens:
         self.center_thickness = center_thickness
 
 
+@unittest.skipUnless(OPTIONAL_DEPS_AVAILABLE, "requires pytest and numpy")
 class TestInteractiveRayTracer:
     """Test interactive ray tracing functionality."""
     

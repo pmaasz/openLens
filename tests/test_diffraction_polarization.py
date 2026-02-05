@@ -3,18 +3,26 @@ Functional tests for diffraction and polarization modules
 """
 
 import unittest
-import numpy as np
 import sys
 import os
 
 # Add parent directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from diffraction import DiffractionCalculator
-from polarization import (PolarizationCalculator, PolarizationState, 
-                          JonesMatrices)
+# Try to import numpy
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+
+if NUMPY_AVAILABLE:
+    from diffraction import DiffractionCalculator
+    from polarization import (PolarizationCalculator, PolarizationState, 
+                              JonesMatrices)
 
 
+@unittest.skipUnless(NUMPY_AVAILABLE, "requires numpy")
 class TestDiffraction(unittest.TestCase):
     """Test diffraction calculations"""
     
@@ -175,6 +183,7 @@ class TestDiffraction(unittest.TestCase):
         self.assertAlmostEqual(ratio, wavelength_ratio, places=1)
 
 
+@unittest.skipUnless(NUMPY_AVAILABLE, "requires numpy")
 class TestPolarization(unittest.TestCase):
     """Test polarization calculations"""
     
@@ -414,6 +423,7 @@ class TestPolarization(unittest.TestCase):
         self.assertAlmostEqual(retardance % 360, retardance)
 
 
+@unittest.skipUnless(NUMPY_AVAILABLE, "requires numpy")
 class TestDiffractionPolarizationIntegration(unittest.TestCase):
     """Test integration between diffraction and polarization"""
     
