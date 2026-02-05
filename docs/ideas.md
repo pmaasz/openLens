@@ -1,123 +1,40 @@
-   🔥 High Priority (v1.1.0)
-   
-1.Material Database Expansion
+# Ideas for Future Development
 
-     - Temperature-dependent refractive indices
-     - Transmission spectra data
-     - Import from glass catalogs (Schott, Ohara, Hoya)
-     - Impact: Professional-grade material selection
+1. Advanced Manufacturing Integration
 
-2. Preset Lens Library
+     - CNC toolpath generation for lens grinding
+     - 3D printable lens holder designs export
+     - Bill of Materials (BOM) generation
+     - Tolerance analysis and sensitivity studies
+     - Manufacturing cost estimation
+     - Impact: Bridge design to fabrication
 
-     - Common lens designs (eyepiece, objective, condenser)
-     - Industry standard lenses with part numbers
-     - Quick-start templates
-     - Impact: Faster workflow, educational examples
+2. Advanced Visualization
 
-   🎯 Medium Priority (v1.2.0)
+     - Animated ray propagation
+     - Real-time performance heatmaps
 
-3. Multi-Element Lens Systems
+3. Integration with Optical Instruments
 
-     - Design compound lenses (doublets, triplets)
-     - Air gaps between elements
-     - System-level focal length
-     - Impact: Real optical systems use multiple elements
+     - Direct telescope/microscope simulator
+     - Camera lens MTF prediction
+     - Spectrometer design tools
+     - Fiber optic coupling analysis
+     - Impact: Application-specific workflows
 
-4.Performance Metrics Dashboard
+4. Collaboration
 
-     - F-number calculation
-     - Back focal length
-     - Working distance
-     - Resolution/MTF estimates
-     - Impact: Professional optical specs
+     - Version control for designs
+     - Comment/annotation system
+     - Impact: Professional workflow
+     - Multi-user editing sessions
+     - Live cursor tracking
+     - Design review and markup tools
+     - Impact: Remote team collaboration
 
-   5. Comparison Mode
-
-     - Side-by-side lens comparison
-     - Overlay multiple designs
-     - Parameter diff highlighting
-     - Impact: Design iteration and optimization
-
-   6. Export Enhancements
-
-     - Export to Zemax/OpticStudio format
-     - PDF technical drawings
-     - SVG cross-sections
-     - Prescription file format
-     - Impact: Integration with professional tools
-   🌟 Nice to Have (v1.3.0+)
-
-   7. Wavelength-Dependent Calculations
-
-     - Multi-wavelength focal lengths
-     - Chromatic focal shift visualization
-     - Achromatic doublet design wizard
-     - Impact: Color optics and imaging quality
-
-8. Interactive Ray Tracing
-
-     - Click to add ray sources
-     - Drag to change object position
-     - Real-time ray path updates
-     - Impact: Highly educational and engaging
-
-9. Optimization Tools
-
-     - Auto-optimize for target focal length
-     - Minimize aberrations
-     - Cost optimization (material selection)
-     - Impact: Automated design assistance
-   
-10. Coating Designer
-
-     - Anti-reflection coatings
-     - Wavelength-specific coatings
-     - Multi-layer coating calculator
-     - Reflectivity curves
-     - Impact: Real-world lens manufacturing
-
-11. Image Simulation
-
-     - Load test image
-     - Show image through lens (with aberrations)
-     - Spot diagram
-     - Point spread function
-     - Impact: Visual quality assessment
-
-12. Mechanical Design Features
-
-     - Lens mount specifications
-     - Edge thickness calculator
-     - Mechanical drawings
-     - Housing compatibility
-     - Impact: Manufacturing and assembly
-  🚀 Advanced Features (v2.0.0+)
-
-13. Diffraction Effects
-
-     - Airy disk calculation
-     - Diffraction-limited resolution
-     - Numerical aperture effects
-     - Impact: Complete physical model
-
-14. Polarization
-
-     - Birefringent materials
-     - Polarization-dependent optics
-     - Brewster angle calculations
-     - Impact: Specialized applications
-
-15. Plugin System
+5. Plugin System
 
      - Custom material databases
      - Third-party optimization algorithms
      - Analysis tool plugins
      - Impact: Extensibility and community
-
-16. Cloud/Collaboration
-
-     - Save designs to cloud
-     - Share with team members
-     - Version control for designs
-     - Comment/annotation system
-     - Impact: Professional workflow
