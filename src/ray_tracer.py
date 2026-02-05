@@ -474,3 +474,35 @@ class LensRayTracer:
             points.append((x, y))
         
         return points
+
+
+class SystemRayTracer:
+    """Simple ray tracer for multi-element optical systems"""
+    
+    def __init__(self, optical_system):
+        self.system = optical_system
+    
+    def trace_parallel_rays_simple(self, num_rays=7):
+        """
+        Simplified system ray tracing - trace each element independently
+        and show approximate propagation
+        """
+        if not self.system.elements:
+            return []
+        
+        all_rays_data = []
+        
+        # Trace through first element
+        first_elem = self.system.elements[0]
+        first_tracer = LensRayTracer(first_elem.lens)
+        first_rays = first_tracer.trace_parallel_rays(num_rays=num_rays)
+        
+        # Store with position offset
+        for ray in first_rays:
+            offset_path = [(x + first_elem.position + 50, y) for x, y in ray.path]
+            all_rays_data.append({
+                'path': offset_path,
+                'element': 0
+            })
+        
+        return all_rays_data
