@@ -1058,6 +1058,34 @@ Modified: {lens.modified_at}"""
         print(f"DEBUG: Starting ray tracing...")
         
         try:
+            # Get current lens parameters from editor fields (real-time)
+            # This ensures we always use the current editor values
+            try:
+                name = self.name_var.get().strip() or "Untitled"
+                r1 = float(self.r1_var.get())
+                r2 = float(self.r2_var.get())
+                thickness = float(self.thickness_var.get())
+                diameter = float(self.diameter_var.get())
+                refractive_index = float(self.refr_index_var.get())
+                lens_type = self.type_var.get()
+                material = self.material_var.get().strip() or "BK7"
+                
+                # Create a temporary lens with current editor values
+                simulation_lens = Lens(
+                    name=name,
+                    radius_of_curvature_1=r1,
+                    radius_of_curvature_2=r2,
+                    thickness=thickness,
+                    diameter=diameter,
+                    refractive_index=refractive_index,
+                    lens_type=lens_type,
+                    material=material
+                )
+                print(f"DEBUG: Using lens from editor: {name}, R1={r1}, R2={r2}, thickness={thickness}")
+            except ValueError as e:
+                self.update_status(f"Invalid lens parameters: {e}")
+                return
+            
             # Get simulation parameters
             try:
                 num_rays = int(self.num_rays_var.get())
@@ -1072,8 +1100,8 @@ Modified: {lens.modified_at}"""
                 ray_angle = 0
                 self.ray_angle_var.set("0")
             
-            # Create ray tracer
-            tracer = LensRayTracer(self.current_lens)
+            # Create ray tracer with the lens from editor
+            tracer = LensRayTracer(simulation_lens)
             
             # Trace rays based on angle
             if abs(ray_angle) < 0.1:
@@ -1171,14 +1199,14 @@ Modified: {lens.modified_at}"""
                 
                 # Set proper axis limits to show everything
                 self.sim_ax.set_xlim(x_min - 10, x_max + 10)
-                y_extent = self.current_lens.diameter / 2 * 1.2
+                y_extent = simulation_lens.diameter / 2 * 1.2
                 self.sim_ax.set_ylim(-y_extent, y_extent)
                 
                 # Set labels and limits
                 self.sim_ax.set_xlabel('Position (mm)', fontsize=10, color='#e0e0e0')
                 self.sim_ax.set_ylabel('Height (mm)', fontsize=10, color='#e0e0e0')
                 self.sim_ax.set_title(
-                    f'Ray Tracing: {self.current_lens.name}\n'
+                    f'Ray Tracing: {simulation_lens.name}\n'
                     f'{num_rays} rays, angle={ray_angle}°',
                     fontsize=11, color='#e0e0e0'
                 )
