@@ -1,15 +1,5 @@
   Improvements Roadmap for Lens Designer
 
-   Architecture & Design 
-
-   Weaknesses:
-
-     - ⚠️ Some modules have tight coupling (GUI directly imports multiple feature modules)
-     - ⚠️ Material database integration is optional but affects core lens properties unexpectedly
-     - ⚠️ Large GUI class (1500+ lines) could benefit from further decomposition
-
-   --------------------------------------------------------------------------------------------------------------------
-
    Security & Safety 🔒
 
    Concerns:
@@ -33,17 +23,7 @@
      - Debounce auto-update calculations
 
    --------------------------------------------------------------------------------------------------------------------
-
-   Recommendations 💡
-
-   Short-term:
-
-     - Add input validation for extreme values
-     - Implement atomic file writes for lenses.json
-     - Add debouncing to auto-update
-     - Refactor 1500-line GUI class into smaller components
-     - Extract magic numbers to named constants
-
+💡
    Long-term:
 
      - Add caching layer for calculations
