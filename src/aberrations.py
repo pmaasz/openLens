@@ -5,6 +5,7 @@ Calculates primary optical aberrations for single lens elements
 """
 
 import math
+from typing import Optional, Dict, Any
 
 
 class AberrationsCalculator:
@@ -21,12 +22,13 @@ class AberrationsCalculator:
     Additionally calculates chromatic aberration when Abbe number is available.
     """
     
-    def __init__(self, lens):
+    def __init__(self, lens: Any) -> None:
         """
         Initialize calculator with a lens object.
         
         Args:
-            lens: Lens object with optical parameters
+            lens: Lens object with optical parameters (radius_of_curvature_1,
+                  radius_of_curvature_2, thickness, diameter, refractive_index)
         """
         self.lens = lens
         self.n = lens.refractive_index
@@ -35,16 +37,18 @@ class AberrationsCalculator:
         self.d = lens.thickness
         self.D = lens.diameter
         
-    def calculate_all_aberrations(self, object_distance=None, field_angle=0.0):
+    def calculate_all_aberrations(self, 
+                                   object_distance: Optional[float] = None,
+                                   field_angle: float = 0.0) -> Dict[str, Any]:
         """
         Calculate all primary aberrations.
         
         Args:
-            object_distance: Distance to object (mm). None for infinity (collimated light)
+            object_distance: Distance to object in mm. None for infinity (collimated light)
             field_angle: Off-axis angle in degrees (for coma, astigmatism, distortion)
             
         Returns:
-            Dictionary with aberration values
+            Dictionary with aberration values and optical parameters
         """
         focal_length = self.lens.calculate_focal_length()
         
@@ -76,20 +80,36 @@ class AberrationsCalculator:
             'airy_disk_diameter': self._calculate_airy_disk(focal_length)
         }
     
-    def _calculate_numerical_aperture(self, focal_length):
-        """Calculate numerical aperture NA = n * sin(θ) where θ = arctan(D/2f)"""
+    def _calculate_numerical_aperture(self, focal_length: float) -> float:
+        """
+        Calculate numerical aperture NA = n * sin(θ) where θ = arctan(D/2f).
+        
+        Args:
+            focal_length: Focal length in mm
+            
+        Returns:
+            Numerical aperture (dimensionless)
+        """
         if focal_length == 0:
             return 0
         theta = math.atan(self.D / (2 * abs(focal_length)))
         return self.n * math.sin(theta)
     
-    def _calculate_f_number(self, focal_length):
-        """Calculate f-number (f/#) = f/D"""
+    def _calculate_f_number(self, focal_length: float) -> float:
+        """
+        Calculate f-number (f/#) = f/D.
+        
+        Args:
+            focal_length: Focal length in mm
+            
+        Returns:
+            F-number (dimensionless)
+        """
         if self.D == 0:
             return float('inf')
         return abs(focal_length) / self.D
     
-    def _calculate_spherical_aberration(self, focal_length):
+    def _calculate_spherical_aberration(self, focal_length: float) -> float:
         """
         Calculate longitudinal spherical aberration (LSA).
         
@@ -127,7 +147,7 @@ class AberrationsCalculator:
         
         return lsa
     
-    def _calculate_coma(self, focal_length, field_angle_deg):
+    def _calculate_coma(self, focal_length: float, field_angle_deg: float) -> float:
         """
         Calculate coma aberration.
         
@@ -161,7 +181,7 @@ class AberrationsCalculator:
         
         return coma
     
-    def _calculate_astigmatism(self, focal_length, field_angle_deg):
+    def _calculate_astigmatism(self, focal_length: float, field_angle_deg: float) -> float:
         """
         Calculate astigmatism.
         
@@ -186,7 +206,7 @@ class AberrationsCalculator:
         
         return astigmatism
     
-    def _calculate_field_curvature(self, focal_length):
+    def _calculate_field_curvature(self, focal_length: float) -> float:
         """
         Calculate Petzval field curvature.
         
@@ -207,7 +227,7 @@ class AberrationsCalculator:
         
         return petzval_radius
     
-    def _calculate_distortion(self, focal_length, field_angle_deg):
+    def _calculate_distortion(self, focal_length: float, field_angle_deg: float) -> float:
         """
         Calculate distortion (barrel or pincushion).
         
@@ -239,7 +259,7 @@ class AberrationsCalculator:
         
         return distortion_pct
     
-    def _calculate_chromatic_aberration(self, focal_length):
+    def _calculate_chromatic_aberration(self, focal_length: float) -> Optional[float]:
         """
         Calculate longitudinal chromatic aberration (LCA).
         
@@ -284,7 +304,7 @@ class AberrationsCalculator:
         
         return lca
     
-    def _calculate_airy_disk(self, focal_length, wavelength=0.000550):
+    def _calculate_airy_disk(self, focal_length: float, wavelength: float = 0.000550) -> float:
         """
         Calculate Airy disk diameter (diffraction-limited spot size).
         
@@ -306,7 +326,9 @@ class AberrationsCalculator:
         
         return airy_diameter
     
-    def get_aberration_summary(self, object_distance=None, field_angle=5.0):
+    def get_aberration_summary(self,
+                               object_distance: Optional[float] = None,
+                               field_angle: float = 5.0) -> Dict[str, Any]:
         """
         Get a formatted summary of all aberrations.
         

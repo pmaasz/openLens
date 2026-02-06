@@ -6,6 +6,7 @@ openlens - Interactive Optical Lens Creation and Modification Tool
 import json
 import os
 from datetime import datetime
+from typing import Optional, List, Dict, Any
 
 # Try to import material database
 try:
@@ -24,9 +25,36 @@ except (ImportError, ValueError):
 
 
 class Lens:
-    def __init__(self, name="Untitled", radius_of_curvature_1=100.0, radius_of_curvature_2=-100.0,
-                 thickness=5.0, diameter=50.0, refractive_index=1.5168, 
-                 lens_type="Biconvex", material="BK7", wavelength=587.6, temperature=20.0):
+    """
+    Represents an optical lens with its physical and optical properties.
+    
+    Attributes:
+        id: Unique identifier for the lens
+        name: Human-readable name
+        radius_of_curvature_1: First surface radius in mm (positive = convex)
+        radius_of_curvature_2: Second surface radius in mm (negative = convex on opposite side)
+        thickness: Center thickness in mm
+        diameter: Lens diameter in mm
+        material: Material name (e.g., "BK7", "Fused Silica")
+        wavelength: Design wavelength in nm
+        temperature: Operating temperature in °C
+        refractive_index: Refractive index at design wavelength
+        lens_type: Lens type description (e.g., "Biconvex", "Plano-Convex")
+        created_at: ISO timestamp of creation
+        modified_at: ISO timestamp of last modification
+    """
+    
+    def __init__(self, 
+                 name: str = "Untitled",
+                 radius_of_curvature_1: float = 100.0,
+                 radius_of_curvature_2: float = -100.0,
+                 thickness: float = 5.0,
+                 diameter: float = 50.0,
+                 refractive_index: float = 1.5168,
+                 lens_type: str = "Biconvex",
+                 material: str = "BK7",
+                 wavelength: float = 587.6,
+                 temperature: float = 20.0) -> None:
         self.id = datetime.now().strftime("%Y%m%d%H%M%S%f")
         self.name = name
         self.radius_of_curvature_1 = radius_of_curvature_1
@@ -52,8 +80,16 @@ class Lens:
         self.created_at = datetime.now().isoformat()
         self.modified_at = datetime.now().isoformat()
     
-    def update_refractive_index(self, wavelength=None, temperature=None):
-        """Update refractive index for new wavelength/temperature"""
+    def update_refractive_index(self, 
+                                 wavelength: Optional[float] = None,
+                                 temperature: Optional[float] = None) -> None:
+        """
+        Update refractive index for new wavelength/temperature.
+        
+        Args:
+            wavelength: New wavelength in nm (if provided)
+            temperature: New temperature in °C (if provided)
+        """
         if wavelength is not None:
             self.wavelength = wavelength
         if temperature is not None:
@@ -65,7 +101,13 @@ class Lens:
                 self.material, self.wavelength, self.temperature
             )
     
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert lens to dictionary representation.
+        
+        Returns:
+            Dictionary containing all lens properties
+        """
         return {
             "id": self.id,
             "name": self.name,
@@ -83,7 +125,16 @@ class Lens:
         }
     
     @classmethod
-    def from_dict(cls, data):
+    def from_dict(cls, data: Dict[str, Any]) -> 'Lens':
+        """
+        Create lens from dictionary representation.
+        
+        Args:
+            data: Dictionary containing lens properties
+            
+        Returns:
+            Lens instance
+        """
         lens = cls(
             name=data.get("name", "Untitled"),
             radius_of_curvature_1=data.get("radius_of_curvature_1", 100.0),
@@ -101,8 +152,21 @@ class Lens:
         lens.modified_at = data.get("modified_at", lens.modified_at)
         return lens
     
-    def calculate_focal_length(self):
-        """Calculate focal length using the lensmaker's equation"""
+    def calculate_focal_length(self) -> Optional[float]:
+        """
+        Calculate focal length using the lensmaker's equation.
+        
+        The lensmaker's equation accounts for:
+        - Radii of curvature of both surfaces
+        - Refractive index of the lens material
+        - Center thickness of the lens
+        
+        Formula:
+            1/f = (n-1)[1/R1 - 1/R2 + (n-1)d/(nR1R2)]
+        
+        Returns:
+            Focal length in mm, or None if undefined (zero power or invalid radii)
+        """
         n = self.refractive_index
         R1 = self.radius_of_curvature_1
         R2 = self.radius_of_curvature_2
@@ -118,7 +182,7 @@ class Lens:
         
         return 1 / power
     
-    def __str__(self):
+    def __str__(self) -> str:
         focal_length = self.calculate_focal_length()
         focal_str = f"{focal_length:.2f}mm" if focal_length else "Undefined"
         
@@ -140,11 +204,25 @@ Optical Lens Details:
 
 
 class LensManager:
-    def __init__(self, storage_file="lenses.json"):
+    """
+    Manages a collection of optical lenses with persistence to JSON.
+    
+    Attributes:
+        storage_file: Path to JSON file for lens storage
+        lenses: List of Lens objects
+    """
+    
+    def __init__(self, storage_file: str = "lenses.json") -> None:
         self.storage_file = storage_file
         self.lenses = self.load_lenses()
     
-    def load_lenses(self):
+    def load_lenses(self) -> List[Lens]:
+        """
+        Load lenses from JSON storage file.
+        
+        Returns:
+            List of Lens objects (empty if file doesn't exist or error occurs)
+        """
         if os.path.exists(self.storage_file):
             try:
                 with open(self.storage_file, 'r') as f:
@@ -155,7 +233,13 @@ class LensManager:
                 return []
         return []
     
-    def save_lenses(self):
+    def save_lenses(self) -> None:
+        """
+        Save all lenses to JSON storage file.
+        
+        Serializes all lenses in the collection to JSON format with indentation.
+        Prints success message or error if save fails.
+        """
         try:
             with open(self.storage_file, 'w') as f:
                 json.dump([lens.to_dict() for lens in self.lenses], f, indent=2)
@@ -163,7 +247,16 @@ class LensManager:
         except Exception as e:
             print(f"Error saving lenses: {e}")
     
-    def create_lens(self):
+    def create_lens(self) -> Optional[Lens]:
+        """
+        Interactive CLI method to create a new lens.
+        
+        Prompts user for lens parameters and creates a new Lens object.
+        Adds the lens to the collection and saves to storage.
+        
+        Returns:
+            Created Lens object, or None if creation fails
+        """
         print("\n=== Create New Optical Lens ===")
         name = input("Lens name: ").strip() or "Untitled"
         
@@ -188,7 +281,12 @@ class LensManager:
         print(lens)
         return lens
     
-    def list_lenses(self):
+    def list_lenses(self) -> None:
+        """
+        Display a summary of all lenses in the collection.
+        
+        Shows lens name, material, type, and calculated focal length.
+        """
         if not self.lenses:
             print("\nNo lenses found. Create one first!")
             return
@@ -199,12 +297,27 @@ class LensManager:
             focal_str = f"{focal:.2f}mm" if focal else "Undefined"
             print(f"{idx}. {lens.name} - {lens.material} ({lens.lens_type}) - f={focal_str}")
     
-    def get_lens_by_index(self, idx):
+    def get_lens_by_index(self, idx: int) -> Optional[Lens]:
+        """
+        Get a lens by its 1-based index in the collection.
+        
+        Args:
+            idx: 1-based index of the lens
+            
+        Returns:
+            Lens object if index is valid, None otherwise
+        """
         if 1 <= idx <= len(self.lenses):
             return self.lenses[idx - 1]
         return None
     
-    def modify_lens(self):
+    def modify_lens(self) -> None:
+        """
+        Interactive CLI method to modify an existing lens.
+        
+        Prompts user to select a lens and update its parameters.
+        Empty input keeps current value.
+        """
         if not self.lenses:
             print("\nNo lenses to modify. Create one first!")
             return
@@ -262,7 +375,12 @@ class LensManager:
         except (ValueError, IndexError):
             print("Invalid input.")
     
-    def view_lens(self):
+    def view_lens(self) -> None:
+        """
+        Interactive CLI method to view detailed information about a lens.
+        
+        Prompts user to select a lens and displays its full details.
+        """
         if not self.lenses:
             print("\nNo lenses to view.")
             return
@@ -279,7 +397,13 @@ class LensManager:
         except ValueError:
             print("Invalid input.")
     
-    def delete_lens(self):
+    def delete_lens(self) -> None:
+        """
+        Interactive CLI method to delete a lens from the collection.
+        
+        Prompts user to select a lens and confirm deletion.
+        Updates storage after deletion.
+        """
         if not self.lenses:
             print("\nNo lenses to delete.")
             return
@@ -305,7 +429,8 @@ class LensManager:
             print("Invalid input.")
 
 
-def main():
+def main() -> None:
+    """Main entry point for the interactive CLI lens editor."""
     manager = LensManager()
     
     print("=" * 60)
