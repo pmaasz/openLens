@@ -88,7 +88,8 @@ class LensService:
             temperature=temperature
         )
         
-        self.lens_manager.add_lens(lens)
+        self.lens_manager.lenses.append(lens)
+        self.lens_manager.save_lenses()
         return lens
     
     def update_lens(self, lens: 'Lens', **kwargs) -> bool:
@@ -151,7 +152,7 @@ class LensService:
                     )
             
             # Save changes
-            self.lens_manager.save_to_file()
+            self.lens_manager.save_lenses()
             return True
             
         except ValidationError as e:
@@ -226,7 +227,8 @@ class LensService:
             data['name'] = f"{data['name']} (Copy)"
         
         new_lens = Lens.from_dict(data)
-        self.lens_manager.add_lens(new_lens)
+        self.lens_manager.lenses.append(new_lens)
+        self.lens_manager.save_lenses()
         
         return new_lens
 
@@ -437,15 +439,23 @@ class MaterialDatabaseService:
             Dict with material properties
         """
         if self._available and self.db:
-            return self.db.get_material(material)
-        else:
-            # Return basic info
-            return {
-                'name': material,
-                'refractive_index': self.get_refractive_index(material),
-                'abbe_number': 60.0,  # Typical value
-                'dispersion_available': False
-            }
+            mat = self.db.get_material(material)
+            if mat:
+                # Convert MaterialProperties object to dict
+                if hasattr(mat, '__dict__'):
+                    return {k: v for k, v in mat.__dict__.items() if not k.startswith('_')}
+                elif hasattr(mat, '_asdict'):
+                    return mat._asdict()
+                else:
+                    return {'name': material, 'data': str(mat)}
+        
+        # Return basic info
+        return {
+            'name': material,
+            'refractive_index': self.get_refractive_index(material),
+            'abbe_number': 60.0,  # Typical value
+            'dispersion_available': False
+        }
 
 
 # Export services
