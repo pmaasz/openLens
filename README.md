@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-41%20passing-brightgreen.svg)](docs/TESTING.md)
 
-[Features](#features) • [Installation](#installation) • [Usage](#usage) • [Documentation](#documentation) • [Testing](#testing)
+[Features](#features) • [Installation](#installation) • [Usage](#usage) • [Documentation](#documentation) • [Testing](#testing) • [Contributing](#contributing)
 
 </div>
 
@@ -614,14 +614,45 @@ pip install matplotlib numpy
 
 ## Contributing
 
-Contributions are welcome! Areas for enhancement:
+Contributions are welcome! We appreciate bug fixes, new features, documentation improvements, and more.
 
-- [ ] Lens aberration calculations
-- [ ] Visual ray tracing diagrams
-- [ ] Import/export to other formats (Zemax, etc.)
-- [ ] Multi-element lens systems
-- [ ] Coating specifications
-- [ ] 3D lens visualization
+### How to Contribute
+
+Please read our comprehensive [Contributing Guidelines](docs/CONTRIBUTING.md) for:
+- Code of conduct
+- Development setup
+- Coding standards
+- Testing requirements
+- Pull request process
+- Issue guidelines
+
+### Areas for Enhancement
+
+- [ ] Additional optical aberrations (higher-order)
+- [ ] Import/export to other formats (Zemax, CODE V, etc.)
+- [ ] Advanced multi-element optimization
+- [ ] Polarization ray tracing
+- [ ] Thermal analysis
+- [ ] Manufacturing tolerancing
+
+### Quick Start for Contributors
+
+```bash
+# 1. Fork the repository
+# 2. Clone your fork
+git clone https://github.com/YOUR_USERNAME/openLens.git
+cd openLens
+
+# 3. Create a branch
+git checkout -b feature/my-feature
+
+# 4. Make changes and test
+python3 tests/run_all_tests.py
+
+# 5. Submit a pull request
+```
+
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed instructions.
 
 ---
 
@@ -639,12 +670,41 @@ This project is open source and available under the MIT License.
 
 ---
 
+## Documentation
+
+### Available Documentation
+
+- **[README.md](README.md)** - This file: Getting started, features, usage
+- **[API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md)** - Complete API reference for library use
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture and design diagrams
+- **[CONTRIBUTING.md](docs/CONTRIBUTING.md)** - Contributing guidelines and development workflow
+- **[TESTING.md](docs/TESTING.md)** - Testing strategy and test coverage
+
+### Quick Links
+
+| I want to... | Read this... |
+|--------------|--------------|
+| Use openlens as a desktop app | [Usage](#usage) section above |
+| Use openlens in my Python code | [API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) |
+| Understand the code structure | [ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Contribute to the project | [CONTRIBUTING.md](docs/CONTRIBUTING.md) |
+| Run or write tests | [TESTING.md](docs/TESTING.md) |
+
+---
+
 ## Contact & Support
 
 For questions, issues, or suggestions:
-- Create an issue in the repository
-- Check [TESTING.md](docs/TESTING.md) for testing details
-- Review the code comments for implementation details
+- **Bug reports**: Create an issue with the `bug` label
+- **Feature requests**: Create an issue with the `enhancement` label
+- **Questions**: Open a discussion or issue with the `question` label
+- **Security issues**: Contact maintainers directly (see repository)
+
+### Useful Links
+- [GitHub Issues](../../issues) - Report bugs and request features
+- [API Documentation](docs/API_DOCUMENTATION.md) - Using openlens as a library
+- [Architecture Guide](docs/ARCHITECTURE.md) - Understanding the codebase
+- [Contributing Guide](docs/CONTRIBUTING.md) - How to contribute
 
 ---
 
