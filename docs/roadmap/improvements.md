@@ -24,6 +24,15 @@
 
    --------------------------------------------------------------------------------------------------------------------
 💡
+   Architectural Improvements
+
+     - ⚠️ Large GUI file (2199 lines) needs decomposition
+     - ⚠️ Some long functions (>100 lines)
+     - ⚠️ Mixed abstraction levels in some modules
+     - ⚠️ Limited type hints in older code
+
+  --------------------------------------------------------------------------------------------------------------------
+💡
    Long-term:
 
      - Add caching layer for calculations
