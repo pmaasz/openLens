@@ -83,10 +83,21 @@ openlens is a desktop application for designing and analyzing **single glass opt
 
 ### Prerequisites
 
+**Core Requirements:**
 - **Python 3.6 or higher**
 - **tkinter** (for GUI version - usually included with Python)
 - **X11 display server** (Linux) or native display (Windows/Mac)
-- **Optional**: matplotlib and numpy (for 3D visualization)
+
+**Optional Dependencies:**
+
+| Package | Version | Features Enabled |
+|---------|---------|------------------|
+| matplotlib | ≥3.3.0 | 3D visualization, ray tracing plots |
+| numpy | ≥1.19.0 | Numerical operations, ray tracing, STL export |
+| scipy | ≥1.5.0 | Advanced diffraction calculations, image simulation |
+| Pillow (PIL) | ≥8.0.0 | Image loading for image simulator |
+
+**Note:** All optional dependencies are gracefully handled - the application will run with reduced functionality if they are not installed.
 
 ### Installing tkinter
 
@@ -118,8 +129,11 @@ Use the provided setup script to automatically create and configure the virtual 
 ./setup_venv.sh
 source venv/bin/activate
 
-# Install 3D visualization dependencies (optional but recommended)
+# Install optional dependencies for full features (recommended)
 pip install matplotlib numpy
+
+# For advanced features (diffraction, image simulation)
+pip install scipy Pillow
 ```
 
 **Windows:**
@@ -127,8 +141,11 @@ pip install matplotlib numpy
 setup_venv.bat
 venv\Scripts\activate
 
-REM Install 3D visualization dependencies (optional but recommended)
+REM Install optional dependencies for full features (recommended)
 pip install matplotlib numpy
+
+REM For advanced features (diffraction, image simulation)
+pip install scipy Pillow
 ```
 
 The script will:
@@ -136,6 +153,17 @@ The script will:
 - Create virtual environment
 - Verify tkinter availability
 - Display activation instructions
+
+**What works without optional dependencies:**
+- ✅ All core lens calculations (focal length, optical power)
+- ✅ Lens creation, editing, and management
+- ✅ GUI interface
+- ✅ Data persistence (JSON)
+- ✅ Ray tracing (if numpy/matplotlib installed)
+- ✅ Aberrations calculations
+- ❌ 3D visualization (requires matplotlib + numpy)
+- ❌ Advanced diffraction calculations with Bessel functions (requires scipy)
+- ❌ Image simulation (requires scipy + Pillow)
 
 ### Method 2: Manual Setup
 
@@ -158,12 +186,24 @@ The script will:
    venv\Scripts\activate
    ```
 
-3. **Install optional 3D visualization dependencies (recommended):**
+3. **Install optional dependencies:**
+   
+   **For full features (recommended):**
    ```bash
    pip install matplotlib numpy
    ```
    
-   Note: The application works without these, but 3D visualization will be disabled.
+   **For advanced features:**
+   ```bash
+   pip install scipy Pillow
+   ```
+   
+   **Or install all optional dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+   
+   Note: The application works without these, with features gracefully disabled.
 
 4. **Verify Python and tkinter:**
    ```bash

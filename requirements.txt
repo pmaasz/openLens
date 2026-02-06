@@ -9,9 +9,20 @@
 # - os (file operations) - standard library
 # - unittest (testing) - standard library
 
-# Optional: 3D Visualization (recommended)
+# Optional: 3D Visualization and Ray Tracing (recommended)
 matplotlib>=3.3.0
 numpy>=1.19.0
+
+# Optional: Advanced Features
+# Uncomment if you need these features:
+# scipy>=1.5.0  # For advanced image simulation, diffraction calculations with Bessel functions
+# Pillow>=8.0.0  # For image loading in image simulator
+
+# Features requiring scipy:
+# - Diffraction calculations (DiffractionCalculator) - uses Bessel functions
+# - Image simulation with aberrations (ImageSimulator) - uses gaussian filters
+# - Advanced image processing (zoom, sobel edge detection)
+# Note: These modules gracefully degrade if scipy is not available
 
 # Optional: Development tools (not required for application use)
 # These are suggestions if you want additional development tools

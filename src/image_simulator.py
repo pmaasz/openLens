@@ -1,12 +1,40 @@
 """
 Image Simulation Module
 Simulates how test patterns and real images appear through the optical system.
+
+Requires:
+- numpy
+- matplotlib
+- PIL (Pillow)
+- scipy (optional, for advanced image processing)
 """
 
 import numpy as np
 from typing import Tuple, Optional, Dict, Any
-from PIL import Image
-import matplotlib.pyplot as plt
+
+# Try importing PIL
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    print("Warning: PIL/Pillow not available. Image loading disabled.")
+
+# Try importing matplotlib
+try:
+    import matplotlib.pyplot as plt
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    print("Warning: matplotlib not available. Plotting disabled.")
+
+# Try importing scipy (optional)
+try:
+    from scipy.ndimage import gaussian_filter, gaussian_filter1d, zoom, sobel
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+    # Will use fallback implementations where needed
 
 
 class ImageSimulator:
@@ -110,7 +138,11 @@ class ImageSimulator:
                           image_distance: float,
                           wavelength: float) -> np.ndarray:
         """Apply optical aberrations to image."""
-        from scipy.ndimage import gaussian_filter
+        if not SCIPY_AVAILABLE:
+            # Fallback: return image without aberration simulation
+            return image
+        
+        from scipy.ndimage import gaussian_filter, gaussian_filter1d
         
         # Get aberration coefficients
         if hasattr(self.optical_system, 'get_aberrations'):
@@ -139,13 +171,16 @@ class ImageSimulator:
             coeff = abs(aberrations['astigmatism'])
             if coeff > 0:
                 # Blur more in one direction
-                from scipy.ndimage import gaussian_filter1d
                 result = gaussian_filter1d(result, sigma=coeff * 2, axis=0)
         
         return result
     
     def _apply_diffraction(self, image: np.ndarray, wavelength: float) -> np.ndarray:
         """Apply diffraction-limited blur (PSF)."""
+        if not SCIPY_AVAILABLE:
+            # Fallback: return image without diffraction simulation
+            return image
+            
         from scipy.ndimage import gaussian_filter
         
         # Calculate diffraction-limited spot size
@@ -171,6 +206,10 @@ class ImageSimulator:
                                     image_distance: float) -> np.ndarray:
         """Apply chromatic aberration (color fringing)."""
         if len(image.shape) != 3 or image.shape[2] < 3:
+            return image
+        
+        if not SCIPY_AVAILABLE:
+            # Fallback: return image without chromatic aberration simulation
             return image
         
         from scipy.ndimage import zoom
@@ -241,9 +280,14 @@ class ImageSimulator:
         """Calculate image quality metrics."""
         # Ensure same size
         if original.shape != simulated.shape:
-            from scipy.ndimage import zoom
-            factors = np.array(simulated.shape[:2]) / np.array(original.shape[:2])
-            original = zoom(original, factors, order=1)
+            if SCIPY_AVAILABLE:
+                from scipy.ndimage import zoom
+                factors = np.array(simulated.shape[:2]) / np.array(original.shape[:2])
+                original = zoom(original, factors, order=1)
+            else:
+                # Fallback: simple nearest neighbor resize using numpy
+                h, w = simulated.shape[:2]
+                original = np.array(Image.fromarray((original * 255).astype(np.uint8)).resize((w, h))) / 255.0 if PIL_AVAILABLE else original
         
         # PSNR
         mse = np.mean((original - simulated) ** 2)
@@ -310,10 +354,15 @@ class ImageSimulator:
         if len(image.shape) == 3:
             image = np.mean(image, axis=2)
         
-        # Sobel gradients
-        from scipy.ndimage import sobel
-        dx = sobel(image, axis=1)
-        dy = sobel(image, axis=0)
+        if SCIPY_AVAILABLE:
+            # Sobel gradients
+            from scipy.ndimage import sobel
+            dx = sobel(image, axis=1)
+            dy = sobel(image, axis=0)
+        else:
+            # Fallback: simple gradient using numpy diff
+            dx = np.diff(image, axis=1, prepend=0)
+            dy = np.diff(image, axis=0, prepend=0)
         
         gradient_magnitude = np.sqrt(dx**2 + dy**2)
         return float(gradient_magnitude.mean())

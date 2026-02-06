@@ -6,12 +6,43 @@ Implements diffraction calculations including:
 - Diffraction-limited resolution
 - Point spread functions
 - Numerical aperture effects
+
+Requires:
+- numpy
+- scipy (for Bessel functions)
+- matplotlib (for plotting)
 """
 
 import numpy as np
-from scipy.special import j1  # Bessel function of first kind
 from typing import Dict, Tuple, Optional
-import matplotlib.pyplot as plt
+
+# Optional scipy import for Bessel functions
+try:
+    from scipy.special import j1  # Bessel function of first kind
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+    print("Warning: scipy not available. Diffraction calculations will use approximations.")
+    
+    # Fallback approximation for j1(x) Bessel function
+    def j1(x):
+        """Approximation of first-order Bessel function for small x"""
+        if hasattr(x, '__iter__'):
+            return np.array([j1(xi) for xi in x])
+        # Taylor series approximation: J1(x) ≈ x/2 - x³/16 + x⁵/384
+        x = float(x)
+        if abs(x) < 0.1:
+            return x/2.0 - x**3/16.0 + x**5/384.0
+        # For larger x, use a simpler approximation
+        return 0.5 * x * (1 - x**2/8.0)
+
+# Optional matplotlib import
+try:
+    import matplotlib.pyplot as plt
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    print("Warning: matplotlib not available. Plotting disabled for diffraction module.")
 
 
 class DiffractionCalculator:
