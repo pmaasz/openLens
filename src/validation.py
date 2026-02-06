@@ -553,3 +553,90 @@ def validate_json_file_path(file_path: Union[str, Path],
         )
     
     return path
+
+
+def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> dict:
+    """
+    Validate that a lens data dictionary has the expected schema.
+    
+    Args:
+        data: Dictionary containing lens data
+        lens_index: Optional index for error messages
+    
+    Returns:
+        dict: The validated data dictionary
+    
+    Raises:
+        ValidationError: If schema is invalid
+    """
+    if not isinstance(data, dict):
+        idx_str = f" at index {lens_index}" if lens_index is not None else ""
+        raise ValidationError(f"Lens data{idx_str} must be a dictionary, got {type(data)}")
+    
+    # Define required fields with their types
+    required_fields = {
+        'name': str,
+        'radius_of_curvature_1': (int, float),
+        'radius_of_curvature_2': (int, float),
+        'thickness': (int, float),
+        'diameter': (int, float),
+        'refractive_index': (int, float)
+    }
+    
+    # Optional fields with their types
+    optional_fields = {
+        'type': str,
+        'material': str,
+        'wavelength': (int, float),
+        'temperature': (int, float),
+        'id': str,
+        'created_at': str,
+        'modified_at': str
+    }
+    
+    # Check required fields exist and have correct type
+    idx_str = f" at index {lens_index}" if lens_index is not None else ""
+    for field, expected_type in required_fields.items():
+        if field not in data:
+            raise ValidationError(f"Missing required field '{field}' in lens data{idx_str}")
+        
+        if not isinstance(data[field], expected_type):
+            type_name = expected_type.__name__ if isinstance(expected_type, type) else 'number'
+            raise ValidationError(
+                f"Field '{field}'{idx_str} must be {type_name}, got {type(data[field]).__name__}"
+            )
+    
+    # Check optional fields have correct type if present
+    for field, expected_type in optional_fields.items():
+        if field in data and not isinstance(data[field], expected_type):
+            type_name = expected_type.__name__ if isinstance(expected_type, type) else 'number'
+            raise ValidationError(
+                f"Field '{field}'{idx_str} must be {type_name}, got {type(data[field]).__name__}"
+            )
+    
+    return data
+
+
+def validate_lenses_json_schema(data: list) -> list:
+    """
+    Validate that JSON data conforms to lenses array schema.
+    
+    Args:
+        data: Parsed JSON data (should be list of lens dictionaries)
+    
+    Returns:
+        list: The validated data list
+    
+    Raises:
+        ValidationError: If schema is invalid
+    """
+    if not isinstance(data, list):
+        raise ValidationError(
+            f"Lenses JSON root must be an array, got {type(data).__name__}"
+        )
+    
+    # Validate each lens in the array
+    for i, lens_data in enumerate(data):
+        validate_lens_data_schema(lens_data, lens_index=i)
+    
+    return data

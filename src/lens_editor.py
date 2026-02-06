@@ -29,6 +29,8 @@ try:
     from .validation import (
         validate_json_file_path,
         validate_file_path,
+        validate_lenses_json_schema,
+        validate_lens_data_schema,
         ValidationError
     )
 except (ImportError, ValueError):
@@ -36,6 +38,8 @@ except (ImportError, ValueError):
         from validation import (
             validate_json_file_path,
             validate_file_path,
+            validate_lenses_json_schema,
+            validate_lens_data_schema,
             ValidationError
         )
     except ImportError:
@@ -45,6 +49,10 @@ except (ImportError, ValueError):
             return Path(path)
         def validate_file_path(path, **kwargs):
             return Path(path)
+        def validate_lenses_json_schema(data):
+            return data
+        def validate_lens_data_schema(data, **kwargs):
+            return data
 
 
 class Lens:
@@ -250,7 +258,7 @@ class LensManager:
     
     def load_lenses(self) -> List[Lens]:
         """
-        Load lenses from JSON storage file with path validation.
+        Load lenses from JSON storage file with path and schema validation.
         
         Returns:
             List of Lens objects (empty if file doesn't exist or error occurs)
@@ -266,16 +274,19 @@ class LensManager:
             # Read and parse JSON
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                
-            # Validate JSON structure
-            if not isinstance(data, list):
-                print(f"Warning: Storage file contains invalid data structure")
+            
+            # Validate JSON schema
+            try:
+                validated_data = validate_lenses_json_schema(data)
+            except ValidationError as e:
+                print(f"Error: Invalid JSON schema in storage file: {e}")
                 return []
             
-            # Load lenses
+            # Load lenses from validated data
             lenses = []
-            for i, lens_data in enumerate(data):
+            for i, lens_data in enumerate(validated_data):
                 try:
+                    # Additional validation happens in from_dict via Lens.__init__
                     lenses.append(Lens.from_dict(lens_data))
                 except Exception as e:
                     print(f"Warning: Failed to load lens {i}: {e}")
