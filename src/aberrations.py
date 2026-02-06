@@ -7,6 +7,12 @@ Calculates primary optical aberrations for single lens elements
 import math
 from typing import Optional, Dict, Any
 
+# Import constants
+try:
+    from .constants import *
+except ImportError:
+    from constants import *
+
 
 class AberrationsCalculator:
     """
@@ -276,8 +282,8 @@ class AberrationsCalculator:
         """
         # Typical Abbe numbers for common materials
         abbe_numbers = {
-            'BK7': 64.17,
-            'Fused Silica': 67.8,
+            'BK7': 64.17,  # Standard crown glass
+            'Fused Silica': 67.8,  # Low dispersion
             'Crown Glass': 60.0,
             'Flint Glass': 36.0,
             'SF11': 25.76,
@@ -290,11 +296,11 @@ class AberrationsCalculator:
         if abbe_number is None:
             # Estimate based on refractive index
             # Higher index generally means lower Abbe number
-            if self.n < 1.5:
+            if self.n < 1.5:  # Low index glass
                 abbe_number = 65  # Low dispersion
-            elif self.n < 1.6:
+            elif self.n < 1.6:  # Medium index
                 abbe_number = 55  # Medium dispersion
-            elif self.n < 1.7:
+            elif self.n < 1.7:  # Higher index
                 abbe_number = 40  # Higher dispersion
             else:
                 abbe_number = 30  # High dispersion (flint glass)
@@ -322,7 +328,7 @@ class AberrationsCalculator:
         if f_number == float('inf'):
             return 0
         
-        airy_diameter = 2.44 * wavelength * f_number
+        airy_diameter = AIRY_DISK_FACTOR * wavelength * f_number
         
         return airy_diameter
     
@@ -411,48 +417,48 @@ def analyze_lens_quality(lens: Any, field_angle: float = 5.0) -> Dict[str, Any]:
     
     # Evaluate spherical aberration
     sa = abs(results['spherical_aberration'])
-    if sa > 0.01:
+    if sa > SPHERICAL_ABERRATION_EXCELLENT:
         issues.append(f"High spherical aberration ({sa:.4f} mm)")
-        score -= 20
-    elif sa > 0.001:
+        score -= 20  # Major SA penalty
+    elif sa > (SPHERICAL_ABERRATION_EXCELLENT / 10):
         issues.append(f"Moderate spherical aberration ({sa:.4f} mm)")
-        score -= 10
+        score -= 10  # Minor SA penalty
     
     # Evaluate chromatic aberration
     ca = results['chromatic_aberration']
-    if ca > 0.5:
+    if ca > 0.5:  # Significant chromatic aberration
         issues.append(f"High chromatic aberration ({ca:.4f} mm)")
-        score -= 20
+        score -= 20  # Major SA penalty
     elif ca > 0.1:
         issues.append(f"Moderate chromatic aberration ({ca:.4f} mm)")
-        score -= 10
+        score -= 10  # Minor SA penalty
     
     # Evaluate distortion
     dist = abs(results['distortion'])
     if dist > 5:
         issues.append(f"High distortion ({dist:.2f}%)")
-        score -= 15
+        score -= 15  # Astigmatism penalty
     elif dist > 1:
         issues.append(f"Moderate distortion ({dist:.2f}%)")
         score -= 5
     
     # Evaluate astigmatism
     ast = results['astigmatism']
-    if ast > 1.0:
+    if ast > 1.0:  # Large astigmatism
         issues.append(f"High astigmatism ({ast:.4f} mm)")
-        score -= 15
-    elif ast > 0.1:
+        score -= 15  # Astigmatism penalty
+    elif ast > 0.1:  # Moderate astigmatism
         issues.append(f"Moderate astigmatism ({ast:.4f} mm)")
         score -= 5
     
     # Determine rating
-    if score >= 90:
+    if score >= (QUALITY_EXCELLENT_THRESHOLD + 5):  # 90
         rating = "Excellent"
-    elif score >= 75:
+    elif score >= (QUALITY_GOOD_THRESHOLD + 5):  # 75
         rating = "Good"
-    elif score >= 60:
+    elif score >= (QUALITY_FAIR_THRESHOLD + 10):  # 60
         rating = "Fair"
-    elif score >= 40:
+    elif score >= (QUALITY_FAIR_THRESHOLD - 10):  # 40
         rating = "Poor"
     else:
         rating = "Very Poor"

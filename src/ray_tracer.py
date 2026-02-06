@@ -7,6 +7,12 @@ Implements Snell's law and ray propagation through lens elements
 import math
 from typing import List, Optional, Tuple, Any
 
+# Import constants
+try:
+    from .constants import *
+except ImportError:
+    from constants import *
+
 
 class Ray:
     """
@@ -22,7 +28,7 @@ class Ray:
     """
     
     def __init__(self, x: float, y: float, angle: float, 
-                 wavelength: float = 0.000550, n: float = 1.0) -> None:
+                 wavelength: float = WAVELENGTH_GREEN * NM_TO_MM, n: float = REFRACTIVE_INDEX_AIR) -> None:
         self.x = x
         self.y = y
         self.angle = angle
@@ -57,7 +63,7 @@ class Ray:
         sin_ratio = (n1 / n2) * sin_incident
         
         # Check for total internal reflection
-        if abs(sin_ratio) > 1.0:
+        if abs(sin_ratio) > REFRACTIVE_INDEX_VACUUM:  # > 1.0 = TIR
             # Total internal reflection - reflect instead of refract
             self.angle = 2 * surface_normal_angle - self.angle
             return False
@@ -99,7 +105,7 @@ class LensRayTracer:
     def _calculate_geometry(self) -> None:
         """Calculate lens surface positions and centers"""
         # Lens offset - front surface starts at x=5
-        self.lens_offset = 5.0
+        self.lens_offset = DEFAULT_THICKNESS
         
         # Front surface vertex at x=5
         self.front_vertex_x = self.lens_offset
@@ -174,7 +180,7 @@ class LensRayTracer:
         """
         if self.front_is_flat:
             # Flat surface at x=0
-            if abs(math.cos(ray.angle)) < 1e-10:
+            if abs(math.cos(ray.angle)) < EPSILON:
                 return None  # Ray parallel to surface
             
             t = (self.front_vertex_x - ray.x) / math.cos(ray.angle)
@@ -241,7 +247,7 @@ class LensRayTracer:
         """
         if self.back_is_flat:
             # Flat surface at x=d
-            if abs(math.cos(ray.angle)) < 1e-10:
+            if abs(math.cos(ray.angle)) < EPSILON:
                 return None
             
             t = (self.back_vertex_x - ray.x) / math.cos(ray.angle)
@@ -292,7 +298,7 @@ class LensRayTracer:
             
             return (x, y)
     
-    def trace_ray(self, ray: Ray, propagate_distance: float = 100.0) -> Ray:
+    def trace_ray(self, ray: Ray, propagate_distance: float = (DEFAULT_RADIUS_1)) -> Ray:
         """
         Trace a ray through the lens.
         
@@ -319,7 +325,7 @@ class LensRayTracer:
         
         # Refract at front surface
         normal_angle = self._get_surface_normal_angle(x1, y1, 'front')
-        ray.refract(1.0, self.n, normal_angle)
+        ray.refract(REFRACTIVE_INDEX_AIR, self.n, normal_angle)
         
         # Propagate through lens to back surface
         intersection = self._intersect_back_surface(ray)
@@ -335,16 +341,16 @@ class LensRayTracer:
         
         # Refract at back surface
         normal_angle = self._get_surface_normal_angle(x2, y2, 'back')
-        ray.refract(self.n, 1.0, normal_angle)
+        ray.refract(self.n, REFRACTIVE_INDEX_AIR, normal_angle)
         
         # Propagate after lens
         ray.propagate(propagate_distance)
         
         return ray
     
-    def trace_parallel_rays(self, num_rays: int = 10, 
+    def trace_parallel_rays(self, num_rays: int = DEFAULT_NUM_RAYS, 
                            ray_height_range: Optional[Tuple[float, float]] = None, 
-                           wavelength: float = 0.000550) -> List[Ray]:
+                           wavelength: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray]:
         """
         Trace parallel rays (collimated beam) through the lens.
         
@@ -364,7 +370,7 @@ class LensRayTracer:
         min_h, max_h = ray_height_range
         
         # Starting position (before lens) - rays start at x=0
-        start_x = 0.0
+        start_x = 0.0  # Ray starts at lens entrance
         
         for i in range(num_rays):
             if num_rays == 1:
@@ -379,8 +385,8 @@ class LensRayTracer:
         return rays
     
     def trace_point_source_rays(self, source_x: float, source_y: float, 
-                               num_rays: int = 10, max_angle: float = 30.0, 
-                               wavelength: float = 0.000550) -> List[Ray]:
+                               num_rays: int = DEFAULT_NUM_RAYS, max_angle: float = DEFAULT_ANGLE_RANGE[1], 
+                               wavelength: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray]:
         """
         Trace rays from a point source.
         
@@ -445,7 +451,7 @@ class LensRayTracer:
         
         return (focal_x, 0)
     
-    def get_lens_outline(self, num_points: int = 100) -> List[Tuple[float, float]]:
+    def get_lens_outline(self, num_points: int = MESH_RESOLUTION_HIGH) -> List[Tuple[float, float]]:
         """
         Get points defining the lens outline for visualization.
         

@@ -11,6 +11,12 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+# Import constants
+try:
+    from .constants import *
+except ImportError:
+    from constants import *
+
 # Try to import visualization (optional dependency)
 try:
     from .lens_visualizer import LensVisualizer
@@ -93,17 +99,17 @@ class ToolTip:
     
     def show_tooltip(self, event=None):
         x, y, _, _ = self.widget.bbox("insert")
-        x += self.widget.winfo_rootx() + 25
-        y += self.widget.winfo_rooty() + 25
+        x += self.widget.winfo_rootx() + TOOLTIP_OFFSET_X
+        y += self.widget.winfo_rooty() + TOOLTIP_OFFSET_Y
         
         self.tooltip = tk.Toplevel(self.widget)
         self.tooltip.wm_overrideredirect(True)
         self.tooltip.wm_geometry(f"+{x}+{y}")
         
         label = tk.Label(self.tooltip, text=self.text, 
-                        background="#252525", foreground="#e0e0e0",
+                        background=COLOR_BG_DARK, foreground=COLOR_FG,
                         relief=tk.SOLID, borderwidth=1, 
-                        font=("Arial", 9), padx=5, pady=3)
+                        font=("Arial", 9), padx=PADDING_SMALL, pady=3)
         label.pack()
     
     def hide_tooltip(self, event=None):
@@ -113,10 +119,10 @@ class ToolTip:
 
 
 class Lens:
-    def __init__(self, name="Untitled", radius_of_curvature_1=100.0, radius_of_curvature_2=-100.0,
-                 thickness=5.0, diameter=50.0, refractive_index=1.5168, 
+    def __init__(self, name="Untitled", radius_of_curvature_1=DEFAULT_RADIUS_1, radius_of_curvature_2=DEFAULT_RADIUS_2,
+                 thickness=DEFAULT_THICKNESS, diameter=DEFAULT_DIAMETER, refractive_index=REFRACTIVE_INDEX_BK7, 
                  lens_type="Biconvex", material="BK7", is_fresnel=False, 
-                 groove_pitch=1.0, num_grooves=None):
+                 groove_pitch=DEFAULT_THICKNESS, num_grooves=None):
         self.id = datetime.now().strftime("%Y%m%d%H%M%S%f")
         self.name = name
         self.radius_of_curvature_1 = radius_of_curvature_1  # R1 (front surface, mm)
@@ -165,15 +171,15 @@ class Lens:
     def from_dict(cls, data):
         lens = cls(
             name=data.get("name", "Untitled"),
-            radius_of_curvature_1=data.get("radius_of_curvature_1", 100.0),
-            radius_of_curvature_2=data.get("radius_of_curvature_2", -100.0),
-            thickness=data.get("thickness", 5.0),
-            diameter=data.get("diameter", 50.0),
-            refractive_index=data.get("refractive_index", 1.5168),
+            radius_of_curvature_1=data.get("radius_of_curvature_1", DEFAULT_RADIUS_1),
+            radius_of_curvature_2=data.get("radius_of_curvature_2", DEFAULT_RADIUS_2),
+            thickness=data.get("thickness", DEFAULT_THICKNESS),
+            diameter=data.get("diameter", DEFAULT_DIAMETER),
+            refractive_index=data.get("refractive_index", REFRACTIVE_INDEX_BK7),
             lens_type=data.get("type", "Biconvex"),
             material=data.get("material", "BK7"),
             is_fresnel=data.get("is_fresnel", False),
-            groove_pitch=data.get("groove_pitch", 1.0),
+            groove_pitch=data.get("groove_pitch", DEFAULT_THICKNESS),
             num_grooves=data.get("num_grooves", None)
         )
         lens.id = data.get("id", lens.id)
@@ -245,7 +251,7 @@ class LensEditorWindow:
     COLORS = {
         'bg': '#1e1e1e',           # Main background
         'fg': '#e0e0e0',           # Main text
-        'bg_dark': '#252525',      # Darker sections
+        'bg_dark': COLOR_BG_DARK,      # Darker sections
         'bg_light': '#2d2d2d',     # Lighter sections
         'accent': '#0078d4',       # Accent color (blue)
         'accent_hover': '#1e88e5', # Accent hover
@@ -535,7 +541,7 @@ class LensEditorWindow:
         
         # Status bar (below tabs)
         status_frame = ttk.Frame(main_frame)
-        status_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5, padx=5)
+        status_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=PADDING_SMALL, padx=PADDING_SMALL)
         
         self.status_var = tk.StringVar(value="Select or create a lens to begin")
         status_label = ttk.Label(status_frame, textvariable=self.status_var, 
@@ -557,8 +563,8 @@ class LensEditorWindow:
         
         # Title
         title_label = ttk.Label(content_frame, text="Lens Library", 
-                               font=('Arial', 16, 'bold'))
-        title_label.grid(row=0, column=0, pady=(0, 20))
+                               font=(FONT_FAMILY, 16, 'bold'))
+        title_label.grid(row=0, column=0, pady=(0, PADDING_XLARGE))
         
         # Create a frame for the lens list and buttons
         list_frame = ttk.LabelFrame(content_frame, text="Available Lenses", padding="10")
@@ -576,7 +582,7 @@ class LensEditorWindow:
                                            fg=self.COLORS['fg'],
                                            selectbackground=self.COLORS['accent'],
                                            selectforeground=self.COLORS['fg'],
-                                           font=('Arial', 11),
+                                           font=(FONT_FAMILY, FONT_SIZE_LARGE),
                                            height=15,
                                            borderwidth=1,
                                            relief=tk.SOLID)
@@ -588,13 +594,13 @@ class LensEditorWindow:
         
         # Lens info panel
         info_frame = ttk.LabelFrame(content_frame, text="Lens Information", padding="10")
-        info_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=20)
+        info_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=PADDING_XLARGE)
         
         self.selection_info_text = tk.Text(info_frame, 
                                           height=9, 
                                           bg=self.COLORS['entry_bg'],
                                           fg=self.COLORS['fg'],
-                                          font=('Arial', 10),
+                                          font=(FONT_FAMILY, FONT_SIZE_NORMAL),
                                           wrap=tk.WORD,
                                           borderwidth=1,
                                           relief=tk.SOLID,
@@ -606,24 +612,24 @@ class LensEditorWindow:
         
         # Button frame
         button_frame = ttk.Frame(content_frame)
-        button_frame.grid(row=3, column=0, pady=20)
+        button_frame.grid(row=3, column=0, pady=PADDING_XLARGE)
         
         ttk.Button(button_frame, text="Create New Lens", 
                   command=self.create_new_lens_from_selection,
-                  width=20).pack(side=tk.LEFT, padx=5)
+                  width=20).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         ttk.Button(button_frame, text="Select & Edit", 
                   command=self.select_lens_from_list,
-                  width=20).pack(side=tk.LEFT, padx=5)
+                  width=20).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         ttk.Button(button_frame, text="Delete Lens", 
                   command=self.delete_lens_from_selection,
-                  width=20).pack(side=tk.LEFT, padx=5)
+                  width=20).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         if STL_EXPORT_AVAILABLE:
             ttk.Button(button_frame, text="Export to STL", 
                       command=self.export_lens_to_stl,
-                      width=20).pack(side=tk.LEFT, padx=5)
+                      width=20).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         # Populate the list
         self.refresh_selection_list()
@@ -760,7 +766,7 @@ Modified: {lens.modified_at}"""
         # Fixed header at the top
         header_frame = ttk.Frame(left_container, padding="5")
         header_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E))
-        ttk.Label(header_frame, text="Optical Lens Properties", font=('Arial', 12, 'bold')).pack(anchor=tk.W)
+        ttk.Label(header_frame, text="Optical Lens Properties", font=(FONT_FAMILY, FONT_SIZE_TITLE, 'bold')).pack(anchor=tk.W)
         
         # Scrollable content area
         scroll_container = ttk.Frame(left_container)
@@ -805,77 +811,77 @@ Modified: {lens.modified_at}"""
         # Form fields
         row = 0
         
-        ttk.Label(right_frame, text="Name:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        ttk.Label(right_frame, text="Name:").grid(row=row, column=0, sticky=tk.W, pady=PADDING_SMALL, padx=PADDING_SMALL)
         self.name_var = tk.StringVar()
         self.name_var.trace_add('write', lambda *args: self.on_field_change())
         self.name_entry = ttk.Entry(right_frame, textvariable=self.name_var, width=40)
-        self.name_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        self.name_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=PADDING_SMALL, padx=PADDING_SMALL)
         row += 1
         
         # Separator
-        ttk.Separator(right_frame, orient='horizontal').grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        ttk.Separator(right_frame, orient='horizontal').grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM)
         row += 1
         
-        ttk.Label(right_frame, text="Radius of Curvature 1 (mm):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        ttk.Label(right_frame, text="Radius of Curvature 1 (mm):").grid(row=row, column=0, sticky=tk.W, pady=PADDING_SMALL, padx=PADDING_SMALL)
         self.r1_var = tk.StringVar(value="100.0")
         self.r1_var.trace_add('write', lambda *args: self.on_field_change())
         self.r1_entry = ttk.Entry(right_frame, textvariable=self.r1_var, width=40)
-        self.r1_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        self.r1_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=PADDING_SMALL, padx=PADDING_SMALL)
         row += 1
         
-        ttk.Label(right_frame, text="Radius of Curvature 2 (mm):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        ttk.Label(right_frame, text="Radius of Curvature 2 (mm):").grid(row=row, column=0, sticky=tk.W, pady=PADDING_SMALL, padx=PADDING_SMALL)
         self.r2_var = tk.StringVar(value="-100.0")
         self.r2_var.trace_add('write', lambda *args: self.on_field_change())
         self.r2_entry = ttk.Entry(right_frame, textvariable=self.r2_var, width=40)
-        self.r2_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        self.r2_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=PADDING_SMALL, padx=PADDING_SMALL)
         row += 1
         
-        ttk.Label(right_frame, text="Center Thickness (mm):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        ttk.Label(right_frame, text="Center Thickness (mm):").grid(row=row, column=0, sticky=tk.W, pady=PADDING_SMALL, padx=PADDING_SMALL)
         self.thickness_var = tk.StringVar(value="5.0")
         self.thickness_var.trace_add('write', lambda *args: self.on_field_change())
         self.thickness_entry = ttk.Entry(right_frame, textvariable=self.thickness_var, width=40)
-        self.thickness_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        self.thickness_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=PADDING_SMALL, padx=PADDING_SMALL)
         row += 1
         
-        ttk.Label(right_frame, text="Diameter (mm):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        ttk.Label(right_frame, text="Diameter (mm):").grid(row=row, column=0, sticky=tk.W, pady=PADDING_SMALL, padx=PADDING_SMALL)
         self.diameter_var = tk.StringVar(value="50.0")
         self.diameter_var.trace_add('write', lambda *args: self.on_field_change())
         self.diameter_entry = ttk.Entry(right_frame, textvariable=self.diameter_var, width=40)
-        self.diameter_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        self.diameter_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=PADDING_SMALL, padx=PADDING_SMALL)
         row += 1
         
-        ttk.Label(right_frame, text="Refractive Index (n):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        ttk.Label(right_frame, text="Refractive Index (n):").grid(row=row, column=0, sticky=tk.W, pady=PADDING_SMALL, padx=PADDING_SMALL)
         self.refr_index_var = tk.StringVar(value="1.5168")
         self.refr_index_var.trace_add('write', lambda *args: self.on_field_change())
         self.refr_index_entry = ttk.Entry(right_frame, textvariable=self.refr_index_var, width=40)
-        self.refr_index_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        self.refr_index_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=PADDING_SMALL, padx=PADDING_SMALL)
         row += 1
         
-        ttk.Label(right_frame, text="Lens Type:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        ttk.Label(right_frame, text="Lens Type:").grid(row=row, column=0, sticky=tk.W, pady=PADDING_SMALL, padx=PADDING_SMALL)
         self.type_var = tk.StringVar(value="Biconvex")
         self.type_var.trace_add('write', lambda *args: self.on_field_change())
         type_combo = ttk.Combobox(right_frame, textvariable=self.type_var, 
                                    values=["Biconvex", "Biconcave", "Plano-Convex", "Plano-Concave", 
                                           "Meniscus Convex", "Meniscus Concave"], 
                                    width=37, state="readonly")
-        type_combo.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        type_combo.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=PADDING_SMALL, padx=PADDING_SMALL)
         row += 1
         
-        ttk.Label(right_frame, text="Material:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        ttk.Label(right_frame, text="Material:").grid(row=row, column=0, sticky=tk.W, pady=PADDING_SMALL, padx=PADDING_SMALL)
         self.material_var = tk.StringVar(value="BK7")
         self.material_var.trace_add('write', lambda *args: self.on_field_change())
         material_combo = ttk.Combobox(right_frame, textvariable=self.material_var,
                                           values=["BK7", "Fused Silica", "SF11", "N-BK7", 
                                                   "Crown Glass", "Flint Glass", "Sapphire", "Custom"],
                                           width=37)
-        material_combo.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        material_combo.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=PADDING_SMALL, padx=PADDING_SMALL)
         row += 1
         
         # Fresnel lens section
-        ttk.Separator(right_frame, orient='horizontal').grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        ttk.Separator(right_frame, orient='horizontal').grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM)
         row += 1
         
-        ttk.Label(right_frame, text="Fresnel Lens:", font=('Arial', 10, 'bold')).grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        ttk.Label(right_frame, text="Fresnel Lens:", font=(FONT_FAMILY, FONT_SIZE_NORMAL, 'bold')).grid(row=row, column=0, sticky=tk.W, pady=PADDING_SMALL, padx=PADDING_SMALL)
         row += 1
         
         # Fresnel checkbox
@@ -883,49 +889,49 @@ Modified: {lens.modified_at}"""
         self.is_fresnel_var.trace_add('write', lambda *args: self.on_fresnel_toggle())
         fresnel_check = ttk.Checkbutton(right_frame, text="Enable Fresnel Lens", 
                                        variable=self.is_fresnel_var)
-        fresnel_check.grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5, padx=5)
+        fresnel_check.grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=PADDING_SMALL, padx=PADDING_SMALL)
         row += 1
         
         # Groove pitch
-        ttk.Label(right_frame, text="Groove Pitch (mm):").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
-        self.groove_pitch_var = tk.StringVar(value="1.0")
+        ttk.Label(right_frame, text="Groove Pitch (mm):").grid(row=row, column=0, sticky=tk.W, pady=PADDING_SMALL, padx=PADDING_SMALL)
+        self.groove_pitch_var = tk.StringVar(value=str(DEFAULT_THICKNESS))
         self.groove_pitch_var.trace_add('write', lambda *args: self.on_field_change())
         self.groove_pitch_entry = ttk.Entry(right_frame, textvariable=self.groove_pitch_var, width=40)
-        self.groove_pitch_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        self.groove_pitch_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=PADDING_SMALL, padx=PADDING_SMALL)
         self.groove_pitch_entry.config(state='disabled')  # Disabled by default
         row += 1
         
         # Number of grooves (readonly, calculated)
-        ttk.Label(right_frame, text="Number of Grooves:").grid(row=row, column=0, sticky=tk.W, pady=5, padx=5)
+        ttk.Label(right_frame, text="Number of Grooves:").grid(row=row, column=0, sticky=tk.W, pady=PADDING_SMALL, padx=PADDING_SMALL)
         self.num_grooves_var = tk.StringVar(value="0")
         num_grooves_entry = ttk.Entry(right_frame, textvariable=self.num_grooves_var, width=40, state='readonly')
-        num_grooves_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        num_grooves_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=PADDING_SMALL, padx=PADDING_SMALL)
         row += 1
         
         # Calculated properties display
         calc_frame = ttk.LabelFrame(right_frame, text="Calculated Properties", padding="10")
-        calc_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        calc_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM)
         
         self.focal_length_label = ttk.Label(calc_frame, text="Focal Length: Not calculated", 
-                                            font=('Arial', 10))
+                                            font=(FONT_FAMILY, FONT_SIZE_NORMAL))
         self.focal_length_label.pack(anchor=tk.W, pady=2)
         
         self.optical_power_label = ttk.Label(calc_frame, text="Optical Power: Not calculated", 
-                                             font=('Arial', 10))
+                                             font=(FONT_FAMILY, FONT_SIZE_NORMAL))
         self.optical_power_label.pack(anchor=tk.W, pady=2)
         
         # Fresnel-specific properties
-        self.fresnel_efficiency_label = ttk.Label(calc_frame, text="", font=('Arial', 10))
+        self.fresnel_efficiency_label = ttk.Label(calc_frame, text="", font=(FONT_FAMILY, FONT_SIZE_NORMAL))
         self.fresnel_efficiency_label.pack(anchor=tk.W, pady=2)
         
-        self.fresnel_thickness_label = ttk.Label(calc_frame, text="", font=('Arial', 10))
+        self.fresnel_thickness_label = ttk.Label(calc_frame, text="", font=(FONT_FAMILY, FONT_SIZE_NORMAL))
         self.fresnel_thickness_label.pack(anchor=tk.W, pady=2)
         
         row += 1
         
         # Info panel with tips
         info_frame = ttk.LabelFrame(right_frame, text="Tips", padding="10")
-        info_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        info_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM)
         
         tips_text = """• Positive radius = convex (curving outward), Negative = concave (curving inward)
 • R1 is front surface, R2 is back surface
@@ -943,15 +949,15 @@ Modified: {lens.modified_at}"""
         
         # Header with title
         viz_header = ttk.Frame(viz_outer_frame)
-        viz_header.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
-        ttk.Label(viz_header, text="Lens Visualization", font=('Arial', 11, 'bold')).pack(side=tk.LEFT)
+        viz_header.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+        ttk.Label(viz_header, text="Lens Visualization", font=(FONT_FAMILY, FONT_SIZE_LARGE, 'bold')).pack(side=tk.LEFT)
         
         # Visualization mode toggle using tabs
         self.viz_mode_var = tk.StringVar(value="3D")
         
         # Create notebook for 2D/3D tabs
         self.viz_notebook = ttk.Notebook(viz_outer_frame)
-        self.viz_notebook.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=(0, 5))
+        self.viz_notebook.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=PADDING_SMALL, pady=(0, 5))
         
         # Create frames for 2D and 3D tabs
         self.viz_2d_frame = ttk.Frame(self.viz_notebook)
@@ -972,12 +978,12 @@ Modified: {lens.modified_at}"""
                 self.visualizer = LensVisualizer(self.viz_3d_frame, width=6, height=6)
             except Exception as e:
                 ttk.Label(self.viz_3d_frame, text=f"Visualization error: {e}", 
-                         wraplength=300).pack(pady=20)
+                         wraplength=300).pack(pady=PADDING_XLARGE)  # Fixed width for wrapping
                 self.visualizer = None
         else:
             msg = "Visualization not available.\n\nInstall dependencies:\n  pip install matplotlib numpy"
             ttk.Label(self.viz_3d_frame, text=msg, justify=tk.CENTER, 
-                     font=('Arial', 10)).pack(pady=50)
+                     font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(pady=PADDING_SMALL)
             self.visualizer = None
     
     def on_viz_tab_changed(self, event):
@@ -1017,13 +1023,13 @@ Modified: {lens.modified_at}"""
         
         # Title
         title_label = ttk.Label(content_frame, text="Optical Simulation", 
-                 font=('Arial', 14, 'bold'))
-        title_label.grid(row=0, column=0, pady=10)
+                 font=(FONT_FAMILY, 14, 'bold'))
+        title_label.grid(row=0, column=0, pady=PADDING_MEDIUM)
         print(f"DEBUG: Created title label: {title_label}")
         
         # Simulation canvas area
         sim_frame = ttk.LabelFrame(content_frame, text="Ray Tracing Simulation", padding="10", height=450)
-        sim_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=10)
+        sim_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=PADDING_MEDIUM)
         sim_frame.columnconfigure(0, weight=1)
         sim_frame.rowconfigure(0, weight=1)
         sim_frame.grid_propagate(False)  # Prevent frame from shrinking to fit contents
@@ -1037,19 +1043,19 @@ Modified: {lens.modified_at}"""
                 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
                 
                 print("DEBUG: Creating matplotlib figure...")
-                self.sim_figure = Figure(figsize=(12, 6), dpi=100, facecolor='#1e1e1e')
+                self.sim_figure = Figure(figsize=(12, 6), dpi=100, facecolor=COLOR_BG_DARK)
                 self.sim_figure.subplots_adjust(left=0.08, right=0.95, top=0.93, bottom=0.10)
-                self.sim_ax = self.sim_figure.add_subplot(111, facecolor='#1e1e1e')
+                self.sim_ax = self.sim_figure.add_subplot(111, facecolor=COLOR_BG_DARK)
                 
                 # Draw initial empty plot
                 self.sim_ax.set_xlim(-100, 150)
                 self.sim_ax.set_ylim(-30, 30)
                 self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
-                self.sim_ax.set_xlabel('Position (mm)', fontsize=10, color='#e0e0e0')
-                self.sim_ax.set_ylabel('Height (mm)', fontsize=10, color='#e0e0e0')
+                self.sim_ax.set_xlabel('Position (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
+                self.sim_ax.set_ylabel('Height (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
                 self.sim_ax.set_title('Ray Tracing Simulation\n(Select a lens and click "Run Simulation")', 
-                                     fontsize=12, color='#e0e0e0')
-                self.sim_ax.grid(True, alpha=0.2, color='#3f3f3f')
+                                     fontsize=FONT_SIZE_TITLE, color=COLOR_FG)
+                self.sim_ax.grid(True, alpha=0.2, color=COLOR_BG_LIGHT)
                 self.sim_ax.set_aspect('equal')
                 
                 # Style the 2D plot
@@ -1079,54 +1085,54 @@ Modified: {lens.modified_at}"""
             except Exception as e:
                 print(f"ERROR creating simulation canvas: {e}")
                 ttk.Label(sim_frame, text=f"Simulation error: {e}", 
-                         wraplength=400).pack(pady=20)
+                         wraplength=400).pack(pady=PADDING_XLARGE)  # Fixed width for wrapping
                 self.sim_visualizer = None
                 import traceback
                 traceback.print_exc()
         else:
             msg = "Simulation not available.\n\nInstall dependencies:\n  pip install matplotlib numpy"
             ttk.Label(sim_frame, text=msg, justify=tk.CENTER, 
-                     font=('Arial', 10)).pack(pady=50)
+                     font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(pady=PADDING_SMALL)
             self.sim_visualizer = None
         
         # Simulation controls
         controls_frame = ttk.LabelFrame(content_frame, text="Simulation Controls", padding="10")
-        controls_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=10)
+        controls_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM)
         
         # Ray parameters
-        ttk.Label(controls_frame, text="Number of Rays:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
-        self.num_rays_var = tk.StringVar(value="10")
-        ttk.Entry(controls_frame, textvariable=self.num_rays_var, width=10).grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(controls_frame, text="Number of Rays:").grid(row=0, column=0, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.num_rays_var = tk.StringVar(value=str(DEFAULT_NUM_RAYS))
+        ttk.Entry(controls_frame, textvariable=self.num_rays_var, width=10).grid(row=0, column=1, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
         
-        ttk.Label(controls_frame, text="Ray Angle (degrees):").grid(row=0, column=2, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(controls_frame, text="Ray Angle (degrees):").grid(row=0, column=2, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
         self.ray_angle_var = tk.StringVar(value="0")
-        ttk.Entry(controls_frame, textvariable=self.ray_angle_var, width=10).grid(row=0, column=3, sticky=tk.W, padx=5, pady=5)
+        ttk.Entry(controls_frame, textvariable=self.ray_angle_var, width=10).grid(row=0, column=3, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
         
         # Simulation buttons
         btn_frame = ttk.Frame(controls_frame)
-        btn_frame.grid(row=1, column=0, columnspan=4, pady=10)
+        btn_frame.grid(row=1, column=0, columnspan=4, pady=PADDING_MEDIUM)
         
         ttk.Button(btn_frame, text="Run Simulation", 
-                  command=self.run_simulation).pack(side=tk.LEFT, padx=5)
+                  command=self.run_simulation).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(btn_frame, text="Clear Simulation", 
-                  command=self.clear_simulation).pack(side=tk.LEFT, padx=5)
+                  command=self.clear_simulation).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         # Aberrations Analysis section
         if ABERRATIONS_AVAILABLE:
             aberr_frame = ttk.LabelFrame(content_frame, text="Aberrations Analysis", padding="10")
-            aberr_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=10)  # Removed N, S sticky
+            aberr_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM)  # Removed N, S sticky
             aberr_frame.columnconfigure(0, weight=1)
             aberr_frame.rowconfigure(1, weight=1)
             
             # Field angle control
             angle_frame = ttk.Frame(aberr_frame)
-            angle_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=5)
+            angle_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=PADDING_SMALL)
             
-            ttk.Label(angle_frame, text="Field Angle (degrees):").pack(side=tk.LEFT, padx=5)
-            self.field_angle_var = tk.StringVar(value="5.0")
-            ttk.Entry(angle_frame, textvariable=self.field_angle_var, width=10).pack(side=tk.LEFT, padx=5)
+            ttk.Label(angle_frame, text="Field Angle (degrees):").pack(side=tk.LEFT, padx=PADDING_SMALL)
+            self.field_angle_var = tk.StringVar(value="5.0")  # degrees
+            ttk.Entry(angle_frame, textvariable=self.field_angle_var, width=10).pack(side=tk.LEFT, padx=PADDING_SMALL)
             ttk.Button(angle_frame, text="Analyze Aberrations", 
-                      command=self.analyze_aberrations).pack(side=tk.LEFT, padx=10)
+                      command=self.analyze_aberrations).pack(side=tk.LEFT, padx=PADDING_MEDIUM)
             
             # Aberrations display (scrollable text)
             aberr_scroll = ttk.Scrollbar(aberr_frame)
@@ -1146,9 +1152,9 @@ Modified: {lens.modified_at}"""
             self.aberrations_text.config(state='disabled')
         else:
             msg_frame = ttk.LabelFrame(content_frame, text="Aberrations Analysis", padding="10")
-            msg_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=10)
+            msg_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM)
             ttk.Label(msg_frame, text="Aberrations calculator module not available.", 
-                     font=('Arial', 10)).pack(pady=5)
+                     font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(pady=PADDING_SMALL)
     
     def run_simulation(self):
         """Run ray tracing simulation for the current lens"""
@@ -1205,7 +1211,7 @@ Modified: {lens.modified_at}"""
                 num_rays = int(self.num_rays_var.get())
                 num_rays = max(1, min(50, num_rays))  # Limit to 1-50 rays
             except ValueError:
-                num_rays = 10
+                num_rays = DEFAULT_NUM_RAYS
                 self.num_rays_var.set("10")
             
             try:
@@ -1267,7 +1273,7 @@ Modified: {lens.modified_at}"""
                     xs = [p[0] for p in lens_outline]
                     ys = [p[1] for p in lens_outline]
                     self.sim_ax.fill(xs, ys, color='lightblue', alpha=0.4, label='Lens', zorder=3)
-                    self.sim_ax.plot(xs, ys, color='#4fc3f7', linewidth=2.5, zorder=4)
+                    self.sim_ax.plot(xs, ys, color=COLOR_ACCENT, linewidth=2.5, zorder=4)
                 
                 # Draw optical axis (full range)
                 ray_x_coords = [p[0] for ray in rays for p in ray.path]
@@ -1317,16 +1323,16 @@ Modified: {lens.modified_at}"""
                 self.sim_ax.set_ylim(-y_extent, y_extent)
                 
                 # Set labels and limits
-                self.sim_ax.set_xlabel('Position (mm)', fontsize=10, color='#e0e0e0')
-                self.sim_ax.set_ylabel('Height (mm)', fontsize=10, color='#e0e0e0')
+                self.sim_ax.set_xlabel('Position (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
+                self.sim_ax.set_ylabel('Height (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
                 self.sim_ax.set_title(
                     f'Ray Tracing: {simulation_lens.name}\n'
                     f'{num_rays} rays, angle={ray_angle}°',
-                    fontsize=11, color='#e0e0e0'
+                    fontsize=FONT_SIZE_LARGE, color=COLOR_FG
                 )
                 self.sim_ax.legend(loc='best', fontsize=9, facecolor='#2e2e2e', 
-                                  edgecolor='#3f3f3f', labelcolor='#e0e0e0')
-                self.sim_ax.grid(True, alpha=0.3, color='#3f3f3f')
+                                  edgecolor=COLOR_BG_LIGHT, labelcolor=COLOR_FG)
+                self.sim_ax.grid(True, alpha=0.3, color=COLOR_BG_LIGHT)
                 self.sim_ax.set_aspect('equal')
                 
                 # Update tick colors
@@ -1362,7 +1368,7 @@ Modified: {lens.modified_at}"""
         try:
             field_angle = float(self.field_angle_var.get())
         except ValueError:
-            field_angle = 5.0
+            field_angle = 5.0  # degrees off-axis
             self.field_angle_var.set("5.0")
         
         try:
@@ -1412,11 +1418,11 @@ Modified: {lens.modified_at}"""
                 self.sim_ax.set_xlim(-100, 150)
                 self.sim_ax.set_ylim(-30, 30)
                 self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
-                self.sim_ax.set_xlabel('Position (mm)', fontsize=10, color='#e0e0e0')
-                self.sim_ax.set_ylabel('Height (mm)', fontsize=10, color='#e0e0e0')
+                self.sim_ax.set_xlabel('Position (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
+                self.sim_ax.set_ylabel('Height (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
                 self.sim_ax.set_title('Ray Tracing Simulation\n(Select a lens and click "Run Simulation")', 
-                                     fontsize=12, color='#e0e0e0')
-                self.sim_ax.grid(True, alpha=0.2, color='#3f3f3f')
+                                     fontsize=FONT_SIZE_TITLE, color=COLOR_FG)
+                self.sim_ax.grid(True, alpha=0.2, color=COLOR_BG_LIGHT)
                 self.sim_ax.set_aspect('equal')
                 self.sim_ax.tick_params(colors='#e0e0e0', labelsize=9)
                 
@@ -1473,11 +1479,11 @@ Modified: {lens.modified_at}"""
     def clear_form(self):
         self._loading_lens = True  # Prevent autosave during clear
         self.name_var.set("")
-        self.r1_var.set("100.0")
-        self.r2_var.set("-100.0")
-        self.thickness_var.set("5.0")
-        self.diameter_var.set("50.0")
-        self.refr_index_var.set("1.5168")
+        self.r1_var.set(str(DEFAULT_RADIUS_1))
+        self.r2_var.set(str(DEFAULT_RADIUS_2))
+        self.thickness_var.set(str(DEFAULT_THICKNESS))
+        self.diameter_var.set(str(DEFAULT_DIAMETER))
+        self.refr_index_var.set(str(REFRACTIVE_INDEX_BK7))
         self.type_var.set("Biconvex")
         self.material_var.set("BK7")
         self.is_fresnel_var.set(False)
@@ -1532,7 +1538,7 @@ Modified: {lens.modified_at}"""
             # Lensmaker's equation
             power = (n - 1) * ((1/r1) - (1/r2) + ((n - 1) * thickness) / (n * r1 * r2))
             
-            if abs(power) < 1e-10:
+            if abs(power) < EPSILON:
                 self.focal_length_label.config(text="Focal Length: Infinite (No optical power)")
                 self.optical_power_label.config(text="Optical Power: 0.00 D")
             else:
@@ -1666,7 +1672,7 @@ Modified: {lens.modified_at}"""
             self.root.after_cancel(self._autosave_timer)
         
         # Schedule autosave and update after 500ms of no changes (debounce)
-        self._autosave_timer = self.root.after(500, self._perform_autosave_and_update)
+        self._autosave_timer = self.root.after(500, self._perform_autosave_and_update)  # 500ms autosave delay
     
     def _perform_autosave_and_update(self):
         """Perform the actual autosave and visualization update"""
@@ -1783,11 +1789,11 @@ Modified: {lens.modified_at}"""
         
         try:
             # Export with resolution based on lens size
-            resolution = 50  # Default resolution
+            resolution = MESH_RESOLUTION_MEDIUM  # Default resolution
             if lens.diameter > 100:
-                resolution = 60  # Higher resolution for larger lenses
+                resolution = MESH_RESOLUTION_HIGH  # Higher resolution for larger lenses
             elif lens.diameter < 25:
-                resolution = 40  # Lower resolution for smaller lenses
+                resolution = MESH_RESOLUTION_LOW  # Lower resolution for smaller lenses
             
             num_triangles = export_lens_stl(lens, filename, resolution=resolution)
             
@@ -1830,12 +1836,12 @@ Modified: {lens.modified_at}"""
         
         # Title
         title_label = ttk.Label(content_frame, text="Performance Metrics Dashboard", 
-                                font=('Arial', 14, 'bold'))
-        title_label.grid(row=0, column=0, pady=10)
+                                font=(FONT_FAMILY, 14, 'bold'))
+        title_label.grid(row=0, column=0, pady=PADDING_MEDIUM)
         
         # Metrics display area
         metrics_frame = ttk.LabelFrame(content_frame, text="Optical Performance Metrics", padding="10")
-        metrics_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=10)
+        metrics_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=PADDING_MEDIUM)
         metrics_frame.columnconfigure(0, weight=1)
         metrics_frame.rowconfigure(0, weight=1)
         
@@ -1857,32 +1863,32 @@ Modified: {lens.modified_at}"""
         
         # Controls
         controls_frame = ttk.LabelFrame(content_frame, text="Calculation Parameters", padding="10")
-        controls_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=10)
+        controls_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM)
         
         # Parameter inputs
-        ttk.Label(controls_frame, text="Entrance Pupil Diameter (mm):").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
-        self.entrance_pupil_var = tk.StringVar(value="10.0")
-        ttk.Entry(controls_frame, textvariable=self.entrance_pupil_var, width=15).grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(controls_frame, text="Entrance Pupil Diameter (mm):").grid(row=0, column=0, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.entrance_pupil_var = tk.StringVar(value="10.0")  # mm
+        ttk.Entry(controls_frame, textvariable=self.entrance_pupil_var, width=15).grid(row=0, column=1, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
         
-        ttk.Label(controls_frame, text="Wavelength (nm):").grid(row=0, column=2, sticky=tk.W, padx=5, pady=5)
-        self.wavelength_var = tk.StringVar(value="550")
-        ttk.Entry(controls_frame, textvariable=self.wavelength_var, width=15).grid(row=0, column=3, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(controls_frame, text="Wavelength (nm):").grid(row=0, column=2, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.wavelength_var = tk.StringVar(value=str(int(WAVELENGTH_GREEN)))  # nm
+        ttk.Entry(controls_frame, textvariable=self.wavelength_var, width=15).grid(row=0, column=3, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
         
-        ttk.Label(controls_frame, text="Object Distance (mm):").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
-        self.object_distance_var = tk.StringVar(value="1000")
-        ttk.Entry(controls_frame, textvariable=self.object_distance_var, width=15).grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(controls_frame, text="Object Distance (mm):").grid(row=1, column=0, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.object_distance_var = tk.StringVar(value="1000")  # mm
+        ttk.Entry(controls_frame, textvariable=self.object_distance_var, width=15).grid(row=1, column=1, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
         
-        ttk.Label(controls_frame, text="Sensor Size (mm):").grid(row=1, column=2, sticky=tk.W, padx=5, pady=5)
-        self.sensor_size_var = tk.StringVar(value="36")
-        ttk.Entry(controls_frame, textvariable=self.sensor_size_var, width=15).grid(row=1, column=3, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(controls_frame, text="Sensor Size (mm):").grid(row=1, column=2, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.sensor_size_var = tk.StringVar(value="36")  # mm (full frame)
+        ttk.Entry(controls_frame, textvariable=self.sensor_size_var, width=15).grid(row=1, column=3, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
         
         # Calculate button
         btn_frame = ttk.Frame(controls_frame)
-        btn_frame.grid(row=2, column=0, columnspan=4, pady=10)
+        btn_frame.grid(row=2, column=0, columnspan=4, pady=PADDING_MEDIUM)
         ttk.Button(btn_frame, text="Calculate Metrics", 
-                  command=self.calculate_performance_metrics).pack(side=tk.LEFT, padx=5)
+                  command=self.calculate_performance_metrics).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(btn_frame, text="Export Report", 
-                  command=self.export_performance_report).pack(side=tk.LEFT, padx=5)
+                  command=self.export_performance_report).pack(side=tk.LEFT, padx=PADDING_SMALL)
     
     def setup_comparison_tab(self):
         """Setup the Comparison Mode tab"""
@@ -1898,12 +1904,12 @@ Modified: {lens.modified_at}"""
         
         # Title
         title_label = ttk.Label(content_frame, text="Lens Comparison Tool", 
-                                font=('Arial', 14, 'bold'))
-        title_label.grid(row=0, column=0, pady=10)
+                                font=(FONT_FAMILY, 14, 'bold'))
+        title_label.grid(row=0, column=0, pady=PADDING_MEDIUM)
         
         # Comparison table area
         table_frame = ttk.LabelFrame(content_frame, text="Side-by-Side Comparison", padding="10")
-        table_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=10)
+        table_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=PADDING_MEDIUM)
         table_frame.columnconfigure(0, weight=1)
         table_frame.rowconfigure(0, weight=1)
         
@@ -1925,7 +1931,7 @@ Modified: {lens.modified_at}"""
         
         # Lens selection area
         selection_frame = ttk.LabelFrame(content_frame, text="Select Lenses to Compare", padding="10")
-        selection_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=10)
+        selection_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM)
         
         # Listbox for lens selection (multiple selection)
         list_container = ttk.Frame(selection_frame)
@@ -1941,20 +1947,20 @@ Modified: {lens.modified_at}"""
                                             fg=self.COLORS['fg'],
                                             selectbackground=self.COLORS['accent'],
                                             selectforeground=self.COLORS['fg'],
-                                            font=('Arial', 10),
+                                            font=(FONT_FAMILY, FONT_SIZE_NORMAL),
                                             height=6)
         self.comparison_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         list_scroll.config(command=self.comparison_listbox.yview)
         
         # Buttons
         btn_frame = ttk.Frame(selection_frame)
-        btn_frame.pack(pady=10)
+        btn_frame.pack(pady=PADDING_MEDIUM)
         ttk.Button(btn_frame, text="Compare Selected", 
-                  command=self.compare_lenses).pack(side=tk.LEFT, padx=5)
+                  command=self.compare_lenses).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(btn_frame, text="Clear Comparison", 
-                  command=self.clear_comparison).pack(side=tk.LEFT, padx=5)
+                  command=self.clear_comparison).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(btn_frame, text="Export Comparison", 
-                  command=self.export_comparison).pack(side=tk.LEFT, padx=5)
+                  command=self.export_comparison).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         # Populate list with lenses
         self.refresh_comparison_list()
@@ -1972,8 +1978,8 @@ Modified: {lens.modified_at}"""
         
         # Title
         title_label = ttk.Label(content_frame, text="Professional Export Formats", 
-                                font=('Arial', 14, 'bold'))
-        title_label.grid(row=0, column=0, pady=10)
+                                font=(FONT_FAMILY, 14, 'bold'))
+        title_label.grid(row=0, column=0, pady=PADDING_MEDIUM)
         
         # Export formats
         export_formats = [
@@ -1988,16 +1994,16 @@ Modified: {lens.modified_at}"""
         row = 1
         for format_name, description, command in export_formats:
             frame = ttk.LabelFrame(content_frame, text=format_name, padding="15")
-            frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=10, padx=20)
+            frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
             
-            ttk.Label(frame, text=description, font=('Arial', 10)).pack(side=tk.LEFT, padx=10)
-            ttk.Button(frame, text="Export", command=command, width=15).pack(side=tk.RIGHT, padx=10)
+            ttk.Label(frame, text=description, font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(side=tk.LEFT, padx=PADDING_MEDIUM)
+            ttk.Button(frame, text="Export", command=command, width=15).pack(side=tk.RIGHT, padx=PADDING_MEDIUM)
             
             row += 1
         
         # Status area
         status_frame = ttk.LabelFrame(content_frame, text="Export Status", padding="10")
-        status_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=10, padx=20)
+        status_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
         
         self.export_status_text = tk.Text(status_frame, height=8, width=80,
                                          wrap=tk.WORD,
