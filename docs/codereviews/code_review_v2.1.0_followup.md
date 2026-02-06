@@ -17,29 +17,3 @@
 ```
 
 ---
-
-### ⚠️ Needs Improvement: Missing Type Hints
-
-```python
-# lens_editor.py - Still missing hints
-class Lens:
-    def calculate_focal_length(self):  # ← No type hints
-        """Calculate the effective focal length."""
-        # ... calculation
-        return focal_length
-```
-
-**Should Be:**
-```python
-class Lens:
-    def calculate_focal_length(self) -> float:
-        """
-        Calculate the effective focal length.
-        
-        Returns:
-            float: Focal length in mm
-        """
-        # ... calculation
-        return focal_length
-```
----

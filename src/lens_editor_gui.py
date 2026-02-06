@@ -10,6 +10,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, List, Dict, Any, Tuple
 
 # Import constants
 try:
@@ -83,21 +84,21 @@ except ImportError:
     except ImportError:
         # Fallback if validation module not available
         ValidationError = ValueError
-        def validate_json_file_path(path, **kwargs):
+        def validate_json_file_path(path: Any, **kwargs: Any) -> Path:
             return Path(path)
-        def validate_file_path(path, **kwargs):
+        def validate_file_path(path: Any, **kwargs: Any) -> Path:
             return Path(path)
 
 class ToolTip:
     """Simple tooltip for tkinter widgets"""
-    def __init__(self, widget, text):
+    def __init__(self, widget: tk.Widget, text: str) -> None:
         self.widget = widget
         self.text = text
-        self.tooltip = None
+        self.tooltip: Optional[tk.Toplevel] = None
         self.widget.bind("<Enter>", self.show_tooltip)
         self.widget.bind("<Leave>", self.hide_tooltip)
     
-    def show_tooltip(self, event=None):
+    def show_tooltip(self, event: Optional[tk.Event] = None) -> None:
         x, y, _, _ = self.widget.bbox("insert")
         x += self.widget.winfo_rootx() + TOOLTIP_OFFSET_X
         y += self.widget.winfo_rooty() + TOOLTIP_OFFSET_Y
@@ -112,17 +113,24 @@ class ToolTip:
                         font=("Arial", 9), padx=PADDING_SMALL, pady=3)
         label.pack()
     
-    def hide_tooltip(self, event=None):
+    def hide_tooltip(self, event: Optional[tk.Event] = None) -> None:
         if self.tooltip:
             self.tooltip.destroy()
             self.tooltip = None
 
 
 class Lens:
-    def __init__(self, name="Untitled", radius_of_curvature_1=DEFAULT_RADIUS_1, radius_of_curvature_2=DEFAULT_RADIUS_2,
-                 thickness=DEFAULT_THICKNESS, diameter=DEFAULT_DIAMETER, refractive_index=REFRACTIVE_INDEX_BK7, 
-                 lens_type="Biconvex", material="BK7", is_fresnel=False, 
-                 groove_pitch=DEFAULT_THICKNESS, num_grooves=None):
+    def __init__(self, name: str = "Untitled", 
+                 radius_of_curvature_1: float = DEFAULT_RADIUS_1, 
+                 radius_of_curvature_2: float = DEFAULT_RADIUS_2,
+                 thickness: float = DEFAULT_THICKNESS, 
+                 diameter: float = DEFAULT_DIAMETER, 
+                 refractive_index: float = REFRACTIVE_INDEX_BK7, 
+                 lens_type: str = "Biconvex", 
+                 material: str = "BK7", 
+                 is_fresnel: bool = False, 
+                 groove_pitch: float = DEFAULT_THICKNESS, 
+                 num_grooves: Optional[int] = None) -> None:
         self.id = datetime.now().strftime("%Y%m%d%H%M%S%f")
         self.name = name
         self.radius_of_curvature_1 = radius_of_curvature_1  # R1 (front surface, mm)
@@ -142,14 +150,14 @@ class Lens:
         if self.is_fresnel and self.num_grooves is None:
             self.calculate_num_grooves()
     
-    def calculate_num_grooves(self):
+    def calculate_num_grooves(self) -> None:
         """Calculate the number of grooves based on diameter and pitch"""
         if self.groove_pitch > 0:
             self.num_grooves = int((self.diameter / 2) / self.groove_pitch)
         else:
             self.num_grooves = 0
     
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
             "name": self.name,
@@ -168,7 +176,7 @@ class Lens:
         }
     
     @classmethod
-    def from_dict(cls, data):
+    def from_dict(cls, data: Dict[str, Any]) -> 'Lens':
         lens = cls(
             name=data.get("name", "Untitled"),
             radius_of_curvature_1=data.get("radius_of_curvature_1", DEFAULT_RADIUS_1),
@@ -187,7 +195,7 @@ class Lens:
         lens.modified_at = data.get("modified_at", lens.modified_at)
         return lens
     
-    def calculate_focal_length(self):
+    def calculate_focal_length(self) -> Optional[float]:
         """Calculate focal length using the lensmaker's equation"""
         n = self.refractive_index
         R1 = self.radius_of_curvature_1
@@ -206,7 +214,7 @@ class Lens:
         focal_length = 1 / power
         return focal_length
     
-    def calculate_fresnel_efficiency(self):
+    def calculate_fresnel_efficiency(self) -> Optional[float]:
         """Calculate theoretical efficiency of Fresnel lens"""
         if not self.is_fresnel:
             return None
@@ -226,7 +234,7 @@ class Lens:
         
         return base_efficiency * efficiency_factor
     
-    def calculate_fresnel_thickness_reduction(self):
+    def calculate_fresnel_thickness_reduction(self) -> Optional[Dict[str, float]]:
         """Calculate thickness reduction compared to conventional lens"""
         if not self.is_fresnel or self.num_grooves is None:
             return None
@@ -265,17 +273,17 @@ class LensEditorWindow:
         'button_bg': '#3c3c3c',    # Button background
     }
     
-    def __init__(self, root):
+    def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("openlens - Optical Lens Editor")
         self.root.geometry("1400x800")  # Increased width for 3D view
         self.storage_file = "lenses.json"
-        self.lenses = self.load_lenses()
-        self.current_lens = None
-        self.visualizer = None  # Will be initialized in setup_ui
-        self.selected_lens_id = None
-        self._loading_lens = False  # Flag to prevent autosave during load
-        self._autosave_timer = None  # Timer for debounced autosave
+        self.lenses: List[Lens] = self.load_lenses()
+        self.current_lens: Optional[Lens] = None
+        self.visualizer: Optional[Any] = None  # Will be initialized in setup_ui
+        self.selected_lens_id: Optional[str] = None
+        self._loading_lens: bool = False  # Flag to prevent autosave during load
+        self._autosave_timer: Optional[str] = None  # Timer for debounced autosave
         
         # Initialize status_var early
         self.status_var = tk.StringVar(value="Welcome to openlens")
@@ -290,7 +298,7 @@ class LensEditorWindow:
         # self.root.bind('<Return>', lambda e: self.save_current_lens())
         # self.root.bind('<KP_Enter>', lambda e: self.save_current_lens())  # Numpad Enter
     
-    def setup_dark_mode(self):
+    def setup_dark_mode(self) -> None:
         """Configure dark mode theme for the application"""
         # Configure root window
         self.root.configure(bg=self.COLORS['bg'])
@@ -394,7 +402,7 @@ class LensEditorWindow:
                             ('active', self.COLORS['fg'])],
                  expand=[('selected', [1, 1, 1, 0])])
     
-    def load_lenses(self):
+    def load_lenses(self) -> List[Lens]:
         """Load lenses from JSON storage file with path validation"""
         try:
             # Validate file path
@@ -433,7 +441,7 @@ class LensEditorWindow:
             print(f"Error: Failed to load lenses: {e}")
             return []
     
-    def save_lenses(self):
+    def save_lenses(self) -> bool:
         """Save all lenses to JSON storage file with path validation"""
         try:
             # Validate and prepare file path
@@ -484,7 +492,7 @@ class LensEditorWindow:
             self.update_status(f"Error: Failed to save lenses: {e}")
             return False
     
-    def setup_ui(self):
+    def setup_ui(self) -> None:
         # Main container
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -552,7 +560,7 @@ class LensEditorWindow:
         
         self.update_status("Select or create a lens to begin")
     
-    def setup_selection_tab(self):
+    def setup_selection_tab(self) -> None:
         """Setup the Lens Selection tab"""
         
         # Main content frame
@@ -634,7 +642,7 @@ class LensEditorWindow:
         # Populate the list
         self.refresh_selection_list()
     
-    def refresh_selection_list(self):
+    def refresh_selection_list(self) -> None:
         """Refresh the lens selection list"""
         self.selection_listbox.delete(0, tk.END)
         for lens in self.lenses:
@@ -646,7 +654,7 @@ class LensEditorWindow:
         else:
             self.update_status("No lenses available - Create a new lens to begin")
     
-    def update_selection_info(self, event=None):
+    def update_selection_info(self, event: Optional[tk.Event] = None) -> None:
         """Update the lens information panel when selection changes"""
         selection = self.selection_listbox.curselection()
         if not selection:
@@ -679,7 +687,7 @@ Modified: {lens.modified_at}"""
         self.selection_info_text.insert(1.0, info)
         self.selection_info_text.config(state='disabled')
     
-    def create_new_lens_from_selection(self):
+    def create_new_lens_from_selection(self) -> None:
         """Create a new lens from the selection tab"""
         # Clear the form and current lens to start fresh
         self.current_lens = None
@@ -695,7 +703,7 @@ Modified: {lens.modified_at}"""
         self.notebook.select(1)
         self.update_status("Ready to create new lens")
     
-    def select_lens_from_list(self):
+    def select_lens_from_list(self) -> None:
         """Select a lens from the selection list and switch to editor"""
         selection = self.selection_listbox.curselection()
         if not selection:
@@ -723,7 +731,7 @@ Modified: {lens.modified_at}"""
         
         self.update_status(f"Lens selected: '{self.current_lens.name}' - Ready to edit")
     
-    def delete_lens_from_selection(self):
+    def delete_lens_from_selection(self) -> None:
         """Delete a lens from the selection list"""
         selection = self.selection_listbox.curselection()
         if not selection:
@@ -754,7 +762,7 @@ Modified: {lens.modified_at}"""
         
         self.update_status(f"Lens '{lens.name}' deleted")
     
-    def setup_editor_tab(self):
+    def setup_editor_tab(self) -> None:
         """Setup the Editor tab with lens properties"""
         
         # Left panel container
@@ -794,7 +802,7 @@ Modified: {lens.modified_at}"""
         right_frame.columnconfigure(1, weight=1)
         
         # Update scroll region when frame size changes
-        def configure_scroll_region(event=None):
+        def configure_scroll_region(event: Optional[tk.Event] = None) -> None:
             canvas.configure(scrollregion=canvas.bbox("all"))
             # Also resize the canvas window to match canvas width
             canvas.itemconfig(canvas_frame, width=canvas.winfo_width())
@@ -803,7 +811,7 @@ Modified: {lens.modified_at}"""
         canvas.bind("<Configure>", lambda e: canvas.itemconfig(canvas_frame, width=e.width))
         
         # Enable mouse wheel scrolling
-        def on_mousewheel(event):
+        def on_mousewheel(event: tk.Event) -> None:
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         
         canvas.bind_all("<MouseWheel>", on_mousewheel)
@@ -986,7 +994,7 @@ Modified: {lens.modified_at}"""
                      font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(pady=PADDING_SMALL)
             self.visualizer = None
     
-    def on_viz_tab_changed(self, event):
+    def on_viz_tab_changed(self, event: tk.Event) -> None:
         """Handle visualization tab change between 2D and 3D"""
         if not self.visualizer:
             return
@@ -1005,7 +1013,7 @@ Modified: {lens.modified_at}"""
         # Update the visualization
         self.toggle_visualization_mode()
     
-    def setup_simulation_tab(self):
+    def setup_simulation_tab(self) -> None:
         """Setup the Simulation tab for ray tracing and optical analysis"""
         print("="*70)
         print("DEBUG: setup_simulation_tab() called")
@@ -1156,7 +1164,7 @@ Modified: {lens.modified_at}"""
             ttk.Label(msg_frame, text="Aberrations calculator module not available.", 
                      font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(pady=PADDING_SMALL)
     
-    def run_simulation(self):
+    def run_simulation(self) -> None:
         """Run ray tracing simulation for the current lens"""
         print(f"DEBUG: run_simulation called")
         print(f"DEBUG: current_lens = {self.current_lens}")
@@ -1355,7 +1363,7 @@ Modified: {lens.modified_at}"""
             import traceback
             traceback.print_exc()
     
-    def analyze_aberrations(self):
+    def analyze_aberrations(self) -> None:
         """Analyze and display lens aberrations"""
         if not self.current_lens:
             self.update_status("Please select or create a lens first")
@@ -1407,7 +1415,7 @@ Modified: {lens.modified_at}"""
             self.aberrations_text.config(state='disabled')
             self.update_status(f"Error: {str(e)}")
         
-    def clear_simulation(self):
+    def clear_simulation(self) -> None:
         """Clear the simulation display"""
         if hasattr(self, 'sim_visualizer') and self.sim_visualizer:
             if hasattr(self, 'sim_ax'):
@@ -1430,14 +1438,14 @@ Modified: {lens.modified_at}"""
         
         self.update_status("Simulation cleared")
     
-    def update_simulation_view(self):
+    def update_simulation_view(self) -> None:
         """Update the simulation tab with the current lens visualization"""
         # NOTE: This function is deprecated - we now use run_simulation() instead
         # The simulation tab uses 2D matplotlib canvas, not 3D LensVisualizer
         # Just return silently to avoid errors
         return
     
-    def refresh_lens_list(self):
+    def refresh_lens_list(self) -> None:
         """Refresh the selection list only"""
         # Also refresh selection tab list
         if hasattr(self, 'selection_listbox'):
@@ -1449,7 +1457,7 @@ Modified: {lens.modified_at}"""
         
         self.update_status(f"{len(self.lenses)} lens(es) loaded")
     
-    def load_lens_to_form(self, lens):
+    def load_lens_to_form(self, lens: Lens) -> None:
         self._loading_lens = True  # Prevent autosave during load
         self.name_var.set(lens.name)
         self.r1_var.set(str(lens.radius_of_curvature_1))
@@ -1476,7 +1484,7 @@ Modified: {lens.modified_at}"""
         self._loading_lens = False  # Re-enable autosave
         self.update_status(f"Editing: {lens.name}")
     
-    def clear_form(self):
+    def clear_form(self) -> None:
         self._loading_lens = True  # Prevent autosave during clear
         self.name_var.set("")
         self.r1_var.set(str(DEFAULT_RADIUS_1))
@@ -1500,12 +1508,12 @@ Modified: {lens.modified_at}"""
         self._loading_lens = False  # Re-enable autosave
         self.update_status("Form cleared")
     
-    def new_lens(self):
+    def new_lens(self) -> None:
         self.clear_form()
         self.name_entry.focus()
         self.update_status("Create new lens")
     
-    def on_fresnel_toggle(self):
+    def on_fresnel_toggle(self) -> None:
         """Handle Fresnel lens checkbox toggle"""
         if self._loading_lens:
             return
@@ -1523,7 +1531,7 @@ Modified: {lens.modified_at}"""
         # Trigger update
         self.on_field_change()
     
-    def calculate_and_display_focal_length(self):
+    def calculate_and_display_focal_length(self) -> None:
         try:
             r1 = float(self.r1_var.get())
             r2 = float(self.r2_var.get())
@@ -1557,7 +1565,7 @@ Modified: {lens.modified_at}"""
             self.focal_length_label.config(text="Focal Length: Invalid input")
             self.optical_power_label.config(text="Optical Power: Invalid input")
     
-    def calculate_and_display_fresnel_properties(self):
+    def calculate_and_display_fresnel_properties(self) -> None:
         """Calculate and display Fresnel-specific properties"""
         try:
             diameter = float(self.diameter_var.get())
@@ -1599,11 +1607,11 @@ Modified: {lens.modified_at}"""
             self.fresnel_thickness_label.config(text="")
     
     
-    def toggle_visualization_mode(self):
+    def toggle_visualization_mode(self) -> None:
         """Toggle between 2D and 3D visualization"""
         self.update_3d_view()
     
-    def update_3d_view(self):
+    def update_3d_view(self) -> None:
         """Update the visualization with current lens parameters (2D or 3D based on mode)"""
         if not self.visualizer:
             return
@@ -1628,7 +1636,7 @@ Modified: {lens.modified_at}"""
         except Exception as e:
             self.update_status(f"Visualization error: {e}")
     
-    def duplicate_lens(self):
+    def duplicate_lens(self) -> None:
         selection = self.selection_listbox.curselection()
         if not selection:
             self.update_status("Please select a lens to duplicate")
@@ -1662,7 +1670,7 @@ Modified: {lens.modified_at}"""
         
         self.update_status("Lens duplicated successfully!")
     
-    def on_field_change(self):
+    def on_field_change(self) -> None:
         """Called when any field changes - handles autosave and visualization update"""
         if self._loading_lens:
             return  # Don't autosave while loading
@@ -1674,7 +1682,7 @@ Modified: {lens.modified_at}"""
         # Schedule autosave and update after 500ms of no changes (debounce)
         self._autosave_timer = self.root.after(500, self._perform_autosave_and_update)  # 500ms autosave delay
     
-    def _perform_autosave_and_update(self):
+    def _perform_autosave_and_update(self) -> None:
         """Perform the actual autosave and visualization update"""
         try:
             # Update calculated properties
@@ -1690,7 +1698,7 @@ Modified: {lens.modified_at}"""
             # Silently handle errors during autosave
             pass
     
-    def save_current_lens(self):
+    def save_current_lens(self) -> None:
         try:
             name = self.name_var.get().strip() or "Untitled"
             r1 = float(self.r1_var.get())
@@ -1749,7 +1757,7 @@ Modified: {lens.modified_at}"""
             # Silent fail for autosave errors
             pass
     
-    def delete_lens(self):
+    def delete_lens(self) -> None:
         selection = self.selection_listbox.curselection()
         if not selection:
             self.update_status("Please select a lens to delete")
@@ -1765,7 +1773,7 @@ Modified: {lens.modified_at}"""
         self.refresh_selection_list()
         self.update_status(f"Lens '{lens.name}' deleted successfully")
     
-    def export_lens_to_stl(self):
+    def export_lens_to_stl(self) -> None:
         """Export the selected lens to STL file"""
         selection = self.selection_listbox.curselection()
         if not selection:
@@ -1813,7 +1821,7 @@ Modified: {lens.modified_at}"""
             )
             self.update_status(f"Export failed: {str(e)}")
     
-    def on_tab_changed(self, event):
+    def on_tab_changed(self, event: tk.Event) -> None:
         """Handle tab change events"""
         # Get the currently selected tab index
         selected_tab = self.notebook.index(self.notebook.select())
@@ -1822,7 +1830,7 @@ Modified: {lens.modified_at}"""
         if selected_tab == 2 and self.current_lens:
             self.update_simulation_view()
     
-    def setup_performance_tab(self):
+    def setup_performance_tab(self) -> None:
         """Setup the Performance Metrics Dashboard tab"""
         # Configure performance tab grid
         self.performance_tab.columnconfigure(0, weight=1)
@@ -1890,7 +1898,7 @@ Modified: {lens.modified_at}"""
         ttk.Button(btn_frame, text="Export Report", 
                   command=self.export_performance_report).pack(side=tk.LEFT, padx=PADDING_SMALL)
     
-    def setup_comparison_tab(self):
+    def setup_comparison_tab(self) -> None:
         """Setup the Comparison Mode tab"""
         # Configure comparison tab grid
         self.comparison_tab.columnconfigure(0, weight=1)
@@ -1965,7 +1973,7 @@ Modified: {lens.modified_at}"""
         # Populate list with lenses
         self.refresh_comparison_list()
     
-    def setup_export_tab(self):
+    def setup_export_tab(self) -> None:
         """Setup the Export Enhancements tab"""
         # Configure export tab grid
         self.export_tab.columnconfigure(0, weight=1)
@@ -2013,7 +2021,7 @@ Modified: {lens.modified_at}"""
                                          state='disabled')
         self.export_status_text.pack(fill=tk.BOTH, expand=True)
     
-    def calculate_performance_metrics(self):
+    def calculate_performance_metrics(self) -> None:
         """Calculate and display performance metrics for current lens"""
         if not self.current_lens:
             self.update_status("Please select or create a lens first")
@@ -2058,7 +2066,7 @@ Modified: {lens.modified_at}"""
         except Exception as e:
             self.update_status(f"Error calculating metrics: {e}")
     
-    def export_performance_report(self):
+    def export_performance_report(self) -> None:
         """Export performance metrics to file"""
         if not self.current_lens:
             self.update_status("Please select a lens first")
@@ -2080,14 +2088,14 @@ Modified: {lens.modified_at}"""
             except Exception as e:
                 self.update_status(f"Export failed: {e}")
     
-    def refresh_comparison_list(self):
+    def refresh_comparison_list(self) -> None:
         """Refresh the lens list for comparison"""
         if hasattr(self, 'comparison_listbox'):
             self.comparison_listbox.delete(0, tk.END)
             for lens in self.lenses:
                 self.comparison_listbox.insert(tk.END, f"{lens.name} ({lens.lens_type})")
     
-    def compare_lenses(self):
+    def compare_lenses(self) -> None:
         """Compare selected lenses"""
         selection = self.comparison_listbox.curselection()
         if len(selection) < 2:
@@ -2123,7 +2131,7 @@ Modified: {lens.modified_at}"""
         except Exception as e:
             self.update_status(f"Comparison error: {e}")
     
-    def clear_comparison(self):
+    def clear_comparison(self) -> None:
         """Clear comparison display"""
         self.comparison_text.config(state='normal')
         self.comparison_text.delete('1.0', tk.END)
@@ -2131,7 +2139,7 @@ Modified: {lens.modified_at}"""
         self.comparison_text.config(state='disabled')
         self.update_status("Comparison cleared")
     
-    def export_comparison(self):
+    def export_comparison(self) -> None:
         """Export comparison table to file"""
         filename = filedialog.asksaveasfilename(
             title="Export Comparison",
@@ -2149,7 +2157,7 @@ Modified: {lens.modified_at}"""
             except Exception as e:
                 self.update_status(f"Export failed: {e}")
     
-    def export_to_zemax(self):
+    def export_to_zemax(self) -> None:
         """Export current lens to Zemax format"""
         if not self.current_lens:
             self.update_status("Please select a lens first")
@@ -2180,7 +2188,7 @@ Modified: {lens.modified_at}"""
                 self._log_export_status(f"Error: {e}")
                 self.update_status(f"Export failed: {e}")
     
-    def export_to_opticstudio(self):
+    def export_to_opticstudio(self) -> None:
         """Export current lens to OpticStudio format"""
         if not self.current_lens:
             self.update_status("Please select a lens first")
@@ -2211,7 +2219,7 @@ Modified: {lens.modified_at}"""
                 self._log_export_status(f"Error: {e}")
                 self.update_status(f"Export failed: {e}")
     
-    def export_to_pdf(self):
+    def export_to_pdf(self) -> None:
         """Export lens as PDF technical drawing"""
         if not self.current_lens:
             self.update_status("Please select a lens first")
@@ -2220,7 +2228,7 @@ Modified: {lens.modified_at}"""
         self._log_export_status("PDF export feature coming soon...")
         self.update_status("PDF export not yet implemented")
     
-    def export_to_svg(self):
+    def export_to_svg(self) -> None:
         """Export lens cross-section as SVG"""
         if not self.current_lens:
             self.update_status("Please select a lens first")
@@ -2251,7 +2259,7 @@ Modified: {lens.modified_at}"""
                 self._log_export_status(f"Error: {e}")
                 self.update_status(f"Export failed: {e}")
     
-    def export_prescription(self):
+    def export_prescription(self) -> None:
         """Export lens prescription file"""
         if not self.current_lens:
             self.update_status("Please select a lens first")
@@ -2274,7 +2282,7 @@ Modified: {lens.modified_at}"""
                 self._log_export_status(f"Error: {e}")
                 self.update_status(f"Export failed: {e}")
     
-    def _log_export_status(self, message):
+    def _log_export_status(self, message: str) -> None:
         """Log message to export status text widget"""
         if hasattr(self, 'export_status_text'):
             self.export_status_text.config(state='normal')
@@ -2282,12 +2290,12 @@ Modified: {lens.modified_at}"""
             self.export_status_text.see(tk.END)
             self.export_status_text.config(state='disabled')
     
-    def update_status(self, message):
+    def update_status(self, message: str) -> None:
         self.status_var.set(message)
         self.root.update_idletasks()
 
 
-def main():
+def main() -> None:
     root = tk.Tk()
     app = LensEditorWindow(root)
     root.mainloop()
