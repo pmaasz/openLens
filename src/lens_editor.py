@@ -44,14 +44,15 @@ except (ImportError, ValueError):
         )
     except ImportError:
         # Fallback if validation module not available
+        from typing import Any
         ValidationError = ValueError
-        def validate_json_file_path(path, **kwargs):
+        def validate_json_file_path(path: Any, **kwargs: Any) -> Path:
             return Path(path)
-        def validate_file_path(path, **kwargs):
+        def validate_file_path(path: Any, **kwargs: Any) -> Path:
             return Path(path)
-        def validate_lenses_json_schema(data):
+        def validate_lenses_json_schema(data: Any) -> Any:
             return data
-        def validate_lens_data_schema(data, **kwargs):
+        def validate_lens_data_schema(data: Any, **kwargs: Any) -> Any:
             return data
 
 

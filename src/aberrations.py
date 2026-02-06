@@ -389,7 +389,7 @@ INTERPRETATION:
         return summary
 
 
-def analyze_lens_quality(lens, field_angle=5.0):
+def analyze_lens_quality(lens: Any, field_angle: float = 5.0) -> Dict[str, Any]:
     """
     Convenience function to analyze lens quality.
     

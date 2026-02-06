@@ -26,7 +26,7 @@ class LensElement:
     lens: Lens
     position: float = 0.0  # Position along optical axis (mm)
     
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Calculate element thickness"""
         self.thickness = self.lens.thickness
 
@@ -62,7 +62,7 @@ class OpticalSystem:
         self.elements.append(element)
         self._update_positions()
     
-    def _update_positions(self):
+    def _update_positions(self) -> None:
         """Update positions of all elements"""
         current_pos = 0.0
         gap_idx = 0

@@ -25,7 +25,7 @@ except ImportError:
     print("Warning: scipy not available. Diffraction calculations will use approximations.")
     
     # Fallback approximation for j1(x) Bessel function
-    def j1(x):
+    def j1(x: float) -> float:
         """Approximation of first-order Bessel function for small x"""
         if hasattr(x, '__iter__'):
             return np.array([j1(xi) for xi in x])

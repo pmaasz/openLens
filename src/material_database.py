@@ -71,7 +71,7 @@ class MaterialDatabase:
         self._load_builtin_materials()
         self._load_database()
     
-    def _load_builtin_materials(self):
+    def _load_builtin_materials(self) -> None:
         """Load built-in material definitions"""
         
         # Schott BK7 (most common optical glass)
@@ -237,7 +237,7 @@ class MaterialDatabase:
             alkali_resistance=2
         )
     
-    def _load_database(self):
+    def _load_database(self) -> None:
         """Load materials from JSON file"""
         if os.path.exists(self.db_path):
             try:
@@ -248,7 +248,7 @@ class MaterialDatabase:
             except Exception as e:
                 print(f"Warning: Could not load material database: {e}")
     
-    def save_database(self):
+    def save_database(self) -> None:
         """Save materials to JSON file"""
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         data = {name: mat.to_dict() for name, mat in self.materials.items()}
