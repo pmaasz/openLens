@@ -5,6 +5,8 @@ Centralized validation functions to ensure data integrity
 and provide consistent error messages.
 """
 
+import os
+from pathlib import Path
 from typing import Union, Tuple, Optional
 
 # Try relative import first (for package), fall back to absolute
@@ -421,3 +423,133 @@ def check_physical_feasibility(radius1: float, radius2: float,
         return False, " ".join(warnings)
     
     return True, None
+
+
+def validate_file_path(file_path: Union[str, Path], 
+                       must_exist: bool = False,
+                       create_parent: bool = False,
+                       param_name: str = "file_path") -> Path:
+    """
+    Validate and sanitize file path.
+    
+    Args:
+        file_path: Path to validate
+        must_exist: If True, file must already exist
+        create_parent: If True, create parent directory if it doesn't exist
+        param_name: Parameter name for error messages
+    
+    Returns:
+        Path: Validated and resolved Path object
+    
+    Raises:
+        ValidationError: If path is invalid
+    """
+    if not isinstance(file_path, (str, Path)):
+        raise ValidationError(f"{param_name} must be a string or Path object")
+    
+    try:
+        path = Path(file_path).resolve()
+    except (ValueError, RuntimeError) as e:
+        raise ValidationError(f"Invalid {param_name}: {e}")
+    
+    # Check if file must exist
+    if must_exist and not path.exists():
+        raise ValidationError(f"{param_name} does not exist: {path}")
+    
+    # Check parent directory
+    parent = path.parent
+    if not parent.exists():
+        if create_parent:
+            try:
+                parent.mkdir(parents=True, exist_ok=True)
+            except (OSError, PermissionError) as e:
+                raise ValidationError(
+                    f"Cannot create directory for {param_name}: {e}"
+                )
+        else:
+            raise ValidationError(
+                f"Parent directory does not exist for {param_name}: {parent}"
+            )
+    
+    # Check if parent is writable (for new files)
+    if not must_exist and not os.access(parent, os.W_OK):
+        raise ValidationError(
+            f"Parent directory is not writable for {param_name}: {parent}"
+        )
+    
+    return path
+
+
+def validate_directory_path(dir_path: Union[str, Path],
+                           must_exist: bool = True,
+                           create_if_missing: bool = False,
+                           param_name: str = "directory") -> Path:
+    """
+    Validate and sanitize directory path.
+    
+    Args:
+        dir_path: Directory path to validate
+        must_exist: If True, directory must already exist
+        create_if_missing: If True, create directory if it doesn't exist
+        param_name: Parameter name for error messages
+    
+    Returns:
+        Path: Validated and resolved Path object
+    
+    Raises:
+        ValidationError: If path is invalid
+    """
+    if not isinstance(dir_path, (str, Path)):
+        raise ValidationError(f"{param_name} must be a string or Path object")
+    
+    try:
+        path = Path(dir_path).resolve()
+    except (ValueError, RuntimeError) as e:
+        raise ValidationError(f"Invalid {param_name}: {e}")
+    
+    if path.exists():
+        if not path.is_dir():
+            raise ValidationError(f"{param_name} exists but is not a directory: {path}")
+    else:
+        if must_exist and not create_if_missing:
+            raise ValidationError(f"{param_name} does not exist: {path}")
+        
+        if create_if_missing:
+            try:
+                path.mkdir(parents=True, exist_ok=True)
+            except (OSError, PermissionError) as e:
+                raise ValidationError(f"Cannot create {param_name}: {e}")
+    
+    # Check if directory is accessible
+    if path.exists() and not os.access(path, os.R_OK):
+        raise ValidationError(f"{param_name} is not readable: {path}")
+    
+    return path
+
+
+def validate_json_file_path(file_path: Union[str, Path],
+                           must_exist: bool = False,
+                           param_name: str = "JSON file") -> Path:
+    """
+    Validate JSON file path.
+    
+    Args:
+        file_path: Path to JSON file
+        must_exist: If True, file must already exist
+        param_name: Parameter name for error messages
+    
+    Returns:
+        Path: Validated and resolved Path object
+    
+    Raises:
+        ValidationError: If path is invalid or not a JSON file
+    """
+    path = validate_file_path(file_path, must_exist=must_exist, 
+                             create_parent=True, param_name=param_name)
+    
+    if path.suffix.lower() != '.json':
+        raise ValidationError(
+            f"{param_name} must have .json extension, got: {path.suffix}"
+        )
+    
+    return path

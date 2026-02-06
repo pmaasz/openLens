@@ -9,6 +9,7 @@ from tkinter import ttk, filedialog, messagebox
 import json
 import os
 from datetime import datetime
+from pathlib import Path
 
 # Try to import visualization (optional dependency)
 try:
@@ -58,6 +59,28 @@ except ImportError:
     except ImportError:
         RAY_TRACING_AVAILABLE = False
         print("Note: Ray tracer not available.")
+
+# Try to import validation utilities
+try:
+    from .validation import (
+        validate_json_file_path,
+        validate_file_path,
+        ValidationError
+    )
+except ImportError:
+    try:
+        from validation import (
+            validate_json_file_path,
+            validate_file_path,
+            ValidationError
+        )
+    except ImportError:
+        # Fallback if validation module not available
+        ValidationError = ValueError
+        def validate_json_file_path(path, **kwargs):
+            return Path(path)
+        def validate_file_path(path, **kwargs):
+            return Path(path)
 
 class ToolTip:
     """Simple tooltip for tkinter widgets"""
@@ -366,21 +389,91 @@ class LensEditorWindow:
                  expand=[('selected', [1, 1, 1, 0])])
     
     def load_lenses(self):
-        if os.path.exists(self.storage_file):
-            try:
-                with open(self.storage_file, 'r') as f:
-                    data = json.load(f)
-                    return [Lens.from_dict(lens_data) for lens_data in data]
-            except Exception as e:
-                print(f"Error: Failed to load lenses: {e}")
+        """Load lenses from JSON storage file with path validation"""
+        try:
+            # Validate file path
+            file_path = validate_file_path(
+                self.storage_file,
+                must_exist=True,
+                create_parent=False
+            )
+            
+            # Read and parse JSON
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Validate JSON structure
+            if not isinstance(data, list):
+                print("Warning: Storage file contains invalid data structure")
                 return []
-        return []
+            
+            # Load lenses
+            lenses = []
+            for i, lens_data in enumerate(data):
+                try:
+                    lenses.append(Lens.from_dict(lens_data))
+                except Exception as e:
+                    print(f"Warning: Failed to load lens {i}: {e}")
+            
+            return lenses
+            
+        except ValidationError:
+            # File doesn't exist - return empty list
+            return []
+        except json.JSONDecodeError as e:
+            print(f"Error: Invalid JSON in storage file: {e}")
+            return []
+        except Exception as e:
+            print(f"Error: Failed to load lenses: {e}")
+            return []
     
     def save_lenses(self):
+        """Save all lenses to JSON storage file with path validation"""
         try:
-            with open(self.storage_file, 'w') as f:
-                json.dump([lens.to_dict() for lens in self.lenses], f, indent=2)
-            return True
+            # Validate and prepare file path
+            file_path = validate_json_file_path(
+                self.storage_file,
+                must_exist=False
+            )
+            
+            # Ensure parent directory exists and is writable
+            parent_dir = file_path.parent
+            if not parent_dir.exists():
+                parent_dir.mkdir(parents=True, exist_ok=True)
+            
+            if not os.access(parent_dir, os.W_OK):
+                self.update_status(f"Error: Directory is not writable: {parent_dir}")
+                return False
+            
+            # Serialize lenses to JSON
+            data = [lens.to_dict() for lens in self.lenses]
+            
+            # Write to file with atomic operation (write to temp, then rename)
+            temp_path = file_path.with_suffix('.tmp')
+            try:
+                with open(temp_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                
+                # Atomic rename
+                temp_path.replace(file_path)
+                
+                self.update_status(f"✓ Saved {len(self.lenses)} lens(es)")
+                return True
+                
+            finally:
+                # Clean up temp file if it still exists
+                if temp_path.exists():
+                    temp_path.unlink()
+            
+        except ValidationError as e:
+            self.update_status(f"Error: Invalid file path: {e}")
+            return False
+        except PermissionError as e:
+            self.update_status(f"Error: Permission denied: {e}")
+            return False
+        except OSError as e:
+            self.update_status(f"Error: OS error when saving: {e}")
+            return False
         except Exception as e:
             self.update_status(f"Error: Failed to save lenses: {e}")
             return False

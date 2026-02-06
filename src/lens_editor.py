@@ -6,6 +6,7 @@ openlens - Interactive Optical Lens Creation and Modification Tool
 import json
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 # Try to import material database
@@ -22,6 +23,28 @@ except (ImportError, ValueError):
         MATERIAL_DB_AVAILABLE = True
     except ImportError:
         MATERIAL_DB_AVAILABLE = False
+
+# Try to import validation utilities
+try:
+    from .validation import (
+        validate_json_file_path,
+        validate_file_path,
+        ValidationError
+    )
+except (ImportError, ValueError):
+    try:
+        from validation import (
+            validate_json_file_path,
+            validate_file_path,
+            ValidationError
+        )
+    except ImportError:
+        # Fallback if validation module not available
+        ValidationError = ValueError
+        def validate_json_file_path(path, **kwargs):
+            return Path(path)
+        def validate_file_path(path, **kwargs):
+            return Path(path)
 
 
 class Lens:
@@ -213,39 +236,120 @@ class LensManager:
     """
     
     def __init__(self, storage_file: str = "lenses.json") -> None:
-        self.storage_file = storage_file
+        try:
+            self.storage_file = str(validate_json_file_path(
+                storage_file, 
+                must_exist=False
+            ))
+        except (ValidationError, Exception) as e:
+            print(f"Warning: Invalid storage file path '{storage_file}': {e}")
+            print(f"Using default: lenses.json")
+            self.storage_file = "lenses.json"
+        
         self.lenses = self.load_lenses()
     
     def load_lenses(self) -> List[Lens]:
         """
-        Load lenses from JSON storage file.
+        Load lenses from JSON storage file with path validation.
         
         Returns:
             List of Lens objects (empty if file doesn't exist or error occurs)
         """
-        if os.path.exists(self.storage_file):
-            try:
-                with open(self.storage_file, 'r') as f:
-                    data = json.load(f)
-                    return [Lens.from_dict(lens_data) for lens_data in data]
-            except Exception as e:
-                print(f"Error loading lenses: {e}")
+        try:
+            # Validate file path
+            file_path = validate_file_path(
+                self.storage_file,
+                must_exist=True,
+                create_parent=False
+            )
+            
+            # Read and parse JSON
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                
+            # Validate JSON structure
+            if not isinstance(data, list):
+                print(f"Warning: Storage file contains invalid data structure")
                 return []
-        return []
+            
+            # Load lenses
+            lenses = []
+            for i, lens_data in enumerate(data):
+                try:
+                    lenses.append(Lens.from_dict(lens_data))
+                except Exception as e:
+                    print(f"Warning: Failed to load lens {i}: {e}")
+            
+            return lenses
+            
+        except ValidationError as e:
+            # File doesn't exist or path invalid - return empty list
+            return []
+        except json.JSONDecodeError as e:
+            print(f"Error: Invalid JSON in storage file: {e}")
+            return []
+        except Exception as e:
+            print(f"Error loading lenses: {e}")
+            return []
     
-    def save_lenses(self) -> None:
+    def save_lenses(self) -> bool:
         """
-        Save all lenses to JSON storage file.
+        Save all lenses to JSON storage file with path validation.
         
         Serializes all lenses in the collection to JSON format with indentation.
-        Prints success message or error if save fails.
+        Validates file path and handles errors gracefully.
+        
+        Returns:
+            bool: True if save successful, False otherwise
         """
         try:
-            with open(self.storage_file, 'w') as f:
-                json.dump([lens.to_dict() for lens in self.lenses], f, indent=2)
-            print(f"✓ Saved {len(self.lenses)} lens(es)")
+            # Validate and prepare file path
+            file_path = validate_json_file_path(
+                self.storage_file,
+                must_exist=False
+            )
+            
+            # Ensure parent directory exists and is writable
+            parent_dir = file_path.parent
+            if not parent_dir.exists():
+                parent_dir.mkdir(parents=True, exist_ok=True)
+            
+            if not os.access(parent_dir, os.W_OK):
+                print(f"Error: Directory is not writable: {parent_dir}")
+                return False
+            
+            # Serialize lenses to JSON
+            data = [lens.to_dict() for lens in self.lenses]
+            
+            # Write to file with atomic operation (write to temp, then rename)
+            temp_path = file_path.with_suffix('.tmp')
+            try:
+                with open(temp_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                
+                # Atomic rename
+                temp_path.replace(file_path)
+                
+                print(f"✓ Saved {len(self.lenses)} lens(es) to {file_path}")
+                return True
+                
+            finally:
+                # Clean up temp file if it still exists
+                if temp_path.exists():
+                    temp_path.unlink()
+            
+        except ValidationError as e:
+            print(f"Error: Invalid file path: {e}")
+            return False
+        except PermissionError as e:
+            print(f"Error: Permission denied when writing to {self.storage_file}: {e}")
+            return False
+        except OSError as e:
+            print(f"Error: OS error when saving lenses: {e}")
+            return False
         except Exception as e:
             print(f"Error saving lenses: {e}")
+            return False
     
     def create_lens(self) -> Optional[Lens]:
         """
