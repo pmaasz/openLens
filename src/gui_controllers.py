@@ -235,50 +235,94 @@ class LensEditorController:
     - Handle auto-update mode
     """
     
-    def __init__(self, parent_window):
-        """Initialize the lens editor controller"""
-        self.window = parent_window
+    def __init__(self, colors: dict, on_lens_updated: Optional[Callable] = None):
+        """
+        Initialize the lens editor controller.
+        
+        Args:
+            colors: Color scheme dictionary
+            on_lens_updated: Callback when lens is updated (lens) -> None
+        """
+        self.colors = colors
+        self.on_lens_updated_callback = on_lens_updated
         self.current_lens = None
         self.entry_fields = {}
         self.result_labels = {}
         self.auto_update_var = None
+        self.material_var = None
+        self.material_menu = None
     
     def setup_ui(self, parent_frame):
         """Set up the editor tab UI"""
+        # Import constants with fallbacks
+        try:
+            from constants import (PADDING_SMALL, PADDING_MEDIUM, PADDING_LARGE,
+                                 FONT_FAMILY, FONT_SIZE_NORMAL, FONT_SIZE_LARGE)
+        except ImportError:
+            PADDING_SMALL, PADDING_MEDIUM, PADDING_LARGE = 5, 10, 15
+            FONT_FAMILY, FONT_SIZE_NORMAL, FONT_SIZE_LARGE = 'Arial', 10, 12
+        
+        # Main container with scrollbar
+        canvas = tk.Canvas(parent_frame, bg=self.colors['bg'])
+        scrollbar = ttk.Scrollbar(parent_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
         # Properties frame
-        props_frame = ttk.LabelFrame(parent_frame, text="Lens Properties", padding=10)
-        props_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
+        props_frame = ttk.LabelFrame(scrollable_frame, text="Lens Properties", padding=PADDING_MEDIUM)
+        props_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=PADDING_SMALL, pady=PADDING_SMALL)
         
         # Create input fields
         self.create_property_fields(props_frame)
         
+        # Material selection
+        material_frame = ttk.LabelFrame(scrollable_frame, text="Material", padding=PADDING_MEDIUM)
+        material_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.create_material_selector(material_frame)
+        
         # Results frame
-        results_frame = ttk.LabelFrame(parent_frame, text="Calculated Properties", padding=10)
-        results_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        results_frame = ttk.LabelFrame(scrollable_frame, text="Calculated Properties", padding=PADDING_MEDIUM)
+        results_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
         
         # Create result labels
         self.create_result_fields(results_frame)
         
         # Control buttons
-        button_frame = ttk.Frame(parent_frame)
-        button_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        button_frame = ttk.Frame(scrollable_frame)
+        button_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_MEDIUM)
         
         ttk.Button(button_frame, text="Calculate", 
-                  command=self.calculate_properties).pack(side=tk.LEFT, padx=2)
+                  command=self.calculate_properties, width=15).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(button_frame, text="Save Changes", 
-                  command=self.save_changes).pack(side=tk.LEFT, padx=2)
+                  command=self.save_changes, width=15).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(button_frame, text="Reset", 
-                  command=self.reset_fields).pack(side=tk.LEFT, padx=2)
+                  command=self.reset_fields, width=15).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         # Auto-update checkbox
         self.auto_update_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(button_frame, text="Auto-calculate", 
-                       variable=self.auto_update_var).pack(side=tk.LEFT, padx=10)
+                       variable=self.auto_update_var).pack(side=tk.LEFT, padx=PADDING_MEDIUM)
     
     def create_property_fields(self, parent):
         """Create input fields for lens properties"""
+        try:
+            from constants import PADDING_SMALL
+        except ImportError:
+            PADDING_SMALL = 5
+        
         fields = [
-            ("Name:", "name", ""),
+            ("Name:", "name", "New Lens"),
+            ("Lens Type:", "lens_type", "Biconvex"),
             ("Radius 1 (mm):", "radius1", "100.0"),
             ("Radius 2 (mm):", "radius2", "-100.0"),
             ("Thickness (mm):", "thickness", "5.0"),
@@ -286,32 +330,93 @@ class LensEditorController:
             ("Refractive Index:", "n", "1.5168"),
         ]
         
-        for i, (label, key, default) in enumerate(fields):
-            ttk.Label(parent, text=label).grid(row=i, column=0, sticky=tk.W, pady=2)
+        for i, (label_text, key, default) in enumerate(fields):
+            ttk.Label(parent, text=label_text).grid(row=i, column=0, sticky=tk.W, pady=PADDING_SMALL)
             
-            entry = ttk.Entry(parent, width=20)
-            entry.grid(row=i, column=1, sticky=(tk.W, tk.E), padx=5, pady=2)
-            entry.insert(0, default)
-            
-            # Bind auto-calculate
-            entry.bind('<KeyRelease>', self.on_field_changed)
-            
-            self.entry_fields[key] = entry
+            if key == "lens_type":
+                # Dropdown for lens type
+                lens_types = ["Biconvex", "Biconcave", "Plano-Convex", "Plano-Concave", 
+                             "Meniscus Convex", "Meniscus Concave"]
+                combo = ttk.Combobox(parent, values=lens_types, width=18, state="readonly")
+                combo.set(default)
+                combo.grid(row=i, column=1, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+                combo.bind('<<ComboboxSelected>>', self.on_field_changed)
+                self.entry_fields[key] = combo
+            else:
+                entry = ttk.Entry(parent, width=20)
+                entry.grid(row=i, column=1, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+                entry.insert(0, default)
+                
+                # Bind auto-calculate (but not for name field)
+                if key != "name":
+                    entry.bind('<KeyRelease>', self.on_field_changed)
+                
+                self.entry_fields[key] = entry
+        
+        parent.columnconfigure(1, weight=1)
+    
+    def create_material_selector(self, parent):
+        """Create material selection dropdown"""
+        try:
+            from constants import PADDING_SMALL
+        except ImportError:
+            PADDING_SMALL = 5
+        
+        ttk.Label(parent, text="Material:").grid(row=0, column=0, sticky=tk.W, pady=PADDING_SMALL)
+        
+        # Common optical materials
+        materials = ["BK7", "SF11", "F2", "N-BK7", "Fused Silica", "Custom"]
+        self.material_var = tk.StringVar(value="BK7")
+        
+        self.material_menu = ttk.Combobox(parent, textvariable=self.material_var, 
+                                          values=materials, width=18, state="readonly")
+        self.material_menu.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.material_menu.bind('<<ComboboxSelected>>', self.on_material_changed)
+        
+        parent.columnconfigure(1, weight=1)
+    
+    def on_material_changed(self, event=None):
+        """Update refractive index when material changes"""
+        material_indices = {
+            "BK7": 1.5168,
+            "SF11": 1.7847,
+            "F2": 1.6200,
+            "N-BK7": 1.5168,
+            "Fused Silica": 1.4585,
+            "Custom": 1.5000
+        }
+        
+        material = self.material_var.get()
+        if material in material_indices:
+            self.entry_fields['n'].delete(0, tk.END)
+            self.entry_fields['n'].insert(0, str(material_indices[material]))
+            self.on_field_changed()
     
     def create_result_fields(self, parent):
         """Create labels for calculated results"""
+        try:
+            from constants import PADDING_SMALL
+        except ImportError:
+            PADDING_SMALL = 5
+        
         results = [
-            ("Focal Length:", "focal_length"),
-            ("Optical Power:", "power"),
+            ("Focal Length:", "focal_length", "mm"),
+            ("Optical Power:", "power", "D"),
+            ("Back Focal Length:", "bfl", "mm"),
+            ("Front Focal Length:", "ffl", "mm"),
         ]
         
-        for i, (label, key) in enumerate(results):
-            ttk.Label(parent, text=label).grid(row=i, column=0, sticky=tk.W, pady=2)
+        for i, (label_text, key, unit) in enumerate(results):
+            ttk.Label(parent, text=label_text).grid(row=i, column=0, sticky=tk.W, pady=PADDING_SMALL)
             
             value_label = ttk.Label(parent, text="N/A", font=('Arial', 10, 'bold'))
-            value_label.grid(row=i, column=1, sticky=tk.W, padx=10, pady=2)
+            value_label.grid(row=i, column=1, sticky=tk.W, padx=10, pady=PADDING_SMALL)
+            
+            ttk.Label(parent, text=unit).grid(row=i, column=2, sticky=tk.W, pady=PADDING_SMALL)
             
             self.result_labels[key] = value_label
+        
+        parent.columnconfigure(1, weight=1)
     
     def load_lens(self, lens):
         """Load lens data into editor fields"""
@@ -323,6 +428,9 @@ class LensEditorController:
         
         self.entry_fields['name'].delete(0, tk.END)
         self.entry_fields['name'].insert(0, lens.name)
+        
+        if 'lens_type' in self.entry_fields:
+            self.entry_fields['lens_type'].set(lens.lens_type if hasattr(lens, 'lens_type') else "Biconvex")
         
         self.entry_fields['radius1'].delete(0, tk.END)
         self.entry_fields['radius1'].insert(0, str(lens.radius_of_curvature_1))
@@ -338,6 +446,10 @@ class LensEditorController:
         
         self.entry_fields['n'].delete(0, tk.END)
         self.entry_fields['n'].insert(0, str(lens.refractive_index))
+        
+        # Set material if available
+        if self.material_var and hasattr(lens, 'material'):
+            self.material_var.set(lens.material)
         
         self.calculate_properties()
     
@@ -376,44 +488,87 @@ class LensEditorController:
                 focal_length = 1.0 / total_power
                 power_diopters = 1000.0 / focal_length
             
+            # Calculate back and front focal lengths
+            if abs(total_power) < 1e-10:
+                bfl = float('inf')
+                ffl = float('inf')
+            else:
+                bfl = (1.0 - power2 * t) / total_power
+                ffl = (1.0 - power1 * t) / total_power
+            
             # Update result labels
             if abs(focal_length) > 10000:
-                self.result_labels['focal_length'].config(text="∞ mm")
+                self.result_labels['focal_length'].config(text="∞")
             else:
-                self.result_labels['focal_length'].config(text=f"{focal_length:.2f} mm")
+                self.result_labels['focal_length'].config(text=f"{focal_length:.3f}")
             
-            self.result_labels['power'].config(text=f"{power_diopters:.2f} D")
+            self.result_labels['power'].config(text=f"{power_diopters:.3f}")
+            
+            if abs(bfl) > 10000:
+                self.result_labels['bfl'].config(text="∞")
+            else:
+                self.result_labels['bfl'].config(text=f"{bfl:.3f}")
+            
+            if abs(ffl) > 10000:
+                self.result_labels['ffl'].config(text="∞")
+            else:
+                self.result_labels['ffl'].config(text=f"{ffl:.3f}")
             
         except ValueError:
-            self.result_labels['focal_length'].config(text="Invalid")
-            self.result_labels['power'].config(text="Invalid")
+            for key in ['focal_length', 'power', 'bfl', 'ffl']:
+                if key in self.result_labels:
+                    self.result_labels[key].config(text="Invalid")
         except ZeroDivisionError:
-            self.result_labels['focal_length'].config(text="∞ mm")
-            self.result_labels['power'].config(text="0.00 D")
+            self.result_labels['focal_length'].config(text="∞")
+            self.result_labels['power'].config(text="0.000")
+            self.result_labels['bfl'].config(text="∞")
+            self.result_labels['ffl'].config(text="∞")
     
     def save_changes(self):
         """Save changes to the current lens"""
         if self.current_lens is None:
-            messagebox.showwarning("No Lens", "No lens selected to save changes")
+            try:
+                from tkinter import messagebox
+                messagebox.showwarning("No Lens", "No lens selected to save changes")
+            except:
+                pass
             return
         
         try:
             # Validate and update lens
             self.current_lens.name = self.entry_fields['name'].get()
+            if 'lens_type' in self.entry_fields:
+                self.current_lens.lens_type = self.entry_fields['lens_type'].get()
+            
             self.current_lens.radius_of_curvature_1 = float(self.entry_fields['radius1'].get())
             self.current_lens.radius_of_curvature_2 = float(self.entry_fields['radius2'].get())
             self.current_lens.thickness = float(self.entry_fields['thickness'].get())
             self.current_lens.diameter = float(self.entry_fields['diameter'].get())
             self.current_lens.refractive_index = float(self.entry_fields['n'].get())
             
-            # Notify parent
-            if hasattr(self.window, 'on_lens_updated'):
-                self.window.on_lens_updated(self.current_lens)
+            if self.material_var:
+                self.current_lens.material = self.material_var.get()
             
-            messagebox.showinfo("Success", "Lens updated successfully")
+            # Update timestamp
+            from datetime import datetime
+            self.current_lens.modified_at = datetime.now().isoformat()
+            
+            # Notify parent
+            if self.on_lens_updated_callback:
+                self.on_lens_updated_callback(self.current_lens)
+            
+            try:
+                from tkinter import messagebox
+                messagebox.showinfo("Success", "Lens updated successfully")
+            except:
+                pass
             
         except ValueError as e:
-            messagebox.showerror("Invalid Input", f"Please check your input values: {e}")
+            try:
+                from tkinter import messagebox
+                messagebox.showerror("Invalid Input", f"Please check your input values: {e}")
+            except:
+                pass
     
     def reset_fields(self):
         """Reset fields to original lens values"""

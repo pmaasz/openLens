@@ -869,6 +869,24 @@ Modified: {lens.modified_at}"""
     def setup_editor_tab(self) -> None:
         """Setup the Editor tab with lens properties"""
         
+        # Try to use controller if available
+        if GUI_CONTROLLERS_AVAILABLE:
+            try:
+                self.editor_controller = LensEditorController(
+                    colors=self.COLORS,
+                    on_lens_updated=self.on_lens_updated_callback
+                )
+                self.editor_controller.setup_ui(self.editor_tab)
+                return
+            except Exception as e:
+                print(f"Failed to initialize editor controller: {e}")
+                print("Falling back to legacy implementation")
+        
+        # Legacy implementation
+        self._setup_editor_tab_legacy()
+    
+    def _setup_editor_tab_legacy(self) -> None:
+        """Legacy implementation of editor tab"""
         # Left panel container
         left_container = ttk.Frame(self.editor_tab)
         left_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -1562,6 +1580,13 @@ Modified: {lens.modified_at}"""
         self.update_status(f"{len(self.lenses)} lens(es) loaded")
     
     def load_lens_to_form(self, lens: Lens) -> None:
+        # Use controller if available
+        if self.editor_controller:
+            self.editor_controller.load_lens(lens)
+            self.update_status(f"Editing: {lens.name}")
+            return
+        
+        # Legacy implementation
         self._loading_lens = True  # Prevent autosave during load
         self.name_var.set(lens.name)
         self.r1_var.set(str(lens.radius_of_curvature_1))
