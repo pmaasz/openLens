@@ -589,33 +589,124 @@ class SimulationController:
     - Update visualization
     """
     
-    def __init__(self, parent_window):
-        """Initialize the simulation controller"""
-        self.window = parent_window
+    def __init__(self, colors: dict, visualization_available: bool = True):
+        """
+        Initialize the simulation controller.
+        
+        Args:
+            colors: Color scheme dictionary
+            visualization_available: Whether matplotlib is available
+        """
+        self.colors = colors
+        self.visualization_available = visualization_available
         self.current_lens = None
         self.ray_tracer = None
-        self.canvas = None
+        
+        # UI elements
+        self.sim_figure = None
+        self.sim_ax = None
+        self.sim_canvas = None
+        self.sim_canvas_widget = None
+        self.num_rays_var = None
+        self.ray_angle_var = None
     
     def setup_ui(self, parent_frame):
         """Set up the simulation tab UI"""
-        # Parameter frame
-        param_frame = ttk.LabelFrame(parent_frame, text="Simulation Parameters", padding=10)
-        param_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        # Import constants with fallbacks
+        try:
+            from constants import (PADDING_SMALL, PADDING_MEDIUM, PADDING_LARGE,
+                                 FONT_FAMILY, FONT_SIZE_NORMAL, FONT_SIZE_TITLE,
+                                 COLOR_BG_DARK, COLOR_BG_LIGHT, COLOR_FG,
+                                 DEFAULT_NUM_RAYS)
+        except ImportError:
+            PADDING_SMALL, PADDING_MEDIUM, PADDING_LARGE = 5, 10, 15
+            FONT_FAMILY, FONT_SIZE_NORMAL, FONT_SIZE_TITLE = 'Arial', 10, 14
+            COLOR_BG_DARK, COLOR_BG_LIGHT, COLOR_FG = '#2b2b2b', '#3f3f3f', '#e0e0e0'
+            DEFAULT_NUM_RAYS = 11
         
-        ttk.Label(param_frame, text="Number of rays:").grid(row=0, column=0, sticky=tk.W)
-        self.num_rays_var = tk.IntVar(value=11)
-        ttk.Spinbox(param_frame, from_=3, to=51, textvariable=self.num_rays_var,
-                   width=10).grid(row=0, column=1, padx=5)
+        # Configure parent frame
+        parent_frame.columnconfigure(0, weight=1)
+        parent_frame.rowconfigure(1, weight=1)
         
-        ttk.Button(param_frame, text="Run Simulation", 
-                  command=self.run_simulation).grid(row=0, column=2, padx=5)
+        # Title
+        title_label = ttk.Label(parent_frame, text="Optical Simulation", 
+                               font=(FONT_FAMILY, 14, 'bold'))
+        title_label.grid(row=0, column=0, pady=PADDING_MEDIUM)
         
-        # Canvas for visualization
-        canvas_frame = ttk.Frame(parent_frame)
-        canvas_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
+        # Simulation canvas area
+        sim_frame = ttk.LabelFrame(parent_frame, text="Ray Tracing Simulation", 
+                                  padding=PADDING_MEDIUM, height=450)
+        sim_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=PADDING_MEDIUM)
+        sim_frame.columnconfigure(0, weight=1)
+        sim_frame.rowconfigure(0, weight=1)
+        sim_frame.grid_propagate(False)
         
-        self.canvas = tk.Canvas(canvas_frame, width=800, height=400, bg='white')
-        self.canvas.pack(fill=tk.BOTH, expand=True)
+        # Create visualization if available
+        if self.visualization_available:
+            try:
+                from matplotlib.figure import Figure
+                from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+                
+                self.sim_figure = Figure(figsize=(12, 6), dpi=100, facecolor=COLOR_BG_DARK)
+                self.sim_figure.subplots_adjust(left=0.08, right=0.95, top=0.93, bottom=0.10)
+                self.sim_ax = self.sim_figure.add_subplot(111, facecolor=COLOR_BG_DARK)
+                
+                # Configure axes
+                self.sim_ax.set_xlim(-100, 150)
+                self.sim_ax.set_ylim(-30, 30)
+                self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
+                self.sim_ax.set_xlabel('Position (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
+                self.sim_ax.set_ylabel('Height (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
+                self.sim_ax.set_title('Ray Tracing Simulation\n(Select a lens and click "Run Simulation")', 
+                                    fontsize=FONT_SIZE_TITLE, color=COLOR_FG)
+                self.sim_ax.grid(True, alpha=0.2, color=COLOR_BG_LIGHT)
+                self.sim_ax.set_aspect('equal')
+                
+                # Style the plot
+                self.sim_ax.tick_params(colors=COLOR_FG, labelsize=9)
+                for spine in self.sim_ax.spines.values():
+                    spine.set_color(COLOR_BG_LIGHT)
+                
+                # Create canvas
+                self.sim_canvas = FigureCanvasTkAgg(self.sim_figure, sim_frame)
+                self.sim_canvas_widget = self.sim_canvas.get_tk_widget()
+                self.sim_canvas_widget.pack(fill='both', expand=True)
+                self.sim_canvas.draw()
+                
+            except Exception as e:
+                ttk.Label(sim_frame, text=f"Simulation error: {e}", 
+                         wraplength=400).pack(pady=PADDING_LARGE)
+        else:
+            msg = "Simulation not available.\n\nInstall dependencies:\n  pip install matplotlib numpy"
+            ttk.Label(sim_frame, text=msg, justify=tk.CENTER, 
+                     font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(pady=PADDING_SMALL)
+        
+        # Simulation controls
+        controls_frame = ttk.LabelFrame(parent_frame, text="Simulation Controls", 
+                                       padding=PADDING_MEDIUM)
+        controls_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM)
+        
+        # Ray parameters
+        ttk.Label(controls_frame, text="Number of Rays:").grid(
+            row=0, column=0, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.num_rays_var = tk.StringVar(value=str(DEFAULT_NUM_RAYS))
+        ttk.Entry(controls_frame, textvariable=self.num_rays_var, width=10).grid(
+            row=0, column=1, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        
+        ttk.Label(controls_frame, text="Ray Angle (degrees):").grid(
+            row=0, column=2, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.ray_angle_var = tk.StringVar(value="0")
+        ttk.Entry(controls_frame, textvariable=self.ray_angle_var, width=10).grid(
+            row=0, column=3, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        
+        # Buttons
+        btn_frame = ttk.Frame(controls_frame)
+        btn_frame.grid(row=1, column=0, columnspan=4, pady=PADDING_MEDIUM)
+        
+        ttk.Button(btn_frame, text="Run Simulation", 
+                  command=self.run_simulation).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        ttk.Button(btn_frame, text="Clear Simulation", 
+                  command=self.clear_simulation).pack(side=tk.LEFT, padx=PADDING_SMALL)
     
     def load_lens(self, lens):
         """Load lens for simulation"""
@@ -632,29 +723,150 @@ class SimulationController:
     def run_simulation(self):
         """Run ray tracing simulation"""
         if self.current_lens is None:
-            messagebox.showwarning("No Lens", "Please select a lens first")
+            try:
+                from tkinter import messagebox
+                messagebox.showwarning("No Lens", "Please select a lens first")
+            except:
+                pass
             return
         
         if self.ray_tracer is None:
-            messagebox.showerror("Unavailable", 
-                               "Ray tracing requires numpy. Install with: pip install numpy")
+            try:
+                from tkinter import messagebox
+                messagebox.showerror("Unavailable", 
+                                   "Ray tracing requires numpy. Install with: pip install numpy")
+            except:
+                pass
             return
         
         try:
-            num_rays = self.num_rays_var.get()
-            rays = self.ray_tracer.trace_parallel_rays(num_rays=num_rays)
+            num_rays = int(self.num_rays_var.get())
+            ray_angle = float(self.ray_angle_var.get())
+            
+            # Trace rays
+            rays = self.ray_tracer.trace_parallel_rays(num_rays=num_rays, angle=ray_angle)
             self.draw_rays(rays)
+            
+        except ValueError as e:
+            try:
+                from tkinter import messagebox
+                messagebox.showerror("Invalid Input", f"Please check your input values: {e}")
+            except:
+                pass
         except Exception as e:
-            messagebox.showerror("Simulation Error", f"Error during simulation: {e}")
+            try:
+                from tkinter import messagebox
+                messagebox.showerror("Simulation Error", f"Error during simulation: {e}")
+            except:
+                pass
     
     def draw_rays(self, rays):
         """Draw ray paths on canvas"""
-        self.canvas.delete("all")
+        if not self.sim_ax or not self.sim_canvas:
+            return
         
-        # Scale and draw (simplified)
-        # TODO: Implement proper scaling and drawing
-        self.canvas.create_text(400, 200, text="Ray Tracing Visualization\n(Under construction)",
-                               font=('Arial', 14))
+        # Clear previous rays
+        self.sim_ax.clear()
+        
+        # Import constants
+        try:
+            from constants import COLOR_BG_DARK, COLOR_BG_LIGHT, COLOR_FG, FONT_SIZE_NORMAL
+        except ImportError:
+            COLOR_BG_DARK, COLOR_BG_LIGHT, COLOR_FG = '#2b2b2b', '#3f3f3f', '#e0e0e0'
+            FONT_SIZE_NORMAL = 10
+        
+        # Redraw axes
+        self.sim_ax.set_xlim(-100, 150)
+        self.sim_ax.set_ylim(-30, 30)
+        self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
+        self.sim_ax.set_xlabel('Position (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
+        self.sim_ax.set_ylabel('Height (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
+        self.sim_ax.set_title(f'Ray Tracing - {self.current_lens.name}', 
+                            fontsize=12, color=COLOR_FG)
+        self.sim_ax.grid(True, alpha=0.2, color=COLOR_BG_LIGHT)
+        self.sim_ax.set_aspect('equal')
+        self.sim_ax.tick_params(colors=COLOR_FG, labelsize=9)
+        for spine in self.sim_ax.spines.values():
+            spine.set_color(COLOR_BG_LIGHT)
+        
+        # Draw lens surfaces
+        self._draw_lens()
+        
+        # Draw rays
+        for i, ray_data in enumerate(rays):
+            if ray_data and 'segments' in ray_data:
+                for segment in ray_data['segments']:
+                    x_coords = [segment['start'][0], segment['end'][0]]
+                    y_coords = [segment['start'][1], segment['end'][1]]
+                    self.sim_ax.plot(x_coords, y_coords, 'b-', alpha=0.6, linewidth=1)
+        
+        # Redraw canvas
+        self.sim_canvas.draw()
+    
+    def _draw_lens(self):
+        """Draw lens outline on the plot"""
+        if not self.current_lens:
+            return
+        
+        # Simple lens representation - two curved lines
+        import numpy as np
+        
+        r1 = self.current_lens.radius_of_curvature_1
+        r2 = self.current_lens.radius_of_curvature_2
+        thickness = self.current_lens.thickness
+        diameter = self.current_lens.diameter
+        
+        # Draw first surface
+        if abs(r1) < 10000:
+            theta = np.linspace(-np.pi/4, np.pi/4, 50)
+            x1 = r1 * (1 - np.cos(theta))
+            y1 = r1 * np.sin(theta)
+            y1 = y1[np.abs(y1) <= diameter/2]
+            x1 = x1[:len(y1)]
+            self.sim_ax.plot(x1, y1, 'k-', linewidth=2)
+        else:
+            # Flat surface
+            self.sim_ax.plot([0, 0], [-diameter/2, diameter/2], 'k-', linewidth=2)
+        
+        # Draw second surface
+        if abs(r2) < 10000:
+            theta = np.linspace(-np.pi/4, np.pi/4, 50)
+            x2 = thickness + r2 * (1 - np.cos(theta))
+            y2 = r2 * np.sin(theta)
+            y2 = y2[np.abs(y2) <= diameter/2]
+            x2 = x2[:len(y2)]
+            self.sim_ax.plot(x2, y2, 'k-', linewidth=2)
+        else:
+            # Flat surface
+            self.sim_ax.plot([thickness, thickness], [-diameter/2, diameter/2], 'k-', linewidth=2)
+    
+    def clear_simulation(self):
+        """Clear simulation canvas"""
+        if not self.sim_ax or not self.sim_canvas:
+            return
+        
+        self.sim_ax.clear()
+        
+        try:
+            from constants import COLOR_BG_DARK, COLOR_BG_LIGHT, COLOR_FG, FONT_SIZE_NORMAL
+        except ImportError:
+            COLOR_BG_DARK, COLOR_BG_LIGHT, COLOR_FG = '#2b2b2b', '#3f3f3f', '#e0e0e0'
+            FONT_SIZE_NORMAL = 10
+        
+        self.sim_ax.set_xlim(-100, 150)
+        self.sim_ax.set_ylim(-30, 30)
+        self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
+        self.sim_ax.set_xlabel('Position (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
+        self.sim_ax.set_ylabel('Height (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
+        self.sim_ax.set_title('Ray Tracing Simulation\n(Select a lens and click "Run Simulation")', 
+                            fontsize=12, color=COLOR_FG)
+        self.sim_ax.grid(True, alpha=0.2, color=COLOR_BG_LIGHT)
+        self.sim_ax.set_aspect('equal')
+        self.sim_ax.tick_params(colors=COLOR_FG, labelsize=9)
+        for spine in self.sim_ax.spines.values():
+            spine.set_color(COLOR_BG_LIGHT)
+        
+        self.sim_canvas.draw()
 
 
 class PerformanceController:

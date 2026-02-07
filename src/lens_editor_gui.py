@@ -623,6 +623,11 @@ class LensEditorWindow:
         # Switch to editor and load lens
         self.notebook.select(1)
         self.load_lens_to_form(lens)
+        
+        # Load lens into simulation controller if available
+        if hasattr(self, 'simulation_controller') and self.simulation_controller:
+            self.simulation_controller.load_lens(lens)
+        
         self.update_simulation_view()
         self.update_status(f"Lens selected: '{lens.name}' - Ready to edit")
     
@@ -1137,16 +1142,36 @@ Modified: {lens.modified_at}"""
     
     def setup_simulation_tab(self) -> None:
         """Setup the Simulation tab for ray tracing and optical analysis"""
-        print("="*70)
-        print("DEBUG: setup_simulation_tab() called")
-        print("="*70)
-        
+        # Try to use controller if available
+        try:
+            from gui_controllers import SimulationController
+            
+            colors = {
+                'bg': COLOR_BG_DARK,
+                'fg': COLOR_FG,
+                'light': COLOR_BG_LIGHT
+            }
+            
+            self.simulation_controller = SimulationController(
+                colors=colors,
+                visualization_available=VISUALIZATION_AVAILABLE
+            )
+            self.simulation_controller.setup_ui(self.simulation_tab)
+            
+            print("SimulationController integrated successfully")
+            
+        except ImportError as e:
+            print(f"GUI controllers not available, using legacy simulation: {e}")
+            self._setup_simulation_tab_legacy()
+    
+    def _setup_simulation_tab_legacy(self) -> None:
+        """Legacy simulation tab setup (fallback)"""
         # Configure simulation tab grid
         self.simulation_tab.columnconfigure(0, weight=1)
         self.simulation_tab.rowconfigure(0, weight=1)
         
         # Main content frame
-        content_frame = ttk.Frame(self.simulation_tab, padding="10", style='Debug.TFrame')
+        content_frame = ttk.Frame(self.simulation_tab, padding="10")
         content_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         content_frame.columnconfigure(0, weight=1)
         content_frame.rowconfigure(1, weight=1)
@@ -1155,24 +1180,20 @@ Modified: {lens.modified_at}"""
         title_label = ttk.Label(content_frame, text="Optical Simulation", 
                  font=(FONT_FAMILY, 14, 'bold'))
         title_label.grid(row=0, column=0, pady=PADDING_MEDIUM)
-        print(f"DEBUG: Created title label: {title_label}")
         
         # Simulation canvas area
         sim_frame = ttk.LabelFrame(content_frame, text="Ray Tracing Simulation", padding="10", height=450)
         sim_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=PADDING_MEDIUM)
         sim_frame.columnconfigure(0, weight=1)
         sim_frame.rowconfigure(0, weight=1)
-        sim_frame.grid_propagate(False)  # Prevent frame from shrinking to fit contents
-        print(f"DEBUG: Created sim_frame: {sim_frame}")
+        sim_frame.grid_propagate(False)
         
         # Placeholder for simulation visualization
         if VISUALIZATION_AVAILABLE:
             try:
-                # Create a 2D matplotlib canvas for ray tracing (not 3D)
                 from matplotlib.figure import Figure
                 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
                 
-                print("DEBUG: Creating matplotlib figure...")
                 self.sim_figure = Figure(figsize=(12, 6), dpi=100, facecolor=COLOR_BG_DARK)
                 self.sim_figure.subplots_adjust(left=0.08, right=0.95, top=0.93, bottom=0.10)
                 self.sim_ax = self.sim_figure.add_subplot(111, facecolor=COLOR_BG_DARK)
@@ -1190,35 +1211,22 @@ Modified: {lens.modified_at}"""
                 
                 # Style the 2D plot
                 self.sim_ax.tick_params(colors='#e0e0e0', labelsize=9)
-                self.sim_ax.spines['bottom'].set_color('#3f3f3f')
-                self.sim_ax.spines['top'].set_color('#3f3f3f')
-                self.sim_ax.spines['left'].set_color('#3f3f3f')
-                self.sim_ax.spines['right'].set_color('#3f3f3f')
+                for spine in self.sim_ax.spines.values():
+                    spine.set_color('#3f3f3f')
                 
-                # Create canvas and pack it instead of grid
-                print("DEBUG: Creating canvas widget...")
+                # Create canvas
                 self.sim_canvas = FigureCanvasTkAgg(self.sim_figure, sim_frame)
                 self.sim_canvas_widget = self.sim_canvas.get_tk_widget()
-                
-                # Use pack to fill the entire frame
                 self.sim_canvas_widget.pack(fill='both', expand=True)
-                
-                print(f"DEBUG: Canvas widget configured: {self.sim_canvas_widget}")
-                
-                # Draw the initial canvas
-                print("DEBUG: Drawing canvas...")
                 self.sim_canvas.draw()
-                print("DEBUG: Canvas drawn successfully!")
                 
-                self.sim_visualizer = True  # Flag to indicate sim is available
+                self.sim_visualizer = True
                 
             except Exception as e:
                 print(f"ERROR creating simulation canvas: {e}")
                 ttk.Label(sim_frame, text=f"Simulation error: {e}", 
-                         wraplength=400).pack(pady=PADDING_XLARGE)  # Fixed width for wrapping
+                         wraplength=400).pack(pady=PADDING_LARGE)
                 self.sim_visualizer = None
-                import traceback
-                traceback.print_exc()
         else:
             msg = "Simulation not available.\n\nInstall dependencies:\n  pip install matplotlib numpy"
             ttk.Label(sim_frame, text=msg, justify=tk.CENTER, 
@@ -1247,7 +1255,7 @@ Modified: {lens.modified_at}"""
         ttk.Button(btn_frame, text="Clear Simulation", 
                   command=self.clear_simulation).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
-        # Aberrations Analysis section
+        # Aberrations Analysis section (part of simulation tab)
         if ABERRATIONS_AVAILABLE:
             aberr_frame = ttk.LabelFrame(content_frame, text="Aberrations Analysis", padding="10")
             aberr_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM)  # Removed N, S sticky
@@ -1288,7 +1296,13 @@ Modified: {lens.modified_at}"""
     
     def run_simulation(self) -> None:
         """Run ray tracing simulation for the current lens"""
-        print(f"DEBUG: run_simulation called")
+        # Delegate to controller if available
+        if hasattr(self, 'simulation_controller') and self.simulation_controller:
+            self.simulation_controller.run_simulation()
+            return
+        
+        # Legacy implementation
+        print(f"DEBUG: run_simulation called (legacy)")
         print(f"DEBUG: current_lens = {self.current_lens}")
         print(f"DEBUG: RAY_TRACING_AVAILABLE = {RAY_TRACING_AVAILABLE}")
         print(f"DEBUG: VISUALIZATION_AVAILABLE = {VISUALIZATION_AVAILABLE}")
@@ -1539,6 +1553,13 @@ Modified: {lens.modified_at}"""
         
     def clear_simulation(self) -> None:
         """Clear the simulation display"""
+        # Delegate to controller if available
+        if hasattr(self, 'simulation_controller') and self.simulation_controller:
+            self.simulation_controller.clear_simulation()
+            self.update_status("Simulation cleared")
+            return
+        
+        # Legacy implementation
         if hasattr(self, 'sim_visualizer') and self.sim_visualizer:
             if hasattr(self, 'sim_ax'):
                 self.sim_ax.clear()
