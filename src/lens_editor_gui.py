@@ -631,6 +631,9 @@ class LensEditorWindow:
         if hasattr(self, 'performance_controller') and self.performance_controller:
             self.performance_controller.load_lens(lens)
         
+        if hasattr(self, 'export_controller') and self.export_controller:
+            self.export_controller.load_lens(lens)
+        
         self.update_simulation_view()
         self.update_status(f"Lens selected: '{lens.name}' - Ready to edit")
     
@@ -878,7 +881,7 @@ Modified: {lens.modified_at}"""
         """Setup the Editor tab with lens properties"""
         
         # Try to use controller if available
-        if GUI_CONTROLLERS_AVAILABLE:
+        if CONTROLLERS_AVAILABLE:
             try:
                 self.editor_controller = LensEditorController(
                     colors=self.COLORS,
@@ -2077,6 +2080,22 @@ Modified: {lens.modified_at}"""
     
     def setup_comparison_tab(self) -> None:
         """Setup the Comparison Mode tab"""
+        # Try to use controller if available
+        if CONTROLLERS_AVAILABLE:
+            try:
+                from gui_controllers import ComparisonController
+                self.comparison_controller = ComparisonController(self, lambda: self.lenses, self.COLORS)
+                self.comparison_controller.setup_ui(self.comparison_tab)
+                return
+            except Exception as e:
+                print(f"Failed to initialize ComparisonController: {e}")
+                self.comparison_controller = None
+        
+        # Fallback to legacy implementation
+        self._setup_comparison_tab_legacy()
+    
+    def _setup_comparison_tab_legacy(self) -> None:
+        """Legacy comparison tab setup"""
         # Configure comparison tab grid
         self.comparison_tab.columnconfigure(0, weight=1)
         self.comparison_tab.rowconfigure(1, weight=1)
@@ -2152,6 +2171,22 @@ Modified: {lens.modified_at}"""
     
     def setup_export_tab(self) -> None:
         """Setup the Export Enhancements tab"""
+        # Try to use controller if available
+        if CONTROLLERS_AVAILABLE:
+            try:
+                from gui_controllers import ExportController
+                self.export_controller = ExportController(self, self.COLORS)
+                self.export_controller.setup_ui(self.export_tab)
+                return
+            except Exception as e:
+                print(f"Failed to initialize ExportController: {e}")
+                self.export_controller = None
+        
+        # Fallback to legacy implementation
+        self._setup_export_tab_legacy()
+    
+    def _setup_export_tab_legacy(self) -> None:
+        """Legacy export tab setup"""
         # Configure export tab grid
         self.export_tab.columnconfigure(0, weight=1)
         self.export_tab.rowconfigure(0, weight=1)

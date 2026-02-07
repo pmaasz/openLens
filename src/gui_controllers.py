@@ -1133,48 +1133,111 @@ class ComparisonController:
     - Generate comparison charts
     """
     
-    def __init__(self, parent_window, lens_list):
-        """Initialize the comparison controller"""
+    def __init__(self, parent_window, lens_list, colors=None):
+        """
+        Initialize the comparison controller.
+        
+        Args:
+            parent_window: Reference to main window
+            lens_list: Callable that returns list of lenses
+            colors: Color scheme dictionary
+        """
         self.window = parent_window
         self.lens_list = lens_list
         self.selected_lenses = []
         self.listbox = None
         self.comparison_text = None
+        
+        # Import constants with fallback
+        try:
+            from ui_constants import (
+                COLOR_BG_DARK, COLOR_FG_LIGHT, COLOR_ACCENT,
+                FONT_FAMILY, FONT_SIZE_NORMAL, PADDING_MEDIUM
+            )
+            self.colors = colors or {
+                'bg': COLOR_BG_DARK,
+                'fg': COLOR_FG_LIGHT,
+                'accent': COLOR_ACCENT,
+                'entry_bg': '#2b2b2b'
+            }
+        except ImportError:
+            self.colors = colors or {
+                'bg': '#1e1e1e',
+                'fg': '#ffffff',
+                'accent': '#0078d4',
+                'entry_bg': '#2b2b2b'
+            }
     
     def setup_ui(self, parent_frame):
         """Set up the comparison tab UI"""
+        # Import constants
+        try:
+            from ui_constants import FONT_FAMILY, FONT_SIZE_NORMAL, PADDING_MEDIUM, PADDING_SMALL
+        except ImportError:
+            FONT_FAMILY = 'Arial'
+            FONT_SIZE_NORMAL = 10
+            PADDING_MEDIUM = 10
+            PADDING_SMALL = 5
+        
+        # Configure grid
+        parent_frame.columnconfigure(0, weight=1)
+        parent_frame.rowconfigure(2, weight=1)
+        
+        # Title
+        title_label = ttk.Label(parent_frame, text="Lens Comparison Tool", 
+                                font=(FONT_FAMILY, 14, 'bold'))
+        title_label.grid(row=0, column=0, pady=PADDING_MEDIUM)
+        
         # Selection frame
         select_frame = ttk.LabelFrame(parent_frame, text="Select Lenses to Compare", padding=10)
-        select_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
+        select_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
         
-        scrollbar = ttk.Scrollbar(select_frame)
+        # Listbox container
+        list_container = ttk.Frame(select_frame)
+        list_container.pack(fill=tk.BOTH, expand=True)
+        
+        scrollbar = ttk.Scrollbar(list_container)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        self.listbox = tk.Listbox(select_frame, selectmode=tk.MULTIPLE,
-                                  yscrollcommand=scrollbar.set, height=10)
+        self.listbox = tk.Listbox(list_container, selectmode=tk.MULTIPLE,
+                                  yscrollcommand=scrollbar.set, height=8,
+                                  bg=self.colors.get('entry_bg', '#2b2b2b'),
+                                  fg=self.colors.get('fg', '#ffffff'),
+                                  selectbackground=self.colors.get('accent', '#0078d4'),
+                                  selectforeground=self.colors.get('fg', '#ffffff'),
+                                  font=(FONT_FAMILY, FONT_SIZE_NORMAL))
         self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.config(command=self.listbox.yview)
         
         # Button frame
-        button_frame = ttk.Frame(parent_frame, padding=10)
-        button_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        button_frame = ttk.Frame(select_frame)
+        button_frame.pack(pady=PADDING_MEDIUM)
         
         ttk.Button(button_frame, text="Compare Selected", 
-                  command=self.compare_lenses).pack(side=tk.LEFT, padx=5)
+                  command=self.compare_lenses).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(button_frame, text="Clear Selection", 
-                  command=self.clear_selection).pack(side=tk.LEFT, padx=5)
+                  command=self.clear_selection).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        ttk.Button(button_frame, text="Export Comparison",
+                  command=self.export_comparison).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         # Results frame
         results_frame = ttk.LabelFrame(parent_frame, text="Comparison Results", padding=10)
         results_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
+        results_frame.columnconfigure(0, weight=1)
+        results_frame.rowconfigure(0, weight=1)
         
         result_scrollbar = ttk.Scrollbar(results_frame)
-        result_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        result_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
         
         self.comparison_text = tk.Text(results_frame, height=15, width=80,
-                                       yscrollcommand=result_scrollbar.set, wrap=tk.WORD)
-        self.comparison_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+                                       yscrollcommand=result_scrollbar.set, wrap=tk.NONE,
+                                       bg=self.colors.get('entry_bg', '#2b2b2b'),
+                                       fg=self.colors.get('fg', '#ffffff'),
+                                       font=('Courier', 9))
+        self.comparison_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         result_scrollbar.config(command=self.comparison_text.yview)
+        
+        self.comparison_text.insert(1.0, "Select lenses above and click 'Compare Selected' to view side-by-side comparison.")
         
         self.refresh_lens_list()
     
@@ -1225,6 +1288,28 @@ class ComparisonController:
         """Clear the selection"""
         self.listbox.selection_clear(0, tk.END)
         self.comparison_text.delete(1.0, tk.END)
+        self.comparison_text.insert(1.0, "Select lenses above and click 'Compare Selected' to view side-by-side comparison.")
+    
+    def export_comparison(self):
+        """Export comparison to file"""
+        if not self.comparison_text.get(1.0, tk.END).strip():
+            messagebox.showwarning("No Data", "No comparison data to export")
+            return
+        
+        from tkinter import filedialog
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+            title="Export Comparison"
+        )
+        
+        if filename:
+            try:
+                with open(filename, 'w') as f:
+                    f.write(self.comparison_text.get(1.0, tk.END))
+                messagebox.showinfo("Success", f"Comparison exported to {filename}")
+            except Exception as e:
+                messagebox.showerror("Export Error", f"Failed to export: {e}")
 
 
 class ExportController:
@@ -1238,59 +1323,112 @@ class ExportController:
     - Generate reports
     """
     
-    def __init__(self, parent_window):
-        """Initialize the export controller"""
+    def __init__(self, parent_window, colors=None):
+        """
+        Initialize the export controller.
+        
+        Args:
+            parent_window: Reference to main window
+            colors: Color scheme dictionary
+        """
         self.window = parent_window
         self.current_lens = None
+        
+        # Import constants with fallback
+        try:
+            from ui_constants import (
+                COLOR_BG_DARK, COLOR_FG_LIGHT, COLOR_ACCENT,
+                FONT_FAMILY, FONT_SIZE_NORMAL
+            )
+            self.colors = colors or {
+                'bg': COLOR_BG_DARK,
+                'fg': COLOR_FG_LIGHT,
+                'accent': COLOR_ACCENT,
+                'entry_bg': '#2b2b2b'
+            }
+        except ImportError:
+            self.colors = colors or {
+                'bg': '#1e1e1e',
+                'fg': '#ffffff',
+                'accent': '#0078d4',
+                'entry_bg': '#2b2b2b'
+            }
     
     def setup_ui(self, parent_frame):
         """Set up the export tab UI"""
-        # Export options frame
-        options_frame = ttk.LabelFrame(parent_frame, text="Export Options", padding=20)
-        options_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        # Import constants
+        try:
+            from ui_constants import FONT_FAMILY, FONT_SIZE_NORMAL, PADDING_MEDIUM, PADDING_XLARGE
+        except ImportError:
+            FONT_FAMILY = 'Arial'
+            FONT_SIZE_NORMAL = 10
+            PADDING_MEDIUM = 10
+            PADDING_XLARGE = 20
         
-        row = 0
+        # Configure grid
+        parent_frame.columnconfigure(0, weight=1)
+        
+        # Main content frame
+        content_frame = ttk.Frame(parent_frame, padding="10")
+        content_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        content_frame.columnconfigure(0, weight=1)
+        
+        # Title
+        title_label = ttk.Label(content_frame, text="Professional Export Formats", 
+                                font=(FONT_FAMILY, 14, 'bold'))
+        title_label.grid(row=0, column=0, pady=PADDING_MEDIUM)
+        
+        row = 1
         
         # JSON Export
-        ttk.Label(options_frame, text="JSON Format:", font=('Arial', 10, 'bold')).grid(
-            row=row, column=0, sticky=tk.W, pady=5)
-        row += 1
-        ttk.Label(options_frame, text="Export lens data as JSON").grid(
-            row=row, column=0, sticky=tk.W, padx=20)
-        ttk.Button(options_frame, text="Export JSON", 
-                  command=self.export_json).grid(row=row, column=1, padx=5)
+        json_frame = ttk.LabelFrame(content_frame, text="JSON Format", padding="15")
+        json_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
+        ttk.Label(json_frame, text="Export lens data as JSON", font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(side=tk.LEFT, padx=PADDING_MEDIUM)
+        ttk.Button(json_frame, text="Export JSON", command=self.export_json, width=15).pack(side=tk.RIGHT, padx=PADDING_MEDIUM)
         row += 1
         
         # STL Export
-        ttk.Separator(options_frame, orient=tk.HORIZONTAL).grid(
-            row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
-        row += 1
-        
-        ttk.Label(options_frame, text="3D Model (STL):", font=('Arial', 10, 'bold')).grid(
-            row=row, column=0, sticky=tk.W, pady=5)
-        row += 1
-        ttk.Label(options_frame, text="Export 3D model for CAD/3D printing").grid(
-            row=row, column=0, sticky=tk.W, padx=20)
-        ttk.Button(options_frame, text="Export STL", 
-                  command=self.export_stl).grid(row=row, column=1, padx=5)
+        stl_frame = ttk.LabelFrame(content_frame, text="3D Model (STL)", padding="15")
+        stl_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
+        ttk.Label(stl_frame, text="Export 3D model for CAD/3D printing", font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(side=tk.LEFT, padx=PADDING_MEDIUM)
+        ttk.Button(stl_frame, text="Export STL", command=self.export_stl, width=15).pack(side=tk.RIGHT, padx=PADDING_MEDIUM)
         row += 1
         
         # Technical Report
-        ttk.Separator(options_frame, orient=tk.HORIZONTAL).grid(
-            row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        report_frame = ttk.LabelFrame(content_frame, text="Technical Report", padding="15")
+        report_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
+        ttk.Label(report_frame, text="Generate detailed technical report", font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(side=tk.LEFT, padx=PADDING_MEDIUM)
+        ttk.Button(report_frame, text="Generate Report", command=self.export_report, width=15).pack(side=tk.RIGHT, padx=PADDING_MEDIUM)
         row += 1
         
-        ttk.Label(options_frame, text="Technical Report:", font=('Arial', 10, 'bold')).grid(
-            row=row, column=0, sticky=tk.W, pady=5)
-        row += 1
-        ttk.Label(options_frame, text="Generate detailed technical report").grid(
-            row=row, column=0, sticky=tk.W, padx=20)
-        ttk.Button(options_frame, text="Generate Report", 
-                  command=self.export_report).grid(row=row, column=1, padx=5)
+        # Status area
+        status_frame = ttk.LabelFrame(content_frame, text="Export Status", padding="10")
+        status_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
+        
+        self.status_text = tk.Text(status_frame, height=8, width=80,
+                                   wrap=tk.WORD,
+                                   bg=self.colors.get('entry_bg', '#2b2b2b'),
+                                   fg=self.colors.get('fg', '#ffffff'),
+                                   font=('Arial', 9),
+                                   state='disabled')
+        self.status_text.pack(fill=tk.BOTH, expand=True)
+        
+        # Initial status message
+        self._update_status("Ready to export. Select a lens from the Selection tab.")
     
     def load_lens(self, lens):
         """Load lens for export"""
         self.current_lens = lens
+        if hasattr(self, 'status_text'):
+            self._update_status(f"Lens '{lens.name}' loaded. Ready to export.")
+    
+    def _update_status(self, message):
+        """Update status text widget"""
+        if hasattr(self, 'status_text'):
+            self.status_text.config(state='normal')
+            self.status_text.delete(1.0, tk.END)
+            self.status_text.insert(1.0, message)
+            self.status_text.config(state='disabled')
     
     def export_json(self):
         """Export lens to JSON file"""
@@ -1310,8 +1448,10 @@ class ExportController:
                 with open(filename, 'w') as f:
                     json.dump(self.current_lens.to_dict(), f, indent=2)
                 messagebox.showinfo("Success", f"Lens exported to {filename}")
+                self._update_status(f"✓ Successfully exported to: {filename}")
             except Exception as e:
                 messagebox.showerror("Export Error", f"Failed to export: {e}")
+                self._update_status(f"✗ Export failed: {e}")
     
     def export_stl(self):
         """Export lens to STL file"""
@@ -1337,8 +1477,10 @@ class ExportController:
             try:
                 export_lens_stl(self.current_lens, filename)
                 messagebox.showinfo("Success", f"3D model exported to {filename}")
+                self._update_status(f"✓ Successfully exported STL to: {filename}")
             except Exception as e:
                 messagebox.showerror("Export Error", f"Failed to export: {e}")
+                self._update_status(f"✗ STL export failed: {e}")
     
     def export_report(self):
         """Generate and export technical report"""
@@ -1379,8 +1521,10 @@ class ExportController:
                 with open(filename, 'w') as f:
                     f.write(report)
                 messagebox.showinfo("Success", f"Report exported to {filename}")
+                self._update_status(f"✓ Successfully exported report to: {filename}")
             except Exception as e:
                 messagebox.showerror("Export Error", f"Failed to export: {e}")
+                self._update_status(f"✗ Report export failed: {e}")
 
 
 # Export controllers
