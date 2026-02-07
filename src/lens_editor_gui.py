@@ -668,7 +668,7 @@ class LensEditorWindow:
         
         self.update_status(f"Lens '{lens.name}' deleted")
     
-    def on_lens_updated_callback(self) -> None:
+    def on_lens_updated_callback(self, lens: Optional['Lens'] = None) -> None:
         """Callback when lens data is updated"""
         self.save_lenses()
         self.refresh_lens_list()
