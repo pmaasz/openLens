@@ -288,6 +288,11 @@ class LensEditorWindow:
         # Initialize status_var early
         self.status_var = tk.StringVar(value="Welcome to openlens")
         
+        # Initialize controllers (None until UI setup)
+        self.selection_controller: Optional[Any] = None
+        self.editor_controller: Optional[Any] = None
+        self.simulation_controller: Optional[Any] = None
+        
         # Configure dark mode
         self.setup_dark_mode()
         

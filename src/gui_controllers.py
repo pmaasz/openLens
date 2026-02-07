@@ -4,12 +4,23 @@ GUI Controllers for openlens
 This module provides separate controller classes to decompose the
 large GUI class into manageable, focused components following the
 Single Responsibility Principle.
+
+Each controller handles a specific tab/feature:
+- LensSelectionController: Manages lens library and selection
+- LensEditorController: Handles lens property editing
+- SimulationController: Manages ray tracing visualization
+- PerformanceController: Manages aberration analysis
+- ComparisonController: Handles lens comparison
+- ExportController: Manages export functionality
 """
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-from typing import Optional, List, Callable, Dict, Any
+from typing import Optional, List, Callable, Dict, Any, TYPE_CHECKING
 import json
+
+if TYPE_CHECKING:
+    from lens_editor_gui import Lens, LensEditorWindow
 
 
 class LensSelectionController:
