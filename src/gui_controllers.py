@@ -877,111 +877,250 @@ class PerformanceController:
     - Display aberration calculations
     - Show performance metrics
     - Analyze lens quality
+    - Export performance reports
     """
     
-    def __init__(self, parent_window):
-        """Initialize the performance controller"""
-        self.window = parent_window
+    def __init__(self, colors: dict, aberrations_available: bool = True):
+        """
+        Initialize the performance controller.
+        
+        Args:
+            colors: Color scheme dictionary
+            aberrations_available: Whether aberrations module is available
+        """
+        self.colors = colors
+        self.aberrations_available = aberrations_available
         self.current_lens = None
-        self.result_text = None
+        self.metrics_text = None
+        
+        # Parameter variables
+        self.entrance_pupil_var = None
+        self.wavelength_var = None
+        self.object_distance_var = None
+        self.sensor_size_var = None
     
     def setup_ui(self, parent_frame):
         """Set up the performance tab UI"""
-        # Instructions
-        info_frame = ttk.Frame(parent_frame, padding=10)
-        info_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        # Import constants with fallbacks
+        try:
+            from constants import (PADDING_SMALL, PADDING_MEDIUM,
+                                 FONT_FAMILY, FONT_SIZE_NORMAL,
+                                 WAVELENGTH_GREEN)
+        except ImportError:
+            PADDING_SMALL, PADDING_MEDIUM = 5, 10
+            FONT_FAMILY, FONT_SIZE_NORMAL = 'Arial', 10
+            WAVELENGTH_GREEN = 550
         
-        ttk.Label(info_frame, text="Aberration Analysis", 
-                 font=('Arial', 12, 'bold')).pack(anchor=tk.W)
-        ttk.Label(info_frame, text="Analyze optical aberrations and performance metrics",
-                 font=('Arial', 9)).pack(anchor=tk.W, pady=5)
+        # Configure parent frame
+        parent_frame.columnconfigure(0, weight=1)
+        parent_frame.rowconfigure(1, weight=1)
         
-        # Results display
-        results_frame = ttk.LabelFrame(parent_frame, text="Analysis Results", padding=10)
-        results_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
+        # Title
+        title_label = ttk.Label(parent_frame, text="Performance Metrics Dashboard", 
+                               font=(FONT_FAMILY, 14, 'bold'))
+        title_label.grid(row=0, column=0, pady=PADDING_MEDIUM)
         
-        scrollbar = ttk.Scrollbar(results_frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        # Metrics display area
+        metrics_frame = ttk.LabelFrame(parent_frame, text="Optical Performance Metrics", 
+                                      padding=PADDING_MEDIUM)
+        metrics_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=PADDING_MEDIUM)
+        metrics_frame.columnconfigure(0, weight=1)
+        metrics_frame.rowconfigure(0, weight=1)
         
-        self.result_text = tk.Text(results_frame, height=20, width=80,
-                                   yscrollcommand=scrollbar.set, wrap=tk.WORD)
-        self.result_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.result_text.yview)
+        # Text widget for metrics display
+        metrics_scroll = ttk.Scrollbar(metrics_frame)
+        metrics_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
         
-        # Analysis button
-        button_frame = ttk.Frame(parent_frame, padding=10)
-        button_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        self.metrics_text = tk.Text(metrics_frame, height=20, width=80,
+                                   wrap=tk.WORD,
+                                   bg=self.colors.get('entry_bg', '#2b2b2b'),
+                                   fg=self.colors.get('fg', '#e0e0e0'),
+                                   font=('Courier', 10),
+                                   yscrollcommand=metrics_scroll.set)
+        self.metrics_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        metrics_scroll.config(command=self.metrics_text.yview)
         
-        ttk.Button(button_frame, text="Run Analysis", 
-                  command=self.run_analysis).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Export Report", 
-                  command=self.export_report).pack(side=tk.LEFT, padx=5)
+        self.metrics_text.insert('1.0', "Select a lens and click 'Calculate Metrics' to view performance data.")
+        self.metrics_text.config(state='disabled')
+        
+        # Controls
+        controls_frame = ttk.LabelFrame(parent_frame, text="Calculation Parameters", 
+                                       padding=PADDING_MEDIUM)
+        controls_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM)
+        
+        # Parameter inputs
+        ttk.Label(controls_frame, text="Entrance Pupil Diameter (mm):").grid(
+            row=0, column=0, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.entrance_pupil_var = tk.StringVar(value="10.0")
+        ttk.Entry(controls_frame, textvariable=self.entrance_pupil_var, width=15).grid(
+            row=0, column=1, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        
+        ttk.Label(controls_frame, text="Wavelength (nm):").grid(
+            row=0, column=2, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.wavelength_var = tk.StringVar(value=str(int(WAVELENGTH_GREEN)))
+        ttk.Entry(controls_frame, textvariable=self.wavelength_var, width=15).grid(
+            row=0, column=3, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        
+        ttk.Label(controls_frame, text="Object Distance (mm):").grid(
+            row=1, column=0, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.object_distance_var = tk.StringVar(value="1000")
+        ttk.Entry(controls_frame, textvariable=self.object_distance_var, width=15).grid(
+            row=1, column=1, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        
+        ttk.Label(controls_frame, text="Sensor Size (mm):").grid(
+            row=1, column=2, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.sensor_size_var = tk.StringVar(value="36")
+        ttk.Entry(controls_frame, textvariable=self.sensor_size_var, width=15).grid(
+            row=1, column=3, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
+        
+        # Buttons
+        btn_frame = ttk.Frame(controls_frame)
+        btn_frame.grid(row=2, column=0, columnspan=4, pady=PADDING_MEDIUM)
+        
+        ttk.Button(btn_frame, text="Calculate Metrics", 
+                  command=self.calculate_metrics).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        ttk.Button(btn_frame, text="Export Report", 
+                  command=self.export_report).pack(side=tk.LEFT, padx=PADDING_SMALL)
     
     def load_lens(self, lens):
         """Load lens for analysis"""
         self.current_lens = lens
-        if lens:
-            self.run_analysis()
     
-    def run_analysis(self):
-        """Run aberration analysis on current lens"""
+    def calculate_metrics(self):
+        """Calculate performance metrics for current lens"""
         if self.current_lens is None:
-            messagebox.showwarning("No Lens", "Please select a lens first")
+            try:
+                from tkinter import messagebox
+                messagebox.showwarning("No Lens", "Please select a lens first")
+            except:
+                pass
+            return
+        
+        if not self.aberrations_available:
+            result = "Performance analysis requires numpy and scipy.\n"
+            result += "Install with: pip install numpy scipy\n"
+            self.metrics_text.config(state='normal')
+            self.metrics_text.delete(1.0, tk.END)
+            self.metrics_text.insert(1.0, result)
+            self.metrics_text.config(state='disabled')
             return
         
         try:
-            # Check if aberrations module available
+            # Get parameters
+            entrance_pupil = float(self.entrance_pupil_var.get())
+            wavelength = float(self.wavelength_var.get())
+            object_distance = float(self.object_distance_var.get())
+            sensor_size = float(self.sensor_size_var.get())
+            
+            # Import aberrations module
             try:
                 from aberrations import AberrationsCalculator, analyze_lens_quality
                 
                 calc = AberrationsCalculator(self.current_lens)
-                spherical = calc.spherical_aberration()
-                coma = calc.coma()
+                
+                # Calculate aberrations
+                spherical = calc.spherical_aberration(entrance_pupil_radius=entrance_pupil/2)
+                coma = calc.coma(field_angle=5.0)  # 5 degree field
                 chromatic = calc.chromatic_aberration()
+                distortion = calc.distortion(field_height=sensor_size/2)
+                field_curv = calc.field_curvature()
+                astigmatism = calc.astigmatism(field_angle=5.0)
+                
+                # Quality analysis
                 quality = analyze_lens_quality(self.current_lens)
                 
                 # Format results
-                result = f"Aberration Analysis for: {self.current_lens.name}\n"
-                result += "=" * 60 + "\n\n"
-                result += f"Spherical Aberration: {spherical:.6f} mm\n"
-                result += f"Coma: {coma:.6f} mm\n"
-                result += f"Chromatic Aberration: {chromatic:.6f} mm\n\n"
-                result += f"Overall Quality: {quality['quality']}\n"
-                result += f"Quality Score: {quality['score']:.2f}/100\n"
+                result = "=" * 70 + "\n"
+                result += f"PERFORMANCE METRICS: {self.current_lens.name}\n"
+                result += "=" * 70 + "\n\n"
+                
+                result += "CALCULATION PARAMETERS:\n"
+                result += f"  Entrance Pupil: {entrance_pupil:.2f} mm\n"
+                result += f"  Wavelength: {wavelength:.1f} nm\n"
+                result += f"  Object Distance: {object_distance:.1f} mm\n"
+                result += f"  Sensor Size: {sensor_size:.1f} mm\n\n"
+                
+                result += "ABERRATIONS:\n"
+                result += f"  Spherical Aberration: {spherical:.6f} mm\n"
+                result += f"  Coma: {coma:.6f} mm\n"
+                result += f"  Chromatic Aberration: {chromatic:.6f} mm\n"
+                result += f"  Distortion: {distortion:.4f}%\n"
+                result += f"  Field Curvature: {field_curv:.6f} mm\n"
+                result += f"  Astigmatism: {astigmatism:.6f} mm\n\n"
+                
+                result += "OPTICAL PROPERTIES:\n"
+                result += f"  Focal Length: {self.current_lens.calculate_focal_length():.3f} mm\n"
+                result += f"  F-Number: {self.current_lens.calculate_f_number():.2f}\n"
+                result += f"  Back Focal Length: {self.current_lens.calculate_back_focal_length():.3f} mm\n"
+                result += f"  Front Focal Length: {self.current_lens.calculate_front_focal_length():.3f} mm\n\n"
+                
+                result += "QUALITY ASSESSMENT:\n"
+                result += f"  Overall Quality: {quality['quality']}\n"
+                result += f"  Quality Score: {quality['score']:.1f}/100\n"
+                result += f"  Issues: {', '.join(quality['issues']) if quality['issues'] else 'None'}\n\n"
+                
+                result += "DIFFRACTION LIMIT:\n"
+                airy_disk = 1.22 * (wavelength / 1e6) * self.current_lens.calculate_f_number()
+                result += f"  Airy Disk Diameter: {airy_disk*1000:.3f} μm\n"
+                result += f"  Rayleigh Criterion: {airy_disk*1000/2:.3f} μm\n\n"
+                
+                result += "=" * 70 + "\n"
                 
             except ImportError:
-                result = "Aberration analysis requires numpy and scipy.\n"
+                result = "Performance analysis requires numpy and scipy.\n"
                 result += "Install with: pip install numpy scipy\n"
             
-            self.result_text.delete(1.0, tk.END)
-            self.result_text.insert(1.0, result)
+            # Update display
+            self.metrics_text.config(state='normal')
+            self.metrics_text.delete(1.0, tk.END)
+            self.metrics_text.insert(1.0, result)
+            self.metrics_text.config(state='disabled')
             
+        except ValueError as e:
+            try:
+                from tkinter import messagebox
+                messagebox.showerror("Invalid Input", f"Please check your input values: {e}")
+            except:
+                pass
         except Exception as e:
-            messagebox.showerror("Analysis Error", f"Error during analysis: {e}")
+            try:
+                from tkinter import messagebox
+                messagebox.showerror("Calculation Error", f"Error during calculation: {e}")
+            except:
+                pass
     
     def export_report(self):
-        """Export analysis report to file"""
+        """Export performance report to file"""
         if self.current_lens is None:
-            messagebox.showwarning("No Lens", "No analysis to export")
+            try:
+                from tkinter import messagebox
+                messagebox.showwarning("No Lens", "No analysis to export")
+            except:
+                pass
             return
         
         # Get report content
-        content = self.result_text.get(1.0, tk.END)
+        content = self.metrics_text.get(1.0, tk.END)
         
-        from tkinter import filedialog
-        filename = filedialog.asksaveasfilename(
-            defaultextension=".txt",
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
-            title="Export Analysis Report"
-        )
-        
-        if filename:
-            try:
+        try:
+            from tkinter import filedialog, messagebox
+            
+            filename = filedialog.asksaveasfilename(
+                defaultextension=".txt",
+                filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+                title="Export Performance Report"
+            )
+            
+            if filename:
                 with open(filename, 'w') as f:
                     f.write(content)
                 messagebox.showinfo("Success", f"Report exported to {filename}")
-            except Exception as e:
+        except Exception as e:
+            try:
+                from tkinter import messagebox
                 messagebox.showerror("Export Error", f"Failed to export: {e}")
+            except:
+                pass
 
 
 class ComparisonController:

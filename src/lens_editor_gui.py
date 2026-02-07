@@ -624,9 +624,12 @@ class LensEditorWindow:
         self.notebook.select(1)
         self.load_lens_to_form(lens)
         
-        # Load lens into simulation controller if available
+        # Load lens into controllers if available
         if hasattr(self, 'simulation_controller') and self.simulation_controller:
             self.simulation_controller.load_lens(lens)
+        
+        if hasattr(self, 'performance_controller') and self.performance_controller:
+            self.performance_controller.load_lens(lens)
         
         self.update_simulation_view()
         self.update_status(f"Lens selected: '{lens.name}' - Ready to edit")
@@ -1982,6 +1985,30 @@ Modified: {lens.modified_at}"""
     
     def setup_performance_tab(self) -> None:
         """Setup the Performance Metrics Dashboard tab"""
+        # Try to use controller if available
+        try:
+            from gui_controllers import PerformanceController
+            
+            colors = {
+                'bg': COLOR_BG_DARK,
+                'fg': COLOR_FG,
+                'entry_bg': self.COLORS['entry_bg']
+            }
+            
+            self.performance_controller = PerformanceController(
+                colors=colors,
+                aberrations_available=ABERRATIONS_AVAILABLE
+            )
+            self.performance_controller.setup_ui(self.performance_tab)
+            
+            print("PerformanceController integrated successfully")
+            
+        except ImportError as e:
+            print(f"GUI controllers not available, using legacy performance: {e}")
+            self._setup_performance_tab_legacy()
+    
+    def _setup_performance_tab_legacy(self) -> None:
+        """Legacy performance tab setup (fallback)"""
         # Configure performance tab grid
         self.performance_tab.columnconfigure(0, weight=1)
         self.performance_tab.rowconfigure(1, weight=1)
@@ -2025,19 +2052,19 @@ Modified: {lens.modified_at}"""
         
         # Parameter inputs
         ttk.Label(controls_frame, text="Entrance Pupil Diameter (mm):").grid(row=0, column=0, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
-        self.entrance_pupil_var = tk.StringVar(value="10.0")  # mm
+        self.entrance_pupil_var = tk.StringVar(value="10.0")
         ttk.Entry(controls_frame, textvariable=self.entrance_pupil_var, width=15).grid(row=0, column=1, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
         
         ttk.Label(controls_frame, text="Wavelength (nm):").grid(row=0, column=2, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
-        self.wavelength_var = tk.StringVar(value=str(int(WAVELENGTH_GREEN)))  # nm
+        self.wavelength_var = tk.StringVar(value=str(int(WAVELENGTH_GREEN)))
         ttk.Entry(controls_frame, textvariable=self.wavelength_var, width=15).grid(row=0, column=3, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
         
         ttk.Label(controls_frame, text="Object Distance (mm):").grid(row=1, column=0, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
-        self.object_distance_var = tk.StringVar(value="1000")  # mm
+        self.object_distance_var = tk.StringVar(value="1000")
         ttk.Entry(controls_frame, textvariable=self.object_distance_var, width=15).grid(row=1, column=1, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
         
         ttk.Label(controls_frame, text="Sensor Size (mm):").grid(row=1, column=2, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
-        self.sensor_size_var = tk.StringVar(value="36")  # mm (full frame)
+        self.sensor_size_var = tk.StringVar(value="36")
         ttk.Entry(controls_frame, textvariable=self.sensor_size_var, width=15).grid(row=1, column=3, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
         
         # Calculate button
@@ -2173,6 +2200,13 @@ Modified: {lens.modified_at}"""
     
     def calculate_performance_metrics(self) -> None:
         """Calculate and display performance metrics for current lens"""
+        # Delegate to controller if available
+        if hasattr(self, 'performance_controller') and self.performance_controller:
+            self.performance_controller.calculate_metrics()
+            self.update_status(f"Metrics calculated for '{self.current_lens.name}'" if self.current_lens else "Please select a lens")
+            return
+        
+        # Legacy implementation
         if not self.current_lens:
             self.update_status("Please select or create a lens first")
             return
@@ -2218,6 +2252,12 @@ Modified: {lens.modified_at}"""
     
     def export_performance_report(self) -> None:
         """Export performance metrics to file"""
+        # Delegate to controller if available
+        if hasattr(self, 'performance_controller') and self.performance_controller:
+            self.performance_controller.export_report()
+            return
+        
+        # Legacy implementation
         if not self.current_lens:
             self.update_status("Please select a lens first")
             return
