@@ -470,9 +470,387 @@ class SimulationController:
                                font=('Arial', 14))
 
 
+class PerformanceController:
+    """
+    Controller for aberration analysis and performance metrics.
+    
+    Responsibilities:
+    - Display aberration calculations
+    - Show performance metrics
+    - Analyze lens quality
+    """
+    
+    def __init__(self, parent_window):
+        """Initialize the performance controller"""
+        self.window = parent_window
+        self.current_lens = None
+        self.result_text = None
+    
+    def setup_ui(self, parent_frame):
+        """Set up the performance tab UI"""
+        # Instructions
+        info_frame = ttk.Frame(parent_frame, padding=10)
+        info_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        
+        ttk.Label(info_frame, text="Aberration Analysis", 
+                 font=('Arial', 12, 'bold')).pack(anchor=tk.W)
+        ttk.Label(info_frame, text="Analyze optical aberrations and performance metrics",
+                 font=('Arial', 9)).pack(anchor=tk.W, pady=5)
+        
+        # Results display
+        results_frame = ttk.LabelFrame(parent_frame, text="Analysis Results", padding=10)
+        results_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
+        
+        scrollbar = ttk.Scrollbar(results_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.result_text = tk.Text(results_frame, height=20, width=80,
+                                   yscrollcommand=scrollbar.set, wrap=tk.WORD)
+        self.result_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.result_text.yview)
+        
+        # Analysis button
+        button_frame = ttk.Frame(parent_frame, padding=10)
+        button_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        
+        ttk.Button(button_frame, text="Run Analysis", 
+                  command=self.run_analysis).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Export Report", 
+                  command=self.export_report).pack(side=tk.LEFT, padx=5)
+    
+    def load_lens(self, lens):
+        """Load lens for analysis"""
+        self.current_lens = lens
+        if lens:
+            self.run_analysis()
+    
+    def run_analysis(self):
+        """Run aberration analysis on current lens"""
+        if self.current_lens is None:
+            messagebox.showwarning("No Lens", "Please select a lens first")
+            return
+        
+        try:
+            # Check if aberrations module available
+            try:
+                from aberrations import AberrationsCalculator, analyze_lens_quality
+                
+                calc = AberrationsCalculator(self.current_lens)
+                spherical = calc.spherical_aberration()
+                coma = calc.coma()
+                chromatic = calc.chromatic_aberration()
+                quality = analyze_lens_quality(self.current_lens)
+                
+                # Format results
+                result = f"Aberration Analysis for: {self.current_lens.name}\n"
+                result += "=" * 60 + "\n\n"
+                result += f"Spherical Aberration: {spherical:.6f} mm\n"
+                result += f"Coma: {coma:.6f} mm\n"
+                result += f"Chromatic Aberration: {chromatic:.6f} mm\n\n"
+                result += f"Overall Quality: {quality['quality']}\n"
+                result += f"Quality Score: {quality['score']:.2f}/100\n"
+                
+            except ImportError:
+                result = "Aberration analysis requires numpy and scipy.\n"
+                result += "Install with: pip install numpy scipy\n"
+            
+            self.result_text.delete(1.0, tk.END)
+            self.result_text.insert(1.0, result)
+            
+        except Exception as e:
+            messagebox.showerror("Analysis Error", f"Error during analysis: {e}")
+    
+    def export_report(self):
+        """Export analysis report to file"""
+        if self.current_lens is None:
+            messagebox.showwarning("No Lens", "No analysis to export")
+            return
+        
+        # Get report content
+        content = self.result_text.get(1.0, tk.END)
+        
+        from tkinter import filedialog
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+            title="Export Analysis Report"
+        )
+        
+        if filename:
+            try:
+                with open(filename, 'w') as f:
+                    f.write(content)
+                messagebox.showinfo("Success", f"Report exported to {filename}")
+            except Exception as e:
+                messagebox.showerror("Export Error", f"Failed to export: {e}")
+
+
+class ComparisonController:
+    """
+    Controller for comparing multiple lenses.
+    
+    Responsibilities:
+    - Select lenses for comparison
+    - Display comparative metrics
+    - Generate comparison charts
+    """
+    
+    def __init__(self, parent_window, lens_list):
+        """Initialize the comparison controller"""
+        self.window = parent_window
+        self.lens_list = lens_list
+        self.selected_lenses = []
+        self.listbox = None
+        self.comparison_text = None
+    
+    def setup_ui(self, parent_frame):
+        """Set up the comparison tab UI"""
+        # Selection frame
+        select_frame = ttk.LabelFrame(parent_frame, text="Select Lenses to Compare", padding=10)
+        select_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
+        
+        scrollbar = ttk.Scrollbar(select_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.listbox = tk.Listbox(select_frame, selectmode=tk.MULTIPLE,
+                                  yscrollcommand=scrollbar.set, height=10)
+        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.listbox.yview)
+        
+        # Button frame
+        button_frame = ttk.Frame(parent_frame, padding=10)
+        button_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        
+        ttk.Button(button_frame, text="Compare Selected", 
+                  command=self.compare_lenses).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Clear Selection", 
+                  command=self.clear_selection).pack(side=tk.LEFT, padx=5)
+        
+        # Results frame
+        results_frame = ttk.LabelFrame(parent_frame, text="Comparison Results", padding=10)
+        results_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
+        
+        result_scrollbar = ttk.Scrollbar(results_frame)
+        result_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.comparison_text = tk.Text(results_frame, height=15, width=80,
+                                       yscrollcommand=result_scrollbar.set, wrap=tk.WORD)
+        self.comparison_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        result_scrollbar.config(command=self.comparison_text.yview)
+        
+        self.refresh_lens_list()
+    
+    def refresh_lens_list(self):
+        """Refresh the lens selection listbox"""
+        self.listbox.delete(0, tk.END)
+        for lens in self.lens_list():
+            self.listbox.insert(tk.END, f"{lens.name} ({lens.lens_type})")
+    
+    def compare_lenses(self):
+        """Compare selected lenses"""
+        selection = self.listbox.curselection()
+        if len(selection) < 2:
+            messagebox.showwarning("Selection", "Please select at least 2 lenses to compare")
+            return
+        
+        lenses = [self.lens_list()[i] for i in selection]
+        
+        # Build comparison table
+        result = "Lens Comparison\n"
+        result += "=" * 80 + "\n\n"
+        result += f"{'Property':<25} " + " ".join([f"{lens.name[:15]:>15}" for lens in lenses]) + "\n"
+        result += "-" * 80 + "\n"
+        
+        # Compare properties
+        result += f"{'Type':<25} " + " ".join([f"{lens.lens_type[:15]:>15}" for lens in lenses]) + "\n"
+        result += f"{'Material':<25} " + " ".join([f"{lens.material[:15]:>15}" for lens in lenses]) + "\n"
+        result += f"{'Diameter (mm)':<25} " + " ".join([f"{lens.diameter:>15.2f}" for lens in lenses]) + "\n"
+        result += f"{'Thickness (mm)':<25} " + " ".join([f"{lens.thickness:>15.2f}" for lens in lenses]) + "\n"
+        result += f"{'R1 (mm)':<25} " + " ".join([f"{lens.radius_of_curvature_1:>15.2f}" for lens in lenses]) + "\n"
+        result += f"{'R2 (mm)':<25} " + " ".join([f"{lens.radius_of_curvature_2:>15.2f}" for lens in lenses]) + "\n"
+        
+        # Calculated properties
+        focal_lengths = []
+        for lens in lenses:
+            try:
+                fl = lens.calculate_focal_length()
+                focal_lengths.append(f"{fl:>15.2f}" if fl else f"{'N/A':>15}")
+            except:
+                focal_lengths.append(f"{'Error':>15}")
+        
+        result += f"{'Focal Length (mm)':<25} " + " ".join(focal_lengths) + "\n"
+        
+        self.comparison_text.delete(1.0, tk.END)
+        self.comparison_text.insert(1.0, result)
+    
+    def clear_selection(self):
+        """Clear the selection"""
+        self.listbox.selection_clear(0, tk.END)
+        self.comparison_text.delete(1.0, tk.END)
+
+
+class ExportController:
+    """
+    Controller for exporting lens data to various formats.
+    
+    Responsibilities:
+    - Export to JSON
+    - Export to STL
+    - Export technical drawings
+    - Generate reports
+    """
+    
+    def __init__(self, parent_window):
+        """Initialize the export controller"""
+        self.window = parent_window
+        self.current_lens = None
+    
+    def setup_ui(self, parent_frame):
+        """Set up the export tab UI"""
+        # Export options frame
+        options_frame = ttk.LabelFrame(parent_frame, text="Export Options", padding=20)
+        options_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        
+        row = 0
+        
+        # JSON Export
+        ttk.Label(options_frame, text="JSON Format:", font=('Arial', 10, 'bold')).grid(
+            row=row, column=0, sticky=tk.W, pady=5)
+        row += 1
+        ttk.Label(options_frame, text="Export lens data as JSON").grid(
+            row=row, column=0, sticky=tk.W, padx=20)
+        ttk.Button(options_frame, text="Export JSON", 
+                  command=self.export_json).grid(row=row, column=1, padx=5)
+        row += 1
+        
+        # STL Export
+        ttk.Separator(options_frame, orient=tk.HORIZONTAL).grid(
+            row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        row += 1
+        
+        ttk.Label(options_frame, text="3D Model (STL):", font=('Arial', 10, 'bold')).grid(
+            row=row, column=0, sticky=tk.W, pady=5)
+        row += 1
+        ttk.Label(options_frame, text="Export 3D model for CAD/3D printing").grid(
+            row=row, column=0, sticky=tk.W, padx=20)
+        ttk.Button(options_frame, text="Export STL", 
+                  command=self.export_stl).grid(row=row, column=1, padx=5)
+        row += 1
+        
+        # Technical Report
+        ttk.Separator(options_frame, orient=tk.HORIZONTAL).grid(
+            row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        row += 1
+        
+        ttk.Label(options_frame, text="Technical Report:", font=('Arial', 10, 'bold')).grid(
+            row=row, column=0, sticky=tk.W, pady=5)
+        row += 1
+        ttk.Label(options_frame, text="Generate detailed technical report").grid(
+            row=row, column=0, sticky=tk.W, padx=20)
+        ttk.Button(options_frame, text="Generate Report", 
+                  command=self.export_report).grid(row=row, column=1, padx=5)
+    
+    def load_lens(self, lens):
+        """Load lens for export"""
+        self.current_lens = lens
+    
+    def export_json(self):
+        """Export lens to JSON file"""
+        if self.current_lens is None:
+            messagebox.showwarning("No Lens", "Please select a lens first")
+            return
+        
+        from tkinter import filedialog
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            title="Export Lens to JSON"
+        )
+        
+        if filename:
+            try:
+                with open(filename, 'w') as f:
+                    json.dump(self.current_lens.to_dict(), f, indent=2)
+                messagebox.showinfo("Success", f"Lens exported to {filename}")
+            except Exception as e:
+                messagebox.showerror("Export Error", f"Failed to export: {e}")
+    
+    def export_stl(self):
+        """Export lens to STL file"""
+        if self.current_lens is None:
+            messagebox.showwarning("No Lens", "Please select a lens first")
+            return
+        
+        try:
+            from stl_export import export_lens_stl
+        except ImportError:
+            messagebox.showerror("Not Available", 
+                               "STL export requires numpy. Install with: pip install numpy")
+            return
+        
+        from tkinter import filedialog
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".stl",
+            filetypes=[("STL files", "*.stl"), ("All files", "*.*")],
+            title="Export Lens to STL"
+        )
+        
+        if filename:
+            try:
+                export_lens_stl(self.current_lens, filename)
+                messagebox.showinfo("Success", f"3D model exported to {filename}")
+            except Exception as e:
+                messagebox.showerror("Export Error", f"Failed to export: {e}")
+    
+    def export_report(self):
+        """Generate and export technical report"""
+        if self.current_lens is None:
+            messagebox.showwarning("No Lens", "Please select a lens first")
+            return
+        
+        # Generate report
+        report = f"TECHNICAL REPORT: {self.current_lens.name}\n"
+        report += "=" * 80 + "\n\n"
+        report += "LENS SPECIFICATIONS\n"
+        report += "-" * 80 + "\n"
+        report += f"Type: {self.current_lens.lens_type}\n"
+        report += f"Material: {self.current_lens.material}\n"
+        report += f"Diameter: {self.current_lens.diameter} mm\n"
+        report += f"Thickness: {self.current_lens.thickness} mm\n"
+        report += f"Radius 1: {self.current_lens.radius_of_curvature_1} mm\n"
+        report += f"Radius 2: {self.current_lens.radius_of_curvature_2} mm\n"
+        report += f"Refractive Index: {self.current_lens.refractive_index}\n\n"
+        
+        report += "CALCULATED PROPERTIES\n"
+        report += "-" * 80 + "\n"
+        try:
+            fl = self.current_lens.calculate_focal_length()
+            report += f"Focal Length: {fl:.2f} mm\n" if fl else "Focal Length: N/A\n"
+        except:
+            report += "Focal Length: Error\n"
+        
+        from tkinter import filedialog
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+            title="Export Technical Report"
+        )
+        
+        if filename:
+            try:
+                with open(filename, 'w') as f:
+                    f.write(report)
+                messagebox.showinfo("Success", f"Report exported to {filename}")
+            except Exception as e:
+                messagebox.showerror("Export Error", f"Failed to export: {e}")
+
+
 # Export controllers
 __all__ = [
     'LensSelectionController',
     'LensEditorController',
-    'SimulationController'
+    'SimulationController',
+    'PerformanceController',
+    'ComparisonController',
+    'ExportController'
 ]
