@@ -89,6 +89,32 @@ except ImportError:
         def validate_file_path(path: Any, **kwargs: Any) -> Path:
             return Path(path)
 
+# Try to import GUI controllers
+try:
+    from .gui_controllers import (
+        LensSelectionController,
+        LensEditorController,
+        SimulationController,
+        PerformanceController,
+        ComparisonController,
+        ExportController
+    )
+    CONTROLLERS_AVAILABLE = True
+except ImportError:
+    try:
+        from gui_controllers import (
+            LensSelectionController,
+            LensEditorController,
+            SimulationController,
+            PerformanceController,
+            ComparisonController,
+            ExportController
+        )
+        CONTROLLERS_AVAILABLE = True
+    except ImportError:
+        CONTROLLERS_AVAILABLE = False
+        print("Note: GUI controllers not available.")
+
 class ToolTip:
     """Simple tooltip for tkinter widgets"""
     def __init__(self, widget: tk.Widget, text: str) -> None:
@@ -566,8 +592,80 @@ class LensEditorWindow:
         self.update_status("Select or create a lens to begin")
     
     def setup_selection_tab(self) -> None:
-        """Setup the Lens Selection tab"""
+        """Setup the Lens Selection tab using controller"""
+        if CONTROLLERS_AVAILABLE:
+            # Use controller-based approach
+            self.selection_controller = LensSelectionController(
+                parent_window=self,
+                lens_list=self.lenses,
+                colors=self.COLORS,
+                on_lens_selected=self.on_lens_selected_callback,
+                on_create_new=self.on_create_new_lens,
+                on_delete=self.on_delete_lens,
+                on_lens_updated=self.on_lens_updated_callback
+            )
+            self.selection_controller.setup_ui(self.selection_tab)
+        else:
+            # Fallback to original implementation
+            self._setup_selection_tab_legacy()
+    
+    # Controller callback methods
+    def on_lens_selected_callback(self, lens: 'Lens') -> None:
+        """Callback when a lens is selected from the controller"""
+        self.current_lens = lens
         
+        # Enable tabs
+        self.notebook.tab(1, state='normal')  # Editor
+        self.notebook.tab(2, state='normal')  # Simulation
+        self.notebook.tab(3, state='normal')  # Performance
+        self.notebook.tab(5, state='normal')  # Export
+        
+        # Switch to editor and load lens
+        self.notebook.select(1)
+        self.load_lens_to_form(lens)
+        self.update_simulation_view()
+        self.update_status(f"Lens selected: '{lens.name}' - Ready to edit")
+    
+    def on_create_new_lens(self) -> None:
+        """Callback when creating a new lens"""
+        self.current_lens = None
+        self.clear_form()
+        
+        # Enable tabs
+        self.notebook.tab(1, state='normal')
+        self.notebook.tab(2, state='normal')
+        self.notebook.tab(3, state='normal')
+        self.notebook.tab(5, state='normal')
+        
+        # Switch to editor
+        self.notebook.select(1)
+        self.update_status("Ready to create new lens")
+    
+    def on_delete_lens(self, lens: 'Lens') -> None:
+        """Callback when a lens is deleted"""
+        if lens in self.lenses:
+            self.lenses.remove(lens)
+            self.save_lenses()
+        
+        # If current lens was deleted, clear it and disable tabs
+        if self.current_lens == lens:
+            self.current_lens = None
+            self.notebook.tab(1, state='disabled')
+            self.notebook.tab(2, state='disabled')
+            self.notebook.tab(3, state='disabled')
+            self.notebook.tab(5, state='disabled')
+        
+        self.update_status(f"Lens '{lens.name}' deleted")
+    
+    def on_lens_updated_callback(self) -> None:
+        """Callback when lens data is updated"""
+        self.save_lenses()
+        self.refresh_lens_list()
+        if self.selection_controller:
+            self.selection_controller.refresh_lens_list()
+    
+    def _setup_selection_tab_legacy(self) -> None:
+        """Legacy selection tab setup (fallback if controllers unavailable)"""
         # Main content frame
         content_frame = ttk.Frame(self.selection_tab, padding="20")
         content_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -649,15 +747,16 @@ class LensEditorWindow:
     
     def refresh_selection_list(self) -> None:
         """Refresh the lens selection list"""
-        self.selection_listbox.delete(0, tk.END)
-        for lens in self.lenses:
-            display_name = f"{lens.name} ({lens.lens_type})"
-            self.selection_listbox.insert(tk.END, display_name)
-        
-        if self.lenses:
-            self.update_status(f"{len(self.lenses)} lens(es) available - Select one to edit or create new")
-        else:
-            self.update_status("No lenses available - Create a new lens to begin")
+        if hasattr(self, 'selection_listbox') and self.selection_listbox:
+            self.selection_listbox.delete(0, tk.END)
+            for lens in self.lenses:
+                display_name = f"{lens.name} ({lens.lens_type})"
+                self.selection_listbox.insert(tk.END, display_name)
+            
+            if self.lenses:
+                self.update_status(f"{len(self.lenses)} lens(es) available - Select one to edit or create new")
+            else:
+                self.update_status("No lenses available - Create a new lens to begin")
     
     def update_selection_info(self, event: Optional[tk.Event] = None) -> None:
         """Update the lens information panel when selection changes"""

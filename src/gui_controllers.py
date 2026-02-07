@@ -34,162 +34,194 @@ class LensSelectionController:
     - Update selection info panel
     """
     
-    def __init__(self, parent_window, lens_manager):
+    def __init__(self, parent_window, lens_list, colors, on_lens_selected, on_create_new, on_delete, on_lens_updated):
         """
         Initialize the lens selection controller.
         
         Args:
             parent_window: Reference to main window
-            lens_manager: LensManager instance for data operations
+            lens_list: List of Lens objects
+            colors: Color scheme dictionary
+            on_lens_selected: Callback when lens is selected
+            on_create_new: Callback when creating new lens
+            on_delete: Callback when deleting lens
+            on_lens_updated: Callback when lens is updated
         """
         self.window = parent_window
-        self.lens_manager = lens_manager
+        self.lens_list = lens_list
+        self.colors = colors
+        self.on_lens_selected_callback = on_lens_selected
+        self.on_create_new_callback = on_create_new
+        self.on_delete_callback = on_delete
+        self.on_lens_updated_callback = on_lens_updated
         self.selected_lens = None
         self.listbox = None
-        self.info_labels = {}
+        self.info_text = None
         
     def setup_ui(self, parent_frame):
         """Set up the selection tab UI"""
-        # List frame
-        list_frame = ttk.Frame(parent_frame)
-        list_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
+        # Import constants
+        try:
+            from .constants import FONT_FAMILY, PADDING_XLARGE, PADDING_SMALL, FONT_SIZE_LARGE, FONT_SIZE_NORMAL
+        except ImportError:
+            try:
+                from constants import FONT_FAMILY, PADDING_XLARGE, PADDING_SMALL, FONT_SIZE_LARGE, FONT_SIZE_NORMAL
+            except ImportError:
+                # Fallback values
+                FONT_FAMILY = "Segoe UI"
+                PADDING_XLARGE = 20
+                PADDING_SMALL = 5
+                FONT_SIZE_LARGE = 11
+                FONT_SIZE_NORMAL = 10
         
-        # Scrollable listbox
+        # Main content frame
+        content_frame = ttk.Frame(parent_frame, padding="20")
+        content_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        content_frame.columnconfigure(0, weight=1)
+        content_frame.rowconfigure(1, weight=1)
+        
+        # Title
+        title_label = ttk.Label(content_frame, text="Lens Library", 
+                               font=(FONT_FAMILY, 16, 'bold'))
+        title_label.grid(row=0, column=0, pady=(0, PADDING_XLARGE))
+        
+        # Create a frame for the lens list and buttons
+        list_frame = ttk.LabelFrame(content_frame, text="Available Lenses", padding="10")
+        list_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        list_frame.columnconfigure(0, weight=1)
+        list_frame.rowconfigure(0, weight=1)
+        
+        # Lens listbox with scrollbar
         scrollbar = ttk.Scrollbar(list_frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
         
-        self.listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set,
-                                   width=30, height=15)
-        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.listbox = tk.Listbox(list_frame, 
+                                   yscrollcommand=scrollbar.set,
+                                   bg=self.colors['entry_bg'],
+                                   fg=self.colors['fg'],
+                                   selectbackground=self.colors['accent'],
+                                   selectforeground=self.colors['fg'],
+                                   font=(FONT_FAMILY, FONT_SIZE_LARGE),
+                                   height=15,
+                                   borderwidth=1,
+                                   relief=tk.SOLID)
+        self.listbox.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 5))
         scrollbar.config(command=self.listbox.yview)
         
-        # Bind selection event
-        self.listbox.bind('<<ListboxSelect>>', self.on_lens_selected)
+        # Bind events
+        self.listbox.bind('<Double-Button-1>', lambda e: self.select_lens())
+        self.listbox.bind('<<ListboxSelect>>', self.update_info)
+        
+        # Lens info panel
+        info_frame = ttk.LabelFrame(content_frame, text="Lens Information", padding="10")
+        info_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=PADDING_XLARGE)
+        
+        self.info_text = tk.Text(info_frame, 
+                                 height=9, 
+                                 bg=self.colors['entry_bg'],
+                                 fg=self.colors['fg'],
+                                 font=(FONT_FAMILY, FONT_SIZE_NORMAL),
+                                 wrap=tk.WORD,
+                                 borderwidth=1,
+                                 relief=tk.SOLID,
+                                 state='disabled')
+        self.info_text.pack(fill=tk.BOTH, expand=True)
         
         # Button frame
-        button_frame = ttk.Frame(parent_frame)
-        button_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        button_frame = ttk.Frame(content_frame)
+        button_frame.grid(row=3, column=0, pady=PADDING_XLARGE)
         
-        ttk.Button(button_frame, text="New", command=self.create_new_lens).pack(side=tk.LEFT, padx=2)
-        ttk.Button(button_frame, text="Delete", command=self.delete_lens).pack(side=tk.LEFT, padx=2)
-        ttk.Button(button_frame, text="Duplicate", command=self.duplicate_lens).pack(side=tk.LEFT, padx=2)
+        ttk.Button(button_frame, text="Create New Lens", 
+                  command=self.create_new_lens,
+                  width=20).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
-        # Info panel
-        self.setup_info_panel(parent_frame)
+        ttk.Button(button_frame, text="Select & Edit", 
+                  command=self.select_lens,
+                  width=20).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        
+        ttk.Button(button_frame, text="Delete Lens", 
+                  command=self.delete_lens,
+                  width=20).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         # Load initial data
         self.refresh_lens_list()
     
-    def setup_info_panel(self, parent_frame):
-        """Set up the information panel showing lens details"""
-        info_frame = ttk.LabelFrame(parent_frame, text="Lens Information", padding=10)
-        info_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
-        
-        fields = [
-            ("Name:", "name"),
-            ("Type:", "type"),
-            ("Material:", "material"),
-            ("Focal Length:", "focal_length"),
-            ("Optical Power:", "power")
-        ]
-        
-        for i, (label, key) in enumerate(fields):
-            ttk.Label(info_frame, text=label).grid(row=i, column=0, sticky=tk.W, pady=2)
-            value_label = ttk.Label(info_frame, text="N/A")
-            value_label.grid(row=i, column=1, sticky=tk.W, padx=10, pady=2)
-            self.info_labels[key] = value_label
     
     def refresh_lens_list(self):
         """Refresh the lens listbox with current lenses"""
         self.listbox.delete(0, tk.END)
-        lenses = self.lens_manager.list_all_lenses()
-        for lens in lenses:
+        for lens in self.lens_list:
             display_text = f"{lens.name} ({lens.lens_type})"
             self.listbox.insert(tk.END, display_text)
     
-    def on_lens_selected(self, event=None):
-        """Handle lens selection from listbox"""
+    def update_info(self, event=None):
+        """Update the lens information panel when selection changes"""
         selection = self.listbox.curselection()
         if not selection:
-            self.selected_lens = None
-            self.update_info_panel(None)
+            self.info_text.config(state='normal')
+            self.info_text.delete(1.0, tk.END)
+            self.info_text.insert(1.0, "Select a lens to view details")
+            self.info_text.config(state='disabled')
             return
         
         index = selection[0]
-        lenses = self.lens_manager.list_all_lenses()
-        if 0 <= index < len(lenses):
-            self.selected_lens = lenses[index]
-            self.update_info_panel(self.selected_lens)
+        if 0 <= index < len(self.lens_list):
+            lens = self.lens_list[index]
+            focal_length = lens.calculate_focal_length() or 0
             
-            # Notify parent window
-            if hasattr(self.window, 'on_lens_selected'):
-                self.window.on_lens_selected(self.selected_lens)
+            info = f"""ID: {lens.id}
+Name: {lens.name}
+Type: {lens.lens_type}
+Material: {lens.material}
+Radius 1: {lens.radius_of_curvature_1:.3f} mm
+Radius 2: {lens.radius_of_curvature_2:.3f} mm
+Center Thickness: {lens.thickness:.3f} mm
+Diameter: {lens.diameter:.3f} mm
+Refractive Index: {lens.refractive_index:.3f}
+Focal Length: {focal_length:.3f} mm
+Created: {lens.created_at}
+Modified: {lens.modified_at}"""
+            
+            self.info_text.config(state='normal')
+            self.info_text.delete(1.0, tk.END)
+            self.info_text.insert(1.0, info)
+            self.info_text.config(state='disabled')
     
-    def update_info_panel(self, lens):
-        """Update the information panel with lens details"""
-        if lens is None:
-            for label in self.info_labels.values():
-                label.config(text="N/A")
+    def select_lens(self):
+        """Select a lens and notify parent"""
+        selection = self.listbox.curselection()
+        if not selection:
             return
         
-        try:
-            focal_length = lens.calculate_focal_length()
-            power = lens.calculate_optical_power()
-            
-            self.info_labels['name'].config(text=lens.name)
-            self.info_labels['type'].config(text=lens.lens_type)
-            self.info_labels['material'].config(text=lens.material)
-            self.info_labels['focal_length'].config(text=f"{focal_length:.2f} mm")
-            self.info_labels['power'].config(text=f"{power:.2f} D")
-        except Exception as e:
-            for label in self.info_labels.values():
-                label.config(text="Error")
+        index = selection[0]
+        if 0 <= index < len(self.lens_list):
+            self.selected_lens = self.lens_list[index]
+            if self.on_lens_selected_callback:
+                self.on_lens_selected_callback(self.selected_lens)
     
     def create_new_lens(self):
-        """Create a new lens and add to manager"""
-        # Import here to avoid circular dependency
-        from lens_editor import Lens
-        
-        new_lens = Lens(name=f"New Lens {len(self.lens_manager.list_all_lenses()) + 1}")
-        self.lens_manager.add_lens(new_lens)
-        self.refresh_lens_list()
-        
-        # Select the new lens
-        self.listbox.selection_clear(0, tk.END)
-        self.listbox.selection_set(tk.END)
-        self.on_lens_selected()
+        """Create a new lens and notify parent"""
+        if self.on_create_new_callback:
+            self.on_create_new_callback()
     
     def delete_lens(self):
-        """Delete the selected lens"""
-        if self.selected_lens is None:
-            messagebox.showwarning("No Selection", "Please select a lens to delete")
+        """Delete selected lens and notify parent"""
+        selection = self.listbox.curselection()
+        if not selection:
             return
         
-        result = messagebox.askyesno("Confirm Delete", 
-                                     f"Delete lens '{self.selected_lens.name}'?")
-        if result:
-            self.lens_manager.delete_lens(self.selected_lens.id)
-            self.selected_lens = None
-            self.refresh_lens_list()
-            self.update_info_panel(None)
-    
-    def duplicate_lens(self):
-        """Duplicate the selected lens"""
-        if self.selected_lens is None:
-            messagebox.showwarning("No Selection", "Please select a lens to duplicate")
-            return
-        
-        # Import here to avoid circular dependency
-        from lens_editor import Lens
-        
-        lens_data = self.selected_lens.to_dict()
-        lens_data.pop('id')  # Remove ID to create new
-        lens_data.pop('created_at')
-        lens_data['name'] = f"{lens_data['name']} (Copy)"
-        
-        new_lens = Lens.from_dict(lens_data)
-        self.lens_manager.add_lens(new_lens)
-        self.refresh_lens_list()
+        index = selection[0]
+        if 0 <= index < len(self.lens_list):
+            lens = self.lens_list[index]
+            if self.on_delete_callback:
+                self.on_delete_callback(lens)
+                self.refresh_lens_list()
+                
+                # Clear info panel
+                self.info_text.config(state='normal')
+                self.info_text.delete(1.0, tk.END)
+                self.info_text.insert(1.0, "Select a lens to view details")
+                self.info_text.config(state='disabled')
 
 
 class LensEditorController:
