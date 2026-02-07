@@ -151,7 +151,14 @@ class LensSelectionController:
         """Refresh the lens listbox with current lenses"""
         self.listbox.delete(0, tk.END)
         for lens in self.lens_list:
-            display_text = f"{lens.name} ({lens.lens_type})"
+            # Handle both Lens objects and dicts
+            if isinstance(lens, dict):
+                name = lens.get('name', 'Unknown')
+                lens_type = lens.get('type', 'Unknown')
+            else:
+                name = lens.name
+                lens_type = lens.lens_type
+            display_text = f"{name} ({lens_type})"
             self.listbox.insert(tk.END, display_text)
     
     def update_info(self, event=None):
@@ -167,9 +174,21 @@ class LensSelectionController:
         index = selection[0]
         if 0 <= index < len(self.lens_list):
             lens = self.lens_list[index]
-            focal_length = lens.calculate_focal_length() or 0
             
-            info = f"""ID: {lens.id}
+            # Handle both Lens objects and dicts
+            if isinstance(lens, dict):
+                focal_length = 0  # Simplified for dicts
+                info = f"""Name: {lens.get('name', 'Unknown')}
+Type: {lens.get('type', 'Unknown')}
+Material: {lens.get('material', 'Unknown')}
+Radius 1: {lens.get('radius1', 0):.3f} mm
+Radius 2: {lens.get('radius2', 0):.3f} mm
+Center Thickness: {lens.get('thickness', 0):.3f} mm
+Diameter: {lens.get('diameter', 0):.3f} mm
+Refractive Index: {lens.get('refractive_index', 1.5):.3f}"""
+            else:
+                focal_length = lens.calculate_focal_length() or 0
+                info = f"""ID: {lens.id}
 Name: {lens.name}
 Type: {lens.lens_type}
 Material: {lens.material}
@@ -426,30 +445,50 @@ class LensEditorController:
             self.clear_fields()
             return
         
+        # Handle both Lens objects and dicts
+        if isinstance(lens, dict):
+            name = lens.get('name', 'Unknown')
+            lens_type = lens.get('type', 'Biconvex')
+            radius1 = lens.get('radius1', 100)
+            radius2 = lens.get('radius2', -100)
+            thickness = lens.get('thickness', 10)
+            diameter = lens.get('diameter', 50)
+            refractive_index = lens.get('refractive_index', 1.5)
+            material = lens.get('material', 'BK7')
+        else:
+            name = lens.name
+            lens_type = lens.lens_type if hasattr(lens, 'lens_type') else "Biconvex"
+            radius1 = lens.radius_of_curvature_1
+            radius2 = lens.radius_of_curvature_2
+            thickness = lens.thickness
+            diameter = lens.diameter
+            refractive_index = lens.refractive_index
+            material = lens.material if hasattr(lens, 'material') else 'BK7'
+        
         self.entry_fields['name'].delete(0, tk.END)
-        self.entry_fields['name'].insert(0, lens.name)
+        self.entry_fields['name'].insert(0, name)
         
         if 'lens_type' in self.entry_fields:
-            self.entry_fields['lens_type'].set(lens.lens_type if hasattr(lens, 'lens_type') else "Biconvex")
+            self.entry_fields['lens_type'].set(lens_type)
         
         self.entry_fields['radius1'].delete(0, tk.END)
-        self.entry_fields['radius1'].insert(0, str(lens.radius_of_curvature_1))
+        self.entry_fields['radius1'].insert(0, str(radius1))
         
         self.entry_fields['radius2'].delete(0, tk.END)
-        self.entry_fields['radius2'].insert(0, str(lens.radius_of_curvature_2))
+        self.entry_fields['radius2'].insert(0, str(radius2))
         
         self.entry_fields['thickness'].delete(0, tk.END)
-        self.entry_fields['thickness'].insert(0, str(lens.thickness))
+        self.entry_fields['thickness'].insert(0, str(thickness))
         
         self.entry_fields['diameter'].delete(0, tk.END)
-        self.entry_fields['diameter'].insert(0, str(lens.diameter))
+        self.entry_fields['diameter'].insert(0, str(diameter))
         
         self.entry_fields['n'].delete(0, tk.END)
-        self.entry_fields['n'].insert(0, str(lens.refractive_index))
+        self.entry_fields['n'].insert(0, str(refractive_index))
         
         # Set material if available
-        if self.material_var and hasattr(lens, 'material'):
-            self.material_var.set(lens.material)
+        if self.material_var:
+            self.material_var.set(material)
         
         self.calculate_properties()
     
@@ -717,7 +756,9 @@ class SimulationController:
             from ray_tracer import LensRayTracer
             if lens:
                 self.ray_tracer = LensRayTracer(lens)
-        except ImportError:
+        except (ImportError, AttributeError):
+            # ImportError: ray_tracer module not available
+            # AttributeError: lens is not proper Lens object
             self.ray_tracer = None
     
     def run_simulation(self):
@@ -1245,7 +1286,14 @@ class ComparisonController:
         """Refresh the lens selection listbox"""
         self.listbox.delete(0, tk.END)
         for lens in self.lens_list():
-            self.listbox.insert(tk.END, f"{lens.name} ({lens.lens_type})")
+            # Handle both Lens objects and dicts
+            if isinstance(lens, dict):
+                name = lens.get('name', 'Unknown')
+                lens_type = lens.get('type', 'Unknown')
+            else:
+                name = lens.name
+                lens_type = lens.lens_type
+            self.listbox.insert(tk.END, f"{name} ({lens_type})")
     
     def compare_lenses(self):
         """Compare selected lenses"""
