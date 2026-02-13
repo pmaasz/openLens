@@ -46,7 +46,6 @@ class TestPerformanceMetrics(unittest.TestCase):
         self.assertIsNotNone(bfl)
         print(f"✓ Back focal length: {bfl:.3f} mm")
     
-    @unittest.skip("test needs review")
     def test_numerical_aperture(self):
         """Test numerical aperture calculation"""
         calc = PerformanceMetrics(self.lens)
@@ -57,7 +56,6 @@ class TestPerformanceMetrics(unittest.TestCase):
         self.assertLess(na, 1.0)
         print(f"✓ Numerical aperture: {na:.4f}")
     
-    @unittest.skip("test needs review")
     def test_resolution_estimate(self):
         """Test resolution estimation"""
         calc = PerformanceMetrics(self.lens)
@@ -68,7 +66,6 @@ class TestPerformanceMetrics(unittest.TestCase):
         self.assertGreater(resolution, 0)
         print(f"✓ Resolution (Rayleigh): {resolution:.3f} μm")
     
-    @unittest.skip("estimate_mtf_cutoff not implemented")
     def test_mtf_cutoff(self):
         """Test MTF cutoff frequency"""
         calc = PerformanceMetrics(self.lens)
@@ -109,7 +106,6 @@ class TestPerformanceMetrics(unittest.TestCase):
         self.assertGreater(dof_near, 0)
         print(f"✓ Depth of field: {dof_near:.1f} mm to {dof_far if dof_far != float('inf') else '∞'}")
     
-    @unittest.skip("calculate_field_of_view not implemented")
     def test_field_of_view(self):
         """Test field of view calculation"""
         calc = PerformanceMetrics(self.lens)
@@ -120,7 +116,6 @@ class TestPerformanceMetrics(unittest.TestCase):
         self.assertLess(fov, 180)
         print(f"✓ Field of view: {fov:.2f}°")
     
-    @unittest.skip("get_all_metrics signature mismatch")
     def test_get_all_metrics(self):
         """Test getting all metrics at once"""
         calc = PerformanceMetrics(self.lens)
@@ -145,7 +140,6 @@ class TestPerformanceMetrics(unittest.TestCase):
         print(f"  - Resolution: {metrics['resolution_um']:.3f} μm")
         print(f"  - Field of view: {metrics['field_of_view_deg']:.2f}°")
     
-    @unittest.skip("format_metrics_report not implemented")
     def test_format_metrics_report(self):
         """Test metrics report formatting"""
         calc = PerformanceMetrics(self.lens)

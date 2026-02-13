@@ -260,7 +260,7 @@ class TestPerformanceMetrics(unittest.TestCase):
         self.assertIsInstance(all_metrics, dict)
         self.assertIn('f_number', all_metrics)
         self.assertIn('numerical_aperture', all_metrics)
-        self.assertIn('focal_length', all_metrics)
+        self.assertIn('effective_focal_length', all_metrics)
     
     def test_metrics_with_different_diameters(self):
         """Test that metrics change with diameter"""
