@@ -21,7 +21,12 @@ try:
     from .material_database import get_material_database
     MATERIAL_DB_AVAILABLE = True
 except (ImportError, ValueError):
-    MATERIAL_DB_AVAILABLE = False
+    # Fallback for direct script execution
+    try:
+        from material_database import get_material_database
+        MATERIAL_DB_AVAILABLE = True
+    except ImportError:
+        MATERIAL_DB_AVAILABLE = False
 
 
 class Lens:
