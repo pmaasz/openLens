@@ -87,7 +87,6 @@ class TestZemaxExport(unittest.TestCase):
                 os.unlink(filename)
 
 
-@unittest.skip("OpticStudioExporter not implemented")
 class TestOpticStudioExport(unittest.TestCase):
     """Test OpticStudio format export"""
     
@@ -105,6 +104,8 @@ class TestOpticStudioExport(unittest.TestCase):
     
     def test_export_opticstudio(self):
         """Test exporting to OpticStudio format"""
+        from export_formats import OpticStudioExporter
+        
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
             filename = f.name
         
