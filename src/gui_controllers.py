@@ -16,7 +16,7 @@ Each controller handles a specific tab/feature:
 
 import logging
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 from typing import Optional, List, Callable, Dict, Any, TYPE_CHECKING
 import json
 
@@ -25,6 +25,23 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from lens import Lens
     from lens_editor_gui import LensEditorWindow
+
+# Import CopyableMessageBox for copyable error dialogs
+try:
+    from .lens_editor_gui import CopyableMessageBox
+except ImportError:
+    try:
+        from lens_editor_gui import CopyableMessageBox
+    except ImportError:
+        # Fallback to standard messagebox if CopyableMessageBox not available
+        from tkinter import messagebox as _mb
+        class CopyableMessageBox:
+            @staticmethod
+            def showerror(parent, title, msg): _mb.showerror(title, msg)
+            @staticmethod
+            def showwarning(parent, title, msg): _mb.showwarning(title, msg)
+            @staticmethod
+            def showinfo(parent, title, msg): _mb.showinfo(title, msg)
 
 
 class LensSelectionController:
@@ -572,7 +589,7 @@ class LensEditorController:
         if self.current_lens is None:
             try:
                 from tkinter import messagebox
-                messagebox.showwarning("No Lens", "No lens selected to save changes")
+                CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Lens", "No lens selected to save changes")
             except Exception as e:
                 logger.warning(f"Failed to show warning dialog: {e}")
             return
@@ -602,14 +619,14 @@ class LensEditorController:
             
             try:
                 from tkinter import messagebox
-                messagebox.showinfo("Success", "Lens updated successfully")
+                CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", "Lens updated successfully")
             except Exception as e:
                 logger.debug(f"Failed to show success dialog: {e}")
             
         except ValueError as e:
             try:
                 from tkinter import messagebox
-                messagebox.showerror("Invalid Input", f"Please check your input values: {e}")
+                CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Invalid Input", f"Please check your input values: {e}")
             except Exception as dialog_error:
                 logger.warning(f"Failed to show error dialog: {dialog_error}")
     
@@ -770,7 +787,7 @@ class SimulationController:
         if self.current_lens is None:
             try:
                 from tkinter import messagebox
-                messagebox.showwarning("No Lens", "Please select a lens first")
+                CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Lens", "Please select a lens first")
             except Exception as e:
                 logger.warning(f"Failed to show warning dialog: {e}")
             return
@@ -778,7 +795,7 @@ class SimulationController:
         if self.ray_tracer is None:
             try:
                 from tkinter import messagebox
-                messagebox.showerror("Unavailable", 
+                CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Unavailable", 
                                    "Ray tracing requires numpy. Install with: pip install numpy")
             except Exception as e:
                 logger.warning(f"Failed to show error dialog: {e}")
@@ -795,13 +812,13 @@ class SimulationController:
         except ValueError as e:
             try:
                 from tkinter import messagebox
-                messagebox.showerror("Invalid Input", f"Please check your input values: {e}")
+                CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Invalid Input", f"Please check your input values: {e}")
             except Exception as dialog_error:
                 logger.warning(f"Failed to show error dialog: {dialog_error}")
         except Exception as e:
             try:
                 from tkinter import messagebox
-                messagebox.showerror("Simulation Error", f"Error during simulation: {e}")
+                CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Simulation Error", f"Error during simulation: {e}")
             except Exception as dialog_error:
                 logger.error(f"Simulation failed: {e}, dialog error: {dialog_error}")
     
@@ -1036,7 +1053,7 @@ class PerformanceController:
         if self.current_lens is None:
             try:
                 from tkinter import messagebox
-                messagebox.showwarning("No Lens", "Please select a lens first")
+                CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Lens", "Please select a lens first")
             except Exception as e:
                 logger.warning(f"Failed to show warning dialog: {e}")
             return
@@ -1124,13 +1141,13 @@ class PerformanceController:
         except ValueError as e:
             try:
                 from tkinter import messagebox
-                messagebox.showerror("Invalid Input", f"Please check your input values: {e}")
+                CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Invalid Input", f"Please check your input values: {e}")
             except Exception as dialog_error:
                 logger.warning(f"Failed to show error dialog: {dialog_error}")
         except Exception as e:
             try:
                 from tkinter import messagebox
-                messagebox.showerror("Calculation Error", f"Error during calculation: {e}")
+                CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Calculation Error", f"Error during calculation: {e}")
             except Exception as dialog_error:
                 logger.error(f"Calculation failed: {e}, dialog error: {dialog_error}")
     
@@ -1139,7 +1156,7 @@ class PerformanceController:
         if self.current_lens is None:
             try:
                 from tkinter import messagebox
-                messagebox.showwarning("No Lens", "No analysis to export")
+                CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Lens", "No analysis to export")
             except Exception as e:
                 logger.warning(f"Failed to show warning dialog: {e}")
             return
@@ -1159,11 +1176,11 @@ class PerformanceController:
             if filename:
                 with open(filename, 'w') as f:
                     f.write(content)
-                messagebox.showinfo("Success", f"Report exported to {filename}")
+                CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", f"Report exported to {filename}")
         except Exception as e:
             try:
                 from tkinter import messagebox
-                messagebox.showerror("Export Error", f"Failed to export: {e}")
+                CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Export Error", f"Failed to export: {e}")
             except Exception as dialog_error:
                 logger.error(f"Export failed: {e}, dialog error: {dialog_error}")
 
@@ -1303,7 +1320,7 @@ class ComparisonController:
         """Compare selected lenses"""
         selection = self.listbox.curselection()
         if len(selection) < 2:
-            messagebox.showwarning("Selection", "Please select at least 2 lenses to compare")
+            CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Selection", "Please select at least 2 lenses to compare")
             return
         
         lenses = [self.lens_list()[i] for i in selection]
@@ -1346,7 +1363,7 @@ class ComparisonController:
     def export_comparison(self):
         """Export comparison to file"""
         if not self.comparison_text.get(1.0, tk.END).strip():
-            messagebox.showwarning("No Data", "No comparison data to export")
+            CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Data", "No comparison data to export")
             return
         
         from tkinter import filedialog
@@ -1360,9 +1377,9 @@ class ComparisonController:
             try:
                 with open(filename, 'w') as f:
                     f.write(self.comparison_text.get(1.0, tk.END))
-                messagebox.showinfo("Success", f"Comparison exported to {filename}")
+                CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", f"Comparison exported to {filename}")
             except Exception as e:
-                messagebox.showerror("Export Error", f"Failed to export: {e}")
+                CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Export Error", f"Failed to export: {e}")
 
 
 class ExportController:
@@ -1486,7 +1503,7 @@ class ExportController:
     def export_json(self):
         """Export lens to JSON file"""
         if self.current_lens is None:
-            messagebox.showwarning("No Lens", "Please select a lens first")
+            CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Lens", "Please select a lens first")
             return
         
         from tkinter import filedialog
@@ -1500,22 +1517,22 @@ class ExportController:
             try:
                 with open(filename, 'w') as f:
                     json.dump(self.current_lens.to_dict(), f, indent=2)
-                messagebox.showinfo("Success", f"Lens exported to {filename}")
+                CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", f"Lens exported to {filename}")
                 self._update_status(f"✓ Successfully exported to: {filename}")
             except Exception as e:
-                messagebox.showerror("Export Error", f"Failed to export: {e}")
+                CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Export Error", f"Failed to export: {e}")
                 self._update_status(f"✗ Export failed: {e}")
     
     def export_stl(self):
         """Export lens to STL file"""
         if self.current_lens is None:
-            messagebox.showwarning("No Lens", "Please select a lens first")
+            CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Lens", "Please select a lens first")
             return
         
         try:
             from stl_export import export_lens_stl
         except ImportError:
-            messagebox.showerror("Not Available", 
+            CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Not Available", 
                                "STL export requires numpy. Install with: pip install numpy")
             return
         
@@ -1529,16 +1546,16 @@ class ExportController:
         if filename:
             try:
                 export_lens_stl(self.current_lens, filename)
-                messagebox.showinfo("Success", f"3D model exported to {filename}")
+                CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", f"3D model exported to {filename}")
                 self._update_status(f"✓ Successfully exported STL to: {filename}")
             except Exception as e:
-                messagebox.showerror("Export Error", f"Failed to export: {e}")
+                CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Export Error", f"Failed to export: {e}")
                 self._update_status(f"✗ STL export failed: {e}")
     
     def export_report(self):
         """Generate and export technical report"""
         if self.current_lens is None:
-            messagebox.showwarning("No Lens", "Please select a lens first")
+            CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Lens", "Please select a lens first")
             return
         
         # Generate report
@@ -1574,10 +1591,10 @@ class ExportController:
             try:
                 with open(filename, 'w') as f:
                     f.write(report)
-                messagebox.showinfo("Success", f"Report exported to {filename}")
+                CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", f"Report exported to {filename}")
                 self._update_status(f"✓ Successfully exported report to: {filename}")
             except Exception as e:
-                messagebox.showerror("Export Error", f"Failed to export: {e}")
+                CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Export Error", f"Failed to export: {e}")
                 self._update_status(f"✗ Report export failed: {e}")
 
 

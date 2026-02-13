@@ -215,6 +215,115 @@ class ToolTip:
             self.tooltip = None
 
 
+class CopyableMessageBox:
+    """
+    A custom message box that allows users to copy the message text.
+    Replaces standard tkinter messagebox for error/warning/info dialogs.
+    """
+    
+    @staticmethod
+    def show(parent: Optional[tk.Widget], title: str, message: str, 
+             icon_type: str = "info") -> None:
+        """
+        Show a message dialog with copyable text.
+        
+        Args:
+            parent: Parent widget (can be None)
+            title: Dialog title
+            message: Message to display
+            icon_type: One of "info", "warning", "error"
+        """
+        dialog = tk.Toplevel(parent)
+        dialog.title(title)
+        dialog.transient(parent)
+        dialog.grab_set()
+        
+        # Center on parent or screen
+        dialog.geometry("450x200")
+        if parent:
+            dialog.geometry(f"+{parent.winfo_rootx() + 100}+{parent.winfo_rooty() + 100}")
+        
+        # Configure dark mode
+        dialog.configure(bg=COLOR_BG_DARK)
+        
+        # Main frame
+        main_frame = ttk.Frame(dialog, padding="15")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Icon and title row
+        icon_map = {
+            "info": "ℹ️",
+            "warning": "⚠️", 
+            "error": "❌"
+        }
+        color_map = {
+            "info": COLOR_ACCENT,
+            "warning": COLOR_WARNING,
+            "error": COLOR_ERROR
+        }
+        
+        icon_label = ttk.Label(main_frame, text=icon_map.get(icon_type, "ℹ️"),
+                              font=("Arial", 24))
+        icon_label.pack(pady=(0, 10))
+        
+        # Message in a selectable Text widget
+        text_frame = ttk.Frame(main_frame)
+        text_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        text_widget = tk.Text(text_frame, wrap=tk.WORD, height=4,
+                             bg=COLOR_BG_MEDIUM, fg=COLOR_FG,
+                             font=("Arial", 10), relief=tk.FLAT,
+                             padx=10, pady=10, cursor="arrow")
+        text_widget.insert("1.0", message)
+        text_widget.config(state="disabled")  # Read-only but still selectable
+        text_widget.pack(fill=tk.BOTH, expand=True)
+        
+        # Enable text selection
+        text_widget.bind("<Button-1>", lambda e: text_widget.focus_set())
+        
+        # Button frame
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill=tk.X)
+        
+        def copy_to_clipboard() -> None:
+            dialog.clipboard_clear()
+            dialog.clipboard_append(message)
+            copy_btn.config(text="Copied!")
+            dialog.after(1500, lambda: copy_btn.config(text="Copy"))
+        
+        copy_btn = ttk.Button(btn_frame, text="Copy", command=copy_to_clipboard, width=10)
+        copy_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        ok_btn = ttk.Button(btn_frame, text="OK", command=dialog.destroy, width=10)
+        ok_btn.pack(side=tk.RIGHT)
+        
+        # Keyboard shortcuts
+        dialog.bind("<Return>", lambda e: dialog.destroy())
+        dialog.bind("<Escape>", lambda e: dialog.destroy())
+        dialog.bind("<Control-c>", lambda e: copy_to_clipboard())
+        
+        # Focus OK button
+        ok_btn.focus_set()
+        
+        # Wait for dialog to close
+        dialog.wait_window()
+    
+    @staticmethod
+    def showerror(parent: Optional[tk.Widget], title: str, message: str) -> None:
+        """Show error dialog with copyable text."""
+        CopyableMessageBox.show(parent, title, message, "error")
+    
+    @staticmethod
+    def showwarning(parent: Optional[tk.Widget], title: str, message: str) -> None:
+        """Show warning dialog with copyable text."""
+        CopyableMessageBox.show(parent, title, message, "warning")
+    
+    @staticmethod
+    def showinfo(parent: Optional[tk.Widget], title: str, message: str) -> None:
+        """Show info dialog with copyable text."""
+        CopyableMessageBox.show(parent, title, message, "info")
+
+
 class LensEditorWindow:
     # Dark mode color scheme
     COLORS = {
@@ -1878,7 +1987,7 @@ Modified: {lens.modified_at}"""
         """Export the selected lens to STL file"""
         selection = self.selection_listbox.curselection()
         if not selection:
-            messagebox.showwarning("No Selection", "Please select a lens to export")
+            CopyableMessageBox.showwarning(self.root, "No Selection", "Please select a lens to export")
             return
         
         idx = selection[0]
@@ -1906,7 +2015,8 @@ Modified: {lens.modified_at}"""
             
             num_triangles = export_lens_stl(lens, filename, resolution=resolution)
             
-            messagebox.showinfo(
+            CopyableMessageBox.showinfo(
+                self.root,
                 "Export Successful",
                 f"Lens '{lens.name}' exported successfully!\n\n"
                 f"File: {os.path.basename(filename)}\n"
@@ -1916,7 +2026,8 @@ Modified: {lens.modified_at}"""
             self.update_status(f"Exported '{lens.name}' to {os.path.basename(filename)}")
         
         except Exception as e:
-            messagebox.showerror(
+            CopyableMessageBox.showerror(
+                self.root,
                 "Export Failed",
                 f"Failed to export lens:\n{str(e)}"
             )

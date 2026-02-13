@@ -218,21 +218,39 @@ class LensVisualizer:
         """Draw the complete lens in 3D with optimized rendering"""
         # Validate inputs
         if diameter <= 0:
-            from tkinter import messagebox
-            messagebox.showwarning(
-                "Invalid Lens Parameters",
-                "Cannot render 3D view: Lens diameter must be greater than 0.\n\n"
-                f"Current diameter: {diameter} mm"
-            )
+            try:
+                from lens_editor_gui import CopyableMessageBox
+                CopyableMessageBox.showwarning(
+                    None,
+                    "Invalid Lens Parameters",
+                    "Cannot render 3D view: Lens diameter must be greater than 0.\n\n"
+                    f"Current diameter: {diameter} mm"
+                )
+            except ImportError:
+                from tkinter import messagebox
+                messagebox.showwarning(
+                    "Invalid Lens Parameters",
+                    "Cannot render 3D view: Lens diameter must be greater than 0.\n\n"
+                    f"Current diameter: {diameter} mm"
+                )
             return
         
         if thickness <= 0:
-            from tkinter import messagebox
-            messagebox.showwarning(
-                "Invalid Lens Parameters",
-                "Cannot render 3D view: Lens thickness must be greater than 0.\n\n"
-                f"Current thickness: {thickness} mm"
-            )
+            try:
+                from lens_editor_gui import CopyableMessageBox
+                CopyableMessageBox.showwarning(
+                    None,
+                    "Invalid Lens Parameters",
+                    "Cannot render 3D view: Lens thickness must be greater than 0.\n\n"
+                    f"Current thickness: {thickness} mm"
+                )
+            except ImportError:
+                from tkinter import messagebox
+                messagebox.showwarning(
+                    "Invalid Lens Parameters",
+                    "Cannot render 3D view: Lens thickness must be greater than 0.\n\n"
+                    f"Current thickness: {thickness} mm"
+                )
             return
         
         # Recreate both axes if needed (in case we switched from 2D)
@@ -402,21 +420,39 @@ class LensVisualizer:
         """Draw the lens in 2D side view (cross-section)"""
         # Validate inputs
         if diameter <= 0:
-            from tkinter import messagebox
-            messagebox.showwarning(
-                "Invalid Lens Parameters",
-                "Cannot render 2D view: Lens diameter must be greater than 0.\n\n"
-                f"Current diameter: {diameter} mm"
-            )
+            try:
+                from lens_editor_gui import CopyableMessageBox
+                CopyableMessageBox.showwarning(
+                    None,
+                    "Invalid Lens Parameters",
+                    "Cannot render 2D view: Lens diameter must be greater than 0.\n\n"
+                    f"Current diameter: {diameter} mm"
+                )
+            except ImportError:
+                from tkinter import messagebox
+                messagebox.showwarning(
+                    "Invalid Lens Parameters",
+                    "Cannot render 2D view: Lens diameter must be greater than 0.\n\n"
+                    f"Current diameter: {diameter} mm"
+                )
             return
         
         if thickness <= 0:
-            from tkinter import messagebox
-            messagebox.showwarning(
-                "Invalid Lens Parameters",
-                "Cannot render 2D view: Lens thickness must be greater than 0.\n\n"
-                f"Current thickness: {thickness} mm"
-            )
+            try:
+                from lens_editor_gui import CopyableMessageBox
+                CopyableMessageBox.showwarning(
+                    None,
+                    "Invalid Lens Parameters",
+                    "Cannot render 2D view: Lens thickness must be greater than 0.\n\n"
+                    f"Current thickness: {thickness} mm"
+                )
+            except ImportError:
+                from tkinter import messagebox
+                messagebox.showwarning(
+                    "Invalid Lens Parameters",
+                    "Cannot render 2D view: Lens thickness must be greater than 0.\n\n"
+                    f"Current thickness: {thickness} mm"
+                )
             return
         
         # Clear and reconfigure for 2D
