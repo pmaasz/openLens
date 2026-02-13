@@ -9,6 +9,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
+try:
+    from .lens import Lens
+except (ImportError, ValueError):
+    try:
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(__file__))
+        from lens import Lens
+    except ImportError:
+        pass  # Will be defined below if import fails, or we can raise error
+
 # Try to import material database
 try:
     from .material_database import get_material_database
@@ -54,185 +65,6 @@ except (ImportError, ValueError):
             return data
         def validate_lens_data_schema(data: Any, **kwargs: Any) -> Any:
             return data
-
-
-class Lens:
-    """
-    Represents an optical lens with its physical and optical properties.
-    
-    Attributes:
-        id: Unique identifier for the lens
-        name: Human-readable name
-        radius_of_curvature_1: First surface radius in mm (positive = convex)
-        radius_of_curvature_2: Second surface radius in mm (negative = convex on opposite side)
-        thickness: Center thickness in mm
-        diameter: Lens diameter in mm
-        material: Material name (e.g., "BK7", "Fused Silica")
-        wavelength: Design wavelength in nm
-        temperature: Operating temperature in °C
-        refractive_index: Refractive index at design wavelength
-        lens_type: Lens type description (e.g., "Biconvex", "Plano-Convex")
-        created_at: ISO timestamp of creation
-        modified_at: ISO timestamp of last modification
-    """
-    
-    def __init__(self, 
-                 name: str = "Untitled",
-                 radius_of_curvature_1: float = 100.0,
-                 radius_of_curvature_2: float = -100.0,
-                 thickness: float = 5.0,
-                 diameter: float = 50.0,
-                 refractive_index: float = 1.5168,
-                 lens_type: str = "Biconvex",
-                 material: str = "BK7",
-                 wavelength: float = 587.6,
-                 temperature: float = 20.0) -> None:
-        self.id = datetime.now().strftime("%Y%m%d%H%M%S%f")
-        self.name = name
-        self.radius_of_curvature_1 = radius_of_curvature_1
-        self.radius_of_curvature_2 = radius_of_curvature_2
-        self.thickness = thickness
-        self.diameter = diameter
-        self.material = material
-        self.wavelength = wavelength  # Design wavelength in nm
-        self.temperature = temperature  # Operating temperature in °C
-        
-        # Get refractive index from material database if available
-        if MATERIAL_DB_AVAILABLE:
-            db = get_material_database()
-            mat = db.get_material(material)
-            if mat:
-                self.refractive_index = db.get_refractive_index(material, wavelength, temperature)
-            else:
-                self.refractive_index = refractive_index
-        else:
-            self.refractive_index = refractive_index
-        
-        self.lens_type = lens_type
-        self.created_at = datetime.now().isoformat()
-        self.modified_at = datetime.now().isoformat()
-    
-    def update_refractive_index(self, 
-                                 wavelength: Optional[float] = None,
-                                 temperature: Optional[float] = None) -> None:
-        """
-        Update refractive index for new wavelength/temperature.
-        
-        Args:
-            wavelength: New wavelength in nm (if provided)
-            temperature: New temperature in °C (if provided)
-        """
-        if wavelength is not None:
-            self.wavelength = wavelength
-        if temperature is not None:
-            self.temperature = temperature
-        
-        if MATERIAL_DB_AVAILABLE:
-            db = get_material_database()
-            self.refractive_index = db.get_refractive_index(
-                self.material, self.wavelength, self.temperature
-            )
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert lens to dictionary representation.
-        
-        Returns:
-            Dictionary containing all lens properties
-        """
-        return {
-            "id": self.id,
-            "name": self.name,
-            "radius_of_curvature_1": self.radius_of_curvature_1,
-            "radius_of_curvature_2": self.radius_of_curvature_2,
-            "thickness": self.thickness,
-            "diameter": self.diameter,
-            "refractive_index": self.refractive_index,
-            "type": self.lens_type,
-            "material": self.material,
-            "wavelength": self.wavelength,
-            "temperature": self.temperature,
-            "created_at": self.created_at,
-            "modified_at": self.modified_at
-        }
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Lens':
-        """
-        Create lens from dictionary representation.
-        
-        Args:
-            data: Dictionary containing lens properties
-            
-        Returns:
-            Lens instance
-        """
-        lens = cls(
-            name=data.get("name", "Untitled"),
-            radius_of_curvature_1=data.get("radius_of_curvature_1", 100.0),
-            radius_of_curvature_2=data.get("radius_of_curvature_2", -100.0),
-            thickness=data.get("thickness", 5.0),
-            diameter=data.get("diameter", 50.0),
-            refractive_index=data.get("refractive_index", 1.5168),
-            lens_type=data.get("type", "Biconvex"),
-            material=data.get("material", "BK7"),
-            wavelength=data.get("wavelength", 587.6),
-            temperature=data.get("temperature", 20.0)
-        )
-        lens.id = data.get("id", lens.id)
-        lens.created_at = data.get("created_at", lens.created_at)
-        lens.modified_at = data.get("modified_at", lens.modified_at)
-        return lens
-    
-    def calculate_focal_length(self) -> Optional[float]:
-        """
-        Calculate focal length using the lensmaker's equation.
-        
-        The lensmaker's equation accounts for:
-        - Radii of curvature of both surfaces
-        - Refractive index of the lens material
-        - Center thickness of the lens
-        
-        Formula:
-            1/f = (n-1)[1/R1 - 1/R2 + (n-1)d/(nR1R2)]
-        
-        Returns:
-            Focal length in mm, or None if undefined (zero power or invalid radii)
-        """
-        n = self.refractive_index
-        R1 = self.radius_of_curvature_1
-        R2 = self.radius_of_curvature_2
-        d = self.thickness
-        
-        if R1 == 0 or R2 == 0:
-            return None
-        
-        power = (n - 1) * ((1/R1) - (1/R2) + ((n - 1) * d) / (n * R1 * R2))
-        
-        if power == 0:
-            return None
-        
-        return 1 / power
-    
-    def __str__(self) -> str:
-        focal_length = self.calculate_focal_length()
-        focal_str = f"{focal_length:.2f}mm" if focal_length else "Undefined"
-        
-        return f"""
-Optical Lens Details:
-  ID: {self.id}
-  Name: {self.name}
-  Radius of Curvature 1: {self.radius_of_curvature_1}mm
-  Radius of Curvature 2: {self.radius_of_curvature_2}mm
-  Center Thickness: {self.thickness}mm
-  Diameter: {self.diameter}mm
-  Refractive Index: {self.refractive_index}
-  Type: {self.lens_type}
-  Material: {self.material}
-  Calculated Focal Length: {focal_str}
-  Created: {self.created_at}
-  Modified: {self.modified_at}
-"""
 
 
 class LensManager:

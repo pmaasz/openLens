@@ -492,4 +492,9 @@ class TestIntegration:
 
 
 if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+    if OPTIONAL_DEPS_AVAILABLE:
+        import pytest
+        pytest.main([__file__, '-v'])
+    else:
+        # Fallback to unittest if pytest not available
+        unittest.main()

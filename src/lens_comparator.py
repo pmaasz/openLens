@@ -8,7 +8,7 @@ from typing import List, Dict, Any
 from dataclasses import dataclass
 
 try:
-    from .lens_editor import Lens
+    from .lens import Lens
     from .optical_system import OpticalSystem
     from .performance_metrics import PerformanceMetrics
     from .aberrations import AberrationsCalculator
@@ -16,7 +16,7 @@ except (ImportError, ValueError):
     import sys
     import os
     sys.path.insert(0, os.path.dirname(__file__))
-    from lens_editor import Lens
+    from lens import Lens
     from optical_system import OpticalSystem
     from performance_metrics import PerformanceMetrics
     from aberrations import AberrationsCalculator

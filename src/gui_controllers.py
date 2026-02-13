@@ -23,7 +23,8 @@ import json
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from lens_editor_gui import Lens, LensEditorWindow
+    from lens import Lens
+    from lens_editor_gui import LensEditorWindow
 
 
 class LensSelectionController:

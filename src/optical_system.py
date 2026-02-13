@@ -10,13 +10,13 @@ import math
 import json
 
 try:
-    from .lens_editor import Lens
+    from .lens import Lens
     from .material_database import get_material_database
 except (ImportError, ValueError):
     import sys
     import os
     sys.path.insert(0, os.path.dirname(__file__))
-    from lens_editor import Lens
+    from lens import Lens
     from material_database import get_material_database
 
 

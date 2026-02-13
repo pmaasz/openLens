@@ -13,12 +13,14 @@ try:
         AIRY_DISK_FACTOR,
         SPHERICAL_ABERRATION_EXCELLENT,
         QUALITY_EXCELLENT_THRESHOLD, QUALITY_GOOD_THRESHOLD, QUALITY_FAIR_THRESHOLD,
+        WAVELENGTH_GREEN,
     )
 except ImportError:
     from constants import (
         AIRY_DISK_FACTOR,
         SPHERICAL_ABERRATION_EXCELLENT,
         QUALITY_EXCELLENT_THRESHOLD, QUALITY_GOOD_THRESHOLD, QUALITY_FAIR_THRESHOLD,
+        WAVELENGTH_GREEN,
     )
 
 
@@ -139,10 +141,19 @@ class AberrationsCalculator:
             return 0
             
         # Shape factor: q = (R2 + R1) / (R2 - R1)
-        if self.R2 == self.R1:
-            shape_factor = 0
+        # Note: R1 is front (left), R2 is back (right)
+        # For biconvex: R1 > 0, R2 < 0
+        denominator = self.R2 - self.R1
+        if abs(denominator) < 1e-9:  # Avoid division by zero
+             # This happens for symmetric meniscus or flat plate? 
+             # For symmetric biconvex R2 = -R1, so R2-R1 = -2R1 != 0
+             # For flat plate R1=inf, R2=inf.
+             if abs(self.R1) > 1e6 and abs(self.R2) > 1e6:
+                 shape_factor = 0 # Flat plate
+             else:
+                 shape_factor = 0 # Fallback
         else:
-            shape_factor = (self.R2 + self.R1) / (self.R2 - self.R1)
+            shape_factor = (self.R2 + self.R1) / denominator
         
         # Aperture radius
         y = self.D / 2
@@ -182,10 +193,13 @@ class AberrationsCalculator:
         y = self.D / 2
         
         # Shape factor
-        if self.R2 == self.R1:
+        # q = (R2 + R1) / (R2 - R1)
+        denominator = self.R2 - self.R1
+        
+        if abs(denominator) < 1e-9:
             shape_factor = 0
         else:
-            shape_factor = (self.R2 + self.R1) / (self.R2 - self.R1)
+            shape_factor = (self.R2 + self.R1) / denominator
         
         # Coma coefficient (simplified)
         n = self.n
@@ -263,10 +277,14 @@ class AberrationsCalculator:
         field_angle_rad = math.radians(field_angle_deg)
         
         # Shape factor determines sign of distortion
-        if self.R2 == self.R1:
+        # q = (R2 + R1) / (R2 - R1)
+        denominator = self.R2 - self.R1
+        
+        if abs(denominator) < 1e-9:  # Avoid division by zero
+            # For flat plate (R1=R2=inf) or meniscus with R1=R2
             shape_factor = 0
         else:
-            shape_factor = (self.R2 + self.R1) / (self.R2 - self.R1)
+            shape_factor = (self.R2 + self.R1) / denominator
         
         # Simplified distortion coefficient
         distortion_pct = shape_factor * (field_angle_rad**3) * 100
@@ -318,7 +336,7 @@ class AberrationsCalculator:
         
         return lca
     
-    def _calculate_airy_disk(self, focal_length: float, wavelength: float = 0.000550) -> float:
+    def _calculate_airy_disk(self, focal_length: float, wavelength: float = WAVELENGTH_GREEN * 1e-6) -> float:
         """
         Calculate Airy disk diameter (diffraction-limited spot size).
         

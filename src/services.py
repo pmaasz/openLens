@@ -159,10 +159,10 @@ class LensService:
             return True
             
         except ValidationError as e:
-            print(f"Validation error: {e}")
+            logger.warning("Validation error: %s", e)
             return False
         except Exception as e:
-            print(f"Error updating lens: {e}")
+            logger.error("Error updating lens: %s", e)
             return False
     
     def calculate_optical_properties(self, lens: 'Lens') -> Dict[str, float]:
@@ -182,11 +182,11 @@ class LensService:
             return {
                 'focal_length': focal_length,
                 'optical_power': optical_power,
-                'f_number': focal_length / lens.diameter if lens.diameter > 0 else float('inf'),
-                'numerical_aperture': lens.diameter / (2 * abs(focal_length)) if focal_length != 0 else 0
+                'f_number': focal_length / lens.diameter if lens.diameter > 0 and focal_length else float('inf'),
+                'numerical_aperture': lens.diameter / (2 * abs(focal_length)) if focal_length and focal_length != 0 else 0
             }
         except Exception as e:
-            print(f"Error calculating properties: {e}")
+            logger.error("Error calculating properties: %s", e)
             return {
                 'focal_length': float('inf'),
                 'optical_power': 0.0,
@@ -289,7 +289,7 @@ class CalculationService:
                                         field_angle=field_angle)
             return calc.calculate_all_aberrations()
         except Exception as e:
-            print(f"Error calculating aberrations: {e}")
+            logger.error("Error calculating aberrations: %s", e)
             return None
     
     def trace_rays(self, lens: 'Lens', 
@@ -324,7 +324,7 @@ class CalculationService:
             else:
                 raise ValueError(f"Unknown ray type: {ray_type}")
         except Exception as e:
-            print(f"Error tracing rays: {e}")
+            logger.error("Error tracing rays: %s", e)
             return None
     
     def assess_lens_quality(self, lens: 'Lens') -> Optional[Dict[str, Any]]:
@@ -344,7 +344,7 @@ class CalculationService:
             from aberrations import analyze_lens_quality
             return analyze_lens_quality(lens)
         except Exception as e:
-            print(f"Error assessing quality: {e}")
+            logger.error("Error assessing quality: %s", e)
             return None
     
     def is_aberrations_available(self) -> bool:

@@ -174,6 +174,17 @@ except ImportError:
         CONTROLLERS_AVAILABLE = False
         logger.info("GUI controllers not available.")
 
+# Import Lens model
+try:
+    from .lens import Lens
+except ImportError:
+    try:
+        from lens import Lens
+    except ImportError:
+        # Fallback if lens module not available (shouldn't happen in proper install)
+        logger.error("Could not import Lens model")
+        class Lens: pass
+
 class ToolTip:
     """Simple tooltip for tkinter widgets"""
     def __init__(self, widget: tk.Widget, text: str) -> None:
@@ -202,141 +213,6 @@ class ToolTip:
         if self.tooltip:
             self.tooltip.destroy()
             self.tooltip = None
-
-
-class Lens:
-    def __init__(self, name: str = "Untitled", 
-                 radius_of_curvature_1: float = DEFAULT_RADIUS_1, 
-                 radius_of_curvature_2: float = DEFAULT_RADIUS_2,
-                 thickness: float = DEFAULT_THICKNESS, 
-                 diameter: float = DEFAULT_DIAMETER, 
-                 refractive_index: float = REFRACTIVE_INDEX_BK7, 
-                 lens_type: str = "Biconvex", 
-                 material: str = "BK7", 
-                 is_fresnel: bool = False, 
-                 groove_pitch: float = DEFAULT_THICKNESS, 
-                 num_grooves: Optional[int] = None) -> None:
-        self.id = datetime.now().strftime("%Y%m%d%H%M%S%f")
-        self.name = name
-        self.radius_of_curvature_1 = radius_of_curvature_1  # R1 (front surface, mm)
-        self.radius_of_curvature_2 = radius_of_curvature_2  # R2 (back surface, mm)
-        self.thickness = thickness  # Center thickness (mm)
-        self.diameter = diameter  # Lens diameter (mm)
-        self.refractive_index = refractive_index  # Index of refraction (n)
-        self.lens_type = lens_type  # Convex, Concave, Plano-Convex, etc.
-        self.material = material  # Glass type
-        self.is_fresnel = is_fresnel  # Is this a Fresnel lens?
-        self.groove_pitch = groove_pitch  # Pitch between grooves (mm)
-        self.num_grooves = num_grooves  # Number of grooves (calculated if None)
-        self.created_at = datetime.now().isoformat()
-        self.modified_at = datetime.now().isoformat()
-        
-        # Auto-calculate number of grooves if not provided
-        if self.is_fresnel and self.num_grooves is None:
-            self.calculate_num_grooves()
-    
-    def calculate_num_grooves(self) -> None:
-        """Calculate the number of grooves based on diameter and pitch"""
-        if self.groove_pitch > 0:
-            self.num_grooves = int((self.diameter / 2) / self.groove_pitch)
-        else:
-            self.num_grooves = 0
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "id": self.id,
-            "name": self.name,
-            "radius_of_curvature_1": self.radius_of_curvature_1,
-            "radius_of_curvature_2": self.radius_of_curvature_2,
-            "thickness": self.thickness,
-            "diameter": self.diameter,
-            "refractive_index": self.refractive_index,
-            "type": self.lens_type,
-            "material": self.material,
-            "is_fresnel": self.is_fresnel,
-            "groove_pitch": self.groove_pitch,
-            "num_grooves": self.num_grooves,
-            "created_at": self.created_at,
-            "modified_at": self.modified_at
-        }
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Lens':
-        lens = cls(
-            name=data.get("name", "Untitled"),
-            radius_of_curvature_1=data.get("radius_of_curvature_1", DEFAULT_RADIUS_1),
-            radius_of_curvature_2=data.get("radius_of_curvature_2", DEFAULT_RADIUS_2),
-            thickness=data.get("thickness", DEFAULT_THICKNESS),
-            diameter=data.get("diameter", DEFAULT_DIAMETER),
-            refractive_index=data.get("refractive_index", REFRACTIVE_INDEX_BK7),
-            lens_type=data.get("type", "Biconvex"),
-            material=data.get("material", "BK7"),
-            is_fresnel=data.get("is_fresnel", False),
-            groove_pitch=data.get("groove_pitch", DEFAULT_THICKNESS),
-            num_grooves=data.get("num_grooves", None)
-        )
-        lens.id = data.get("id", lens.id)
-        lens.created_at = data.get("created_at", lens.created_at)
-        lens.modified_at = data.get("modified_at", lens.modified_at)
-        return lens
-    
-    def calculate_focal_length(self) -> Optional[float]:
-        """Calculate focal length using the lensmaker's equation"""
-        n = self.refractive_index
-        R1 = self.radius_of_curvature_1
-        R2 = self.radius_of_curvature_2
-        d = self.thickness
-        
-        if R1 == 0 or R2 == 0:
-            return None
-        
-        # Lensmaker's equation
-        power = (n - 1) * ((1/R1) - (1/R2) + ((n - 1) * d) / (n * R1 * R2))
-        
-        if power == 0:
-            return None
-        
-        focal_length = 1 / power
-        return focal_length
-    
-    def calculate_fresnel_efficiency(self) -> Optional[float]:
-        """Calculate theoretical efficiency of Fresnel lens"""
-        if not self.is_fresnel:
-            return None
-        
-        # Simplified efficiency calculation
-        # Fresnel lenses typically have 85-95% efficiency
-        # depending on groove quality and pitch
-        base_efficiency = 0.90
-        
-        # Efficiency decreases with smaller pitch (harder to manufacture)
-        if self.groove_pitch < 0.5:
-            efficiency_factor = 0.85
-        elif self.groove_pitch < 1.0:
-            efficiency_factor = 0.90
-        else:
-            efficiency_factor = 0.95
-        
-        return base_efficiency * efficiency_factor
-    
-    def calculate_fresnel_thickness_reduction(self) -> Optional[Dict[str, float]]:
-        """Calculate thickness reduction compared to conventional lens"""
-        if not self.is_fresnel or self.num_grooves is None:
-            return None
-        
-        # Fresnel lens can reduce thickness by removing material between grooves
-        # Each groove saves approximately the groove pitch height
-        # This is a simplified calculation
-        conventional_thickness = self.thickness
-        fresnel_thickness = max(1.0, self.groove_pitch * 2)  # Minimum 1mm
-        
-        reduction_percentage = ((conventional_thickness - fresnel_thickness) / conventional_thickness) * 100
-        return {
-            'conventional_thickness': conventional_thickness,
-            'fresnel_thickness': fresnel_thickness,
-            'reduction_percentage': reduction_percentage,
-            'weight_reduction_percentage': reduction_percentage * 0.9  # Approximate weight reduction
-        }
 
 
 class LensEditorWindow:
@@ -1016,11 +892,13 @@ Modified: {lens.modified_at}"""
         right_frame.bind("<Configure>", configure_scroll_region)
         canvas.bind("<Configure>", lambda e: canvas.itemconfig(canvas_frame, width=e.width))
         
-        # Enable mouse wheel scrolling
+        # Enable mouse wheel scrolling (bind to canvas only, not all widgets)
         def on_mousewheel(event: tk.Event) -> None:
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         
-        canvas.bind_all("<MouseWheel>", on_mousewheel)
+        canvas.bind("<MouseWheel>", on_mousewheel)
+        canvas.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))  # Linux scroll up
+        canvas.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))   # Linux scroll down
         
         # Form fields
         row = 0
