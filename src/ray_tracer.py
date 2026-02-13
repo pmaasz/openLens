@@ -9,9 +9,17 @@ from typing import List, Optional, Tuple, Any
 
 # Import constants
 try:
-    from .constants import *
+    from .constants import (
+        WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR, REFRACTIVE_INDEX_VACUUM,
+        DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_RADIUS_1, DEFAULT_THICKNESS,
+        EPSILON, MESH_RESOLUTION_HIGH,
+    )
 except ImportError:
-    from constants import *
+    from constants import (
+        WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR, REFRACTIVE_INDEX_VACUUM,
+        DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_RADIUS_1, DEFAULT_THICKNESS,
+        EPSILON, MESH_RESOLUTION_HIGH,
+    )
 
 
 class Ray:

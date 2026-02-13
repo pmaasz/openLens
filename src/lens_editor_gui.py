@@ -4,6 +4,7 @@ openlens - GUI Editor Window
 Interactive graphical interface for optical lens creation and modification
 """
 
+import logging
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import json
@@ -12,11 +13,70 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 
+# Configure module logger
+logger = logging.getLogger(__name__)
+
 # Import constants
 try:
-    from .constants import *
+    from .constants import (
+        # GUI Colors
+        COLOR_BG_DARK, COLOR_BG_MEDIUM, COLOR_BG_LIGHT, COLOR_FG, COLOR_FG_DIM,
+        COLOR_ACCENT, COLOR_SUCCESS, COLOR_WARNING, COLOR_ERROR, COLOR_HIGHLIGHT,
+        # Font settings
+        FONT_FAMILY, FONT_SIZE_NORMAL, FONT_SIZE_LARGE, FONT_SIZE_TITLE,
+        # Padding
+        PADDING_SMALL, PADDING_MEDIUM, PADDING_LARGE, PADDING_XLARGE,
+        # Widget sizing
+        ENTRY_WIDTH, BUTTON_WIDTH, LISTBOX_WIDTH, LISTBOX_HEIGHT,
+        # Tooltip
+        TOOLTIP_OFFSET_X, TOOLTIP_OFFSET_Y,
+        # Defaults
+        DEFAULT_RADIUS_1, DEFAULT_RADIUS_2, DEFAULT_THICKNESS, DEFAULT_DIAMETER,
+        DEFAULT_NUM_RAYS, DEFAULT_TEMPERATURE,
+        # Validation
+        MIN_RADIUS_OF_CURVATURE, MAX_RADIUS_OF_CURVATURE,
+        MIN_THICKNESS, MAX_THICKNESS, MIN_DIAMETER, MAX_DIAMETER,
+        MIN_REFRACTIVE_INDEX, MAX_REFRACTIVE_INDEX,
+        # Optical
+        REFRACTIVE_INDEX_BK7, WAVELENGTH_D_LINE, WAVELENGTH_GREEN,
+        # Lens types
+        ALL_LENS_TYPES,
+        # Mesh resolution
+        MESH_RESOLUTION_LOW, MESH_RESOLUTION_MEDIUM, MESH_RESOLUTION_HIGH,
+        # Numerical
+        EPSILON,
+    )
+    LENS_TYPES = ALL_LENS_TYPES
 except ImportError:
-    from constants import *
+    from constants import (
+        # GUI Colors
+        COLOR_BG_DARK, COLOR_BG_MEDIUM, COLOR_BG_LIGHT, COLOR_FG, COLOR_FG_DIM,
+        COLOR_ACCENT, COLOR_SUCCESS, COLOR_WARNING, COLOR_ERROR, COLOR_HIGHLIGHT,
+        # Font settings
+        FONT_FAMILY, FONT_SIZE_NORMAL, FONT_SIZE_LARGE, FONT_SIZE_TITLE,
+        # Padding
+        PADDING_SMALL, PADDING_MEDIUM, PADDING_LARGE, PADDING_XLARGE,
+        # Widget sizing
+        ENTRY_WIDTH, BUTTON_WIDTH, LISTBOX_WIDTH, LISTBOX_HEIGHT,
+        # Tooltip
+        TOOLTIP_OFFSET_X, TOOLTIP_OFFSET_Y,
+        # Defaults
+        DEFAULT_RADIUS_1, DEFAULT_RADIUS_2, DEFAULT_THICKNESS, DEFAULT_DIAMETER,
+        DEFAULT_NUM_RAYS, DEFAULT_TEMPERATURE,
+        # Validation
+        MIN_RADIUS_OF_CURVATURE, MAX_RADIUS_OF_CURVATURE,
+        MIN_THICKNESS, MAX_THICKNESS, MIN_DIAMETER, MAX_DIAMETER,
+        MIN_REFRACTIVE_INDEX, MAX_REFRACTIVE_INDEX,
+        # Optical
+        REFRACTIVE_INDEX_BK7, WAVELENGTH_D_LINE, WAVELENGTH_GREEN,
+        # Lens types
+        ALL_LENS_TYPES,
+        # Mesh resolution
+        MESH_RESOLUTION_LOW, MESH_RESOLUTION_MEDIUM, MESH_RESOLUTION_HIGH,
+        # Numerical
+        EPSILON,
+    )
+    LENS_TYPES = ALL_LENS_TYPES
 
 # Try to import visualization (optional dependency)
 try:
@@ -28,8 +88,7 @@ except ImportError:
         VISUALIZATION_AVAILABLE = True
     except ImportError:
         VISUALIZATION_AVAILABLE = False
-        print("Note: matplotlib not available. 3D visualization disabled.")
-        print("Install with: pip install matplotlib numpy")
+        logger.info("matplotlib not available. 3D visualization disabled.")
 
 # Try to import STL export (optional dependency)
 try:
@@ -41,7 +100,7 @@ except ImportError:
         STL_EXPORT_AVAILABLE = True
     except ImportError:
         STL_EXPORT_AVAILABLE = False
-        print("Note: STL export not available. NumPy required.")
+        logger.info("STL export not available. NumPy required.")
 
 # Try to import aberrations calculator
 try:
@@ -53,7 +112,7 @@ except ImportError:
         ABERRATIONS_AVAILABLE = True
     except ImportError:
         ABERRATIONS_AVAILABLE = False
-        print("Note: Aberrations calculator not available.")
+        logger.info("Aberrations calculator not available.")
 
 # Try to import ray tracer
 try:
@@ -65,7 +124,7 @@ except ImportError:
         RAY_TRACING_AVAILABLE = True
     except ImportError:
         RAY_TRACING_AVAILABLE = False
-        print("Note: Ray tracer not available.")
+        logger.info("Ray tracer not available.")
 
 # Try to import validation utilities
 try:
@@ -113,7 +172,7 @@ except ImportError:
         CONTROLLERS_AVAILABLE = True
     except ImportError:
         CONTROLLERS_AVAILABLE = False
-        print("Note: GUI controllers not available.")
+        logger.info("GUI controllers not available.")
 
 class ToolTip:
     """Simple tooltip for tkinter widgets"""
@@ -449,7 +508,7 @@ class LensEditorWindow:
             
             # Validate JSON structure
             if not isinstance(data, list):
-                print("Warning: Storage file contains invalid data structure")
+                logger.warning("Storage file contains invalid data structure")
                 return []
             
             # Load lenses
@@ -458,7 +517,7 @@ class LensEditorWindow:
                 try:
                     lenses.append(Lens.from_dict(lens_data))
                 except Exception as e:
-                    print(f"Warning: Failed to load lens {i}: {e}")
+                    logger.warning("Failed to load lens %d: %s", i, e)
             
             return lenses
             
@@ -466,10 +525,10 @@ class LensEditorWindow:
             # File doesn't exist - return empty list
             return []
         except json.JSONDecodeError as e:
-            print(f"Error: Invalid JSON in storage file: {e}")
+            logger.error("Invalid JSON in storage file: %s", e)
             return []
         except Exception as e:
-            print(f"Error: Failed to load lenses: {e}")
+            logger.error("Failed to load lenses: %s", e)
             return []
     
     def save_lenses(self) -> bool:
@@ -593,21 +652,25 @@ class LensEditorWindow:
     
     def setup_selection_tab(self) -> None:
         """Setup the Lens Selection tab using controller"""
+        # Always use legacy implementation first for backward compatibility
+        self._setup_selection_tab_legacy()
+        
+        # If controllers are available, set up the controller for enhanced features
         if CONTROLLERS_AVAILABLE:
-            # Use controller-based approach
-            self.selection_controller = LensSelectionController(
-                parent_window=self,
-                lens_list=self.lenses,
-                colors=self.COLORS,
-                on_lens_selected=self.on_lens_selected_callback,
-                on_create_new=self.on_create_new_lens,
-                on_delete=self.on_delete_lens,
-                on_lens_updated=self.on_lens_updated_callback
-            )
-            self.selection_controller.setup_ui(self.selection_tab)
-        else:
-            # Fallback to original implementation
-            self._setup_selection_tab_legacy()
+            try:
+                self.selection_controller = LensSelectionController(
+                    parent_window=self,
+                    lens_list=self.lenses,
+                    colors=self.COLORS,
+                    on_lens_selected=self.on_lens_selected_callback,
+                    on_create_new=self.on_create_new_lens,
+                    on_delete=self.on_delete_lens,
+                    on_lens_updated=self.on_lens_updated_callback
+                )
+                # Controller can add enhanced functionality
+            except Exception as e:
+                logger.warning("Failed to initialize selection controller: %s", e)
+                self.selection_controller = None
     
     # Controller callback methods
     def on_lens_selected_callback(self, lens: 'Lens') -> None:
@@ -841,6 +904,16 @@ Modified: {lens.modified_at}"""
         self.refresh_lens_list()
         self.load_lens_to_form(self.current_lens)
         
+        # Load lens into controllers for simulation and performance tabs
+        if hasattr(self, 'simulation_controller') and self.simulation_controller:
+            self.simulation_controller.load_lens(self.current_lens)
+        
+        if hasattr(self, 'performance_controller') and self.performance_controller:
+            self.performance_controller.load_lens(self.current_lens)
+        
+        if hasattr(self, 'export_controller') and self.export_controller:
+            self.export_controller.load_lens(self.current_lens)
+        
         # Update simulation tab with current lens
         self.update_simulation_view()
         
@@ -880,21 +953,21 @@ Modified: {lens.modified_at}"""
     def setup_editor_tab(self) -> None:
         """Setup the Editor tab with lens properties"""
         
-        # Try to use controller if available
+        # Always use legacy implementation to ensure form variables are on self
+        # This ensures backward compatibility with tests and other code
+        self._setup_editor_tab_legacy()
+        
+        # If controller is available, integrate it (it can enhance functionality)
         if CONTROLLERS_AVAILABLE:
             try:
                 self.editor_controller = LensEditorController(
                     colors=self.COLORS,
                     on_lens_updated=self.on_lens_updated_callback
                 )
-                self.editor_controller.setup_ui(self.editor_tab)
-                return
+                # Controller is available for advanced features but legacy form is primary
             except Exception as e:
-                print(f"Failed to initialize editor controller: {e}")
-                print("Falling back to legacy implementation")
-        
-        # Legacy implementation
-        self._setup_editor_tab_legacy()
+                logger.warning("Failed to initialize editor controller: %s", e)
+                self.editor_controller = None
     
     def _setup_editor_tab_legacy(self) -> None:
         """Legacy implementation of editor tab"""
@@ -1164,10 +1237,10 @@ Modified: {lens.modified_at}"""
             )
             self.simulation_controller.setup_ui(self.simulation_tab)
             
-            print("SimulationController integrated successfully")
+            logger.debug("SimulationController integrated successfully")
             
         except ImportError as e:
-            print(f"GUI controllers not available, using legacy simulation: {e}")
+            logger.info("GUI controllers not available, using legacy simulation: %s", e)
             self._setup_simulation_tab_legacy()
     
     def _setup_simulation_tab_legacy(self) -> None:
@@ -1229,7 +1302,7 @@ Modified: {lens.modified_at}"""
                 self.sim_visualizer = True
                 
             except Exception as e:
-                print(f"ERROR creating simulation canvas: {e}")
+                logger.error("Error creating simulation canvas: %s", e)
                 ttk.Label(sim_frame, text=f"Simulation error: {e}", 
                          wraplength=400).pack(pady=PADDING_LARGE)
                 self.sim_visualizer = None
@@ -1308,10 +1381,10 @@ Modified: {lens.modified_at}"""
             return
         
         # Legacy implementation
-        print(f"DEBUG: run_simulation called (legacy)")
-        print(f"DEBUG: current_lens = {self.current_lens}")
-        print(f"DEBUG: RAY_TRACING_AVAILABLE = {RAY_TRACING_AVAILABLE}")
-        print(f"DEBUG: VISUALIZATION_AVAILABLE = {VISUALIZATION_AVAILABLE}")
+        logger.debug("run_simulation called (legacy)")
+        logger.debug("current_lens = %s", self.current_lens)
+        logger.debug("RAY_TRACING_AVAILABLE = %s", RAY_TRACING_AVAILABLE)
+        logger.debug("VISUALIZATION_AVAILABLE = %s", VISUALIZATION_AVAILABLE)
         
         if not self.current_lens:
             self.update_status("Please select or create a lens first")
@@ -1325,7 +1398,7 @@ Modified: {lens.modified_at}"""
             self.update_status("Visualization (matplotlib) required for ray tracing display")
             return
         
-        print(f"DEBUG: Starting ray tracing...")
+        logger.debug("Starting ray tracing...")
         
         try:
             # Get current lens parameters from editor fields (real-time)
@@ -1351,7 +1424,7 @@ Modified: {lens.modified_at}"""
                     lens_type=lens_type,
                     material=material
                 )
-                print(f"DEBUG: Using lens from editor: {name}, R1={r1}, R2={r2}, thickness={thickness}")
+                logger.debug("Using lens from editor: %s, R1=%s, R2=%s, thickness=%s", name, r1, r2, thickness)
             except ValueError as e:
                 self.update_status(f"Invalid lens parameters: {e}")
                 return
@@ -1376,13 +1449,13 @@ Modified: {lens.modified_at}"""
             # Trace rays based on angle
             if abs(ray_angle) < 0.1:
                 # Parallel rays (collimated beam)
-                print(f"DEBUG: Tracing {num_rays} parallel rays...")
+                logger.debug("Tracing %d parallel rays...", num_rays)
                 rays = tracer.trace_parallel_rays(num_rays=num_rays)
                 focal_point = tracer.find_focal_point(rays)
-                print(f"DEBUG: Traced {len(rays)} rays, focal_point = {focal_point}")
+                logger.debug("Traced %d rays, focal_point = %s", len(rays), focal_point)
             else:
                 # Point source rays
-                print(f"DEBUG: Tracing {num_rays} point source rays at angle {ray_angle}...")
+                logger.debug("Tracing %d point source rays at angle %s...", num_rays, ray_angle)
                 source_x = -100.0  # 100mm before lens
                 source_y = 0
                 rays = tracer.trace_point_source_rays(
@@ -1391,26 +1464,26 @@ Modified: {lens.modified_at}"""
                     max_angle=abs(ray_angle)
                 )
                 focal_point = None
-                print(f"DEBUG: Traced {len(rays)} rays")
+                logger.debug("Traced %d rays", len(rays))
             
             # Visualize in simulation view
-            print(f"DEBUG: Checking sim_visualizer: {hasattr(self, 'sim_visualizer')}")
+            logger.debug("Checking sim_visualizer: %s", hasattr(self, 'sim_visualizer'))
             if hasattr(self, 'sim_visualizer') and self.sim_visualizer:
-                print(f"DEBUG: Starting visualization...")
-                print(f"DEBUG: Has sim_ax: {hasattr(self, 'sim_ax')}")
-                print(f"DEBUG: Has sim_canvas: {hasattr(self, 'sim_canvas')}")
+                logger.debug("Starting visualization...")
+                logger.debug("Has sim_ax: %s", hasattr(self, 'sim_ax'))
+                logger.debug("Has sim_canvas: %s", hasattr(self, 'sim_canvas'))
                 # Hide info label
                 if hasattr(self, 'sim_info_label'):
                     self.sim_info_label.place_forget()
                 
                 # Clear previous plot
-                print(f"DEBUG: Clearing plot...")
+                logger.debug("Clearing plot...")
                 self.sim_ax.clear()
                 self.sim_ax.set_facecolor('#1e1e1e')
                 
                 # Get lens outline
                 lens_outline = tracer.get_lens_outline()
-                print(f"DEBUG: Got lens outline with {len(lens_outline) if lens_outline else 0} points")
+                logger.debug("Got lens outline with %d points", len(lens_outline) if lens_outline else 0)
                 
                 # Calculate lens position - center it in view
                 # Lens spans from x=0 to x=thickness, rays start at x=-50
@@ -1489,10 +1562,10 @@ Modified: {lens.modified_at}"""
                 self.sim_ax.tick_params(colors='#e0e0e0', labelsize=9)
                 
                 # Refresh canvas
-                print(f"DEBUG: Drawing canvas...")
+                logger.debug("Drawing canvas...")
                 self.sim_canvas.draw()
                 self.sim_canvas.flush_events()
-                print(f"DEBUG: Canvas drawn!")
+                logger.debug("Canvas drawn!")
                 
                 # Update status
                 focal_str = f" Focal point at {focal_point[0]:.1f} mm" if focal_point else ""
@@ -1607,13 +1680,7 @@ Modified: {lens.modified_at}"""
         self.update_status(f"{len(self.lenses)} lens(es) loaded")
     
     def load_lens_to_form(self, lens: Lens) -> None:
-        # Use controller if available
-        if self.editor_controller:
-            self.editor_controller.load_lens(lens)
-            self.update_status(f"Editing: {lens.name}")
-            return
-        
-        # Legacy implementation
+        # Always use legacy implementation for form loading (ensures backward compatibility)
         self._loading_lens = True  # Prevent autosave during load
         self.name_var.set(lens.name)
         self.r1_var.set(str(lens.radius_of_curvature_1))
@@ -2004,10 +2071,10 @@ Modified: {lens.modified_at}"""
             )
             self.performance_controller.setup_ui(self.performance_tab)
             
-            print("PerformanceController integrated successfully")
+            logger.debug("PerformanceController integrated successfully")
             
         except ImportError as e:
-            print(f"GUI controllers not available, using legacy performance: {e}")
+            logger.info("GUI controllers not available, using legacy performance: %s", e)
             self._setup_performance_tab_legacy()
     
     def _setup_performance_tab_legacy(self) -> None:
@@ -2088,7 +2155,7 @@ Modified: {lens.modified_at}"""
                 self.comparison_controller.setup_ui(self.comparison_tab)
                 return
             except Exception as e:
-                print(f"Failed to initialize ComparisonController: {e}")
+                logger.warning("Failed to initialize ComparisonController: %s", e)
                 self.comparison_controller = None
         
         # Fallback to legacy implementation
@@ -2179,7 +2246,7 @@ Modified: {lens.modified_at}"""
                 self.export_controller.setup_ui(self.export_tab)
                 return
             except Exception as e:
-                print(f"Failed to initialize ExportController: {e}")
+                logger.warning("Failed to initialize ExportController: %s", e)
                 self.export_controller = None
         
         # Fallback to legacy implementation

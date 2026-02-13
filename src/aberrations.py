@@ -9,9 +9,17 @@ from typing import Optional, Dict, Any
 
 # Import constants
 try:
-    from .constants import *
+    from .constants import (
+        AIRY_DISK_FACTOR,
+        SPHERICAL_ABERRATION_EXCELLENT,
+        QUALITY_EXCELLENT_THRESHOLD, QUALITY_GOOD_THRESHOLD, QUALITY_FAIR_THRESHOLD,
+    )
 except ImportError:
-    from constants import *
+    from constants import (
+        AIRY_DISK_FACTOR,
+        SPHERICAL_ABERRATION_EXCELLENT,
+        QUALITY_EXCELLENT_THRESHOLD, QUALITY_GOOD_THRESHOLD, QUALITY_FAIR_THRESHOLD,
+    )
 
 
 class AberrationsCalculator:
