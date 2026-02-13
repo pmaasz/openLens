@@ -9,8 +9,11 @@ Requires:
 - scipy (optional, for advanced image processing)
 """
 
+import logging
 import numpy as np
 from typing import Tuple, Optional, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 # Try importing PIL
 try:
@@ -18,7 +21,7 @@ try:
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
-    print("Warning: PIL/Pillow not available. Image loading disabled.")
+    logger.warning("PIL/Pillow not available. Image loading disabled.")
 
 # Try importing matplotlib
 try:
@@ -26,7 +29,7 @@ try:
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
-    print("Warning: matplotlib not available. Plotting disabled.")
+    logger.warning("matplotlib not available. Plotting disabled.")
 
 # Try importing scipy (optional)
 try:
@@ -430,7 +433,8 @@ class ImageSimulator:
         
         try:
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 48)
-        except:
+        except (IOError, OSError) as e:
+            logger.debug(f"Failed to load system font, using default: {e}")
             font = ImageFont.load_default()
         
         bbox = draw.textbbox((0, 0), text, font=font)

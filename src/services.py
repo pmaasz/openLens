@@ -5,8 +5,11 @@ Provides business logic services that decouple data access from
 presentation and handle complex operations with proper error handling.
 """
 
+import logging
 from typing import Optional, Dict, List, Tuple, Any
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class LensService:
@@ -414,8 +417,8 @@ class MaterialDatabaseService:
         if self._available and self.db:
             try:
                 return self.db.get_refractive_index(material, wavelength, temperature)
-            except:
-                pass
+            except (KeyError, ValueError, TypeError) as e:
+                logger.debug(f"Material lookup failed for {material}: {e}")
         
         # Fallback to defaults
         defaults = {

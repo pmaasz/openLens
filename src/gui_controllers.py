@@ -14,10 +14,13 @@ Each controller handles a specific tab/feature:
 - ExportController: Manages export functionality
 """
 
+import logging
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional, List, Callable, Dict, Any, TYPE_CHECKING
 import json
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from lens_editor_gui import Lens, LensEditorWindow
@@ -569,8 +572,8 @@ class LensEditorController:
             try:
                 from tkinter import messagebox
                 messagebox.showwarning("No Lens", "No lens selected to save changes")
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to show warning dialog: {e}")
             return
         
         try:
@@ -599,15 +602,15 @@ class LensEditorController:
             try:
                 from tkinter import messagebox
                 messagebox.showinfo("Success", "Lens updated successfully")
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to show success dialog: {e}")
             
         except ValueError as e:
             try:
                 from tkinter import messagebox
                 messagebox.showerror("Invalid Input", f"Please check your input values: {e}")
-            except:
-                pass
+            except Exception as dialog_error:
+                logger.warning(f"Failed to show error dialog: {dialog_error}")
     
     def reset_fields(self):
         """Reset fields to original lens values"""
@@ -767,8 +770,8 @@ class SimulationController:
             try:
                 from tkinter import messagebox
                 messagebox.showwarning("No Lens", "Please select a lens first")
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to show warning dialog: {e}")
             return
         
         if self.ray_tracer is None:
@@ -776,8 +779,8 @@ class SimulationController:
                 from tkinter import messagebox
                 messagebox.showerror("Unavailable", 
                                    "Ray tracing requires numpy. Install with: pip install numpy")
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to show error dialog: {e}")
             return
         
         try:
@@ -792,14 +795,14 @@ class SimulationController:
             try:
                 from tkinter import messagebox
                 messagebox.showerror("Invalid Input", f"Please check your input values: {e}")
-            except:
-                pass
+            except Exception as dialog_error:
+                logger.warning(f"Failed to show error dialog: {dialog_error}")
         except Exception as e:
             try:
                 from tkinter import messagebox
                 messagebox.showerror("Simulation Error", f"Error during simulation: {e}")
-            except:
-                pass
+            except Exception as dialog_error:
+                logger.error(f"Simulation failed: {e}, dialog error: {dialog_error}")
     
     def draw_rays(self, rays):
         """Draw ray paths on canvas"""
@@ -1033,8 +1036,8 @@ class PerformanceController:
             try:
                 from tkinter import messagebox
                 messagebox.showwarning("No Lens", "Please select a lens first")
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to show warning dialog: {e}")
             return
         
         if not self.aberrations_available:
@@ -1121,14 +1124,14 @@ class PerformanceController:
             try:
                 from tkinter import messagebox
                 messagebox.showerror("Invalid Input", f"Please check your input values: {e}")
-            except:
-                pass
+            except Exception as dialog_error:
+                logger.warning(f"Failed to show error dialog: {dialog_error}")
         except Exception as e:
             try:
                 from tkinter import messagebox
                 messagebox.showerror("Calculation Error", f"Error during calculation: {e}")
-            except:
-                pass
+            except Exception as dialog_error:
+                logger.error(f"Calculation failed: {e}, dialog error: {dialog_error}")
     
     def export_report(self):
         """Export performance report to file"""
@@ -1136,8 +1139,8 @@ class PerformanceController:
             try:
                 from tkinter import messagebox
                 messagebox.showwarning("No Lens", "No analysis to export")
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to show warning dialog: {e}")
             return
         
         # Get report content
@@ -1160,8 +1163,8 @@ class PerformanceController:
             try:
                 from tkinter import messagebox
                 messagebox.showerror("Export Error", f"Failed to export: {e}")
-            except:
-                pass
+            except Exception as dialog_error:
+                logger.error(f"Export failed: {e}, dialog error: {dialog_error}")
 
 
 class ComparisonController:
@@ -1324,7 +1327,8 @@ class ComparisonController:
             try:
                 fl = lens.calculate_focal_length()
                 focal_lengths.append(f"{fl:>15.2f}" if fl else f"{'N/A':>15}")
-            except:
+            except (ValueError, ZeroDivisionError, AttributeError) as e:
+                logger.debug(f"Failed to calculate focal length: {e}")
                 focal_lengths.append(f"{'Error':>15}")
         
         result += f"{'Focal Length (mm)':<25} " + " ".join(focal_lengths) + "\n"
@@ -1554,7 +1558,8 @@ class ExportController:
         try:
             fl = self.current_lens.calculate_focal_length()
             report += f"Focal Length: {fl:.2f} mm\n" if fl else "Focal Length: N/A\n"
-        except:
+        except (ValueError, ZeroDivisionError, AttributeError) as e:
+            logger.debug(f"Failed to calculate focal length: {e}")
             report += "Focal Length: Error\n"
         
         from tkinter import filedialog
