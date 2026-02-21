@@ -219,7 +219,7 @@ class LensVisualizer:
         # Validate inputs
         if diameter <= 0:
             try:
-                from lens_editor_gui import CopyableMessageBox
+                from dialogs import CopyableMessageBox
                 CopyableMessageBox.showwarning(
                     None,
                     "Invalid Lens Parameters",
@@ -237,7 +237,7 @@ class LensVisualizer:
         
         if thickness <= 0:
             try:
-                from lens_editor_gui import CopyableMessageBox
+                from dialogs import CopyableMessageBox
                 CopyableMessageBox.showwarning(
                     None,
                     "Invalid Lens Parameters",
@@ -421,7 +421,7 @@ class LensVisualizer:
         # Validate inputs
         if diameter <= 0:
             try:
-                from lens_editor_gui import CopyableMessageBox
+                from dialogs import CopyableMessageBox
                 CopyableMessageBox.showwarning(
                     None,
                     "Invalid Lens Parameters",
@@ -439,7 +439,7 @@ class LensVisualizer:
         
         if thickness <= 0:
             try:
-                from lens_editor_gui import CopyableMessageBox
+                from dialogs import CopyableMessageBox
                 CopyableMessageBox.showwarning(
                     None,
                     "Invalid Lens Parameters",

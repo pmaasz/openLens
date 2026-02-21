@@ -28,10 +28,10 @@ if TYPE_CHECKING:
 
 # Import CopyableMessageBox for copyable error dialogs
 try:
-    from .lens_editor_gui import CopyableMessageBox
+    from .dialogs import CopyableMessageBox
 except ImportError:
     try:
-        from lens_editor_gui import CopyableMessageBox
+        from dialogs import CopyableMessageBox
     except ImportError:
         # Fallback to standard messagebox if CopyableMessageBox not available
         from tkinter import messagebox as _mb
