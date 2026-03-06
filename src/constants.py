@@ -207,3 +207,29 @@ IMAGE_DPI_PRINT = 600
 # STL export
 STL_BINARY = True
 STL_ASCII = False
+
+# ==================== Logging Constants ====================
+
+# Logging configuration
+LOG_LEVEL_DEBUG = "DEBUG"
+LOG_LEVEL_INFO = "INFO"
+LOG_LEVEL_WARNING = "WARNING"
+LOG_LEVEL_ERROR = "ERROR"
+LOG_LEVEL_CRITICAL = "CRITICAL"
+
+# Default logging level (can be overridden by environment variable OPENLENS_LOG_LEVEL)
+DEFAULT_LOG_LEVEL = LOG_LEVEL_WARNING
+
+# Log format strings
+LOG_FORMAT_SIMPLE = "%(levelname)s: %(message)s"
+LOG_FORMAT_DETAILED = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+LOG_FORMAT_DEBUG = "%(asctime)s - %(name)s:%(lineno)d - %(levelname)s - %(message)s"
+
+# Default format for application
+DEFAULT_LOG_FORMAT = LOG_FORMAT_SIMPLE
+
+# Date format for logging
+LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+# Environment variable name for log level override
+LOG_LEVEL_ENV_VAR = "OPENLENS_LOG_LEVEL"

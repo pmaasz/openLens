@@ -4,10 +4,14 @@ openlens - Interactive Optical Lens Creation and Modification Tool
 """
 
 import json
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+
+# Setup module logger
+logger = logging.getLogger(__name__)
 
 try:
     from .lens import Lens
@@ -83,8 +87,8 @@ class LensManager:
                 must_exist=False
             ))
         except (ValidationError, Exception) as e:
-            print(f"Warning: Invalid storage file path '{storage_file}': {e}")
-            print(f"Using default: lenses.json")
+            logger.warning("Invalid storage file path '%s': %s", storage_file, e)
+            logger.info("Using default: lenses.json")
             self.storage_file = "lenses.json"
         
         self.lenses = self.load_lenses()
@@ -112,7 +116,7 @@ class LensManager:
             try:
                 validated_data = validate_lenses_json_schema(data)
             except ValidationError as e:
-                print(f"Error: Invalid JSON schema in storage file: {e}")
+                logger.error("Invalid JSON schema in storage file: %s", e)
                 return []
             
             # Load lenses from validated data
@@ -122,7 +126,7 @@ class LensManager:
                     # Additional validation happens in from_dict via Lens.__init__
                     lenses.append(Lens.from_dict(lens_data))
                 except Exception as e:
-                    print(f"Warning: Failed to load lens {i}: {e}")
+                    logger.warning("Failed to load lens %d: %s", i, e)
             
             return lenses
             
@@ -130,10 +134,10 @@ class LensManager:
             # File doesn't exist or path invalid - return empty list
             return []
         except json.JSONDecodeError as e:
-            print(f"Error: Invalid JSON in storage file: {e}")
+            logger.error("Invalid JSON in storage file: %s", e)
             return []
         except Exception as e:
-            print(f"Error loading lenses: {e}")
+            logger.error("Error loading lenses: %s", e)
             return []
     
     def save_lenses(self) -> bool:
@@ -159,7 +163,7 @@ class LensManager:
                 parent_dir.mkdir(parents=True, exist_ok=True)
             
             if not os.access(parent_dir, os.W_OK):
-                print(f"Error: Directory is not writable: {parent_dir}")
+                logger.error("Directory is not writable: %s", parent_dir)
                 return False
             
             # Serialize lenses to JSON
@@ -174,7 +178,7 @@ class LensManager:
                 # Atomic rename
                 temp_path.replace(file_path)
                 
-                print(f"✓ Saved {len(self.lenses)} lens(es) to {file_path}")
+                logger.info("Saved %d lens(es) to %s", len(self.lenses), file_path)
                 return True
                 
             finally:
@@ -183,16 +187,16 @@ class LensManager:
                     temp_path.unlink()
             
         except ValidationError as e:
-            print(f"Error: Invalid file path: {e}")
+            logger.error("Invalid file path: %s", e)
             return False
         except PermissionError as e:
-            print(f"Error: Permission denied when writing to {self.storage_file}: {e}")
+            logger.error("Permission denied when writing to %s: %s", self.storage_file, e)
             return False
         except OSError as e:
-            print(f"Error: OS error when saving lenses: {e}")
+            logger.error("OS error when saving lenses: %s", e)
             return False
         except Exception as e:
-            print(f"Error saving lenses: {e}")
+            logger.error("Error saving lenses: %s", e)
             return False
     
     def create_lens(self) -> Optional[Lens]:

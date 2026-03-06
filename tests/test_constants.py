@@ -9,7 +9,51 @@ import os
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from constants import *
+from constants import (
+    # Optical constants
+    WAVELENGTH_D_LINE,
+    WAVELENGTH_C_LINE,
+    WAVELENGTH_F_LINE,
+    REFRACTIVE_INDEX_AIR,
+    REFRACTIVE_INDEX_BK7,
+    # Default lens parameters
+    DEFAULT_RADIUS_1,
+    DEFAULT_RADIUS_2,
+    DEFAULT_THICKNESS,
+    DEFAULT_DIAMETER,
+    # GUI constants
+    COLOR_BG_DARK,
+    FONT_SIZE_NORMAL,
+    FONT_SIZE_LARGE,
+    PADDING_SMALL,
+    PADDING_MEDIUM,
+    PADDING_LARGE,
+    # Validation constants
+    MIN_RADIUS_OF_CURVATURE,
+    MAX_RADIUS_OF_CURVATURE,
+    MIN_THICKNESS,
+    MAX_THICKNESS,
+    MIN_REFRACTIVE_INDEX,
+    MAX_REFRACTIVE_INDEX,
+    # Aberration thresholds
+    SPHERICAL_ABERRATION_EXCELLENT,
+    SPHERICAL_ABERRATION_GOOD,
+    SPHERICAL_ABERRATION_POOR,
+    COMA_EXCELLENT,
+    COMA_POOR,
+    # Unit conversions
+    MM_TO_METERS,
+    METERS_TO_MM,
+    NM_TO_MM,
+    # Lens types
+    ALL_LENS_TYPES,
+    LENS_TYPE_BICONVEX,
+    LENS_TYPE_PLANO_CONVEX,
+    # Quality thresholds
+    QUALITY_EXCELLENT_THRESHOLD,
+    QUALITY_GOOD_THRESHOLD,
+    QUALITY_FAIR_THRESHOLD,
+)
 
 
 class TestConstants(unittest.TestCase):

@@ -6,10 +6,14 @@ and importing from major glass catalogs (Schott, Ohara, Hoya)
 """
 
 import json
+import logging
 import os
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 import math
+
+# Setup module logger
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -246,7 +250,7 @@ class MaterialDatabase:
                     for name, mat_data in data.items():
                         self.materials[name] = MaterialProperties.from_dict(mat_data)
             except Exception as e:
-                print(f"Warning: Could not load material database: {e}")
+                logger.warning("Could not load material database: %s", e)
     
     def save_database(self) -> None:
         """Save materials to JSON file"""

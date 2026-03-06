@@ -13,8 +13,12 @@ Requires:
 - matplotlib (for plotting)
 """
 
+import logging
 import numpy as np
 from typing import Dict, Tuple, Optional
+
+# Setup module logger
+logger = logging.getLogger(__name__)
 
 # Optional scipy import for Bessel functions
 try:
@@ -22,7 +26,7 @@ try:
     SCIPY_AVAILABLE = True
 except ImportError:
     SCIPY_AVAILABLE = False
-    print("Warning: scipy not available. Diffraction calculations will use approximations.")
+    logger.warning("scipy not available. Diffraction calculations will use approximations.")
     
     # Fallback approximation for j1(x) Bessel function
     def j1(x: float) -> float:
@@ -42,7 +46,7 @@ try:
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
-    print("Warning: matplotlib not available. Plotting disabled for diffraction module.")
+    logger.warning("matplotlib not available. Plotting disabled for diffraction module.")
 
 
 class DiffractionCalculator:

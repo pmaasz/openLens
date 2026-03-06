@@ -9,7 +9,22 @@ import os
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from validation import *
+from validation import (
+    ValidationError,
+    validate_radius,
+    validate_thickness,
+    validate_diameter,
+    validate_refractive_index,
+    validate_wavelength,
+    validate_temperature,
+    validate_positive_number,
+    validate_non_negative_number,
+    validate_range,
+    validate_lens_name,
+    safe_float_conversion,
+    validate_lens_parameters,
+    check_physical_feasibility,
+)
 
 
 class TestValidationFunctions(unittest.TestCase):
