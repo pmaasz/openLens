@@ -8,8 +8,6 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-41%20passing-brightgreen.svg)](docs/TESTING.md)
 
-[Features](#features) • [Installation](#installation) • [Usage](#usage) • [Documentation](#documentation) • [Testing](#testing) • [Contributing](#contributing)
-
 </div>
 
 ---
@@ -31,20 +29,14 @@ openlens is a desktop application for designing and analyzing **single glass opt
 - Select from common optical materials (BK7, Fused Silica, Crown Glass, etc.)
 - Support for all lens types: Biconvex, Biconcave, Plano-Convex, Plano-Concave, Meniscus
 
-### 📊 **Real-Time Calculations**
-- Automatic focal length calculation using lensmaker's equation
-- Optical power display in diopters
-- Instant updates as you modify parameters
-
-### 🌈 **Ray Tracing Simulation** (New in v1.2!)
+### 🌈 **Ray Tracing Simulation**
 - Visual ray tracing through lens elements
 - Snell's law physics simulation
 - Parallel rays (collimated beam) and point source modes
 - Automatic focal point detection and display
 - Interactive controls for number of rays and angles
-- See light actually bending through your lens design!
 
-### 🔬 **Aberrations Analysis** (New in v1.1!)
+### 🔬 **Aberrations Analysis**
 - Calculate five primary (Seidel) aberrations
 - Chromatic aberration with material-specific Abbe numbers
 - Spherical aberration, coma, astigmatism, field curvature, distortion
@@ -55,27 +47,7 @@ openlens is a desktop application for designing and analyzing **single glass opt
 
 ### 🎨 **3D Visualization**
 - Interactive 3D rendering of lens cross-section
-- Real-time visualization updates
 - Visualize spherical surfaces and lens geometry
-- Rotate and zoom to inspect lens design
-- Requires: matplotlib and numpy (optional)
-
-### 💾 **Data Management**
-- Save/load lens designs to JSON format
-- Duplicate existing lenses for variations
-- Full edit history with timestamps
-- Import/export lens libraries
-
-### 🖥️ **Two Interfaces**
-- **GUI Version**: Full-featured graphical interface with forms and real-time calculations
-- **CLI Version**: Command-line interface for quick operations and scripting
-
-### ✅ **Fully Tested**
-- 85+ functional tests covering all features
-- Validated optical calculations
-- Aberrations calculations verified
-- Ray tracing physics validated
-- Error handling and edge case testing
 
 ---
 
@@ -226,145 +198,6 @@ The script will:
    ```bash
    deactivate
    ```
-
----
-
-## Usage
-
-### GUI Version (Recommended)
-
-Launch the graphical interface:
-
-```bash
-python3 openlens.py
-```
-
-**Interface Overview:**
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│  openlens - Optical Lens Editor                             │
-├─────────────────┬────────────────────────────────────────────┤
-│ Optical Lenses  │  Optical Lens Properties                   │
-│                 │                                            │
-│ • Lens 1        │  ID: [                ]                    │
-│ • Lens 2        │  Name: [                ]                  │
-│ • Lens 3        │  ─────────────────────────                 │
-│                 │  Radius of Curvature 1: [100.0] mm         │
-│ [New] [Delete]  │  Radius of Curvature 2: [-100.0] mm        │
-│ [Duplicate]     │  Center Thickness: [5.0] mm                │
-│                 │  Diameter: [50.0] mm                       │
-│                 │  Refractive Index: [1.5168]                │
-│                 │  Type: [Biconvex ▼]                        │
-│                 │  Material: [BK7 ▼]                         │
-│                 │  ─────────────────────────                 │
-│                 │  Created At: [2026-02-02T12:00:00]         │
-│                 │  Modified At: [2026-02-02T12:30:00]        │
-│                 │                                            │
-│                 │  [Save] [Clear] [Calculate] [Auto-Update]  │
-│                 │                                            │
-│                 │  ┌──── Calculated Properties ────┐         │
-│                 │  │ Focal Length: 97.58 mm        │         │
-│                 │  │ Optical Power: 10.25 D        │         │
-│                 │  └───────────────────────────────┘         │
-└─────────────────┴────────────────────────────────────────────┘
-```
-
-**Workflow:**
-1. Click **"New"** to create a new lens
-2. Fill in the lens properties (name, radii, material, etc.)
-3. Click **"Calculate Focal Length"** to see optical properties
-4. Click **"Save"** to store the lens
-5. Select a lens from the list to edit it
-6. Use **"Duplicate"** to create variations of existing lenses
-
-### Command-Line Version
-
-Launch the terminal interface:
-
-```bash
-python3 -m src.lens_editor
-```
-
-**Menu Options:**
-```
---- Menu ---
-1. Create new lens
-2. List all lenses
-3. View lens details
-4. Modify lens
-5. Delete lens
-6. Exit
-```
-
-**Example Session:**
-```bash
-$ python3 -m src.lens_editor
-
-==================================================
-   openlens - Optical Lens Creation Tool
-==================================================
-
---- Menu ---
-1. Create new lens
-Select option: 1
-
-=== Create New Optical Lens ===
-Lens name: My Biconvex Lens
-Radius of curvature 1 (mm) [100.0]: 100
-Radius of curvature 2 (mm) [-100.0]: -100
-Center thickness (mm) [5.0]: 5
-Diameter (mm) [50.0]: 50
-Refractive index [1.5168]: 1.5168
-Type (Biconvex/Biconcave/etc) [Biconvex]: Biconvex
-Material (BK7/Fused Silica/etc) [BK7]: BK7
-
-✓ Lens created successfully!
-
-Optical Lens Details:
-  Name: My Biconvex Lens
-  Focal Length: 97.58mm
-  Material: BK7
-  ...
-```
-
----
-
-## 3D Visualization
-
-The GUI includes an interactive 3D visualization panel that displays the lens geometry in real-time.
-
-### Features
-- **Real-time rendering**: Updates automatically when you select or modify a lens
-- **Interactive view**: Rotate, zoom, and pan the 3D model
-- **Color-coded surfaces**: 
-  - Blue: Front surface (R1)
-  - Green: Back surface (R2)
-  - Gray: Lens edge
-  - Red dashed line: Optical axis
-
-### Requirements
-The 3D visualization requires matplotlib and numpy:
-```bash
-pip install matplotlib numpy
-```
-
-If these libraries are not installed, the application will still work but the 3D panel will show an installation message.
-
-### Using the Visualization
-1. Select or create a lens in the editor
-2. The 3D view updates automatically
-3. Click **"Update 3D View"** to manually refresh
-4. Use mouse to rotate the view:
-   - Left-click + drag: Rotate
-   - Right-click + drag: Zoom
-   - Middle-click + drag: Pan
-
-### Testing the Visualization
-Test the 3D rendering separately:
-```bash
-python test_visualization.py
-```
 
 ---
 
@@ -620,17 +453,6 @@ sudo pacman -S tk
 # macOS - reinstall Python from python.org
 ```
 
-### Issue: Tests failing
-
-**Solution:**
-```bash
-# Ensure you're in the project directory
-cd /path/to/openLens
-
-# Run tests with verbose output
-python3 tests/run_all_tests.py
-```
-
 ### Issue: Lenses not saving
 
 **Solution:**
@@ -702,36 +524,6 @@ This project is open source and available under the MIT License.
 
 ---
 
-## Acknowledgments
-
-- Lensmaker's equation implementation based on geometric optics principles
-- Material refractive indices from standard optical glass catalogs
-- Built with Python and tkinter
-
----
-
-## Documentation
-
-### Available Documentation
-
-- **[README.md](README.md)** - This file: Getting started, features, usage
-- **[API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md)** - Complete API reference for library use
-- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture and design diagrams
-- **[CONTRIBUTING.md](docs/CONTRIBUTING.md)** - Contributing guidelines and development workflow
-- **[TESTING.md](docs/TESTING.md)** - Testing strategy and test coverage
-
-### Quick Links
-
-| I want to... | Read this... |
-|--------------|--------------|
-| Use openlens as a desktop app | [Usage](#usage) section above |
-| Use openlens in my Python code | [API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) |
-| Understand the code structure | [ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| Contribute to the project | [CONTRIBUTING.md](docs/CONTRIBUTING.md) |
-| Run or write tests | [TESTING.md](docs/TESTING.md) |
-
----
-
 ## Contact & Support
 
 For questions, issues, or suggestions:
@@ -739,12 +531,6 @@ For questions, issues, or suggestions:
 - **Feature requests**: Create an issue with the `enhancement` label
 - **Questions**: Open a discussion or issue with the `question` label
 - **Security issues**: Contact maintainers directly (see repository)
-
-### Useful Links
-- [GitHub Issues](../../issues) - Report bugs and request features
-- [API Documentation](docs/API_DOCUMENTATION.md) - Using openlens as a library
-- [Architecture Guide](docs/ARCHITECTURE.md) - Understanding the codebase
-- [Contributing Guide](docs/CONTRIBUTING.md) - How to contribute
 
 ---
 
