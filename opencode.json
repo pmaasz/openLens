@@ -1,0 +1,11 @@
+{
+  "$schema": "https://opencode.ai/config.schema.json",
+  "instructions": [
+    "After editing files in src/, invoke the test-runner subagent to verify no regressions were introduced.",
+    "After editing files in docs/sphinx/source/, invoke the doc-checker subagent to validate documentation.",
+    "When creating or modifying Python code, always use logging (logger.*) instead of print() statements.",
+    "Import constants from src/constants.py instead of hardcoding magic numbers.",
+    "All public functions must have Google-style docstrings with Args, Returns, and Raises sections.",
+    "Changes to src/ should include corresponding test updates in tests/ when adding new functionality."
+  ]
+}
