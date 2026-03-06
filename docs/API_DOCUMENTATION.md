@@ -1,6 +1,13 @@
-# openlens API Documentation
+# OpenLens API Documentation
 
-Complete API reference for using openlens as a Python library in your own projects.
+> **Note**: This content has been replaced by auto-generated Sphinx documentation.
+> For the most up-to-date API reference, please see `docs/sphinx/source/api/`
+> or build the Sphinx documentation with `cd docs/sphinx && make html`.
+> 
+> The Sphinx documentation uses autodoc to generate API documentation directly
+> from the source code docstrings, ensuring accuracy and up-to-date information.
+
+Complete API reference for using OpenLens as a Python library in your own projects.
 
 ---
 

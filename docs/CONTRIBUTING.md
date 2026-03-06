@@ -1,6 +1,10 @@
-# Contributing to openlens
+# Contributing to OpenLens
 
-Thank you for your interest in contributing to openlens! This document provides comprehensive guidelines for contributing to the project.
+> **Note**: This content has been migrated to Sphinx documentation.
+> For the most up-to-date version, please see `docs/sphinx/source/contributing.rst`
+> or build the Sphinx documentation with `cd docs/sphinx && make html`.
+
+Thank you for your interest in contributing to OpenLens! This document provides comprehensive guidelines for contributing to the project.
 
 ---
 

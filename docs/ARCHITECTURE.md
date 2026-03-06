@@ -1,6 +1,10 @@
-# openlens Architecture
+# OpenLens Architecture
 
-Comprehensive architectural overview of the openlens optical design system.
+> **Note**: This content has been migrated to Sphinx documentation.
+> For the most up-to-date version, please see `docs/sphinx/source/architecture.rst`
+> or build the Sphinx documentation with `cd docs/sphinx && make html`.
+
+Comprehensive architectural overview of the OpenLens optical design system.
 
 ---
 

@@ -1,5 +1,10 @@
 # Ray Tracing Guide for OpenLens
 
+> **Note**: This content has been migrated to Sphinx documentation.
+> For the most up-to-date version, please see the Ray Tracing section in 
+> `docs/sphinx/source/user_guide.rst` or build the Sphinx documentation 
+> with `cd docs/sphinx && make html`.
+
 ## Overview
 The OpenLens application now includes a powerful ray tracing simulation that allows you to visualize how light rays travel through optical lenses. This guide explains how to use the ray tracing features in the GUI.
 

@@ -1,6 +1,11 @@
-# openlens Testing Guide
+# OpenLens Testing Guide
 
-This document describes the functional tests for the openlens application.
+> **Note**: This content has been migrated to Sphinx documentation.
+> For the most up-to-date version, please see the Testing section in 
+> `docs/sphinx/source/contributing.rst` or build the Sphinx documentation 
+> with `cd docs/sphinx && make html`.
+
+This document describes the functional tests for the OpenLens application.
 
 ## Test Files
 
