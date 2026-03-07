@@ -55,7 +55,7 @@ class LensSelectionController:
     - Update selection info panel
     """
     
-    def __init__(self, parent_window, lens_list, colors, on_lens_selected, on_create_new, on_delete, on_lens_updated):
+    def __init__(self, parent_window, lens_list, colors, on_lens_selected, on_create_new, on_delete, on_lens_updated, on_export=None):
         """
         Initialize the lens selection controller.
         
@@ -67,6 +67,7 @@ class LensSelectionController:
             on_create_new: Callback when creating new lens
             on_delete: Callback when deleting lens
             on_lens_updated: Callback when lens is updated
+            on_export: Callback when exporting lens (optional)
         """
         self.window = parent_window
         self.lens_list = lens_list
@@ -75,6 +76,7 @@ class LensSelectionController:
         self.on_create_new_callback = on_create_new
         self.on_delete_callback = on_delete
         self.on_lens_updated_callback = on_lens_updated
+        self.on_export_callback = on_export
         self.selected_lens = None
         self.listbox = None
         self.info_text = None
@@ -163,6 +165,11 @@ class LensSelectionController:
         ttk.Button(button_frame, text="Delete Lens", 
                   command=self.delete_lens,
                   width=20).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        
+        if self.on_export_callback:
+            ttk.Button(button_frame, text="Export to STL", 
+                      command=self.export_lens,
+                      width=20).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         # Load initial data
         self.refresh_lens_list()
@@ -262,6 +269,21 @@ Modified: {lens.modified_at}"""
                 self.info_text.delete(1.0, tk.END)
                 self.info_text.insert(1.0, "Select a lens to view details")
                 self.info_text.config(state='disabled')
+    
+    def export_lens(self):
+        """Export selected lens via callback"""
+        if self.on_export_callback:
+            selection = self.listbox.curselection()
+            if not selection:
+                # If no selection in listbox, try using selected_lens
+                if self.selected_lens:
+                    self.on_export_callback(self.selected_lens)
+                return
+            
+            index = selection[0]
+            if 0 <= index < len(self.lens_list):
+                lens = self.lens_list[index]
+                self.on_export_callback(lens)
 
 
 class LensEditorController:
@@ -291,6 +313,7 @@ class LensEditorController:
         self.auto_update_var = None
         self.material_var = None
         self.material_menu = None
+        self._autosave_timer = None
     
     def setup_ui(self, parent_frame):
         """Set up the editor tab UI"""
@@ -330,16 +353,21 @@ class LensEditorController:
         material_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
         self.create_material_selector(material_frame)
         
+        # Fresnel lens section
+        fresnel_frame = ttk.LabelFrame(scrollable_frame, text="Fresnel Properties", padding=PADDING_MEDIUM)
+        fresnel_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.create_fresnel_fields(fresnel_frame)
+        
         # Results frame
         results_frame = ttk.LabelFrame(scrollable_frame, text="Calculated Properties", padding=PADDING_MEDIUM)
-        results_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+        results_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
         
         # Create result labels
         self.create_result_fields(results_frame)
         
         # Control buttons
         button_frame = ttk.Frame(scrollable_frame)
-        button_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_MEDIUM)
+        button_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_MEDIUM)
         
         ttk.Button(button_frame, text="Calculate", 
                   command=self.calculate_properties, width=15).pack(side=tk.LEFT, padx=PADDING_SMALL)
@@ -415,6 +443,47 @@ class LensEditorController:
         
         parent.columnconfigure(1, weight=1)
     
+    def create_fresnel_fields(self, parent):
+        """Create input fields for Fresnel properties"""
+        try:
+            from constants import PADDING_SMALL
+        except ImportError:
+            PADDING_SMALL = 5
+        
+        # Fresnel toggle
+        self.entry_fields['is_fresnel'] = tk.BooleanVar(value=False)
+        fresnel_check = ttk.Checkbutton(parent, text="Enable Fresnel Lens", 
+                                       variable=self.entry_fields['is_fresnel'],
+                                       command=self.on_fresnel_toggle)
+        fresnel_check.grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=PADDING_SMALL)
+        
+        # Groove pitch
+        ttk.Label(parent, text="Groove Pitch (mm):").grid(row=1, column=0, sticky=tk.W, pady=PADDING_SMALL)
+        self.entry_fields['groove_pitch'] = ttk.Entry(parent, width=20)
+        self.entry_fields['groove_pitch'].grid(row=1, column=1, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.entry_fields['groove_pitch'].insert(0, "0.5")
+        self.entry_fields['groove_pitch'].bind('<KeyRelease>', self.on_field_changed)
+        
+        # Number of grooves (readonly)
+        ttk.Label(parent, text="Number of Grooves:").grid(row=2, column=0, sticky=tk.W, pady=PADDING_SMALL)
+        self.entry_fields['num_grooves'] = ttk.Entry(parent, width=20, state='readonly')
+        self.entry_fields['num_grooves'].grid(row=2, column=1, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+        
+        parent.columnconfigure(1, weight=1)
+        
+        # Initial state
+        self.on_fresnel_toggle()
+    
+    def on_fresnel_toggle(self):
+        """Handle Fresnel checkbox toggle"""
+        is_fresnel = self.entry_fields['is_fresnel'].get()
+        state = 'normal' if is_fresnel else 'disabled'
+        
+        if 'groove_pitch' in self.entry_fields:
+            self.entry_fields['groove_pitch'].config(state=state)
+        
+        self.on_field_changed()
+    
     def on_material_changed(self, event=None):
         """Update refractive index when material changes"""
         material_indices = {
@@ -476,6 +545,8 @@ class LensEditorController:
             diameter = lens.get('diameter', 50)
             refractive_index = lens.get('refractive_index', 1.5)
             material = lens.get('material', 'BK7')
+            is_fresnel = lens.get('is_fresnel', False)
+            groove_pitch = lens.get('groove_pitch', 0.5)
         else:
             name = lens.name
             lens_type = lens.lens_type if hasattr(lens, 'lens_type') else "Biconvex"
@@ -485,6 +556,8 @@ class LensEditorController:
             diameter = lens.diameter
             refractive_index = lens.refractive_index
             material = lens.material if hasattr(lens, 'material') else 'BK7'
+            is_fresnel = lens.is_fresnel if hasattr(lens, 'is_fresnel') else False
+            groove_pitch = lens.groove_pitch if hasattr(lens, 'groove_pitch') else 0.5
         
         self.entry_fields['name'].delete(0, tk.END)
         self.entry_fields['name'].insert(0, name)
@@ -507,6 +580,15 @@ class LensEditorController:
         self.entry_fields['n'].delete(0, tk.END)
         self.entry_fields['n'].insert(0, str(refractive_index))
         
+        # Fresnel fields
+        if 'is_fresnel' in self.entry_fields:
+            self.entry_fields['is_fresnel'].set(is_fresnel)
+            self.on_fresnel_toggle()
+            
+        if 'groove_pitch' in self.entry_fields:
+            self.entry_fields['groove_pitch'].delete(0, tk.END)
+            self.entry_fields['groove_pitch'].insert(0, str(groove_pitch))
+        
         # Set material if available
         if self.material_var:
             self.material_var.set(material)
@@ -515,16 +597,45 @@ class LensEditorController:
     
     def clear_fields(self):
         """Clear all input fields"""
-        for entry in self.entry_fields.values():
-            entry.delete(0, tk.END)
+        for key, entry in self.entry_fields.items():
+            if isinstance(entry, (tk.Entry, ttk.Entry, ttk.Combobox)):
+                entry.delete(0, tk.END)
+            elif isinstance(entry, tk.BooleanVar):
+                entry.set(False)
+            # Handle other widget types if needed
         
         for label in self.result_labels.values():
             label.config(text="N/A")
     
     def on_field_changed(self, event=None):
-        """Handle field change event for auto-calculation"""
+        """Handle field change event for auto-calculation and autosave"""
         if self.auto_update_var and self.auto_update_var.get():
             self.calculate_properties()
+        
+        self.start_autosave_timer()
+
+    def start_autosave_timer(self):
+        """Start or reset the autosave timer (2 seconds)"""
+        # Cancel existing timer if any
+        if self._autosave_timer and self.entry_fields:
+            try:
+                # Use any widget to cancel the timer
+                widget = next(iter(self.entry_fields.values()))
+                if isinstance(widget, (tk.Widget, ttk.Widget)):
+                    widget.after_cancel(self._autosave_timer)
+            except (tk.TclError, ValueError, StopIteration):
+                pass
+            self._autosave_timer = None
+        
+        # Start new timer
+        if self.entry_fields:
+            try:
+                widget = next(iter(self.entry_fields.values()))
+                if isinstance(widget, (tk.Widget, ttk.Widget)):
+                    # Save silently after delay
+                    self._autosave_timer = widget.after(2000, lambda: self.save_changes(silent=True))
+            except (StopIteration, tk.TclError):
+                pass
     
     def calculate_properties(self):
         """Calculate optical properties from current field values"""
@@ -584,15 +695,23 @@ class LensEditorController:
             self.result_labels['bfl'].config(text="∞")
             self.result_labels['ffl'].config(text="∞")
     
-    def save_changes(self):
+    def save_changes(self, silent: bool = False):
         """Save changes to the current lens"""
+        # If no lens selected, create a new one
         if self.current_lens is None:
             try:
-                from tkinter import messagebox
-                CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Lens", "No lens selected to save changes")
-            except Exception as e:
-                logger.warning(f"Failed to show warning dialog: {e}")
-            return
+                from lens import Lens
+                # Create a new lens with default values which will be overwritten below
+                self.current_lens = Lens()
+                logger.info("Created new lens object for saving")
+            except ImportError:
+                if not silent:
+                    try:
+                        from tkinter import messagebox
+                        CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Error", "Could not import Lens class")
+                    except Exception:
+                        pass
+                return
         
         try:
             # Validate and update lens
@@ -609,6 +728,24 @@ class LensEditorController:
             if self.material_var:
                 self.current_lens.material = self.material_var.get()
             
+            # Save Fresnel properties
+            if 'is_fresnel' in self.entry_fields:
+                self.current_lens.is_fresnel = self.entry_fields['is_fresnel'].get()
+            
+            if 'groove_pitch' in self.entry_fields:
+                try:
+                    self.current_lens.groove_pitch = float(self.entry_fields['groove_pitch'].get())
+                    self.current_lens.calculate_num_grooves()
+                    
+                    # Update readonly field
+                    if 'num_grooves' in self.entry_fields:
+                        self.entry_fields['num_grooves'].config(state='normal')
+                        self.entry_fields['num_grooves'].delete(0, tk.END)
+                        self.entry_fields['num_grooves'].insert(0, str(self.current_lens.num_grooves))
+                        self.entry_fields['num_grooves'].config(state='readonly')
+                except ValueError:
+                    pass  # Ignore invalid pitch during save (will be caught by validation)
+
             # Update timestamp
             from datetime import datetime
             self.current_lens.modified_at = datetime.now().isoformat()
@@ -617,18 +754,22 @@ class LensEditorController:
             if self.on_lens_updated_callback:
                 self.on_lens_updated_callback(self.current_lens)
             
-            try:
-                from tkinter import messagebox
-                CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", "Lens updated successfully")
-            except Exception as e:
-                logger.debug(f"Failed to show success dialog: {e}")
+            if not silent:
+                try:
+                    from tkinter import messagebox
+                    CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", "Lens updated successfully")
+                except Exception as e:
+                    logger.debug(f"Failed to show success dialog: {e}")
             
         except ValueError as e:
-            try:
-                from tkinter import messagebox
-                CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Invalid Input", f"Please check your input values: {e}")
-            except Exception as dialog_error:
-                logger.warning(f"Failed to show error dialog: {dialog_error}")
+            if not silent:
+                try:
+                    from tkinter import messagebox
+                    CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Invalid Input", f"Please check your input values: {e}")
+                except Exception as dialog_error:
+                    logger.warning(f"Failed to show error dialog: {dialog_error}")
+            else:
+                logger.warning(f"Autosave failed due to invalid input: {e}")
     
     def reset_fields(self):
         """Reset fields to original lens values"""

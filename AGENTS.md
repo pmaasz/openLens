@@ -7,8 +7,8 @@ This file provides guidance for AI coding agents working in this repository.
 OpenLens is an interactive optical lens design and simulation tool for single glass lens elements.
 - **Language**: Python 3.6+
 - **License**: MIT
-- **Core Dependencies**: Standard library only (tkinter, json, math, unittest)
-- **Optional Dependencies**: matplotlib, numpy, scipy, Pillow (for advanced features)
+- **Core Dependencies**: Standard library only (tkinter, json, math, unittest). **IMPORTANT**: Always prefer the standard library over external dependencies.
+- **Optional Dependencies**: matplotlib, numpy, scipy, Pillow (for advanced features). **RULE**: Only use these if explicitly requested or if performance requirements cannot be met with standard Python.
 
 ## Project Structure
 
@@ -335,10 +335,10 @@ class TestFeatureName(unittest.TestCase):
 
 This project has automation subagents configured in `.opencode/agents/`:
 
-### test-runner
-- **Purpose**: Run the test suite and report results
-- **When to use**: After editing `src/` or `tests/` files
-- **Command**: Invokes `python3 tests/run_all_tests.py`
+### quality-checker
+- **Purpose**: Run tests, formatters (black), and linters (flake8)
+- **When to use**: After editing `src/` or `tests/` files, before committing
+- **Command**: Checks formatting, runs linter, and invokes `python3 tests/run_all_tests.py`
 
 ### doc-checker
 - **Purpose**: Validate Sphinx documentation
