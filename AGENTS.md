@@ -344,3 +344,9 @@ This project has automation subagents configured in `.opencode/agents/`:
 - **Purpose**: Validate Sphinx documentation
 - **When to use**: After editing `docs/sphinx/source/` files
 - **Validates**: RST syntax, cross-references, Python code examples
+
+### commit
+- **Purpose**: Create well-formatted git commits
+- **When to use**: After completing a feature, fix, or documentation change
+- **Features**: Analyzes changes, generates conventional commit messages, stages files safely
+- **Safety**: Never commits secrets, never force pushes, reviews changes first
