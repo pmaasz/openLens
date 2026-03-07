@@ -71,7 +71,9 @@ class Ray:
         sin_ratio = (n1 / n2) * sin_incident
         
         # Check for total internal reflection
-        if abs(sin_ratio) > REFRACTIVE_INDEX_VACUUM:  # > 1.0 = TIR
+        # TIR occurs when |sin(theta2)| >= 1
+        # Use (1.0 - EPSILON) to handle floating-point edge cases at critical angle
+        if abs(sin_ratio) >= (1.0 - EPSILON):
             # Total internal reflection - reflect instead of refract
             self.angle = 2 * surface_normal_angle - self.angle
             return False
@@ -221,21 +223,28 @@ class LensRayTracer:
             
             discriminant = b*b - 4*a*c
             
-            if discriminant < 0:
-                return None  # No intersection
+            # Handle floating-point edge cases
+            if discriminant < -EPSILON:
+                return None  # Definitely no intersection
+            
+            # Clamp small negative discriminant to zero (tangent case)
+            discriminant = max(0, discriminant)
             
             # Two solutions - pick the one in front of the ray
-            t1 = (-b - math.sqrt(discriminant)) / (2*a)
-            t2 = (-b + math.sqrt(discriminant)) / (2*a)
+            sqrt_disc = math.sqrt(discriminant)
+            t1 = (-b - sqrt_disc) / (2*a)
+            t2 = (-b + sqrt_disc) / (2*a)
             
-            # Choose appropriate intersection
-            if self.R1 > 0:  # Convex
-                t = min(t1, t2) if t1 > 0 else t2
-            else:  # Concave
-                t = max(t1, t2) if t2 > 0 else t1
+            # Filter to only positive t values (intersections in front of ray)
+            valid_ts = [t for t in [t1, t2] if t > EPSILON]
+            if not valid_ts:
+                return None  # No valid intersection in front of ray
             
-            if t < 0:
-                return None
+            # Choose appropriate intersection based on surface curvature
+            if self.R1 > 0:  # Convex - want nearest intersection
+                t = min(valid_ts)
+            else:  # Concave - want farthest intersection
+                t = max(valid_ts)
             
             x = ray.x + t * dx
             y = ray.y + t * dy
@@ -283,20 +292,27 @@ class LensRayTracer:
             
             discriminant = b*b - 4*a*c
             
-            if discriminant < 0:
-                return None
+            # Handle floating-point edge cases
+            if discriminant < -EPSILON:
+                return None  # Definitely no intersection
             
-            t1 = (-b - math.sqrt(discriminant)) / (2*a)
-            t2 = (-b + math.sqrt(discriminant)) / (2*a)
+            # Clamp small negative discriminant to zero (tangent case)
+            discriminant = max(0, discriminant)
             
-            # Choose appropriate intersection
-            if self.R2 < 0:  # Convex (from inside lens)
-                t = min(t1, t2) if t1 > 0 else t2
-            else:  # Concave
-                t = max(t1, t2) if t2 > 0 else t1
+            sqrt_disc = math.sqrt(discriminant)
+            t1 = (-b - sqrt_disc) / (2*a)
+            t2 = (-b + sqrt_disc) / (2*a)
             
-            if t < 0:
-                return None
+            # Filter to only positive t values (intersections in front of ray)
+            valid_ts = [t for t in [t1, t2] if t > EPSILON]
+            if not valid_ts:
+                return None  # No valid intersection in front of ray
+            
+            # Choose appropriate intersection based on surface curvature
+            if self.R2 < 0:  # Convex (from inside lens) - want nearest intersection
+                t = min(valid_ts)
+            else:  # Concave - want farthest intersection
+                t = max(valid_ts)
             
             x = ray.x + t * dx
             y = ray.y + t * dy
@@ -333,7 +349,10 @@ class LensRayTracer:
         
         # Refract at front surface
         normal_angle = self._get_surface_normal_angle(x1, y1, 'front')
-        ray.refract(REFRACTIVE_INDEX_AIR, self.n, normal_angle)
+        if not ray.refract(REFRACTIVE_INDEX_AIR, self.n, normal_angle):
+            # Total internal reflection at front surface (unusual but possible)
+            ray.terminated = True
+            return ray
         
         # Propagate through lens to back surface
         intersection = self._intersect_back_surface(ray)
@@ -349,7 +368,11 @@ class LensRayTracer:
         
         # Refract at back surface
         normal_angle = self._get_surface_normal_angle(x2, y2, 'back')
-        ray.refract(self.n, REFRACTIVE_INDEX_AIR, normal_angle)
+        if not ray.refract(self.n, REFRACTIVE_INDEX_AIR, normal_angle):
+            # Total internal reflection at back surface
+            # This can happen for high-index glass at steep angles
+            ray.terminated = True
+            return ray
         
         # Propagate after lens
         ray.propagate(propagate_distance)

@@ -64,7 +64,10 @@ class LensService:
         Returns:
             Lens: Created lens instance
         """
-        from lens_editor import Lens
+        try:
+            from .lens import Lens
+        except ImportError:
+            from lens import Lens
         
         # Get refractive index from material database if available
         if self.material_db and hasattr(self.material_db, 'get_material'):
@@ -147,7 +150,9 @@ class LensService:
             
             # If material changed, update refractive index
             if 'material' in kwargs and self.material_db:
-                if self.material_db.has_material(kwargs['material']):
+                # MaterialDatabase uses get_material() which returns None if not found
+                mat = self.material_db.get_material(kwargs['material'])
+                if mat is not None:
                     lens.refractive_index = self.material_db.get_refractive_index(
                         kwargs['material'],
                         lens.wavelength,
@@ -218,7 +223,10 @@ class LensService:
         Returns:
             Duplicated lens instance
         """
-        from lens_editor import Lens
+        try:
+            from .lens import Lens
+        except ImportError:
+            from lens import Lens
         
         data = lens.to_dict()
         data.pop('id')
@@ -251,13 +259,19 @@ class CalculationService:
         
         # Try to import optional calculation modules
         try:
-            from aberrations import AberrationsCalculator
+            try:
+                from .aberrations import AberrationsCalculator
+            except ImportError:
+                from aberrations import AberrationsCalculator
             self._aberrations_available = True
         except ImportError:
             pass
         
         try:
-            from ray_tracer import LensRayTracer
+            try:
+                from .ray_tracer import LensRayTracer
+            except ImportError:
+                from ray_tracer import LensRayTracer
             self._ray_tracer_available = True
         except ImportError:
             pass
@@ -280,14 +294,15 @@ class CalculationService:
             return None
         
         try:
-            from aberrations import AberrationsCalculator
+            from .aberrations import AberrationsCalculator
             
             if aperture is None:
                 aperture = lens.diameter / 2.0
             
-            calc = AberrationsCalculator(lens, aperture=aperture, 
-                                        field_angle=field_angle)
-            return calc.calculate_all_aberrations()
+            # AberrationsCalculator only takes lens as constructor argument
+            # field_angle and object_distance are passed to calculate_all_aberrations()
+            calc = AberrationsCalculator(lens)
+            return calc.calculate_all_aberrations(field_angle=field_angle)
         except Exception as e:
             logger.error("Error calculating aberrations: %s", e)
             return None
@@ -310,15 +325,17 @@ class CalculationService:
             return None
         
         try:
-            from ray_tracer import LensRayTracer
+            from .ray_tracer import LensRayTracer
             
             tracer = LensRayTracer(lens)
             
             if ray_type == 'parallel':
                 return tracer.trace_parallel_rays(num_rays=num_rays)
             elif ray_type == 'point_source':
-                return tracer.trace_point_source(
-                    source_position=[-100, 0, 0],
+                # trace_point_source_rays takes (source_x, source_y, num_rays, max_angle, wavelength)
+                return tracer.trace_point_source_rays(
+                    source_x=-100.0,
+                    source_y=0.0,
                     num_rays=num_rays
                 )
             else:
@@ -445,10 +462,11 @@ class MaterialDatabaseService:
             mat = self.db.get_material(material)
             if mat:
                 # Convert MaterialProperties object to dict
-                if hasattr(mat, '__dict__'):
+                # MaterialProperties is a dataclass, so use to_dict() if available
+                if hasattr(mat, 'to_dict'):
+                    return mat.to_dict()
+                elif hasattr(mat, '__dict__'):
                     return {k: v for k, v in mat.__dict__.items() if not k.startswith('_')}
-                elif hasattr(mat, '_asdict'):
-                    return mat._asdict()
                 else:
                     return {'name': material, 'data': str(mat)}
         

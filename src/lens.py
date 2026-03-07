@@ -168,7 +168,8 @@ class Lens:
         R2 = self.radius_of_curvature_2
         d = self.thickness
         
-        if R1 == 0 or R2 == 0:
+        # Use EPSILON for zero check to handle floating-point edge cases
+        if abs(R1) < EPSILON or abs(R2) < EPSILON:
             return None
         
         # Lensmaker's equation: 1/f = (n-1)[1/R1 - 1/R2 + (n-1)d/(nR1R2)]
@@ -222,7 +223,15 @@ class Lens:
         conventional_thickness = self.thickness
         fresnel_thickness = max(1.0, self.groove_pitch * 2)  # Minimum 1mm
         
+        # Guard against division by zero
+        if abs(conventional_thickness) < EPSILON:
+            return None
+        
         reduction_percentage = ((conventional_thickness - fresnel_thickness) / conventional_thickness) * 100
+        
+        # Clamp to meaningful range (can't have more than 100% reduction)
+        reduction_percentage = max(0.0, reduction_percentage)
+        
         return {
             'conventional_thickness': conventional_thickness,
             'fresnel_thickness': fresnel_thickness,
@@ -233,50 +242,76 @@ class Lens:
     def calculate_f_number(self) -> float:
         """Calculate f-number (f/#)"""
         focal_length = self.calculate_focal_length()
-        if focal_length is None or self.diameter == 0:
+        if focal_length is None or abs(self.diameter) < EPSILON:
             return float('inf')
         return abs(focal_length) / self.diameter
 
     def calculate_back_focal_length(self) -> float:
-        """Calculate Back Focal Length (BFL)"""
+        """
+        Calculate Back Focal Length (BFL).
+        
+        BFL is the distance from the back vertex of the lens to the rear focal point.
+        For a thick lens: BFL = f * (1 - d * P1 / n)
+        where P1 = (n-1)/R1 is the power of the first surface,
+        d is the thickness, n is the refractive index, and f is the focal length.
+        
+        Returns:
+            Back focal length in mm, or inf if undefined
+        """
         f = self.calculate_focal_length()
-        if f is None: return float('inf')
+        if f is None:
+            return float('inf')
         
         n = self.refractive_index
         r1 = self.radius_of_curvature_1
-        r2 = self.radius_of_curvature_2
         t = self.thickness
         
         try:
-            power1 = (n - 1) / r1
-            power2 = -(n - 1) / r2
-            power_spacing = (n - 1) * (n - 1) * t / (n * r1 * r2)
-            total_power = power1 + power2 + power_spacing
-            
-            if abs(total_power) < EPSILON:
+            if abs(r1) < EPSILON:
                 return float('inf')
             
-            return (1.0 - power2 * t) / total_power
+            # Power of first surface
+            P1 = (n - 1) / r1
+            
+            # BFL = f * (1 - d * P1 / n)
+            bfl = f * (1.0 - t * P1 / n)
+            
+            return bfl
         except ZeroDivisionError:
             return float('inf')
 
     def calculate_front_focal_length(self) -> float:
-        """Calculate Front Focal Length (FFL)"""
+        """
+        Calculate Front Focal Length (FFL).
+        
+        FFL is the distance from the front vertex of the lens to the front focal point.
+        For a thick lens: FFL = f * (1 - d * P2 / n)
+        where P2 = -(n-1)/R2 is the power of the second surface,
+        d is the thickness, n is the refractive index, and f is the focal length.
+        
+        Returns:
+            Front focal length in mm, or inf if undefined
+        """
+        f = self.calculate_focal_length()
+        if f is None:
+            return float('inf')
+        
         n = self.refractive_index
-        r1 = self.radius_of_curvature_1
         r2 = self.radius_of_curvature_2
         t = self.thickness
         
         try:
-            power1 = (n - 1) / r1
-            power2 = -(n - 1) / r2
-            power_spacing = (n - 1) * (n - 1) * t / (n * r1 * r2)
-            total_power = power1 + power2 + power_spacing
-            
-            if abs(total_power) < EPSILON:
+            if abs(r2) < EPSILON:
                 return float('inf')
             
-            return (1.0 - power1 * t) / total_power
+            # Power of second surface (note: using sign convention where P2 = (n_out - n_in)/R2)
+            # For light exiting lens: P2 = (1 - n) / R2 = -(n - 1) / R2
+            P2 = -(n - 1) / r2
+            
+            # FFL = f * (1 - d * P2 / n)
+            ffl = f * (1.0 - t * P2 / n)
+            
+            return ffl
         except ZeroDivisionError:
             return float('inf')
 

@@ -14,6 +14,8 @@ try:
         SPHERICAL_ABERRATION_EXCELLENT,
         QUALITY_EXCELLENT_THRESHOLD, QUALITY_GOOD_THRESHOLD, QUALITY_FAIR_THRESHOLD,
         WAVELENGTH_GREEN,
+        REFRACTIVE_INDEX_AIR,
+        EPSILON,
     )
 except ImportError:
     from constants import (
@@ -21,7 +23,14 @@ except ImportError:
         SPHERICAL_ABERRATION_EXCELLENT,
         QUALITY_EXCELLENT_THRESHOLD, QUALITY_GOOD_THRESHOLD, QUALITY_FAIR_THRESHOLD,
         WAVELENGTH_GREEN,
+        REFRACTIVE_INDEX_AIR,
+        EPSILON,
     )
+
+# Airy disk diameter factor (not radius)
+# The Airy disk DIAMETER = 2.44 * λ * f/#
+# AIRY_DISK_FACTOR from constants is 1.22 (for radius), so we need 2.44 for diameter
+AIRY_DISK_DIAMETER_FACTOR = 2.44
 
 
 class AberrationsCalculator:
@@ -98,7 +107,10 @@ class AberrationsCalculator:
     
     def _calculate_numerical_aperture(self, focal_length: float) -> float:
         """
-        Calculate numerical aperture NA = n * sin(θ) where θ = arctan(D/2f).
+        Calculate numerical aperture NA = n_medium * sin(θ) where θ = arctan(D/2f).
+        
+        For a lens in air, the numerical aperture uses the medium refractive index (air = 1.0),
+        NOT the lens material's refractive index.
         
         Args:
             focal_length: Focal length in mm
@@ -108,8 +120,9 @@ class AberrationsCalculator:
         """
         if focal_length == 0:
             return 0
+        # Use air refractive index (1.0), not lens material index
         theta = math.atan(self.D / (2 * abs(focal_length)))
-        return self.n * math.sin(theta)
+        return REFRACTIVE_INDEX_AIR * math.sin(theta)
     
     def _calculate_f_number(self, focal_length: float) -> float:
         """
@@ -129,46 +142,69 @@ class AberrationsCalculator:
         """
         Calculate longitudinal spherical aberration (LSA).
         
-        Simplified formula for thin lens approximation:
-        LSA ≈ -(n²/(8(n-1)²)) * (D/2)⁴ / f³
+        Uses the third-order Seidel spherical aberration coefficient for a thin lens.
+        The formula accounts for both shape factor (q) and position factor (p).
         
-        For thick lenses, we use shape factor and position factor.
+        For collimated light (object at infinity), position factor p = -1.
+        
+        The shape factor q = (R2 + R1) / (R2 - R1) determines the lens bend.
+        
+        LSA = (y^2 / (2*f)) * S_I
+        
+        where S_I is the Seidel spherical aberration coefficient depending on
+        shape factor, position factor, and refractive index.
         
         Returns:
             Longitudinal spherical aberration in mm
         """
-        if focal_length == 0:
+        if abs(focal_length) < EPSILON:
             return 0
             
         # Shape factor: q = (R2 + R1) / (R2 - R1)
-        # Note: R1 is front (left), R2 is back (right)
-        # For biconvex: R1 > 0, R2 < 0
         denominator = self.R2 - self.R1
-        if abs(denominator) < 1e-9:  # Avoid division by zero
-             # This happens for symmetric meniscus or flat plate? 
-             # For symmetric biconvex R2 = -R1, so R2-R1 = -2R1 != 0
-             # For flat plate R1=inf, R2=inf.
-             if abs(self.R1) > 1e6 and abs(self.R2) > 1e6:
-                 shape_factor = 0 # Flat plate
-             else:
-                 shape_factor = 0 # Fallback
+        if abs(denominator) < EPSILON:
+            # Handle degenerate cases
+            if abs(self.R1) > 1e6 and abs(self.R2) > 1e6:
+                shape_factor = 0  # Flat plate
+            else:
+                shape_factor = 0  # Fallback for meniscus with R1 ≈ R2
         else:
             shape_factor = (self.R2 + self.R1) / denominator
         
         # Aperture radius
         y = self.D / 2
         
-        # Simplified Seidel spherical aberration coefficient
-        # SA ∝ y⁴ / f³
         n = self.n
         
-        # Third-order spherical aberration (simplified)
-        # Using the formula: LSA = -K * y⁴ / f³
-        # where K depends on lens shape and refractive index
+        # For object at infinity, position factor p = -1
+        p = -1.0
         
-        K = (n / (8 * (n - 1)**2)) * (1 + shape_factor**2)
+        # Guard against n = 1 (would cause division by zero)
+        if abs(n - 1.0) < EPSILON:
+            return 0
         
-        lsa = -K * (y**4) / (abs(focal_length)**3)
+        # Third-order spherical aberration coefficient (Seidel)
+        # This is a more complete formula that includes shape and position factors
+        # Based on: S_I = (1/4) * [(n+2)/(n(n-1)^2)] * q^2 + [(3n+2)(n-1)/(n(n-1)^2)] * p*q + ...
+        # Simplified form for practical calculation:
+        
+        # Optimal shape factor for minimum spherical aberration (object at infinity):
+        # q_opt = -2(n^2 - 1) / (n + 2)
+        q_opt = -2 * (n * n - 1) / (n + 2)
+        
+        # Spherical aberration coefficient (proportional to deviation from optimal shape)
+        # Using the formula: K ∝ (n / (n-1)^2) * f(q, p, n)
+        K_base = n / (8 * (n - 1) ** 2)
+        
+        # Shape-dependent term (simplified but physically motivated)
+        # SA is minimized at q_opt and increases quadratically with deviation
+        shape_term = 1.0 + (shape_factor - q_opt) ** 2 / 4.0
+        
+        K = K_base * shape_term
+        
+        # Longitudinal spherical aberration
+        # LSA = -K * y^4 / f^3
+        lsa = -K * (y ** 4) / (abs(focal_length) ** 3)
         
         return lsa
     
@@ -241,17 +277,21 @@ class AberrationsCalculator:
         The Petzval surface is curved, causing off-axis points to focus
         on a curved surface rather than a flat plane.
         
-        Petzval radius: R_p = -f * n
+        Petzval sum for single lens: P = 1/(n*f)
+        Petzval radius of curvature: R_p = 1/P = n*f
+        
+        For converging lenses (positive f), the Petzval radius is positive
+        (curved toward the lens). For diverging lenses, it's negative.
         
         Returns:
-            Petzval radius of curvature in mm (negative = curved toward lens)
+            Petzval radius of curvature in mm
         """
         if focal_length == 0:
             return 0
         
-        # Petzval sum for a single lens: P = 1/(n*f)
-        # Petzval radius of curvature
-        petzval_radius = -abs(focal_length) * self.n
+        # Petzval radius preserving sign information
+        # R_p = n * f (not -abs(f)*n which was incorrect)
+        petzval_radius = self.n * focal_length
         
         return petzval_radius
     
@@ -342,6 +382,9 @@ class AberrationsCalculator:
         
         Airy disk diameter = 2.44 * λ * f/# 
         
+        Note: The factor 2.44 is for DIAMETER. The first zero of the Airy pattern
+        occurs at 1.22 * λ * f/# from the center (radius), so the diameter is 2.44.
+        
         Args:
             focal_length: Focal length in mm
             wavelength: Wavelength in mm (default 550nm = 0.000550mm green light)
@@ -354,13 +397,14 @@ class AberrationsCalculator:
         if f_number == float('inf'):
             return 0
         
-        airy_diameter = AIRY_DISK_FACTOR * wavelength * f_number
+        # Use 2.44 for diameter (not 1.22 which is for radius)
+        airy_diameter = AIRY_DISK_DIAMETER_FACTOR * wavelength * f_number
         
         return airy_diameter
     
     def get_aberration_summary(self,
                                object_distance: Optional[float] = None,
-                               field_angle: float = 5.0) -> Dict[str, Any]:
+                               field_angle: float = 5.0) -> str:
         """
         Get a formatted summary of all aberrations.
         

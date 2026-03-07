@@ -883,9 +883,12 @@ class SimulationController:
             theta = np.linspace(-np.pi/4, np.pi/4, 50)
             x1 = r1 * (1 - np.cos(theta))
             y1 = r1 * np.sin(theta)
-            y1 = y1[np.abs(y1) <= diameter/2]
-            x1 = x1[:len(y1)]
-            self.sim_ax.plot(x1, y1, 'k-', linewidth=2)
+            # Use a mask to filter both arrays consistently
+            mask1 = np.abs(y1) <= diameter/2
+            x1 = x1[mask1]
+            y1 = y1[mask1]
+            if len(x1) > 0:
+                self.sim_ax.plot(x1, y1, 'k-', linewidth=2)
         else:
             # Flat surface
             self.sim_ax.plot([0, 0], [-diameter/2, diameter/2], 'k-', linewidth=2)
@@ -895,9 +898,12 @@ class SimulationController:
             theta = np.linspace(-np.pi/4, np.pi/4, 50)
             x2 = thickness + r2 * (1 - np.cos(theta))
             y2 = r2 * np.sin(theta)
-            y2 = y2[np.abs(y2) <= diameter/2]
-            x2 = x2[:len(y2)]
-            self.sim_ax.plot(x2, y2, 'k-', linewidth=2)
+            # Use a mask to filter both arrays consistently
+            mask2 = np.abs(y2) <= diameter/2
+            x2 = x2[mask2]
+            y2 = y2[mask2]
+            if len(x2) > 0:
+                self.sim_ax.plot(x2, y2, 'k-', linewidth=2)
         else:
             # Flat surface
             self.sim_ax.plot([thickness, thickness], [-diameter/2, diameter/2], 'k-', linewidth=2)

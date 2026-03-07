@@ -49,8 +49,17 @@ def validate_radius(radius: float, allow_negative: bool = True,
     Raises:
         ValidationError: If radius is invalid
     """
+    # Reject booleans explicitly (bool is subclass of int in Python)
+    if isinstance(radius, bool):
+        raise ValidationError(f"{param_name} must be a number, got bool")
+    
     if not isinstance(radius, (int, float)):
         raise ValidationError(f"{param_name} must be a number, got {type(radius)}")
+    
+    # Check for NaN and Inf
+    import math
+    if math.isnan(radius) or math.isinf(radius):
+        raise ValidationError(f"{param_name} must be a finite number, got {radius}")
     
     if abs(radius) < EPSILON:
         raise ValidationError(f"{param_name} cannot be zero")
@@ -85,8 +94,17 @@ def validate_thickness(thickness: float, param_name: str = "thickness") -> float
     Raises:
         ValidationError: If thickness is invalid
     """
+    # Reject booleans explicitly (bool is subclass of int in Python)
+    if isinstance(thickness, bool):
+        raise ValidationError(f"{param_name} must be a number, got bool")
+    
     if not isinstance(thickness, (int, float)):
         raise ValidationError(f"{param_name} must be a number")
+    
+    # Check for NaN and Inf
+    import math
+    if math.isnan(thickness) or math.isinf(thickness):
+        raise ValidationError(f"{param_name} must be a finite number, got {thickness}")
     
     if thickness <= 0:
         raise ValidationError(f"{param_name} must be positive")
@@ -118,8 +136,17 @@ def validate_diameter(diameter: float, param_name: str = "diameter") -> float:
     Raises:
         ValidationError: If diameter is invalid
     """
+    # Reject booleans explicitly (bool is subclass of int in Python)
+    if isinstance(diameter, bool):
+        raise ValidationError(f"{param_name} must be a number, got bool")
+    
     if not isinstance(diameter, (int, float)):
         raise ValidationError(f"{param_name} must be a number")
+    
+    # Check for NaN and Inf
+    import math
+    if math.isnan(diameter) or math.isinf(diameter):
+        raise ValidationError(f"{param_name} must be a finite number, got {diameter}")
     
     if diameter <= 0:
         raise ValidationError(f"{param_name} must be positive")
@@ -151,8 +178,17 @@ def validate_refractive_index(n: float, param_name: str = "refractive index") ->
     Raises:
         ValidationError: If refractive index is invalid
     """
+    # Reject booleans explicitly (bool is subclass of int in Python)
+    if isinstance(n, bool):
+        raise ValidationError(f"{param_name} must be a number, got bool")
+    
     if not isinstance(n, (int, float)):
         raise ValidationError(f"{param_name} must be a number")
+    
+    # Check for NaN and Inf
+    import math
+    if math.isnan(n) or math.isinf(n):
+        raise ValidationError(f"{param_name} must be a finite number, got {n}")
     
     if n < MIN_REFRACTIVE_INDEX:
         raise ValidationError(
@@ -181,8 +217,17 @@ def validate_wavelength(wavelength: float, param_name: str = "wavelength") -> fl
     Raises:
         ValidationError: If wavelength is invalid
     """
+    # Reject booleans explicitly (bool is subclass of int in Python)
+    if isinstance(wavelength, bool):
+        raise ValidationError(f"{param_name} must be a number, got bool")
+    
     if not isinstance(wavelength, (int, float)):
         raise ValidationError(f"{param_name} must be a number")
+    
+    # Check for NaN and Inf
+    import math
+    if math.isnan(wavelength) or math.isinf(wavelength):
+        raise ValidationError(f"{param_name} must be a finite number, got {wavelength}")
     
     if wavelength <= 0:
         raise ValidationError(f"{param_name} must be positive")
@@ -209,8 +254,17 @@ def validate_temperature(temperature: float, param_name: str = "temperature") ->
     Raises:
         ValidationError: If temperature is invalid
     """
+    # Reject booleans explicitly (bool is subclass of int in Python)
+    if isinstance(temperature, bool):
+        raise ValidationError(f"{param_name} must be a number, got bool")
+    
     if not isinstance(temperature, (int, float)):
         raise ValidationError(f"{param_name} must be a number")
+    
+    # Check for NaN and Inf
+    import math
+    if math.isnan(temperature) or math.isinf(temperature):
+        raise ValidationError(f"{param_name} must be a finite number, got {temperature}")
     
     if temperature < -273.15:
         raise ValidationError(
@@ -240,8 +294,17 @@ def validate_positive_number(value: float, param_name: str = "value") -> float:
     Raises:
         ValidationError: If value is not positive
     """
+    # Reject booleans explicitly (bool is subclass of int in Python)
+    if isinstance(value, bool):
+        raise ValidationError(f"{param_name} must be a number, got bool")
+    
     if not isinstance(value, (int, float)):
         raise ValidationError(f"{param_name} must be a number")
+    
+    # Check for NaN and Inf
+    import math
+    if math.isnan(value) or math.isinf(value):
+        raise ValidationError(f"{param_name} must be a finite number, got {value}")
     
     if value <= 0:
         raise ValidationError(f"{param_name} must be positive")
@@ -263,8 +326,17 @@ def validate_non_negative_number(value: float, param_name: str = "value") -> flo
     Raises:
         ValidationError: If value is negative
     """
+    # Reject booleans explicitly (bool is subclass of int in Python)
+    if isinstance(value, bool):
+        raise ValidationError(f"{param_name} must be a number, got bool")
+    
     if not isinstance(value, (int, float)):
         raise ValidationError(f"{param_name} must be a number")
+    
+    # Check for NaN and Inf
+    import math
+    if math.isnan(value) or math.isinf(value):
+        raise ValidationError(f"{param_name} must be a finite number, got {value}")
     
     if value < 0:
         raise ValidationError(f"{param_name} cannot be negative")
@@ -289,8 +361,17 @@ def validate_range(value: float, min_val: float, max_val: float,
     Raises:
         ValidationError: If value is outside range
     """
+    # Reject booleans explicitly (bool is subclass of int in Python)
+    if isinstance(value, bool):
+        raise ValidationError(f"{param_name} must be a number, got bool")
+    
     if not isinstance(value, (int, float)):
         raise ValidationError(f"{param_name} must be a number")
+    
+    # Check for NaN and Inf
+    import math
+    if math.isnan(value) or math.isinf(value):
+        raise ValidationError(f"{param_name} must be a finite number, got {value}")
     
     if value < min_val or value > max_val:
         raise ValidationError(
@@ -341,12 +422,26 @@ def safe_float_conversion(value: Union[str, int, float],
     Returns:
         Tuple[bool, float]: (success, converted_value)
     """
+    import math
+    
+    # Reject booleans explicitly (bool is subclass of int in Python)
+    if isinstance(value, bool):
+        return False, default
+    
     if isinstance(value, (int, float)):
-        return True, float(value)
+        result = float(value)
+        # Check for NaN and Inf
+        if math.isnan(result) or math.isinf(result):
+            return False, default
+        return True, result
     
     if isinstance(value, str):
         try:
-            return True, float(value)
+            result = float(value)
+            # Check for NaN and Inf
+            if math.isnan(result) or math.isinf(result):
+                return False, default
+            return True, result
         except ValueError:
             return False, default
     
