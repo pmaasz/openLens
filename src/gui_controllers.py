@@ -314,9 +314,11 @@ class LensEditorController:
         self.material_var = None
         self.material_menu = None
         self._autosave_timer = None
+        self._initializing = False
     
     def setup_ui(self, parent_frame):
         """Set up the editor tab UI"""
+        self._initializing = True
         # Import constants with fallbacks
         try:
             from constants import (PADDING_SMALL, PADDING_MEDIUM, PADDING_LARGE,
@@ -380,6 +382,8 @@ class LensEditorController:
         self.auto_update_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(button_frame, text="Auto-calculate", 
                        variable=self.auto_update_var).pack(side=tk.LEFT, padx=PADDING_MEDIUM)
+        
+        self._initializing = False
     
     def create_property_fields(self, parent):
         """Create input fields for lens properties"""
@@ -609,6 +613,9 @@ class LensEditorController:
     
     def on_field_changed(self, event=None):
         """Handle field change event for auto-calculation and autosave"""
+        if getattr(self, '_initializing', False):
+            return
+
         if self.auto_update_var and self.auto_update_var.get():
             self.calculate_properties()
         
