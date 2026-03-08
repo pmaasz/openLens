@@ -289,7 +289,8 @@ class LensVisualizer:
         self._configure_coordinate_system(diameter, thickness)
         
         # Configure lens axis appearance
-        self.configure_dark_mode()  # Apply to lens axis (self.ax)
+        # Do not apply dark mode to lens axis as it should be invisible
+        self.ax_lens.set_axis_off()
         
         # Adaptive resolution for edge based on diameter
         edge_res = max(20, min(30, int(40 - diameter / 10)))
