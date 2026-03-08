@@ -155,7 +155,6 @@ try:
         LensEditorController,
         SimulationController,
         PerformanceController,
-        ComparisonController,
         ExportController
     )
     CONTROLLERS_AVAILABLE = True
@@ -166,7 +165,6 @@ except ImportError:
             LensEditorController,
             SimulationController,
             PerformanceController,
-            ComparisonController,
             ExportController
         )
         CONTROLLERS_AVAILABLE = True
@@ -499,10 +497,6 @@ class LensEditorWindow:
         self.performance_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.performance_tab, text="Performance", state='disabled')
         
-        # Create Comparison tab (always enabled for multi-lens comparison)
-        self.comparison_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.comparison_tab, text="Comparison")
-        
         # Create Export tab (disabled until lens selected)
         self.export_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.export_tab, text="Export", state='disabled')
@@ -520,7 +514,6 @@ class LensEditorWindow:
         self.setup_editor_tab()
         self.setup_simulation_tab()
         self.setup_performance_tab()
-        self.setup_comparison_tab()
         self.setup_export_tab()
         
         # Status bar (below tabs)
@@ -563,32 +556,62 @@ class LensEditorWindow:
         """Callback when a lens is selected from the controller"""
         self.current_lens = lens
         
-        # Enable tabs
-        self.notebook.tab(1, state='normal')  # Editor
-        self.notebook.tab(2, state='normal')  # Simulation
-        self.notebook.tab(3, state='normal')  # Performance
-        self.notebook.tab(5, state='normal')  # Export
+        # Check if it's an OpticalSystem (multi-lens)
+        is_system = hasattr(lens, 'elements') and hasattr(lens, 'air_gaps')
         
-        # Switch to editor and load lens
-        self.notebook.select(1)
-        
-        # Load lens into controllers
-        if hasattr(self, 'editor_controller') and self.editor_controller:
-            self.editor_controller.load_lens(lens)
+        if is_system:
+            # Multi-lens system selected
             
-        if hasattr(self, 'simulation_controller') and self.simulation_controller:
-            self.simulation_controller.load_lens(lens)
-        
-        if hasattr(self, 'performance_controller') and self.performance_controller:
-            self.performance_controller.load_lens(lens)
-        
-        if hasattr(self, 'export_controller') and self.export_controller:
-            self.export_controller.load_lens(lens)
-        
-        # Update visualization
-        self.on_viz_tab_changed(None)
-        
-        self.update_status(f"Lens selected: '{lens.name}' - Ready to edit")
+            # Disable Editor tab (can't edit system properties as a single lens)
+            self.notebook.tab(1, state='disabled')
+            
+            # Enable Simulation tab
+            self.notebook.tab(2, state='normal')
+            
+            # Disable Performance tab for now (not yet supported for systems)
+            self.notebook.tab(3, state='disabled')
+            
+            # Disable Export tab
+            self.notebook.tab(4, state='disabled')
+            
+            # Switch to Simulation tab automatically
+            self.notebook.select(2)
+            
+            # Load system into simulation controller
+            if hasattr(self, 'simulation_controller') and self.simulation_controller:
+                self.simulation_controller.load_lens(lens)
+                
+            self.update_status(f"Optical System selected ({len(lens.elements)} elements) - Ready to simulate")
+            
+        else:
+            # Single lens selected
+            
+            # Enable all tabs
+            self.notebook.tab(1, state='normal')  # Editor
+            self.notebook.tab(2, state='normal')  # Simulation
+            self.notebook.tab(3, state='normal')  # Performance
+            self.notebook.tab(4, state='normal')  # Export
+            
+            # Switch to editor and load lens
+            self.notebook.select(1)
+            
+            # Load lens into controllers
+            if hasattr(self, 'editor_controller') and self.editor_controller:
+                self.editor_controller.load_lens(lens)
+                
+            if hasattr(self, 'simulation_controller') and self.simulation_controller:
+                self.simulation_controller.load_lens(lens)
+            
+            if hasattr(self, 'performance_controller') and self.performance_controller:
+                self.performance_controller.load_lens(lens)
+            
+            if hasattr(self, 'export_controller') and self.export_controller:
+                self.export_controller.load_lens(lens)
+            
+            # Update visualization
+            self.on_viz_tab_changed(None)
+            
+            self.update_status(f"Lens selected: '{lens.name}' - Ready to edit")
     
     def on_create_new_lens(self) -> None:
         """Callback when creating a new lens"""
@@ -598,7 +621,7 @@ class LensEditorWindow:
         self.notebook.tab(1, state='normal')
         self.notebook.tab(2, state='normal')
         self.notebook.tab(3, state='normal')
-        self.notebook.tab(5, state='normal')
+        self.notebook.tab(4, state='normal')
         
         # Switch to editor
         self.notebook.select(1)
@@ -621,13 +644,9 @@ class LensEditorWindow:
             self.notebook.tab(1, state='disabled')
             self.notebook.tab(2, state='disabled')
             self.notebook.tab(3, state='disabled')
-            self.notebook.tab(5, state='disabled')
+            self.notebook.tab(4, state='disabled')
         
         self.update_status(f"Lens '{lens.name}' deleted")
-        
-        # Refresh comparison controller if available
-        if hasattr(self, 'comparison_controller') and self.comparison_controller:
-            self.comparison_controller.refresh_lens_list()
     
     def on_lens_updated_callback(self, lens: Optional['Lens'] = None) -> None:
         """Callback when lens data is updated"""
@@ -640,10 +659,6 @@ class LensEditorWindow:
         self.save_lenses()
         if self.selection_controller:
             self.selection_controller.refresh_lens_list()
-        
-        # Refresh comparison controller if available
-        if hasattr(self, 'comparison_controller') and self.comparison_controller:
-            self.comparison_controller.refresh_lens_list()
     
     def _setup_selection_tab_legacy(self) -> None:
         """Legacy selection tab setup (fallback if controllers unavailable)"""
@@ -829,11 +844,6 @@ class LensEditorWindow:
             if hasattr(self, 'simulation_controller') and self.simulation_controller:
                 self.simulation_controller.load_lens(self.current_lens)
                 self.simulation_controller.run_simulation()
-        
-        # If switching to comparison tab (index 4), refresh the list
-        if selected_tab == 4:
-            if hasattr(self, 'comparison_controller') and self.comparison_controller:
-                self.comparison_controller.refresh_lens_list()
     
     def setup_performance_tab(self) -> None:
         """Setup the Performance Metrics Dashboard tab"""
@@ -861,23 +871,6 @@ class LensEditorWindow:
     
     def _setup_performance_tab_legacy(self) -> None:
         """Legacy performance tab setup (fallback)"""
-        pass # Removed as part of consolidation
-    
-    def setup_comparison_tab(self) -> None:
-        """Setup the Comparison Mode tab"""
-        # Try to use controller if available
-        if CONTROLLERS_AVAILABLE:
-            try:
-                from gui_controllers import ComparisonController
-                self.comparison_controller = ComparisonController(self, lambda: self.lenses, self.COLORS)
-                self.comparison_controller.setup_ui(self.comparison_tab)
-                return
-            except Exception as e:
-                logger.warning("Failed to initialize ComparisonController: %s", e)
-                ttk.Label(self.comparison_tab, text=f"Error loading comparison: {e}").pack(padx=20, pady=20)
-        
-    def _setup_comparison_tab_legacy(self) -> None:
-        """Legacy comparison tab setup"""
         pass # Removed as part of consolidation
     
     def setup_export_tab(self) -> None:

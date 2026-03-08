@@ -28,6 +28,25 @@ except Exception as e:
     print(f"Error running core tests: {e}")
     core_passed = False
 
+# Run System Tracer tests
+print("\n" + "=" * 70)
+print("PHASE 1.5: System Tracer Tests")
+print("=" * 70)
+
+try:
+    import unittest
+    import test_system_tracer
+    loader = unittest.TestLoader()
+    suite = loader.loadTestsFromModule(test_system_tracer)
+    runner = unittest.TextTestRunner(verbosity=2)
+    result_sys = runner.run(suite)
+    sys_passed = result_sys.wasSuccessful()
+except Exception as e:
+    print(f"Error running system tracer tests: {e}")
+    import traceback
+    traceback.print_exc()
+    sys_passed = False
+
 # Run GUI tests
 print("\n" + "=" * 70)
 print("PHASE 2: GUI Functionality Tests")
@@ -46,7 +65,7 @@ print("\n" + "=" * 70)
 print("TEST SUITE SUMMARY")
 print("=" * 70)
 
-if core_passed and gui_passed:
+if core_passed and sys_passed and gui_passed:
     print("\n✓✓✓ ALL TESTS PASSED! ✓✓✓")
     print("\nThe openlens application is working correctly!")
     sys.exit(0)
@@ -54,6 +73,8 @@ else:
     print("\n✗✗✗ SOME TESTS FAILED ✗✗✗")
     if not core_passed:
         print("  - Core functionality tests failed")
+    if not sys_passed:
+        print("  - System tracer tests failed")
     if not gui_passed:
         print("  - GUI functionality tests failed")
     sys.exit(1)

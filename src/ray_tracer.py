@@ -63,9 +63,17 @@ class Ray:
         Returns:
             True if refraction occurred, False if total internal reflection
         """
-        # Incident angle relative to surface normal
+        # Check if ray opposes normal
+        # cos(theta) = dot product of ray and normal directions
         incident_angle = self.angle - surface_normal_angle
         
+        # If ray is traveling opposite to normal (dot product < 0), 
+        # use the effective normal pointing into the new medium
+        effective_normal = surface_normal_angle
+        if math.cos(incident_angle) < 0:
+            effective_normal = surface_normal_angle + math.pi
+            incident_angle = self.angle - effective_normal
+            
         # Snell's law: n1 * sin(theta1) = n2 * sin(theta2)
         sin_incident = math.sin(incident_angle)
         sin_ratio = (n1 / n2) * sin_incident
@@ -75,6 +83,11 @@ class Ray:
         # Use (1.0 - EPSILON) to handle floating-point edge cases at critical angle
         if abs(sin_ratio) >= (1.0 - EPSILON):
             # Total internal reflection - reflect instead of refract
+            # For reflection, we reflect around the *surface* normal (effective or not works, but typically same side)
+            # If we used effective normal, we are "entering" new medium? No, TIR means we stay in old.
+            # But the formula 2*normal - angle works for mirror reflection.
+            # If normal is flipped, 2*(norm+pi) - angle = 2*norm + 2pi - angle = 2*norm - angle (mod 2pi).
+            # So reflection formula is invariant to normal flip.
             self.angle = 2 * surface_normal_angle - self.angle
             return False
         
@@ -82,7 +95,7 @@ class Ray:
         refracted_angle = math.asin(sin_ratio)
         
         # Update ray angle (relative to horizontal)
-        self.angle = surface_normal_angle + refracted_angle
+        self.angle = effective_normal + refracted_angle
         self.n = n2
         
         return True
@@ -95,12 +108,13 @@ class LensRayTracer:
     Traces rays through a lens using Snell's law at each surface.
     """
     
-    def __init__(self, lens: Any) -> None:
+    def __init__(self, lens: Any, x_offset: float = 0.0) -> None:
         """
         Initialize ray tracer with a lens.
         
         Args:
             lens: Lens object with optical parameters
+            x_offset: X position of the front vertex (mm)
         """
         self.lens = lens
         self.R1 = lens.radius_of_curvature_1
@@ -108,48 +122,40 @@ class LensRayTracer:
         self.d = lens.thickness
         self.D = lens.diameter
         self.n = lens.refractive_index
+        self.x_offset = x_offset
         
         # Calculate lens geometry
         self._calculate_geometry()
     
     def _calculate_geometry(self) -> None:
         """Calculate lens surface positions and centers"""
-        # Lens offset - front surface starts at x=0 to match visualization
-        self.lens_offset = 0.0
+        # Lens offset - front surface starts at x_offset
+        self.lens_offset = self.x_offset
         
-        # Front surface vertex at x=0
+        # Front surface vertex
         self.front_vertex_x = self.lens_offset
         
         # Back surface vertex
         self.back_vertex_x = self.lens_offset + self.d
         
         # Calculate surface centers for spherical surfaces
-        # Front surface (R1)
-        # For a sphere of radius R centered at Cx, the point at (x,y) satisfies:
-        # (x - Cx)^2 + y^2 = R^2
-        # At vertex (y=0), x = vertex_x, so (vertex_x - Cx)^2 = R^2
-        # Therefore: Cx = vertex_x - R (for R > 0, convex)
-        #            Cx = vertex_x + R (for R < 0, concave)
+        # Standard sign convention: R > 0 means center is to the right
+        # Cx = Vertex + R
         
+        # Front surface (R1)
         if abs(self.R1) > 1e6:  # Essentially flat
-            self.front_center_x = self.lens_offset
+            self.front_center_x = self.front_vertex_x
             self.front_is_flat = True
         else:
-            if self.R1 > 0:  # Convex - center to the left
-                self.front_center_x = self.front_vertex_x - abs(self.R1)
-            else:  # Concave - center to the right
-                self.front_center_x = self.front_vertex_x + abs(self.R1)
+            self.front_center_x = self.front_vertex_x + self.R1
             self.front_is_flat = False
         
         # Back surface (R2)
         if abs(self.R2) > 1e6:  # Essentially flat
-            self.back_center_x = self.lens_offset + self.d
+            self.back_center_x = self.back_vertex_x
             self.back_is_flat = True
         else:
-            if self.R2 < 0:  # Convex (from inside lens) - center to the right
-                self.back_center_x = self.back_vertex_x + abs(self.R2)
-            else:  # Concave - center to the left
-                self.back_center_x = self.back_vertex_x - abs(self.R2)
+            self.back_center_x = self.back_vertex_x + self.R2
             self.back_is_flat = False
     
     def _get_surface_normal_angle(self, x: float, y: float, surface_type: str) -> float:
@@ -241,10 +247,12 @@ class LensRayTracer:
                 return None  # No valid intersection in front of ray
             
             # Choose appropriate intersection based on surface curvature
-            if self.R1 > 0:  # Convex - want farthest intersection (second intersection of sphere)
-                t = max(valid_ts)
-            else:  # Concave - want nearest intersection (first intersection of sphere)
+            # For Convex front (R1 > 0), we hit the near side (min t)
+            # For Concave front (R1 < 0), we hit the far side (max t)
+            if self.R1 > 0:
                 t = min(valid_ts)
+            else:
+                t = max(valid_ts)
             
             x = ray.x + t * dx
             y = ray.y + t * dy
@@ -309,9 +317,11 @@ class LensRayTracer:
                 return None  # No valid intersection in front of ray
             
             # Choose appropriate intersection based on surface curvature
-            if self.R2 < 0:  # Convex (from inside lens) - want nearest intersection
+            # For Concave back (R2 > 0), we hit the near side (min t)
+            # For Convex back (R2 < 0), we hit the far side (max t)
+            if self.R2 > 0:
                 t = min(valid_ts)
-            else:  # Concave - want farthest intersection
+            else:
                 t = max(valid_ts)
             
             x = ray.x + t * dx
@@ -548,32 +558,78 @@ class LensRayTracer:
 
 
 class SystemRayTracer:
-    """Simple ray tracer for multi-element optical systems"""
+    """Ray tracer for multi-element optical systems"""
     
     def __init__(self, optical_system: Any) -> None:
         self.system = optical_system
     
-    def trace_parallel_rays_simple(self, num_rays: int = 7) -> List[dict]:
+    def trace_parallel_rays(self, num_rays: int = DEFAULT_NUM_RAYS, 
+                           angle: float = 0.0,
+                           wavelength: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray]:
         """
-        Simplified system ray tracing - trace each element independently
-        and show approximate propagation
+        Trace parallel rays through the entire optical system.
+        
+        Args:
+            num_rays: Number of rays to trace
+            angle: Angle of the parallel beam in degrees
+            wavelength: Wavelength in mm
+        
+        Returns:
+            List of fully traced Ray objects
         """
         if not self.system.elements:
             return []
         
-        all_rays_data = []
+        # Calculate first lens diameter to determine ray spread
+        first_lens = self.system.elements[0].lens
+        max_height = first_lens.diameter / 2 * 0.95
+        min_h, max_h = -max_height, max_height
         
-        # Trace through first element
-        first_elem = self.system.elements[0]
-        first_tracer = LensRayTracer(first_elem.lens)
-        first_rays = first_tracer.trace_parallel_rays(num_rays=num_rays)
+        rays = []
+        angle_rad = math.radians(angle)
         
-        # Store with position offset
-        for ray in first_rays:
-            offset_path = [(x + first_elem.position + 50, y) for x, y in ray.path]
-            all_rays_data.append({
-                'path': offset_path,
-                'element': 0
-            })
+        # Determine start position (well before first element)
+        first_pos = self.system.elements[0].position
+        start_x = first_pos - 100.0
         
-        return all_rays_data
+        for i in range(num_rays):
+            if num_rays == 1:
+                height = 0
+            else:
+                height = min_h + (max_h - min_h) * i / (num_rays - 1)
+            
+            # Calculate starting y so ray hits the first lens at 'height'
+            # y = y_start + (x - x_start) * tan(angle)
+            # height = y_start + (first_pos - start_x) * tan(angle)
+            # y_start = height - (first_pos - start_x) * tan(angle)
+            y_start = height - (first_pos - start_x) * math.tan(angle_rad)
+            
+            # Create ray
+            ray = Ray(start_x, y_start, angle=angle_rad, wavelength=wavelength)
+            
+            # Trace through system
+            self._trace_ray_through_system(ray)
+            
+            rays.append(ray)
+        
+        return rays
+        
+    def _trace_ray_through_system(self, ray: Ray) -> None:
+        """Trace a single ray through all elements"""
+        
+        for i, element in enumerate(self.system.elements):
+            if ray.terminated:
+                break
+            
+            # Create a tracer for this specific element at its position
+            # We must account for the element's position
+            lens_tracer = LensRayTracer(element.lens, x_offset=element.position)
+            
+            # Trace through this lens
+            # The tracer will find the intersection with the front surface
+            # So we don't need to manually propagate exactly to the front
+            lens_tracer.trace_ray(ray, propagate_distance=0)
+            
+            # If this is the last element and ray is not terminated, propagate out
+            if not ray.terminated and i == len(self.system.elements) - 1:
+                ray.propagate(100.0)

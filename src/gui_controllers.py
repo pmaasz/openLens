@@ -10,7 +10,6 @@ Each controller handles a specific tab/feature:
 - LensEditorController: Handles lens property editing
 - SimulationController: Manages ray tracing visualization
 - PerformanceController: Manages aberration analysis
-- ComparisonController: Handles lens comparison
 - ExportController: Manages export functionality
 """
 
@@ -100,7 +99,7 @@ class LensSelectionController:
         
         # Main content frame
         content_frame = ttk.Frame(parent_frame, padding="20")
-        content_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        content_frame.grid(row=0, column=0, sticky="nsew")
         content_frame.columnconfigure(0, weight=1)
         content_frame.rowconfigure(1, weight=1)
         
@@ -110,14 +109,14 @@ class LensSelectionController:
         title_label.grid(row=0, column=0, pady=(0, PADDING_XLARGE))
         
         # Create a frame for the lens list and buttons
-        list_frame = ttk.LabelFrame(content_frame, text="Available Lenses", padding="10")
-        list_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        list_frame = ttk.LabelFrame(content_frame, text="Available Lenses (Hold Ctrl/Shift to select multiple)", padding="10")
+        list_frame.grid(row=1, column=0, sticky="nsew")
         list_frame.columnconfigure(0, weight=1)
         list_frame.rowconfigure(0, weight=1)
         
         # Lens listbox with scrollbar
         scrollbar = ttk.Scrollbar(list_frame)
-        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        scrollbar.grid(row=0, column=1, sticky="ns")
         
         self.listbox = tk.Listbox(list_frame, 
                                    yscrollcommand=scrollbar.set,
@@ -128,8 +127,9 @@ class LensSelectionController:
                                    font=(FONT_FAMILY, FONT_SIZE_LARGE),
                                    height=15,
                                    borderwidth=1,
-                                   relief=tk.SOLID)
-        self.listbox.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 5))
+                                   relief=tk.SOLID,
+                                   selectmode=tk.EXTENDED)
+        self.listbox.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
         scrollbar.config(command=self.listbox.yview)
         
         # Bind events
@@ -138,7 +138,7 @@ class LensSelectionController:
         
         # Lens info panel
         info_frame = ttk.LabelFrame(content_frame, text="Lens Information", padding="10")
-        info_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=PADDING_XLARGE)
+        info_frame.grid(row=2, column=0, sticky="ew", pady=PADDING_XLARGE)
         
         self.info_text = tk.Text(info_frame, 
                                  height=9, 
@@ -159,9 +159,9 @@ class LensSelectionController:
                   command=self.create_new_lens,
                   width=20).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
-        ttk.Button(button_frame, text="Select & Edit", 
+        ttk.Button(button_frame, text="Select & Edit / Simulate", 
                   command=self.select_lens,
-                  width=20).pack(side=tk.LEFT, padx=PADDING_SMALL)
+                  width=25).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         ttk.Button(button_frame, text="Delete Lens", 
                   command=self.delete_lens,
@@ -197,6 +197,24 @@ class LensSelectionController:
             self.info_text.config(state='normal')
             self.info_text.delete(1.0, tk.END)
             self.info_text.insert(1.0, "Select a lens to view details")
+            self.info_text.config(state='disabled')
+            return
+        
+        if len(selection) > 1:
+            # Multiple selection info
+            self.info_text.config(state='normal')
+            self.info_text.delete(1.0, tk.END)
+            info = f"Multi-Lens System Selected ({len(selection)} lenses)\n\n"
+            info += "Lenses in system:\n"
+            
+            for i, idx in enumerate(selection):
+                if 0 <= idx < len(self.lens_list):
+                    lens = self.lens_list[idx]
+                    name = lens.get('name', 'Unknown') if isinstance(lens, dict) else lens.name
+                    info += f"{i+1}. {name}\n"
+            
+            info += "\nClick 'Select & Edit / Simulate' to build optical system."
+            self.info_text.insert(1.0, info)
             self.info_text.config(state='disabled')
             return
         
@@ -241,6 +259,39 @@ Modified: {lens.modified_at}"""
         if not selection:
             return
         
+        # Handle multiple selection
+        if len(selection) > 1:
+            try:
+                # Import here to avoid circular imports or import errors
+                try:
+                    from .optical_system import OpticalSystem
+                except ImportError:
+                    from optical_system import OpticalSystem
+                
+                # Create a temporary system from selected lenses
+                system = OpticalSystem(name="Multi-Lens System")
+                
+                for i, index in enumerate(selection):
+                    if 0 <= index < len(self.lens_list):
+                        lens = self.lens_list[index]
+                        # Add lens with default 5mm air gap before (except for first lens)
+                        air_gap = 5.0 if i > 0 else 0.0
+                        system.add_lens(lens, air_gap_before=air_gap)
+                
+                self.selected_lens = system
+                if self.on_lens_selected_callback:
+                    self.on_lens_selected_callback(self.selected_lens)
+                    
+            except Exception as e:
+                logger.error(f"Could not create OpticalSystem: {e}")
+                # Fallback to single selection of first item
+                index = selection[0]
+                if 0 <= index < len(self.lens_list):
+                    self.selected_lens = self.lens_list[index]
+                    if self.on_lens_selected_callback:
+                        self.on_lens_selected_callback(self.selected_lens)
+            return
+
         index = selection[0]
         if 0 <= index < len(self.lens_list):
             self.selected_lens = self.lens_list[index]
@@ -921,15 +972,158 @@ class SimulationController:
         """Load lens for simulation"""
         self.current_lens = lens
         
+        # Clear previous system builder if exists
+        if hasattr(self, 'system_builder_frame'):
+            self.system_builder_frame.destroy()
+            del self.system_builder_frame
+
+        # Check if it's an OpticalSystem
+        is_system = hasattr(lens, 'elements') and hasattr(lens, 'air_gaps')
+        
         # Create ray tracer if dependencies available
         try:
-            from ray_tracer import LensRayTracer
-            if lens:
-                self.ray_tracer = LensRayTracer(lens)
+            if is_system:
+                from ray_tracer import SystemRayTracer
+                self.ray_tracer = SystemRayTracer(lens)
+                self.create_system_builder_ui()
+            else:
+                from ray_tracer import LensRayTracer
+                if lens:
+                    self.ray_tracer = LensRayTracer(lens)
+                else:
+                    self.ray_tracer = None
         except (ImportError, AttributeError):
             # ImportError: ray_tracer module not available
             # AttributeError: lens is not proper Lens object
             self.ray_tracer = None
+
+    def create_system_builder_ui(self):
+        """Create UI for editing optical system (reorder, air gaps)"""
+        # Find the parent frame (simulation tab)
+        # We need to access the parent frame passed in setup_ui. 
+        # Since we didn't save it, we can look at sim_frame's parent.
+        if not self.sim_canvas_widget:
+            return
+            
+        parent = self.sim_canvas_widget.master.master # Canvas -> Frame -> Parent
+        
+        self.system_builder_frame = ttk.LabelFrame(parent, text="System Builder", padding="10")
+        self.system_builder_frame.grid(row=1, column=1, sticky=(tk.N, tk.S, tk.W, tk.E), padx=10, pady=10)
+        
+        # List of elements
+        self.element_listbox = tk.Listbox(self.system_builder_frame, height=10, width=30)
+        self.element_listbox.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self.element_listbox.bind('<<ListboxSelect>>', self.on_element_selected)
+        
+        # Controls
+        btn_frame = ttk.Frame(self.system_builder_frame)
+        btn_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
+        
+        ttk.Button(btn_frame, text="Move Up", command=self.move_element_up).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_frame, text="Move Down", command=self.move_element_down).pack(side=tk.LEFT, padx=2)
+        
+        # Air Gap Control
+        gap_frame = ttk.Frame(self.system_builder_frame)
+        gap_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
+        
+        ttk.Label(gap_frame, text="Air Gap (mm):").pack(side=tk.LEFT)
+        self.gap_var = tk.StringVar()
+        self.gap_entry = ttk.Entry(gap_frame, textvariable=self.gap_var, width=8)
+        self.gap_entry.pack(side=tk.LEFT, padx=5)
+        self.gap_entry.bind('<Return>', self.update_air_gap)
+        ttk.Button(gap_frame, text="Set", command=self.update_air_gap).pack(side=tk.LEFT)
+        
+        self.refresh_system_list()
+
+    def refresh_system_list(self):
+        """Refresh the list of elements in system builder"""
+        self.element_listbox.delete(0, tk.END)
+        for i, element in enumerate(self.current_lens.elements):
+            name = element.lens.name
+            gap = 0.0
+            if i > 0 and i-1 < len(self.current_lens.air_gaps):
+                 gap = self.current_lens.air_gaps[i-1].thickness
+            
+            if i == 0:
+                text = f"{i+1}. {name}"
+            else:
+                text = f"{i+1}. {name} (Gap: {gap:.2f}mm)"
+            self.element_listbox.insert(tk.END, text)
+
+    def on_element_selected(self, event):
+        """Update gap entry when element selected"""
+        selection = self.element_listbox.curselection()
+        if not selection:
+            return
+            
+        index = selection[0]
+        # Show gap BEFORE this element
+        if index > 0 and index-1 < len(self.current_lens.air_gaps):
+            gap = self.current_lens.air_gaps[index-1].thickness
+            self.gap_var.set(str(gap))
+            self.gap_entry.config(state='normal')
+        else:
+            self.gap_var.set("")
+            self.gap_entry.config(state='disabled')
+
+    def update_air_gap(self, event=None):
+        """Update air gap based on entry"""
+        selection = self.element_listbox.curselection()
+        if not selection:
+            return
+            
+        index = selection[0]
+        if index > 0:
+            try:
+                new_gap = float(self.gap_var.get())
+                if index-1 < len(self.current_lens.air_gaps):
+                    self.current_lens.air_gaps[index-1].thickness = new_gap
+                    self.current_lens._update_positions()
+                    self.refresh_system_list()
+                    # Re-run simulation automatically
+                    self.run_simulation()
+            except ValueError:
+                pass
+
+    def move_element_up(self):
+        """Move selected element up in the sequence"""
+        selection = self.element_listbox.curselection()
+        if not selection:
+            return
+        
+        index = selection[0]
+        if index > 0:
+            # Swap elements
+            self.current_lens.elements[index], self.current_lens.elements[index-1] = \
+                self.current_lens.elements[index-1], self.current_lens.elements[index]
+            
+            # Rebuild air gaps to match new order (preserve gaps or reset? Let's preserve sequence of gaps)
+            # Actually, gaps are between positions. If we move element, does it take its gap with it?
+            # Simplest approach: gaps stay as structural positions.
+            # Or: Gap is "gap before lens".
+            
+            # Let's just update positions and refresh
+            self.current_lens._update_positions()
+            self.refresh_system_list()
+            self.element_listbox.selection_set(index-1)
+            self.run_simulation()
+
+    def move_element_down(self):
+        """Move selected element down in the sequence"""
+        selection = self.element_listbox.curselection()
+        if not selection:
+            return
+        
+        index = selection[0]
+        if index < len(self.current_lens.elements) - 1:
+            # Swap elements
+            self.current_lens.elements[index], self.current_lens.elements[index+1] = \
+                self.current_lens.elements[index+1], self.current_lens.elements[index]
+            
+            self.current_lens._update_positions()
+            self.refresh_system_list()
+            self.element_listbox.selection_set(index+1)
+            self.run_simulation()
     
     def run_simulation(self):
         """Run ray tracing simulation"""
@@ -986,13 +1180,25 @@ class SimulationController:
             COLOR_BG_DARK, COLOR_BG_LIGHT, COLOR_FG = '#2b2b2b', '#3f3f3f', '#e0e0e0'
             FONT_SIZE_NORMAL = 10
         
+        # Calculate bounds based on system
+        is_system = hasattr(self.current_lens, 'elements')
+        if is_system:
+            total_length = self.current_lens.get_total_length()
+            x_max = total_length + 50
+            x_min = -50
+            name = self.current_lens.name
+        else:
+            x_max = 150
+            x_min = -100
+            name = self.current_lens.name
+
         # Redraw axes
-        self.sim_ax.set_xlim(-100, 150)
+        self.sim_ax.set_xlim(x_min, x_max)
         self.sim_ax.set_ylim(-30, 30)
         self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
         self.sim_ax.set_xlabel('Position (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
         self.sim_ax.set_ylabel('Height (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
-        self.sim_ax.set_title(f'Ray Tracing - {self.current_lens.name}', 
+        self.sim_ax.set_title(f'Ray Tracing - {name}', 
                             fontsize=12, color=COLOR_FG)
         self.sim_ax.grid(True, alpha=0.2, color=COLOR_BG_LIGHT)
         self.sim_ax.set_aspect('equal')
@@ -1001,7 +1207,10 @@ class SimulationController:
             spine.set_color(COLOR_BG_LIGHT)
         
         # Draw lens surfaces
-        self._draw_lens()
+        if is_system:
+            self._draw_system()
+        else:
+            self._draw_lens()
         
         # Draw rays
         for ray in rays:
@@ -1020,74 +1229,86 @@ class SimulationController:
         # Redraw canvas
         self.sim_canvas.draw()
     
-    def _draw_lens(self):
-        """Draw lens outline on the plot"""
+    def _draw_system(self):
+        """Draw all lenses in the system"""
         if not self.current_lens:
             return
-        
-        r1 = self.current_lens.radius_of_curvature_1
-        r2 = self.current_lens.radius_of_curvature_2
-        thickness = self.current_lens.thickness
-        diameter = self.current_lens.diameter
-        
-        # Generate y coordinates for the lens aperture
-        # Use more points for smoother curves
-        num_points = 100
-        half_diam = diameter / 2.0
-        # linspace equivalent: start + i * (end - start) / (num - 1)
-        y = [(-half_diam + i * diameter / (num_points - 1)) for i in range(num_points)]
-        
-        # Helper function to calculate x coordinate of surface
-        # Matches logic from LensVisualizer (2D view)
-        def calculate_surface_x(r, y_val, is_front):
-            # Flat surface checks
-            if abs(r) > 10000 or abs(r) < 1e-10:
-                return 0.0 if is_front else float(thickness)
             
-            r_abs = abs(r)
-            
-            # Clamp y to r to avoid domain error
-            if abs(y_val) >= r_abs:
-                sag_term = 0.0
-            else:
-                sag_term = math.sqrt(r_abs**2 - y_val**2)
-            
-            if is_front:
-                # x1 logic from LensVisualizer
-                if r > 0:
-                    return -r_abs + sag_term
-                else:
-                    return r_abs - sag_term
-            else:
-                # x2 logic from LensVisualizer
-                if r > 0:
-                    return thickness + r_abs - sag_term
-                else:
-                    return thickness - r_abs + sag_term
+        for element in self.current_lens.elements:
+            self._draw_single_lens_element(element.lens, element.position)
 
-        # Surface 1
-        x1 = [calculate_surface_x(r1, y_val, is_front=True) for y_val in y]
-        
-        # Surface 2
-        x2 = [calculate_surface_x(r2, y_val, is_front=False) for y_val in y]
-        
-        # Draw filled polygon
-        # Combine x and y for closed polygon
-        # Points: (x1, y) going up, then (x2, y) going down (reversed)
-        poly_x = x1 + x2[::-1]
-        poly_y = y + y[::-1]
-        
-        # Fill shape
-        # Check if fill already exists to avoid stacking (cleared in draw_rays usually)
-        self.sim_ax.fill(poly_x, poly_y, facecolor='#e6f3ff', edgecolor='none', alpha=0.4)
-        
-        # Draw outline
-        self.sim_ax.plot(poly_x, poly_y, 'k-', linewidth=1.5)
-        
-        # Draw center line (optical axis) inside lens
-        # Midpoint index is roughly num_points // 2
-        mid_idx = len(x1) // 2
-        self.sim_ax.plot([x1[mid_idx], x2[mid_idx]], [0, 0], 'k--', linewidth=0.5, alpha=0.5)
+    def _draw_single_lens_element(self, lens, offset):
+        """Helper to draw a single lens at an offset"""
+        try:
+            from ray_tracer import LensRayTracer
+            tracer = LensRayTracer(lens, x_offset=offset)
+            points = tracer.get_lens_outline(num_points=100)
+            
+            poly_x = [p[0] for p in points]
+            poly_y = [p[1] for p in points]
+            
+            self.sim_ax.fill(poly_x, poly_y, facecolor='#e6f3ff', edgecolor='none', alpha=0.4)
+            self.sim_ax.plot(poly_x, poly_y, 'k-', linewidth=1.5)
+            
+            # Draw center line (approximate from bounds)
+            if poly_x:
+                min_x = min(poly_x)
+                max_x = max(poly_x)
+                center_x = (min_x + max_x) / 2
+                self.sim_ax.plot([center_x, center_x], [0, 0], 'k+', markersize=5, alpha=0.5)
+                
+        except ImportError:
+            # Fallback to manual drawing if ray_tracer not available
+            r1 = lens.radius_of_curvature_1
+            r2 = lens.radius_of_curvature_2
+            thickness = lens.thickness
+            diameter = lens.diameter
+            
+            # Generate y coordinates for the lens aperture
+            num_points = 100
+            half_diam = diameter / 2.0
+            y = [(-half_diam + i * diameter / (num_points - 1)) for i in range(num_points)]
+            
+            # Helper function
+            def calculate_surface_x(r, y_val, is_front):
+                if abs(r) > 10000 or abs(r) < 1e-10:
+                    return offset if is_front else offset + float(thickness)
+                
+                r_abs = abs(r)
+                if abs(y_val) >= r_abs:
+                    sag_term = 0.0
+                else:
+                    sag_term = math.sqrt(r_abs**2 - y_val**2)
+                
+                if is_front:
+                    if r > 0:
+                        return offset - r_abs + sag_term
+                    else:
+                        return offset + r_abs - sag_term
+                else:
+                    if r > 0:
+                        return offset + thickness + r_abs - sag_term
+                    else:
+                        return offset + thickness - r_abs + sag_term
+
+            # Surface 1
+            x1 = [calculate_surface_x(r1, y_val, is_front=True) for y_val in y]
+            
+            # Surface 2
+            x2 = [calculate_surface_x(r2, y_val, is_front=False) for y_val in y]
+            
+            # Draw filled polygon
+            poly_x = x1 + x2[::-1]
+            poly_y = y + y[::-1]
+            
+            self.sim_ax.fill(poly_x, poly_y, facecolor='#e6f3ff', edgecolor='none', alpha=0.4)
+            self.sim_ax.plot(poly_x, poly_y, 'k-', linewidth=1.5)
+
+    def _draw_lens(self):
+        """Draw lens outline on the plot (legacy wrapper)"""
+        if not self.current_lens:
+            return
+        self._draw_single_lens_element(self.current_lens, 0.0)
 
 
     
@@ -1256,6 +1477,9 @@ class PerformanceController:
             self.metrics_text.config(state='disabled')
             return
         
+        # Check if it's a system
+        is_system = hasattr(self.current_lens, 'elements')
+        
         try:
             # Get parameters
             entrance_pupil = float(self.entrance_pupil_var.get())
@@ -1263,63 +1487,106 @@ class PerformanceController:
             object_distance = float(self.object_distance_var.get())
             sensor_size = float(self.sensor_size_var.get())
             
-            # Import aberrations module
-            try:
-                from aberrations import AberrationsCalculator, analyze_lens_quality
-                
-                calc = AberrationsCalculator(self.current_lens)
-                
-                # Calculate aberrations
-                spherical = calc.spherical_aberration(entrance_pupil_radius=entrance_pupil/2)
-                coma = calc.coma(field_angle=5.0)  # 5 degree field
-                chromatic = calc.chromatic_aberration()
-                distortion = calc.distortion(field_height=sensor_size/2)
-                field_curv = calc.field_curvature()
-                astigmatism = calc.astigmatism(field_angle=5.0)
-                
-                # Quality analysis
-                quality = analyze_lens_quality(self.current_lens)
-                
-                # Format results
+            if is_system:
+                # System Performance Analysis
                 result = "=" * 70 + "\n"
-                result += f"PERFORMANCE METRICS: {self.current_lens.name}\n"
+                result += f"SYSTEM PERFORMANCE: {self.current_lens.name}\n"
                 result += "=" * 70 + "\n\n"
                 
-                result += "CALCULATION PARAMETERS:\n"
-                result += f"  Entrance Pupil: {entrance_pupil:.2f} mm\n"
-                result += f"  Wavelength: {wavelength:.1f} nm\n"
-                result += f"  Object Distance: {object_distance:.1f} mm\n"
-                result += f"  Sensor Size: {sensor_size:.1f} mm\n\n"
+                # Basic Properties
+                f_system = self.current_lens.get_system_focal_length()
+                na = self.current_lens.get_numerical_aperture()
+                total_length = self.current_lens.get_total_length()
                 
-                result += "ABERRATIONS:\n"
-                result += f"  Spherical Aberration: {spherical:.6f} mm\n"
-                result += f"  Coma: {coma:.6f} mm\n"
-                result += f"  Chromatic Aberration: {chromatic:.6f} mm\n"
-                result += f"  Distortion: {distortion:.4f}%\n"
-                result += f"  Field Curvature: {field_curv:.6f} mm\n"
-                result += f"  Astigmatism: {astigmatism:.6f} mm\n\n"
+                result += "SYSTEM PROPERTIES:\n"
+                if f_system:
+                    result += f"  Effective Focal Length: {f_system:.3f} mm\n"
+                    f_number = abs(f_system) / entrance_pupil if entrance_pupil > 0 else 0
+                    result += f"  F-Number (approx): {f_number:.2f}\n"
+                    result += f"  Optical Power: {1000/f_system:.2f} D\n"
+                else:
+                    result += "  Effective Focal Length: Undefined (Afocal)\n"
                 
-                result += "OPTICAL PROPERTIES:\n"
-                result += f"  Focal Length: {self.current_lens.calculate_focal_length():.3f} mm\n"
-                result += f"  F-Number: {self.current_lens.calculate_f_number():.2f}\n"
-                result += f"  Back Focal Length: {self.current_lens.calculate_back_focal_length():.3f} mm\n"
-                result += f"  Front Focal Length: {self.current_lens.calculate_front_focal_length():.3f} mm\n\n"
+                result += f"  Numerical Aperture: {na:.4f}\n"
+                result += f"  Total Track Length: {total_length:.2f} mm\n"
+                result += f"  Number of Elements: {len(self.current_lens.elements)}\n\n"
                 
-                result += "QUALITY ASSESSMENT:\n"
-                result += f"  Overall Quality: {quality['quality']}\n"
-                result += f"  Quality Score: {quality['score']:.1f}/100\n"
-                result += f"  Issues: {', '.join(quality['issues']) if quality['issues'] else 'None'}\n\n"
+                # Chromatic Aberration
+                chrom = self.current_lens.calculate_chromatic_aberration()
+                result += "CHROMATIC ABERRATION:\n"
+                result += f"  Longitudinal CA: {chrom['longitudinal']:.4f} mm\n"
+                result += f"  Achromatic: {'Yes' if chrom['corrected'] else 'No'}\n"
+                result += f"  Shift (C-F): {chrom['longitudinal']:.4f} mm\n\n"
                 
-                result += "DIFFRACTION LIMIT:\n"
-                airy_disk = 1.22 * (wavelength / 1e6) * self.current_lens.calculate_f_number()
-                result += f"  Airy Disk Diameter: {airy_disk*1000:.3f} μm\n"
-                result += f"  Rayleigh Criterion: {airy_disk*1000/2:.3f} μm\n\n"
+                # System Elements
+                result += "ELEMENTS:\n"
+                for i, elem in enumerate(self.current_lens.elements):
+                    result += f"  {i+1}. {elem.lens.name} (Pos: {elem.position:.2f} mm)\n"
+                    f = elem.lens.calculate_focal_length()
+                    result += f"     f={f:.2f} mm, Material={elem.lens.material}\n"
                 
+                result += "\nNote: Full Seidel aberration analysis is currently supported for single lenses only.\n"
                 result += "=" * 70 + "\n"
                 
-            except ImportError:
-                result = "Performance analysis requires numpy and scipy.\n"
-                result += "Install with: pip install numpy scipy\n"
+            else:
+                # Single Lens Analysis (Existing Code)
+                # Import aberrations module
+                try:
+                    from aberrations import AberrationsCalculator, analyze_lens_quality
+                    
+                    calc = AberrationsCalculator(self.current_lens)
+                    
+                    # Calculate aberrations
+                    spherical = calc.spherical_aberration(entrance_pupil_radius=entrance_pupil/2)
+                    coma = calc.coma(field_angle=5.0)  # 5 degree field
+                    chromatic = calc.chromatic_aberration()
+                    distortion = calc.distortion(field_height=sensor_size/2)
+                    field_curv = calc.field_curvature()
+                    astigmatism = calc.astigmatism(field_angle=5.0)
+                    
+                    # Quality analysis
+                    quality = analyze_lens_quality(self.current_lens)
+                    
+                    # Format results
+                    result = "=" * 70 + "\n"
+                    result += f"PERFORMANCE METRICS: {self.current_lens.name}\n"
+                    result += "=" * 70 + "\n\n"
+                    
+                    result += "CALCULATION PARAMETERS:\n"
+                    result += f"  Entrance Pupil: {entrance_pupil:.2f} mm\n"
+                    result += f"  Wavelength: {wavelength:.1f} nm\n"
+                    result += f"  Object Distance: {object_distance:.1f} mm\n"
+                    result += f"  Sensor Size: {sensor_size:.1f} mm\n\n"
+                    
+                    result += "ABERRATIONS:\n"
+                    result += f"  Spherical Aberration: {spherical:.6f} mm\n"
+                    result += f"  Coma: {coma:.6f} mm\n"
+                    result += f"  Chromatic Aberration: {chromatic:.6f} mm\n"
+                    result += f"  Distortion: {distortion:.4f}%\n"
+                    result += f"  Field Curvature: {field_curv:.6f} mm\n"
+                    result += f"  Astigmatism: {astigmatism:.6f} mm\n\n"
+                    
+                    result += "OPTICAL PROPERTIES:\n"
+                    result += f"  Focal Length: {self.current_lens.calculate_focal_length():.3f} mm\n"
+                    result += f"  F-Number: {self.current_lens.calculate_f_number():.2f}\n"
+                    result += f"  Back Focal Length: {self.current_lens.calculate_back_focal_length():.3f} mm\n"
+                    result += f"  Front Focal Length: {self.current_lens.calculate_front_focal_length():.3f} mm\n\n"
+                    
+                    result += "QUALITY ASSESSMENT:\n"
+                    result += f"  Overall Quality: {quality['quality']}\n"
+                    result += f"  Quality Score: {quality['score']:.1f}/100\n"
+                    result += f"  Issues: {', '.join(quality['issues']) if quality['issues'] else 'None'}\n\n"
+                    
+                    result += "DIFFRACTION LIMIT:\n"
+                    airy_disk = 1.22 * (wavelength / 1e6) * self.current_lens.calculate_f_number()
+                    result += f"  Airy Disk Diameter: {airy_disk*1000:.3f} μm\n"
+                    result += f"  Rayleigh Criterion: {airy_disk*1000/2:.3f} μm\n\n"
+                    
+                    result += "=" * 70 + "\n"
+                    
+                except ImportError:
+                    result = "Performance analysis requires numpy and scipy.\n"
+                    result += "Install with: pip install numpy scipy\n"
             
             # Update display
             self.metrics_text.config(state='normal')
@@ -1374,202 +1641,6 @@ class PerformanceController:
                 logger.error(f"Export failed: {e}, dialog error: {dialog_error}")
 
 
-class ComparisonController:
-    """
-    Controller for comparing multiple lenses.
-    
-    Responsibilities:
-    - Select lenses for comparison
-    - Display comparative metrics
-    - Generate comparison charts
-    """
-    
-    def __init__(self, parent_window, lens_list, colors=None):
-        """
-        Initialize the comparison controller.
-        
-        Args:
-            parent_window: Reference to main window
-            lens_list: Callable that returns list of lenses
-            colors: Color scheme dictionary
-        """
-        self.window = parent_window
-        self.lens_list = lens_list
-        self.selected_lenses = []
-        self.listbox = None
-        self.comparison_text = None
-        
-        # Import constants with fallback
-        try:
-            from ui_constants import (
-                COLOR_BG_DARK, COLOR_FG_LIGHT, COLOR_ACCENT,
-                FONT_FAMILY, FONT_SIZE_NORMAL, PADDING_MEDIUM
-            )
-            self.colors = colors or {
-                'bg': COLOR_BG_DARK,
-                'fg': COLOR_FG_LIGHT,
-                'accent': COLOR_ACCENT,
-                'entry_bg': '#2b2b2b'
-            }
-        except ImportError:
-            self.colors = colors or {
-                'bg': '#1e1e1e',
-                'fg': '#ffffff',
-                'accent': '#0078d4',
-                'entry_bg': '#2b2b2b'
-            }
-    
-    def setup_ui(self, parent_frame):
-        """Set up the comparison tab UI"""
-        # Import constants
-        try:
-            from ui_constants import FONT_FAMILY, FONT_SIZE_NORMAL, PADDING_MEDIUM, PADDING_SMALL
-        except ImportError:
-            FONT_FAMILY = 'Arial'
-            FONT_SIZE_NORMAL = 10
-            PADDING_MEDIUM = 10
-            PADDING_SMALL = 5
-        
-        # Configure grid
-        parent_frame.columnconfigure(0, weight=1)
-        parent_frame.rowconfigure(2, weight=1)
-        
-        # Title
-        title_label = ttk.Label(parent_frame, text="Lens Comparison Tool", 
-                                font=(FONT_FAMILY, 14, 'bold'))
-        title_label.grid(row=0, column=0, pady=PADDING_MEDIUM)
-        
-        # Selection frame
-        select_frame = ttk.LabelFrame(parent_frame, text="Select Lenses to Compare", padding=10)
-        select_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
-        
-        # Listbox container
-        list_container = ttk.Frame(select_frame)
-        list_container.pack(fill=tk.BOTH, expand=True)
-        
-        scrollbar = ttk.Scrollbar(list_container)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.listbox = tk.Listbox(list_container, selectmode=tk.MULTIPLE,
-                                  yscrollcommand=scrollbar.set, height=8,
-                                  bg=self.colors.get('entry_bg', '#2b2b2b'),
-                                  fg=self.colors.get('fg', '#ffffff'),
-                                  selectbackground=self.colors.get('accent', '#0078d4'),
-                                  selectforeground=self.colors.get('fg', '#ffffff'),
-                                  font=(FONT_FAMILY, FONT_SIZE_NORMAL))
-        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.listbox.yview)
-        
-        # Button frame
-        button_frame = ttk.Frame(select_frame)
-        button_frame.pack(pady=PADDING_MEDIUM)
-        
-        ttk.Button(button_frame, text="Compare Selected", 
-                  command=self.compare_lenses).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        ttk.Button(button_frame, text="Clear Selection", 
-                  command=self.clear_selection).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        ttk.Button(button_frame, text="Export Comparison",
-                  command=self.export_comparison).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        
-        # Results frame
-        results_frame = ttk.LabelFrame(parent_frame, text="Comparison Results", padding=10)
-        results_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
-        results_frame.columnconfigure(0, weight=1)
-        results_frame.rowconfigure(0, weight=1)
-        
-        result_scrollbar = ttk.Scrollbar(results_frame)
-        result_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
-        
-        self.comparison_text = tk.Text(results_frame, height=15, width=80,
-                                       yscrollcommand=result_scrollbar.set, wrap=tk.NONE,
-                                       bg=self.colors.get('entry_bg', '#2b2b2b'),
-                                       fg=self.colors.get('fg', '#ffffff'),
-                                       font=('Courier', 9))
-        self.comparison_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        result_scrollbar.config(command=self.comparison_text.yview)
-        
-        self.comparison_text.insert(1.0, "Select lenses above and click 'Compare Selected' to view side-by-side comparison.")
-        
-        self.refresh_lens_list()
-    
-    def refresh_lens_list(self):
-        """Refresh the lens selection listbox"""
-        self.listbox.delete(0, tk.END)
-        for lens in self.lens_list():
-            # Handle both Lens objects and dicts
-            if isinstance(lens, dict):
-                name = lens.get('name', 'Unknown')
-                lens_type = lens.get('type', 'Unknown')
-            else:
-                name = lens.name
-                lens_type = lens.lens_type
-            self.listbox.insert(tk.END, f"{name} ({lens_type})")
-    
-    def compare_lenses(self):
-        """Compare selected lenses"""
-        selection = self.listbox.curselection()
-        if len(selection) < 2:
-            CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Selection", "Please select at least 2 lenses to compare")
-            return
-        
-        lenses = [self.lens_list()[i] for i in selection]
-        
-        # Build comparison table
-        result = "Lens Comparison\n"
-        result += "=" * 80 + "\n\n"
-        result += f"{'Property':<25} " + " ".join([f"{lens.name[:15]:>15}" for lens in lenses]) + "\n"
-        result += "-" * 80 + "\n"
-        
-        # Compare properties
-        result += f"{'Type':<25} " + " ".join([f"{lens.lens_type[:15]:>15}" for lens in lenses]) + "\n"
-        result += f"{'Material':<25} " + " ".join([f"{lens.material[:15]:>15}" for lens in lenses]) + "\n"
-        result += f"{'Diameter (mm)':<25} " + " ".join([f"{lens.diameter:>15.2f}" for lens in lenses]) + "\n"
-        result += f"{'Thickness (mm)':<25} " + " ".join([f"{lens.thickness:>15.2f}" for lens in lenses]) + "\n"
-        result += f"{'R1 (mm)':<25} " + " ".join([f"{lens.radius_of_curvature_1:>15.2f}" for lens in lenses]) + "\n"
-        result += f"{'R2 (mm)':<25} " + " ".join([f"{lens.radius_of_curvature_2:>15.2f}" for lens in lenses]) + "\n"
-        
-        # Calculated properties
-        focal_lengths = []
-        for lens in lenses:
-            try:
-                fl = lens.calculate_focal_length()
-                focal_lengths.append(f"{fl:>15.2f}" if fl else f"{'N/A':>15}")
-            except (ValueError, ZeroDivisionError, AttributeError) as e:
-                logger.debug(f"Failed to calculate focal length: {e}")
-                focal_lengths.append(f"{'Error':>15}")
-        
-        result += f"{'Focal Length (mm)':<25} " + " ".join(focal_lengths) + "\n"
-        
-        self.comparison_text.delete(1.0, tk.END)
-        self.comparison_text.insert(1.0, result)
-    
-    def clear_selection(self):
-        """Clear the selection"""
-        self.listbox.selection_clear(0, tk.END)
-        self.comparison_text.delete(1.0, tk.END)
-        self.comparison_text.insert(1.0, "Select lenses above and click 'Compare Selected' to view side-by-side comparison.")
-    
-    def export_comparison(self):
-        """Export comparison to file"""
-        if not self.comparison_text.get(1.0, tk.END).strip():
-            CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Data", "No comparison data to export")
-            return
-        
-        from tkinter import filedialog
-        filename = filedialog.asksaveasfilename(
-            defaultextension=".txt",
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
-            title="Export Comparison"
-        )
-        
-        if filename:
-            try:
-                with open(filename, 'w') as f:
-                    f.write(self.comparison_text.get(1.0, tk.END))
-                CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", f"Comparison exported to {filename}")
-            except Exception as e:
-                CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Export Error", f"Failed to export: {e}")
-
 
 class ExportController:
     """
@@ -1595,13 +1666,13 @@ class ExportController:
         
         # Import constants with fallback
         try:
-            from ui_constants import (
-                COLOR_BG_DARK, COLOR_FG_LIGHT, COLOR_ACCENT,
+            from constants import (
+                COLOR_BG_DARK, COLOR_FG, COLOR_ACCENT,
                 FONT_FAMILY, FONT_SIZE_NORMAL
             )
             self.colors = colors or {
                 'bg': COLOR_BG_DARK,
-                'fg': COLOR_FG_LIGHT,
+                'fg': COLOR_FG,
                 'accent': COLOR_ACCENT,
                 'entry_bg': '#2b2b2b'
             }
@@ -1617,7 +1688,7 @@ class ExportController:
         """Set up the export tab UI"""
         # Import constants
         try:
-            from ui_constants import FONT_FAMILY, FONT_SIZE_NORMAL, PADDING_MEDIUM, PADDING_XLARGE
+            from constants import FONT_FAMILY, FONT_SIZE_NORMAL, PADDING_MEDIUM, PADDING_XLARGE
         except ImportError:
             FONT_FAMILY = 'Arial'
             FONT_SIZE_NORMAL = 10
@@ -1793,6 +1864,5 @@ __all__ = [
     'LensEditorController',
     'SimulationController',
     'PerformanceController',
-    'ComparisonController',
     'ExportController'
 ]
