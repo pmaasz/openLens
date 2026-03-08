@@ -114,10 +114,10 @@ class LensRayTracer:
     
     def _calculate_geometry(self) -> None:
         """Calculate lens surface positions and centers"""
-        # Lens offset - front surface starts at x=5
-        self.lens_offset = DEFAULT_THICKNESS
+        # Lens offset - front surface starts at x=0 to match visualization
+        self.lens_offset = 0.0
         
-        # Front surface vertex at x=5
+        # Front surface vertex at x=0
         self.front_vertex_x = self.lens_offset
         
         # Back surface vertex
@@ -403,8 +403,11 @@ class LensRayTracer:
         min_h, max_h = ray_height_range
         angle_rad = math.radians(angle)
         
-        # Starting position (before lens) - rays start at x=0
-        start_x = 0.0  # Ray starts at lens entrance
+        # Starting position (before lens) - rays start at x=-100 to visualize the beam
+        start_x = -100.0
+        
+        # Calculate lens position (x=0) for target height
+        lens_x = 0.0
         
         for i in range(num_rays):
             if num_rays == 1:
@@ -412,12 +415,14 @@ class LensRayTracer:
             else:
                 height = min_h + (max_h - min_h) * i / (num_rays - 1)
             
-            # Adjust starting y based on angle to ensure ray hits the lens at 'height' relative to optical axis
-            # For simplicity, we just launch them from x=0 at the given height and angle
-            # Ideally we might want to project them from a plane perpendicular to the beam, 
-            # but for small angles this is sufficient.
+            # Calculate starting y so ray hits the lens at 'height'
+            # y = y_start + (x - x_start) * tan(angle)
+            # height = y_start + (lens_x - start_x) * tan(angle)
+            # y_start = height - (lens_x - start_x) * tan(angle)
             
-            ray = Ray(start_x, height, angle=angle_rad, wavelength=wavelength)
+            y_start = height - (lens_x - start_x) * math.tan(angle_rad)
+            
+            ray = Ray(start_x, y_start, angle=angle_rad, wavelength=wavelength)
             self.trace_ray(ray)
             rays.append(ray)
         
