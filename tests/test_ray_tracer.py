@@ -151,6 +151,30 @@ class TestLensRayTracer(unittest.TestCase):
         for ray in rays:
             self.assertGreater(len(ray.path), 2)
     
+    def test_trace_parallel_rays_with_angle(self):
+        """Test tracing parallel rays at an angle"""
+        tracer = LensRayTracer(self.biconvex)
+        # Trace rays with 10 degree angle
+        angle_deg = 10.0
+        rays = tracer.trace_parallel_rays(num_rays=5, angle=angle_deg)
+        
+        self.assertEqual(len(rays), 5)
+        
+        # Check that rays started with the correct angle
+        # By checking the slope of the first segment
+        expected_angle_rad = math.radians(angle_deg)
+        expected_slope = math.tan(expected_angle_rad)
+        
+        for ray in rays:
+            if len(ray.path) >= 2:
+                p1 = ray.path[0]
+                p2 = ray.path[1]
+                dx = p2[0] - p1[0]
+                dy = p2[1] - p1[1]
+                if abs(dx) > 1e-10:
+                    slope = dy / dx
+                    self.assertAlmostEqual(slope, expected_slope, places=3)
+    
     def test_parallel_rays_converge(self):
         """Test that parallel rays through converging lens focus"""
         tracer = LensRayTracer(self.biconvex)

@@ -381,7 +381,8 @@ class LensRayTracer:
     
     def trace_parallel_rays(self, num_rays: int = DEFAULT_NUM_RAYS, 
                            ray_height_range: Optional[Tuple[float, float]] = None, 
-                           wavelength: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray]:
+                           wavelength: float = WAVELENGTH_GREEN * NM_TO_MM,
+                           angle: float = 0.0) -> List[Ray]:
         """
         Trace parallel rays (collimated beam) through the lens.
         
@@ -389,6 +390,7 @@ class LensRayTracer:
             num_rays: Number of rays to trace
             ray_height_range: (min_height, max_height) in mm, or None for full aperture
             wavelength: Wavelength in mm
+            angle: Angle of the parallel beam in degrees (default 0.0)
         
         Returns:
             List of traced Ray objects
@@ -399,6 +401,7 @@ class LensRayTracer:
         
         rays = []
         min_h, max_h = ray_height_range
+        angle_rad = math.radians(angle)
         
         # Starting position (before lens) - rays start at x=0
         start_x = 0.0  # Ray starts at lens entrance
@@ -409,7 +412,12 @@ class LensRayTracer:
             else:
                 height = min_h + (max_h - min_h) * i / (num_rays - 1)
             
-            ray = Ray(start_x, height, angle=0, wavelength=wavelength)
+            # Adjust starting y based on angle to ensure ray hits the lens at 'height' relative to optical axis
+            # For simplicity, we just launch them from x=0 at the given height and angle
+            # Ideally we might want to project them from a plane perpendicular to the beam, 
+            # but for small angles this is sufficient.
+            
+            ray = Ray(start_x, height, angle=angle_rad, wavelength=wavelength)
             self.trace_ray(ray)
             rays.append(ray)
         
