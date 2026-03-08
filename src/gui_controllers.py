@@ -19,6 +19,7 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Optional, List, Callable, Dict, Any, TYPE_CHECKING
 import json
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -1003,9 +1004,15 @@ class SimulationController:
         self._draw_lens()
         
         # Draw rays
-        for i, ray_data in enumerate(rays):
-            if ray_data and 'segments' in ray_data:
-                for segment in ray_data['segments']:
+        for ray in rays:
+            if hasattr(ray, 'path') and ray.path:
+                # Extract x and y coordinates from path list of tuples
+                x_coords = [p[0] for p in ray.path]
+                y_coords = [p[1] for p in ray.path]
+                self.sim_ax.plot(x_coords, y_coords, 'b-', alpha=0.6, linewidth=1)
+            elif isinstance(ray, dict) and 'segments' in ray:
+                # Handle legacy dictionary format if present
+                for segment in ray['segments']:
                     x_coords = [segment['start'][0], segment['end'][0]]
                     y_coords = [segment['start'][1], segment['end'][1]]
                     self.sim_ax.plot(x_coords, y_coords, 'b-', alpha=0.6, linewidth=1)
@@ -1018,43 +1025,68 @@ class SimulationController:
         if not self.current_lens:
             return
         
-        # Simple lens representation - two curved lines
-        import numpy as np
-        
         r1 = self.current_lens.radius_of_curvature_1
         r2 = self.current_lens.radius_of_curvature_2
         thickness = self.current_lens.thickness
         diameter = self.current_lens.diameter
         
-        # Draw first surface
-        if abs(r1) < 10000:
-            theta = np.linspace(-np.pi/4, np.pi/4, 50)
-            x1 = r1 * (1 - np.cos(theta))
-            y1 = r1 * np.sin(theta)
-            # Use a mask to filter both arrays consistently
-            mask1 = np.abs(y1) <= diameter/2
-            x1 = x1[mask1]
-            y1 = y1[mask1]
-            if len(x1) > 0:
-                self.sim_ax.plot(x1, y1, 'k-', linewidth=2)
-        else:
-            # Flat surface
-            self.sim_ax.plot([0, 0], [-diameter/2, diameter/2], 'k-', linewidth=2)
+        # Generate y coordinates for the lens aperture
+        # Use more points for smoother curves
+        num_points = 100
+        half_diam = diameter / 2.0
+        # linspace equivalent: start + i * (end - start) / (num - 1)
+        y = [(-half_diam + i * diameter / (num_points - 1)) for i in range(num_points)]
         
-        # Draw second surface
-        if abs(r2) < 10000:
-            theta = np.linspace(-np.pi/4, np.pi/4, 50)
-            x2 = thickness + r2 * (1 - np.cos(theta))
-            y2 = r2 * np.sin(theta)
-            # Use a mask to filter both arrays consistently
-            mask2 = np.abs(y2) <= diameter/2
-            x2 = x2[mask2]
-            y2 = y2[mask2]
-            if len(x2) > 0:
-                self.sim_ax.plot(x2, y2, 'k-', linewidth=2)
-        else:
-            # Flat surface
-            self.sim_ax.plot([thickness, thickness], [-diameter/2, diameter/2], 'k-', linewidth=2)
+        # Helper function to calculate sag
+        def calculate_sag(r, y_val):
+            # Flat surface (effectively)
+            if abs(r) > 10000:
+                return 0.0
+            
+            # Avoid division by zero
+            if abs(r) < 1e-10:
+                return 0.0
+                
+            # Calculate sag: z = r - r * sqrt(1 - (y/r)^2)
+            # This works for both convex (r>0) and concave (r<0) surfaces
+            # Check for physical validity (radius must be >= semi-diameter)
+            
+            # If y > r (physically impossible for spherical surface), clamp to center plane?
+            # Or clamp y to r?
+            # In numpy version we did: arg = max(0, 1 - (y/r)^2).
+            # If y > r, arg becomes 0. sqrt(0) is 0. result is r * (1 - 0) = r.
+            if abs(y_val) >= abs(r):
+                return float(r)
+            
+            arg = 1.0 - (y_val/r)**2
+            return r * (1.0 - math.sqrt(arg))
+
+        # Surface 1
+        x1 = [calculate_sag(r1, y_val) for y_val in y]
+        
+        # Surface 2
+        # x2 = thickness + sag2
+        x2 = [thickness + calculate_sag(r2, y_val) for y_val in y]
+        
+        # Draw filled polygon
+        # Combine x and y for closed polygon
+        # Points: (x1, y) going up, then (x2, y) going down (reversed)
+        poly_x = x1 + x2[::-1]
+        poly_y = y + y[::-1]
+        
+        # Fill shape
+        # Check if fill already exists to avoid stacking (cleared in draw_rays usually)
+        self.sim_ax.fill(poly_x, poly_y, facecolor='#e6f3ff', edgecolor='none', alpha=0.4)
+        
+        # Draw outline
+        self.sim_ax.plot(poly_x, poly_y, 'k-', linewidth=1.5)
+        
+        # Draw center line (optical axis) inside lens
+        # Midpoint index is roughly num_points // 2
+        mid_idx = len(x1) // 2
+        self.sim_ax.plot([x1[mid_idx], x2[mid_idx]], [0, 0], 'k--', linewidth=0.5, alpha=0.5)
+
+
     
     def clear_simulation(self):
         """Clear simulation canvas"""
