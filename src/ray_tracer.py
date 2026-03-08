@@ -241,10 +241,10 @@ class LensRayTracer:
                 return None  # No valid intersection in front of ray
             
             # Choose appropriate intersection based on surface curvature
-            if self.R1 > 0:  # Convex - want nearest intersection
-                t = min(valid_ts)
-            else:  # Concave - want farthest intersection
+            if self.R1 > 0:  # Convex - want farthest intersection (second intersection of sphere)
                 t = max(valid_ts)
+            else:  # Concave - want nearest intersection (first intersection of sphere)
+                t = min(valid_ts)
             
             x = ray.x + t * dx
             y = ray.y + t * dy
