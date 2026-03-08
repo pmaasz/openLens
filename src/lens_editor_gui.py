@@ -624,6 +624,10 @@ class LensEditorWindow:
             self.notebook.tab(5, state='disabled')
         
         self.update_status(f"Lens '{lens.name}' deleted")
+        
+        # Refresh comparison controller if available
+        if hasattr(self, 'comparison_controller') and self.comparison_controller:
+            self.comparison_controller.refresh_lens_list()
     
     def on_lens_updated_callback(self, lens: Optional['Lens'] = None) -> None:
         """Callback when lens data is updated"""
@@ -636,6 +640,10 @@ class LensEditorWindow:
         self.save_lenses()
         if self.selection_controller:
             self.selection_controller.refresh_lens_list()
+        
+        # Refresh comparison controller if available
+        if hasattr(self, 'comparison_controller') and self.comparison_controller:
+            self.comparison_controller.refresh_lens_list()
     
     def _setup_selection_tab_legacy(self) -> None:
         """Legacy selection tab setup (fallback if controllers unavailable)"""
@@ -818,7 +826,14 @@ class LensEditorWindow:
         
         # If switching to simulation tab (index 2) and we have a current lens
         if selected_tab == 2 and self.current_lens:
-            self.update_simulation_view()
+            if hasattr(self, 'simulation_controller') and self.simulation_controller:
+                self.simulation_controller.load_lens(self.current_lens)
+                self.simulation_controller.run_simulation()
+        
+        # If switching to comparison tab (index 4), refresh the list
+        if selected_tab == 4:
+            if hasattr(self, 'comparison_controller') and self.comparison_controller:
+                self.comparison_controller.refresh_lens_list()
     
     def setup_performance_tab(self) -> None:
         """Setup the Performance Metrics Dashboard tab"""
