@@ -5,6 +5,15 @@ All notable changes to the openlens project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-03-08
+
+### Fixed
+- **Ray Tracing Logic:**
+  - Fixed ray-sphere intersection bug where rays would interact with the "ghost" side of the sphere instead of the lens surface.
+  - Corrected logic for both convex and concave front surfaces to ensure rays hit the physical lens surface at x=0.
+
+---
+
 ## [1.2.0] - 2026-02-04
 
 ### Added

@@ -5,6 +5,8 @@ This module centralizes all magic numbers and configuration values
 to improve code maintainability and clarity.
 """
 
+VERSION = "1.2.1"
+
 # ==================== Optical Constants ====================
 
 # Default wavelengths (in nanometers)
