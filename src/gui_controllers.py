@@ -1037,36 +1037,39 @@ class SimulationController:
         # linspace equivalent: start + i * (end - start) / (num - 1)
         y = [(-half_diam + i * diameter / (num_points - 1)) for i in range(num_points)]
         
-        # Helper function to calculate sag
-        def calculate_sag(r, y_val):
-            # Flat surface (effectively)
-            if abs(r) > 10000:
-                return 0.0
+        # Helper function to calculate x coordinate of surface
+        # Matches logic from LensVisualizer (2D view)
+        def calculate_surface_x(r, y_val, is_front):
+            # Flat surface checks
+            if abs(r) > 10000 or abs(r) < 1e-10:
+                return 0.0 if is_front else float(thickness)
             
-            # Avoid division by zero
-            if abs(r) < 1e-10:
-                return 0.0
-                
-            # Calculate sag: z = r - r * sqrt(1 - (y/r)^2)
-            # This works for both convex (r>0) and concave (r<0) surfaces
-            # Check for physical validity (radius must be >= semi-diameter)
+            r_abs = abs(r)
             
-            # If y > r (physically impossible for spherical surface), clamp to center plane?
-            # Or clamp y to r?
-            # In numpy version we did: arg = max(0, 1 - (y/r)^2).
-            # If y > r, arg becomes 0. sqrt(0) is 0. result is r * (1 - 0) = r.
-            if abs(y_val) >= abs(r):
-                return float(r)
+            # Clamp y to r to avoid domain error
+            if abs(y_val) >= r_abs:
+                sag_term = 0.0
+            else:
+                sag_term = math.sqrt(r_abs**2 - y_val**2)
             
-            arg = 1.0 - (y_val/r)**2
-            return r * (1.0 - math.sqrt(arg))
+            if is_front:
+                # x1 logic from LensVisualizer
+                if r > 0:
+                    return -r_abs + sag_term
+                else:
+                    return r_abs - sag_term
+            else:
+                # x2 logic from LensVisualizer
+                if r > 0:
+                    return thickness + r_abs - sag_term
+                else:
+                    return thickness - r_abs + sag_term
 
         # Surface 1
-        x1 = [calculate_sag(r1, y_val) for y_val in y]
+        x1 = [calculate_surface_x(r1, y_val, is_front=True) for y_val in y]
         
         # Surface 2
-        # x2 = thickness + sag2
-        x2 = [thickness + calculate_sag(r2, y_val) for y_val in y]
+        x2 = [calculate_surface_x(r2, y_val, is_front=False) for y_val in y]
         
         # Draw filled polygon
         # Combine x and y for closed polygon
