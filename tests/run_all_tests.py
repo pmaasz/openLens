@@ -47,6 +47,24 @@ except Exception as e:
     traceback.print_exc()
     sys_passed = False
 
+# Run 3D Ray Tracer tests
+print("\n" + "=" * 70)
+print("PHASE 1.6: 3D Ray Tracer Tests")
+print("=" * 70)
+
+try:
+    import test_ray_tracer_3d
+    loader = unittest.TestLoader()
+    suite = loader.loadTestsFromModule(test_ray_tracer_3d)
+    runner = unittest.TextTestRunner(verbosity=2)
+    result_3d = runner.run(suite)
+    r3d_passed = result_3d.wasSuccessful()
+except Exception as e:
+    print(f"Error running 3D ray tracer tests: {e}")
+    import traceback
+    traceback.print_exc()
+    r3d_passed = False
+
 # Run GUI tests
 print("\n" + "=" * 70)
 print("PHASE 2: GUI Functionality Tests")
@@ -65,7 +83,7 @@ print("\n" + "=" * 70)
 print("TEST SUITE SUMMARY")
 print("=" * 70)
 
-if core_passed and sys_passed and gui_passed:
+if core_passed and sys_passed and r3d_passed and gui_passed:
     print("\n✓✓✓ ALL TESTS PASSED! ✓✓✓")
     print("\nThe openlens application is working correctly!")
     sys.exit(0)
@@ -75,6 +93,8 @@ else:
         print("  - Core functionality tests failed")
     if not sys_passed:
         print("  - System tracer tests failed")
+    if not r3d_passed:
+        print("  - 3D ray tracer tests failed")
     if not gui_passed:
         print("  - GUI functionality tests failed")
     sys.exit(1)

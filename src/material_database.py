@@ -8,6 +8,7 @@ and importing from major glass catalogs (Schott, Ohara, Hoya)
 import json
 import logging
 import os
+import csv
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 import math
@@ -45,6 +46,7 @@ class MaterialProperties:
     
     # Transmission data (wavelength in nm, transmission 0-1)
     transmission_data: List[Tuple[float, float]] = field(default_factory=list)
+    transmission_thickness: float = 10.0  # Thickness for transmission data (mm)
     
     # Physical properties
     density: float = 2.51  # g/cm³
@@ -309,14 +311,35 @@ class MaterialDatabase:
         
         return n_base
     
-    def get_transmission(self, material_name: str, wavelength_nm: float) -> float:
-        """Get transmission at specific wavelength (0-1)"""
+    def get_transmission(self, material_name: str, wavelength_nm: float, thickness_mm: float = 10.0) -> float:
+        """
+        Get internal transmission for a specific thickness.
+        Normalizes from the catalog reference thickness using Beer-Lambert law:
+        T2 = T1^(thickness2 / thickness1)
+        """
         mat = self.get_material(material_name)
         if not mat or not mat.transmission_data:
-            return 0.95  # Default transmission
+            # Default fallback: 99% per 10mm
+            return 0.99 ** (thickness_mm / 10.0)
         
-        # Linear interpolation
-        data = sorted(mat.transmission_data)
+        # Get base transmission from catalog data
+        t_base = self._interpolate_transmission(mat.transmission_data, wavelength_nm)
+        
+        if t_base <= 0:
+            return 0.0
+        
+        # Scale for thickness
+        exponent = thickness_mm / mat.transmission_thickness
+        return t_base ** exponent
+
+    def _interpolate_transmission(self, data: List[Tuple[float, float]], wavelength_nm: float) -> float:
+        """Interpolate transmission value from data points"""
+        # Sort by wavelength
+        data = sorted(data)
+        
+        if not data:
+            return 1.0
+            
         if wavelength_nm <= data[0][0]:
             return data[0][1]
         if wavelength_nm >= data[-1][0]:
@@ -326,16 +349,191 @@ class MaterialDatabase:
             w1, t1 = data[i]
             w2, t2 = data[i + 1]
             if w1 <= wavelength_nm <= w2:
+                # Linear interpolation
                 ratio = (wavelength_nm - w1) / (w2 - w1)
                 return t1 + ratio * (t2 - t1)
         
         return 0.95
     
+    def import_agf_catalog(self, catalog_file: str) -> int:
+        """
+        Import materials from AGF catalog file.
+        Returns number of materials imported.
+        """
+        if not os.path.exists(catalog_file):
+            logger.error(f"Catalog file not found: {catalog_file}")
+            return 0
+            
+        count = 0
+        current_glass: Optional[Dict] = None
+        catalog_name = "AGF_Import"
+        
+        try:
+            with open(catalog_file, 'r', encoding='utf-8', errors='replace') as f:
+                lines = f.readlines()
+                
+            for line in lines:
+                parts = line.strip().split()
+                if not parts:
+                    continue
+                    
+                key = parts[0].upper()
+                
+                if key == 'NM':
+                    # Save previous glass if exists
+                    if current_glass:
+                        self._process_agf_glass(current_glass, catalog_name)
+                        count += 1
+                    
+                    # Start new glass
+                    # NM "NAME" Formula Nd Vd ...
+                    name_raw = parts[1]
+                    name = name_raw.strip('"')
+                    
+                    # Extract basic properties
+                    # Format: NM Name Formula Nd Vd ...
+                    # Formula 1=Schott, 2=Sellmeier1, etc. But standard is consistent for Nd, Vd
+                    try:
+                        nd = float(parts[3])
+                        vd = float(parts[4])
+                        tce = float(parts[5]) if len(parts) > 5 else 0.0
+                        density = float(parts[6]) if len(parts) > 6 else 0.0
+                    except (IndexError, ValueError):
+                        logger.warning(f"Error parsing NM line for {name}")
+                        current_glass = None
+                        continue
+                        
+                    current_glass = {
+                        'name': name,
+                        'nd': nd,
+                        'vd': vd,
+                        'tce': tce * 1e-6,  # Usually given in 10^-6
+                        'density': density,
+                        'dispersion': [],
+                        'transmission': [],
+                        'transmission_thickness': 10.0
+                    }
+                    
+                elif key == 'CD' and current_glass:
+                    # Dispersion coefficients
+                    # CD C1 C2 C3 ...
+                    try:
+                        coeffs = [float(x) for x in parts[1:]]
+                        current_glass['dispersion'] = coeffs
+                    except ValueError:
+                        pass
+                        
+                elif key == 'IT' and current_glass:
+                    # Internal Transmission
+                    # IT Thickness T1 T2 T3 ... (pairs are interleaved? No usually IT Thk W1 T1 W2 T2 ...)
+                    # Zemax AGF: IT <thick> <w1> <t1> <w2> <t2> ...
+                    try:
+                        thickness = float(parts[1])
+                        current_glass['transmission_thickness'] = thickness
+                        
+                        # Parse pairs
+                        vals = [float(x) for x in parts[2:]]
+                        pairs = []
+                        for i in range(0, len(vals), 2):
+                            if i+1 < len(vals):
+                                # Wavelength in AGF is usually micrometers
+                                w_um = vals[i]
+                                t = vals[i+1]
+                                pairs.append((w_um * 1000.0, t)) # Convert um to nm
+                        
+                        current_glass['transmission'] = pairs
+                    except (IndexError, ValueError):
+                        pass
+
+            # Save last glass
+            if current_glass:
+                self._process_agf_glass(current_glass, catalog_name)
+                count += 1
+                
+        except Exception as e:
+            logger.error(f"Error importing AGF catalog: {e}")
+            
+        return count
+
+    def _process_agf_glass(self, data: Dict, catalog: str):
+        """Convert raw AGF data to MaterialProperties"""
+        coeffs = data.get('dispersion', [])
+        # Standard AGF coefficients map to Sellmeier 1 (Schott)
+        # K1, K2, K3, L1, L2, L3 -> B1, B2, B3, C1, C2, C3
+        # Usually 6 or 10 coefficients
+        
+        b1, b2, b3 = 0.0, 0.0, 0.0
+        c1, c2, c3 = 0.0, 0.0, 0.0
+        
+        if len(coeffs) >= 6:
+            b1 = coeffs[0]
+            b2 = coeffs[1]
+            b3 = coeffs[2]
+            c1 = coeffs[3]
+            c2 = coeffs[4]
+            c3 = coeffs[5]
+            
+        mat = MaterialProperties(
+            name=data['name'],
+            catalog=catalog,
+            nd=data['nd'],
+            vd=data['vd'],
+            B1=b1, B2=b2, B3=b3,
+            C1=c1, C2=c2, C3=c3,
+            thermal_expansion=data.get('tce', 7.1e-6),
+            density=data.get('density', 2.5),
+            transmission_data=data.get('transmission', []),
+            transmission_thickness=data.get('transmission_thickness', 10.0)
+        )
+        self.add_material(mat)
+
+    def import_csv_catalog(self, catalog_file: str) -> int:
+        """
+        Import materials from CSV file.
+        Expected headers: Name,Catalog,Nd,Vd,B1,B2,B3,C1,C2,C3,...
+        """
+        if not os.path.exists(catalog_file):
+            return 0
+            
+        count = 0
+        try:
+            with open(catalog_file, 'r', newline='') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    try:
+                        # Required fields
+                        name = row['Name']
+                        nd = float(row['Nd'])
+                        vd = float(row['Vd'])
+                        
+                        # Optional fields with defaults
+                        mat = MaterialProperties(
+                            name=name,
+                            catalog=row.get('Catalog', 'Custom'),
+                            nd=nd,
+                            vd=vd,
+                            B1=float(row.get('B1', 0)),
+                            B2=float(row.get('B2', 0)),
+                            B3=float(row.get('B3', 0)),
+                            C1=float(row.get('C1', 0)),
+                            C2=float(row.get('C2', 0)),
+                            C3=float(row.get('C3', 0)),
+                            thermal_expansion=float(row.get('TCE', 7.1)) * 1e-6 if float(row.get('TCE', 0)) > 1e-4 else float(row.get('TCE', 7.1e-6)),
+                            density=float(row.get('Density', 2.5))
+                        )
+                        self.add_material(mat)
+                        count += 1
+                    except (ValueError, KeyError) as e:
+                        logger.warning(f"Skipping invalid CSV row: {e}")
+                        continue
+        except Exception as e:
+            logger.error(f"Error importing CSV catalog: {e}")
+            
+        return count
+
     def import_schott_catalog(self, catalog_file: str):
-        """Import materials from Schott catalog file"""
-        # Placeholder for catalog import
-        # Would parse AGF or other catalog format
-        pass
+        """Deprecated alias for import_agf_catalog"""
+        self.import_agf_catalog(catalog_file)
     
     def export_material(self, material_name: str, output_file: str):
         """Export material data to file"""
