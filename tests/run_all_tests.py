@@ -112,11 +112,13 @@ print("=" * 70)
 try:
     import test_stl_export
     import test_drawing_export
+    import test_step_export
     
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     suite.addTests(loader.loadTestsFromModule(test_stl_export))
     suite.addTests(loader.loadTestsFromModule(test_drawing_export))
+    suite.addTests(loader.loadTestsFromModule(test_step_export))
     
     runner = unittest.TextTestRunner(verbosity=2)
     result_export = runner.run(suite)
