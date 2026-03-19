@@ -9,8 +9,15 @@ include setup_venv.sh
 include setup_venv.bat
 include verify_setup.py
 
+# Include data files
+recursive-include data *.json
+
 # Include documentation directory
 recursive-include docs *.md
+recursive-include docs *.rst
+recursive-include docs *.py
+recursive-include docs Makefile
+
 
 # Exclude compiled Python files
 global-exclude __pycache__

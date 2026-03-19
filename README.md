@@ -48,6 +48,13 @@ openlens is a desktop application for designing and analyzing **single glass opt
 ### 🎨 **3D Visualization**
 - Interactive 3D rendering of lens cross-section
 - Visualize spherical surfaces and lens geometry
+- Real-time ray path visualization
+
+### 🚀 **Professional Capabilities**
+- **Optimization:** Global search (Simulated Annealing) and Desensitization optimization for manufacturability.
+- **Tolerancing:** Monte Carlo analysis and Inverse Sensitivity to predict manufacturing yields.
+- **Advanced Analysis:** Ghost analysis (stray light), Physical Optics (Beam Synthesis Propagation), and Diffraction (PSF/MTF).
+- **Interoperability:** Export designs to STL (3D printing) and ISO 10110 drawings (SVG).
 
 ---
 
@@ -492,10 +499,9 @@ Please read our comprehensive [Contributing Guidelines](docs/CONTRIBUTING.md) fo
 
 - [ ] Additional optical aberrations (higher-order)
 - [ ] Import/export to other formats (Zemax, CODE V, etc.)
-- [ ] Advanced multi-element optimization
-- [ ] Polarization ray tracing
-- [ ] Thermal analysis
-- [ ] Manufacturing tolerancing
+- [ ] Polarization ray tracing (Jones Matrices)
+- [ ] Advanced wavefront sensing (Shack-Hartmann simulation)
+- [ ] Multiphysics integration (FEA coupling)
 
 ### Quick Start for Contributors
 
