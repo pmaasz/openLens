@@ -663,11 +663,13 @@ class Ray3D:
         self.n = n
         self.path: List[Vector3] = [origin]
         self.terminated = False
+        self.optical_path_length: float = 0.0
     
     def propagate(self, distance: float) -> None:
         """Propagate ray in current direction"""
         self.origin = self.origin + self.direction * distance
         self.path.append(self.origin)
+        self.optical_path_length += distance * self.n
     
     def _compute_fresnel_reflectance(self, n1: float, n2: float, cos_i: float, cos_t: float) -> float:
         """Calculate Fresnel reflectance for unpolarized light."""

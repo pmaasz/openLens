@@ -5,6 +5,7 @@ Run all functional tests for openlens application
 
 import sys
 import os
+import unittest
 
 # Add project directory to path
 project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -65,6 +66,31 @@ except Exception as e:
     traceback.print_exc()
     r3d_passed = False
 
+# Run Analysis & Tolerancing tests
+print("\n" + "=" * 70)
+print("PHASE 1.7: Analysis & Tolerancing Tests")
+print("=" * 70)
+
+try:
+    import test_analysis
+    import test_tolerancing
+    import test_environmental
+    
+    loader = unittest.TestLoader()
+    suite = unittest.TestSuite()
+    suite.addTests(loader.loadTestsFromModule(test_analysis))
+    suite.addTests(loader.loadTestsFromModule(test_tolerancing))
+    suite.addTests(loader.loadTestsFromModule(test_environmental))
+    
+    runner = unittest.TextTestRunner(verbosity=2)
+    result_analysis = runner.run(suite)
+    analysis_passed = result_analysis.wasSuccessful()
+except Exception as e:
+    print(f"Error running analysis tests: {e}")
+    import traceback
+    traceback.print_exc()
+    analysis_passed = False
+
 # Run GUI tests
 print("\n" + "=" * 70)
 print("PHASE 2: GUI Functionality Tests")
@@ -83,7 +109,7 @@ print("\n" + "=" * 70)
 print("TEST SUITE SUMMARY")
 print("=" * 70)
 
-if core_passed and sys_passed and r3d_passed and gui_passed:
+if core_passed and sys_passed and r3d_passed and analysis_passed and gui_passed:
     print("\n✓✓✓ ALL TESTS PASSED! ✓✓✓")
     print("\nThe openlens application is working correctly!")
     sys.exit(0)
@@ -95,6 +121,8 @@ else:
         print("  - System tracer tests failed")
     if not r3d_passed:
         print("  - 3D ray tracer tests failed")
+    if not analysis_passed:
+        print("  - Analysis & Tolerancing tests failed")
     if not gui_passed:
         print("  - GUI functionality tests failed")
     sys.exit(1)

@@ -14,11 +14,30 @@ Requires:
 """
 
 import logging
-import numpy as np
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, Any
 
 # Setup module logger
 logger = logging.getLogger(__name__)
+
+# Optional numpy import
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+    logger.warning("numpy not available. Diffraction calculations will use approximations or return errors.")
+    # Define a dummy np object to prevent immediate NameErrors, 
+    # but methods using it will still fail if not handled
+    class DummyNumpy:
+        ndarray = Any
+        def array(self, *args): return []
+        def linspace(self, *args): return []
+        def meshgrid(self, *args): return [], []
+        def pi(self): return 3.14159
+        def sqrt(self, *args): return 0
+        def max(self, *args): return 0
+    if 'np' not in locals():
+        np = DummyNumpy()
 
 # Optional scipy import for Bessel functions
 try:
