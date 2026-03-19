@@ -117,12 +117,12 @@
 *Focus: Connecting with the real world (CAD, Drawings).*
 
 ### 4.1 CAD & Drawing Export
-*Current State:* None.
+*Current State:* STL Export implemented.
 *Target:* Export to mechanical CAD and manufacturing drawings.
 *New Files:* `src/io/export.py`
 *Tasks:*
 - [ ] Implement **ISO 10110** Drawing Generator (PDF/SVG).
-- [ ] Implement **STL Export** for 3D printing/visualization.
+- [x] Implement **STL Export** for 3D printing/visualization.
 - [ ] Implement **Step/IGES** Export (if feasible with open-source libraries like `pythonocc-core` or via mesh conversion).
 
 ---
