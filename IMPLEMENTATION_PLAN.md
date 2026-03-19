@@ -103,13 +103,13 @@
 - [x] Add `MeritOperand.RMS_SPOT`.
 - [x] Add `MeritOperand.MTF`.
 
-### 3.2 Advanced Optimization (Global & Desensitization)
-*Current State:* Local optimization (Nelder-Mead), Global (Simulated Annealing).
+### 3.2 Advanced Optimization (Global & Desensitization) (Completed)
+*Current State:* Global (Simulated Annealing) and Desensitization (Robust Optimization) implemented.
 *Target:* Find global minima and optimize for manufacturability (CODE V style).
-*Files to Modify:* `src/optimizer/global.py`, `src/optimizer/desensitize.py`
+*Files to Modify:* `src/global_optimizer.py`, `src/desensitization.py`
 *Tasks:*
 - [x] Implement **Global Synthesis** (simplified version): Genetic Algorithm or Simulated Annealing to escape local minima.
-- [ ] Implement **Desensitization Optimization**: Optimize for Yield (reduce sensitivity to tolerances) rather than just nominal performance.
+- [x] Implement **Desensitization Optimization**: Optimize for Yield (reduce sensitivity to tolerances) rather than just nominal performance.
 
 ---
 
