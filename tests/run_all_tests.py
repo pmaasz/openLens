@@ -104,12 +104,35 @@ except Exception as e:
     print(f"Error running GUI tests: {e}")
     gui_passed = False
 
+# Run Export tests
+print("\n" + "=" * 70)
+print("PHASE 4: Export Functionality Tests")
+print("=" * 70)
+
+try:
+    import test_stl_export
+    import test_drawing_export
+    
+    loader = unittest.TestLoader()
+    suite = unittest.TestSuite()
+    suite.addTests(loader.loadTestsFromModule(test_stl_export))
+    suite.addTests(loader.loadTestsFromModule(test_drawing_export))
+    
+    runner = unittest.TextTestRunner(verbosity=2)
+    result_export = runner.run(suite)
+    export_passed = result_export.wasSuccessful()
+except Exception as e:
+    print(f"Error running export tests: {e}")
+    import traceback
+    traceback.print_exc()
+    export_passed = False
+
 # Summary
 print("\n" + "=" * 70)
 print("TEST SUITE SUMMARY")
 print("=" * 70)
 
-if core_passed and sys_passed and r3d_passed and analysis_passed and gui_passed:
+if core_passed and sys_passed and r3d_passed and analysis_passed and gui_passed and export_passed:
     print("\n✓✓✓ ALL TESTS PASSED! ✓✓✓")
     print("\nThe openlens application is working correctly!")
     sys.exit(0)
@@ -125,4 +148,6 @@ else:
         print("  - Analysis & Tolerancing tests failed")
     if not gui_passed:
         print("  - GUI functionality tests failed")
+    if not export_passed:
+        print("  - Export functionality tests failed")
     sys.exit(1)

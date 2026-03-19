@@ -117,21 +117,23 @@
 *Focus: Connecting with the real world (CAD, Drawings).*
 
 ### 4.1 CAD & Drawing Export
-*Current State:* STL Export implemented.
+*Current State:* STL Export implemented. ISO 10110 SVG Generator implemented.
 *Target:* Export to mechanical CAD and manufacturing drawings.
 *New Files:* `src/io/export.py`
 *Tasks:*
-- [ ] Implement **ISO 10110** Drawing Generator (PDF/SVG).
+- [x] Implement **ISO 10110** Drawing Generator (SVG).
 - [x] Implement **STL Export** for 3D printing/visualization.
-- [ ] Implement **Step/IGES** Export (if feasible with open-source libraries like `pythonocc-core` or via mesh conversion).
+- [ ] Implement **Step/IGES** Export (Deferred: Requires heavy dependencies not available in standard library).
 
 ---
 
 ## Implementation Sequence
 1. **Material Database** (Completed Basic)
-2. **3D Ray Tracing** (Critical Foundation) - *NEXT*
-3. **Hierarchical Model** (Architecture Modernization)
-4. **Spot Diagrams** (Visual Feedback)
-5. **Ghost Analysis** (Advanced Analysis)
-6. **Tolerancing** (Professional Requirement)
-7. **Physical Optics** (Advanced Feature)
+2. **3D Ray Tracing** (Critical Foundation) - *COMPLETED*
+3. **Hierarchical Model** (Architecture Modernization) - *COMPLETED*
+4. **Spot Diagrams** (Visual Feedback) - *COMPLETED*
+5. **Ghost Analysis** (Advanced Analysis) - *COMPLETED*
+6. **Tolerancing** (Professional Requirement) - *COMPLETED*
+7. **Physical Optics** (Advanced Feature) - *COMPLETED*
+8. **Optimization** (Global/Desensitization) - *COMPLETED*
+9. **Manufacturing Export** (STL/Drawings) - *COMPLETED*
