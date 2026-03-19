@@ -14,6 +14,8 @@ try:
     from .lens_editor import Lens
     from .optical_system import OpticalSystem
     from .aberrations import AberrationsCalculator
+    from .analysis import SpotDiagram
+    from .analysis.beam_synthesis import PSFCalculator, WavefrontSensor, NUMPY_AVAILABLE
 except (ImportError, ValueError):
     import sys
     import os
@@ -21,6 +23,13 @@ except (ImportError, ValueError):
     from lens_editor import Lens
     from optical_system import OpticalSystem
     from aberrations import AberrationsCalculator
+    # Local imports for analysis modules might fail if not in package context
+    try:
+        from analysis import SpotDiagram
+        from analysis.beam_synthesis import PSFCalculator, WavefrontSensor, NUMPY_AVAILABLE
+    except ImportError:
+        # Fallback if analysis package structure is different
+        pass
 
 
 @dataclass
@@ -125,6 +134,56 @@ class MeritFunction:
                     merit += target.weight * length
                 elif target.target_type == "target":
                     merit += target.weight * (length - target.target_value)**2
+
+            elif target.name == "rms_spot_radius":
+                try:
+                    # Calculate on-axis RMS spot radius
+                    if 'SpotDiagram' in globals():
+                        spot = SpotDiagram(system)
+                        results = spot.trace_spot(field_angle_x=0, field_angle_y=0)
+                        value = results.get('rms_radius', 0.0)
+                        
+                        if target.target_type == "minimize":
+                            merit += target.weight * value
+                        elif target.target_type == "target":
+                            merit += target.weight * (value - target.target_value)**2
+                except Exception:
+                    # Penalty if calculation fails (e.g. ray trace error)
+                    merit += 1e3
+
+            elif target.name == "mtf":
+                # Maximize MTF volume (area under curve) as a proxy for image quality
+                try:
+                    if 'PSFCalculator' in globals() and 'WavefrontSensor' in globals() and 'NUMPY_AVAILABLE' in globals() and NUMPY_AVAILABLE:
+                        import numpy as np # Local import if available
+                        
+                        sensor = WavefrontSensor(system)
+                        Y, Z, W = sensor.get_pupil_wavefront()
+                        
+                        if W.size > 0 and not np.all(np.isnan(W)):
+                            psf = PSFCalculator.calculate_psf(Y, Z, W)
+                            mtf = PSFCalculator.calculate_mtf(psf)
+                            
+                            # Metric: MTF Volume (sum of values)
+                            # Normalized such that perfect system has high volume
+                            value = np.sum(mtf)
+                            
+                            if target.target_type == "maximize":
+                                # Minimize the inverse or negative
+                                # Use negative to keep it linear? 
+                                # But merit must be positive usually for some optimizers?
+                                # Simplex doesn't care about sign, but usually we minimize "Error".
+                                # Error = 1/MTF?
+                                if value > 1e-9:
+                                    merit += target.weight * (1.0 / value)
+                                else:
+                                    merit += target.weight * 1e3
+                            elif target.target_type == "target":
+                                merit += target.weight * (value - target.target_value)**2
+                    else:
+                        pass # Cannot calculate, ignore
+                except Exception:
+                    pass
         
         return merit
 

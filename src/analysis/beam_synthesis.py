@@ -257,6 +257,37 @@ class PSFCalculator:
             
         return psf
 
+    @staticmethod
+    def calculate_mtf(psf: np.ndarray) -> np.ndarray:
+        """
+        Calculate 2D MTF from PSF.
+        
+        Args:
+            psf: 2D Point Spread Function (intensity).
+            
+        Returns:
+            2D Modulation Transfer Function (normalized magnitude of OTF).
+        """
+        if not NUMPY_AVAILABLE:
+            return np.array([])
+            
+        # OTF is FFT of PSF
+        # psf is real, so OTF is Hermitian (but we just want magnitude)
+        otf = np.fft.fftshift(np.fft.fft2(np.fft.ifftshift(psf)))
+        
+        # MTF is magnitude of OTF
+        mtf = np.abs(otf)
+        
+        # Normalize DC component to 1.0
+        # DC component is at the center after fftshift
+        center_y, center_x = mtf.shape[0] // 2, mtf.shape[1] // 2
+        dc_val = mtf[center_y, center_x]
+        
+        if dc_val > 0:
+            mtf /= dc_val
+            
+        return mtf
+
 
 class BeamSynthesisPropagator:
     """
