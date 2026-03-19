@@ -12,12 +12,16 @@ import json
 try:
     from .lens import Lens
     from .material_database import get_material_database
+    from .optical_node import OpticalNode, OpticalElement, OpticalAssembly
+    from .vector3 import vec3
 except (ImportError, ValueError):
     import sys
     import os
     sys.path.insert(0, os.path.dirname(__file__))
     from lens import Lens
     from material_database import get_material_database
+    from optical_node import OpticalNode, OpticalElement, OpticalAssembly
+    from vector3 import vec3
 
 
 @dataclass
@@ -45,23 +49,84 @@ class OpticalSystem:
         self.name = name
         self.elements: List[LensElement] = []
         self.air_gaps: List[AirGap] = []
+        self.root = OpticalAssembly(name="Root")
         self._update_positions()
     
     def add_lens(self, lens: Lens, air_gap_before: float = 0.0):
         """Add a lens element to the system"""
-        if self.elements:
-            # Add air gap before this lens
-            current_pos = self.elements[-1].position + self.elements[-1].thickness
-            gap = AirGap(thickness=air_gap_before, position=current_pos)
-            self.air_gaps.append(gap)
-            new_position = current_pos + air_gap_before
-        else:
-            new_position = 0.0
+        # Calculate new position based on last element in flat list
+        last_pos = 0.0
+        last_thick = 0.0
         
-        element = LensElement(lens=lens, position=new_position)
-        self.elements.append(element)
-        self._update_positions()
-    
+        # Use existing elements list (which is up to date) to find last position
+        if self.elements:
+            last_elem = self.elements[-1]
+            last_pos = last_elem.position
+            last_thick = last_elem.lens.thickness
+        
+        new_pos = last_pos + last_thick + air_gap_before
+        
+        # Create Hierarchical Node
+        # Add to root (flat hierarchy by default)
+        node = OpticalElement(element_model=lens, name=lens.name)
+        node.position = vec3(new_pos, 0, 0)
+        self.root.add_child(node)
+        
+        # Rebuild flat lists from tree to maintain compatibility
+        self._rebuild_from_tree()
+
+    def add_assembly(self, assembly: OpticalAssembly, position: float = 0.0):
+        """Add an optical assembly to the system."""
+        # Add to hierarchical tree
+        assembly.position = vec3(position, 0, 0)
+        self.root.add_child(assembly)
+        
+        # Rebuild flat lists from tree to maintain compatibility
+        self._rebuild_from_tree()
+
+    def _rebuild_from_tree(self):
+        """Rebuild legacy flat lists from hierarchical tree."""
+        # Get flattened list of (node, global_pos)
+        flat_nodes = self.root.get_flat_list()
+        
+        new_elements = []
+        new_gaps = []
+        
+        # Filter for elements
+        element_nodes = []
+        for node, pos in flat_nodes:
+            if getattr(node, 'is_element', False):
+                element_nodes.append((node, pos))
+        
+        for i, (node, global_pos) in enumerate(element_nodes):
+            lens = getattr(node, 'element_model', None)
+            if not lens: continue
+            
+            # Create LensElement wrapper
+            le = LensElement(lens=lens, position=global_pos.x)
+            new_elements.append(le)
+            
+            # Calculate gap to next element
+            if i < len(element_nodes) - 1:
+                next_node, next_global_pos = element_nodes[i+1]
+                
+                # Gap starts after current lens
+                gap_start = global_pos.x + lens.thickness
+                
+                # Gap ends at start of next lens
+                gap_end = next_global_pos.x
+                
+                gap_thickness = gap_end - gap_start
+                # Ensure non-negative gap
+                if gap_thickness < 0:
+                     gap_thickness = 0
+                
+                gap = AirGap(thickness=gap_thickness, position=gap_start)
+                new_gaps.append(gap)
+        
+        self.elements = new_elements
+        self.air_gaps = new_gaps
+
     def _update_positions(self) -> None:
         """Update positions of all elements"""
         current_pos = 0.0
@@ -69,6 +134,12 @@ class OpticalSystem:
         
         for i, element in enumerate(self.elements):
             element.position = current_pos
+            
+            # Update hierarchical node if it exists as direct child
+            if i < len(self.root.children):
+                node = self.root.children[i]
+                node.position = vec3(current_pos, 0, 0)
+            
             current_pos += element.thickness
             
             if gap_idx < len(self.air_gaps):

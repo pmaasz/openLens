@@ -669,25 +669,56 @@ class Ray3D:
         self.origin = self.origin + self.direction * distance
         self.path.append(self.origin)
     
+    def _compute_fresnel_reflectance(self, n1: float, n2: float, cos_i: float, cos_t: float) -> float:
+        """Calculate Fresnel reflectance for unpolarized light."""
+        if n1 == n2: return 0.0
+        
+        # Rs = (n1 cos_i - n2 cos_t) / (n1 cos_i + n2 cos_t)
+        rs_den = n1 * cos_i + n2 * cos_t
+        if rs_den == 0: return 1.0
+        rs = ((n1 * cos_i - n2 * cos_t) / rs_den)**2
+        
+        # Rp = (n1 cos_t - n2 cos_i) / (n1 cos_t + n2 cos_i)
+        rp_den = n1 * cos_t + n2 * cos_i
+        if rp_den == 0: return 1.0
+        rp = ((n1 * cos_t - n2 * cos_i) / rp_den)**2
+        
+        return 0.5 * (rs + rp)
+
+    def reflect(self, normal: Vector3, n1: Optional[float] = None, n2: Optional[float] = None) -> None:
+        """
+        Reflect ray off a surface normal.
+        Optionally apply Fresnel reflection if refractive indices are provided.
+        """
+        dot = self.direction.dot(normal)
+        self.direction = self.direction - normal * (2 * dot)
+        self.direction = self.direction.normalize()
+        
+        if n1 is not None and n2 is not None:
+             cos_i = abs(dot)
+             
+             # Calculate cos_t using Snell's law
+             ratio = n1 / n2
+             sin2_t = ratio**2 * (1.0 - cos_i**2)
+             
+             if sin2_t > 1.0:
+                 R = 1.0 # TIR
+             else:
+                 cos_t = math.sqrt(1.0 - sin2_t)
+                 R = self._compute_fresnel_reflectance(n1, n2, cos_i, cos_t)
+             
+             self.intensity *= R
+
     def refract(self, n1: float, n2: float, normal: Vector3) -> bool:
         """
         Apply Snell's law at an interface using vector math.
-        
-        Args:
-            n1: Refractive index of medium ray is coming from
-            n2: Refractive index of medium ray is entering
-            normal: Surface normal vector (normalized)
-        
-        Returns:
-            True if refraction occurred, False if total internal reflection
+        Updates intensity using Fresnel transmission.
         """
         # Ensure normal points against the ray for standard calculation
-        # If ray . normal > 0, normal is pointing same direction as ray
         cos_i = -self.direction.dot(normal)
         effective_normal = normal
         
         if cos_i < 0:
-            # Ray is inside surface exiting, or normal is flipped
             cos_i = -cos_i
             effective_normal = -normal
             
@@ -696,17 +727,16 @@ class Ray3D:
         
         if sin2_t > 1.0:
             # Total internal reflection
-            # Reflect: v_ref = v_in - 2 * (v_in . N) * N
-            # But here v_in . N is -cos_i
-            # So v_ref = v_in + 2 * cos_i * N
-            self.direction = self.direction + effective_normal * (2 * cos_i)
-            self.direction = self.direction.normalize()
+            self.reflect(effective_normal, n1, n2)
             return False
         
         cos_t = math.sqrt(1.0 - sin2_t)
         
+        # Calculate Transmission (1 - R)
+        R = self._compute_fresnel_reflectance(n1, n2, cos_i, cos_t)
+        self.intensity *= (1.0 - R)
+        
         # Vector Snell's Law
-        # t = ratio * i + (ratio * cos_i - cos_t) * n
         self.direction = self.direction * ratio + effective_normal * (ratio * cos_i - cos_t)
         self.direction = self.direction.normalize()
         self.n = n2
@@ -804,69 +834,136 @@ class LensRayTracer3D:
             
         return ray.origin + ray.direction * t
 
-    def trace_ray(self, ray: Ray3D, propagate_distance: float = DEFAULT_RADIUS_1) -> Ray3D:
-        # 1. Intersect Front Surface
-        if self.front_is_flat:
-            intersection = self._intersect_plane(ray, self.front_vertex, vec3(1,0,0))
+    def trace_surface(self, ray: Ray3D, surface_type: str, interaction: str = 'refract') -> bool:
+        """
+        Trace ray interaction with a specific surface.
+        
+        Args:
+            ray: Ray to trace (modified in place)
+            surface_type: 'front' or 'back'
+            interaction: 'refract' or 'reflect'
+            
+        Returns:
+            True if interaction successful (ray continues), False if terminated/missed
+        """
+        # 1. Determine surface parameters
+        if surface_type == 'front':
+            center = self.front_center
+            is_flat = self.front_is_flat
+            vertex = self.front_vertex
+            R = self.R1
+            is_convex = (R > 0)
+            # Default transition for front: Air -> Glass
+            default_n1 = REFRACTIVE_INDEX_AIR
+            default_n2 = self.n
+        elif surface_type == 'back':
+            center = self.back_center
+            is_flat = self.back_is_flat
+            vertex = self.back_vertex
+            R = self.R2
+            is_convex = (R > 0)
+            # Default transition for back: Glass -> Air
+            default_n1 = self.n
+            default_n2 = REFRACTIVE_INDEX_AIR
         else:
-            intersection = self._intersect_sphere(ray, self.front_center, abs(self.R1), self.R1 > 0)
+            return False
+
+        # 2. Intersect
+        if is_flat:
+            # Use standard trace_ray normal direction for intersection plane (1,0,0)
+            intersection = self._intersect_plane(ray, vertex, vec3(1,0,0))
+        else:
+            intersection = self._intersect_sphere(ray, center, abs(R), is_convex)
         
         if intersection is None:
-            ray.propagate(propagate_distance)
-            ray.terminated = True
-            return ray
+            return False
             
         # Check aperture
-        # dist from axis = sqrt(y^2 + z^2)
         r_sq = intersection.y**2 + intersection.z**2
-        if r_sq > (self.D/2)**2:
-             ray.propagate(propagate_distance) # Missed aperture
-             ray.terminated = True
-             return ray
+        if r_sq > ((self.D/2) + 1e-9)**2:
+             return False
 
         # Move ray to intersection
         ray.origin = intersection
         ray.path.append(intersection)
         
-        # Refract Front
-        if self.front_is_flat:
-            normal = vec3(1,0,0)
+        # 3. Calculate Normal
+        if is_flat:
+            if surface_type == 'front':
+                normal = vec3(1,0,0)
+            else:
+                normal = vec3(-1,0,0) # Back surface points out (left)
         else:
-            normal = (intersection - self.front_center).normalize()
-        
-        if not ray.refract(REFRACTIVE_INDEX_AIR, self.n, normal):
-            ray.terminated = True
-            return ray
+            normal = (intersection - center).normalize()
 
-        # 2. Intersect Back Surface
-        if self.back_is_flat:
-             intersection = self._intersect_plane(ray, self.back_vertex, vec3(1,0,0))
-        else:
-             intersection = self._intersect_sphere(ray, self.back_center, abs(self.R2), self.R2 > 0)
-             
-        if intersection is None:
-            ray.terminated = True
-            return ray
-
-        # Check aperture
-        r_sq = intersection.y**2 + intersection.z**2
-        if r_sq > (self.D/2)**2:
-             ray.terminated = True
-             return ray
-             
-        ray.origin = intersection
-        ray.path.append(intersection)
+        # 4. Interact
+        # Determine n1 (current) and n2 (target)
+        current_n = ray.n
         
-        # Refract Back
-        if self.back_is_flat:
-            normal = vec3(-1,0,0) # Points out of lens (left)
+        if abs(current_n - default_n1) < 1e-3:
+            # Standard direction
+            n1 = current_n
+            n2 = default_n2
+        elif abs(current_n - default_n2) < 1e-3:
+            # Reverse direction
+            n1 = current_n
+            n2 = default_n1
         else:
-            normal = (intersection - self.back_center).normalize()
+            # Fallback
+            n1 = current_n
+            n2 = default_n2
+            
+        if interaction == 'reflect':
+            ray.reflect(normal, n1, n2)
+            return True
+        elif interaction == 'refract':
+            return ray.refract(n1, n2, normal)
+            
+        return False
+
+    def trace_ray(self, ray: Ray3D, propagate_distance: float = DEFAULT_RADIUS_1) -> Ray3D:
+        # 1. Intersect Front Surface
+        if not self.trace_surface(ray, 'front', 'refract'):
+            # Ray missed or TIR (terminated)
+            if not ray.terminated: # If terminated by trace_surface (TIR), keep it. If just False (missed), propagate.
+                # Wait, trace_surface doesn't set terminated for miss.
+                # If trace_surface returns False:
+                # - Missed aperture/surface: ray position updated? No.
+                # - TIR: ray.terminated is NOT set by trace_surface (refract returns False but reflects).
+                # Actually, refract returns False on TIR. trace_surface returns that False.
                 
-        if not ray.refract(self.n, REFRACTIVE_INDEX_AIR, normal):
+                # Handling miss vs TIR:
+                # If ray path length didn't change (no intersection), it's a miss.
+                # But trace_surface updates path only on intersection.
+                # Checking path length is tricky if we don't know start.
+                pass
+            
+            # Legacy behavior for trace_ray:
+            # If miss front: propagate and terminate.
+            # If TIR front: terminate.
+            
+            # Check if we intersected (ray path grew)
+            # Actually, let's just use the logic: if terminated, done. If not, propagate and done.
+            # But trace_surface doesn't set terminated.
+            
+            # Let's revert to manual check or improve trace_surface return?
+            # Or just check if ray position changed?
+            
+            # If refraction failed (TIR), trace_surface returns False.
+            # If intersection failed, trace_surface returns False.
+            
+            # Let's just handle it simply:
+            if len(ray.path) == 1: # No intersection added (assuming start with 1 point)
+                ray.propagate(propagate_distance)
+            
             ray.terminated = True
             return ray
             
+        # 2. Intersect Back Surface
+        if not self.trace_surface(ray, 'back', 'refract'):
+             ray.terminated = True
+             return ray
+             
         # Propagate to end
         ray.propagate(propagate_distance)
         return ray
