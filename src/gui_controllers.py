@@ -1451,6 +1451,10 @@ class PerformanceController:
         
         ttk.Button(btn_frame, text="Calculate Metrics", 
                   command=self.calculate_metrics).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        ttk.Button(btn_frame, text="Spot Diagram", 
+                  command=self.show_spot_diagram).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        ttk.Button(btn_frame, text="Ghost Analysis", 
+                  command=self.show_ghost_analysis).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(btn_frame, text="Export Report", 
                   command=self.export_report).pack(side=tk.LEFT, padx=PADDING_SMALL)
     
@@ -1458,6 +1462,291 @@ class PerformanceController:
         """Load lens for analysis"""
         self.current_lens = lens
     
+    def show_spot_diagram(self):
+        """Display Spot Diagram in a new window"""
+        if self.current_lens is None:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showwarning(root, "No Lens", "Please select a lens first")
+            return
+
+        try:
+            import matplotlib.pyplot as plt
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            from matplotlib.figure import Figure
+            
+            # Import Analysis
+            try:
+                from .analysis import SpotDiagram
+                from .optical_system import OpticalSystem
+            except ImportError:
+                # Fallback
+                import sys
+                import os
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+                from src.analysis import SpotDiagram
+                from src.optical_system import OpticalSystem
+        except ImportError:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showerror(root, "Missing Dependency", "Spot Diagram requires matplotlib and numpy.\nInstall with: pip install matplotlib numpy")
+            return
+
+        # Prepare System
+        system = None
+        if isinstance(self.current_lens, OpticalSystem):
+            system = self.current_lens
+        else:
+            # Wrap in system
+            system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
+            system.add_lens(self.current_lens)
+            
+        # Create Window
+        window = tk.Toplevel()
+        window.title(f"Spot Diagram - {system.name}")
+        window.geometry("600x650")
+        
+        # Parse Parameters
+        try:
+            wavelength = float(self.wavelength_var.get())
+        except ValueError:
+            wavelength = 550.0
+            
+        # Generate Data
+        try:
+            analyzer = SpotDiagram(system)
+            # Trace spot (on-axis for now, can add field angle later)
+            result = analyzer.trace_spot(wavelength=wavelength, num_rings=6)
+            
+            points = result['points']
+            rms = result['rms_radius']
+            geo = result['geo_radius']
+            
+            # Create Plot
+            fig = Figure(figsize=(5, 5), dpi=100)
+            ax = fig.add_subplot(111)
+            
+            if points:
+                y = [p[0]*1000 for p in points] # Convert to microns
+                z = [p[1]*1000 for p in points]
+                
+                ax.scatter(y, z, c='b', marker='.', alpha=0.6, s=10)
+                ax.set_aspect('equal')
+                
+                # Auto-scale or set reasonable limits
+                max_val = max(max([abs(v) for v in y]), max([abs(v) for v in z])) if y else 10
+                limit = max_val * 1.2 if max_val > 0 else 10
+                ax.set_xlim(-limit, limit)
+                ax.set_ylim(-limit, limit)
+                
+                ax.set_xlabel('Y (μm)')
+                ax.set_ylabel('Z (μm)')
+                ax.set_title(f'Spot Diagram\nRMS: {rms*1000:.3f} μm | GEO: {geo*1000:.3f} μm')
+                ax.grid(True, alpha=0.3)
+                
+                # Draw Airy Disk circle reference if possible
+                try:
+                    f_num = system.get_system_f_number()
+                    if f_num:
+                        airy_r = 1.22 * (wavelength * 1e-6) * f_num * 1000 # microns
+                        circle = plt.Circle((0, 0), airy_r, color='k', fill=False, linestyle='--', label='Airy Disk')
+                        ax.add_patch(circle)
+                        ax.legend()
+                except Exception:
+                    pass
+            else:
+                ax.text(0.5, 0.5, "No Rays reached Image Plane", ha='center')
+                
+            canvas = FigureCanvasTkAgg(fig, master=window)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            
+            # Info Label
+            info = f"Wavelength: {wavelength} nm | Rays: {result.get('valid_rays', 0)}"
+            tk.Label(window, text=info, font=('Arial', 9)).pack(pady=5)
+            
+        except Exception as e:
+            tk.Label(window, text=f"Error generating spot diagram: {e}", fg="red").pack()
+            logger.error(f"Spot diagram error: {e}")
+
+    def show_ghost_analysis(self):
+        """Display Ghost Analysis in a new window"""
+        if self.current_lens is None:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showwarning(root, "No Lens", "Please select a lens first")
+            return
+
+        try:
+            import matplotlib.pyplot as plt
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            from matplotlib.figure import Figure
+            
+            # Import Analysis
+            try:
+                from .analysis.ghost import GhostAnalyzer
+                from .optical_system import OpticalSystem
+                from .ray_tracer import Ray3D
+            except ImportError:
+                # Fallback
+                import sys
+                import os
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+                from src.analysis.ghost import GhostAnalyzer
+                from src.optical_system import OpticalSystem
+                from src.ray_tracer import Ray3D
+        except ImportError:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showerror(root, "Missing Dependency", "Ghost Analysis requires matplotlib and numpy.\nInstall with: pip install matplotlib numpy")
+            return
+
+        # Prepare System
+        system = None
+        if isinstance(self.current_lens, OpticalSystem):
+            system = self.current_lens
+        else:
+            # Wrap in system
+            system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
+            system.add_lens(self.current_lens)
+            
+        # Create Window
+        window = tk.Toplevel()
+        window.title(f"Ghost Analysis - {system.name}")
+        window.geometry("900x600")
+        
+        # Frame for controls and plot
+        main_frame = ttk.Frame(window)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Plot Frame
+        plot_frame = ttk.Frame(main_frame)
+        plot_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        
+        # Analysis Logic
+        try:
+            analyzer = GhostAnalyzer(system)
+            
+            # Trace ghosts (using default num_rays=3 for now)
+            ghosts = analyzer.trace_ghosts(num_rays=5)
+            
+            # Create Plot
+            fig = Figure(figsize=(8, 5), dpi=100)
+            ax = fig.add_subplot(111)
+            
+            # Draw Lenses (Reuse logic essentially)
+            for element in system.elements:
+                self._draw_lens_on_ax(ax, element.lens, element.position)
+                
+            # Draw Ghost Rays
+            if ghosts:
+                count = 0
+                for ghost in ghosts:
+                    # Color based on intensity or just distinct color
+                    # GhostPath has .rays (list of Ray3D) and .intensity
+                    alpha = min(1.0, max(0.1, ghost.intensity * 5)) # Scale intensity for visibility
+                    
+                    for ray in ghost.rays:
+                        # ray.path is list of Vector3
+                        x_coords = [p.x for p in ray.path]
+                        y_coords = [p.y for p in ray.path]
+                        ax.plot(x_coords, y_coords, 'r-', alpha=0.3, linewidth=0.8)
+                    count += 1
+                
+                status_text = f"Found {count} ghost paths (2nd order reflections)."
+            else:
+                status_text = "No significant 2nd order ghosts found."
+            
+            # Setup Axes
+            ax.set_xlabel('Z Position (mm)')
+            ax.set_ylabel('Y Height (mm)')
+            ax.set_title(f'Ghost Analysis (2nd Order Reflections)\n{status_text}')
+            ax.grid(True, alpha=0.3)
+            ax.set_aspect('equal')
+            
+            # Auto-scale
+            ax.autoscale()
+            # Ensure some padding
+            xlim = ax.get_xlim()
+            ylim = ax.get_ylim()
+            x_range = xlim[1] - xlim[0]
+            y_range = ylim[1] - ylim[0]
+            ax.set_xlim(xlim[0] - x_range*0.1, xlim[1] + x_range*0.1)
+            # Ensure Y shows at least +/- 10mm
+            if y_range < 20:
+                ax.set_ylim(-10, 10)
+            
+            canvas = FigureCanvasTkAgg(fig, master=plot_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            
+            # Info Label
+            tk.Label(window, text=status_text, font=('Arial', 10)).pack(pady=5)
+            
+        except Exception as e:
+            tk.Label(window, text=f"Error running ghost analysis: {e}", fg="red").pack()
+            logger.error(f"Ghost analysis error: {e}")
+
+    def _draw_lens_on_ax(self, ax, lens, offset):
+        """Helper to draw a single lens on a matplotlib axis"""
+        try:
+            # Try to use existing ray tracer for geometry if available
+            try:
+                from .ray_tracer import LensRayTracer
+            except ImportError:
+                from src.ray_tracer import LensRayTracer
+                
+            tracer = LensRayTracer(lens, x_offset=offset)
+            points = tracer.get_lens_outline(num_points=100)
+            
+            poly_x = [p[0] for p in points]
+            poly_y = [p[1] for p in points]
+            
+            ax.fill(poly_x, poly_y, facecolor='#e6f3ff', edgecolor='k', alpha=0.4, linewidth=1.0)
+                
+        except Exception:
+            # Fallback simple drawing (rect/approx)
+            import math
+            r1 = lens.radius_of_curvature_1
+            r2 = lens.radius_of_curvature_2
+            t = lens.thickness
+            d = lens.diameter
+            
+            # Generate y coordinates for the lens aperture
+            num_points = 100
+            half_diam = d / 2.0
+            y = [(-half_diam + i * d / (num_points - 1)) for i in range(num_points)]
+            
+            # Helper function
+            def calculate_surface_x(r, y_val, is_front):
+                if abs(r) > 10000 or abs(r) < 1e-10:
+                    return offset if is_front else offset + float(t)
+                
+                r_abs = abs(r)
+                if abs(y_val) >= r_abs:
+                    sag_term = 0.0
+                else:
+                    sag_term = math.sqrt(r_abs**2 - y_val**2)
+                
+                if is_front:
+                    if r > 0:
+                        return offset - r_abs + sag_term
+                    else:
+                        return offset + r_abs - sag_term
+                else:
+                    if r > 0:
+                        return offset + t + r_abs - sag_term
+                    else:
+                        return offset + t - r_abs + sag_term
+
+            # Surface 1
+            x1 = [calculate_surface_x(r1, y_val, is_front=True) for y_val in y]
+            
+            # Surface 2
+            x2 = [calculate_surface_x(r2, y_val, is_front=False) for y_val in y]
+            
+            # Draw filled polygon
+            poly_x = x1 + x2[::-1]
+            poly_y = y + y[::-1]
+            
+            ax.fill(poly_x, poly_y, facecolor='#e6f3ff', edgecolor='k', alpha=0.4, linewidth=1.0)
+
     def calculate_metrics(self):
         """Calculate performance metrics for current lens"""
         if self.current_lens is None:
@@ -1723,6 +2012,20 @@ class ExportController:
         ttk.Label(stl_frame, text="Export 3D model for CAD/3D printing", font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(side=tk.LEFT, padx=PADDING_MEDIUM)
         ttk.Button(stl_frame, text="Export STL", command=self.export_stl, width=15).pack(side=tk.RIGHT, padx=PADDING_MEDIUM)
         row += 1
+
+        # STEP Export
+        step_frame = ttk.LabelFrame(content_frame, text="3D Model (STEP)", padding="15")
+        step_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
+        ttk.Label(step_frame, text="Export solid geometry for CAD (ISO 10303-21)", font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(side=tk.LEFT, padx=PADDING_MEDIUM)
+        ttk.Button(step_frame, text="Export STEP", command=self.export_step, width=15).pack(side=tk.RIGHT, padx=PADDING_MEDIUM)
+        row += 1
+        
+        # ISO 10110 Export
+        iso_frame = ttk.LabelFrame(content_frame, text="Manufacturing Drawing (ISO 10110)", padding="15")
+        iso_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
+        ttk.Label(iso_frame, text="Export ISO 10110 compliant SVG drawing", font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(side=tk.LEFT, padx=PADDING_MEDIUM)
+        ttk.Button(iso_frame, text="Export ISO Drawing", command=self.export_iso10110, width=15).pack(side=tk.RIGHT, padx=PADDING_MEDIUM)
+        row += 1
         
         # Technical Report
         report_frame = ttk.LabelFrame(content_frame, text="Technical Report", padding="15")
@@ -1811,7 +2114,112 @@ class ExportController:
             except Exception as e:
                 CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Export Error", f"Failed to export: {e}")
                 self._update_status(f"✗ STL export failed: {e}")
+
+    def export_step(self):
+        """Export lens to STEP file"""
+        if self.current_lens is None:
+            CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Lens", "Please select a lens first")
+            return
+        
+        try:
+            # Try importing with different paths to handle execution context
+            try:
+                from .io.step_export import StepExporter
+            except ImportError:
+                # Fallback for direct script execution
+                import sys
+                import os
+                # Add project root to path if needed
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                parent_dir = os.path.dirname(current_dir) # src/../
+                if parent_dir not in sys.path:
+                    sys.path.insert(0, parent_dir)
+                from src.io.step_export import StepExporter
+                
+        except ImportError as e:
+            CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Import Error", 
+                               f"Could not import StepExporter: {e}")
+            return
+        
+        from tkinter import filedialog
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".step",
+            filetypes=[("STEP files", "*.step"), ("All files", "*.*")],
+            title="Export Lens to STEP"
+        )
+        
+        if filename:
+            try:
+                exporter = StepExporter(self.current_lens)
+                exporter.export(filename)
+                
+                CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", f"STEP model exported to {filename}")
+                self._update_status(f"✓ Successfully exported STEP to: {filename}")
+            except Exception as e:
+                CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Export Error", f"Failed to export: {e}")
+                self._update_status(f"✗ STEP export failed: {e}")
+
     
+    def export_iso10110(self):
+        """Export lens to ISO 10110 SVG drawing"""
+        if self.current_lens is None:
+            # Try to find window handle
+            root = self.window.root if hasattr(self, "window") and hasattr(self.window, "root") else None
+            if root is None and hasattr(self, "parent_window") and hasattr(self.parent_window, "root"):
+                root = self.parent_window.root
+                
+            CopyableMessageBox.showwarning(root, "No Lens", "Please select a lens first")
+            return
+            
+        try:
+            try:
+                from .io.export import ISO10110Generator
+                from .optical_system import OpticalSystem
+            except ImportError:
+                # Absolute import fallback
+                import sys
+                import os
+                # Add project root to path if needed
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                parent_dir = os.path.dirname(current_dir)
+                if parent_dir not in sys.path:
+                    sys.path.insert(0, parent_dir)
+                from src.io.export import ISO10110Generator
+                from src.optical_system import OpticalSystem
+        except ImportError as e:
+            root = self.window.root if hasattr(self, "window") and hasattr(self.window, "root") else None
+            CopyableMessageBox.showerror(root, "Import Error", f"Could not import ISO10110Generator: {e}")
+            return
+
+        # Prepare system
+        system = None
+        if isinstance(self.current_lens, OpticalSystem):
+            system = self.current_lens
+        else:
+            # Wrap single lens in OpticalSystem
+            system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
+            system.add_lens(self.current_lens)
+            
+        from tkinter import filedialog
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".svg",
+            filetypes=[("SVG files", "*.svg"), ("All files", "*.*")],
+            title="Export ISO 10110 Drawing"
+        )
+        
+        if filename:
+            try:
+                generator = ISO10110Generator(system)
+                generator.generate_svg(filename)
+                
+                root = self.window.root if hasattr(self, "window") and hasattr(self.window, "root") else None
+                CopyableMessageBox.showinfo(root, "Success", f"Drawing exported to {filename}")
+                self._update_status(f"✓ Successfully exported ISO drawing to: {filename}")
+            except Exception as e:
+                root = self.window.root if hasattr(self, "window") and hasattr(self.window, "root") else None
+                CopyableMessageBox.showerror(root, "Export Error", f"Failed to export: {e}")
+                self._update_status(f"✗ ISO export failed: {e}")
+
     def export_report(self):
         """Generate and export technical report"""
         if self.current_lens is None:
