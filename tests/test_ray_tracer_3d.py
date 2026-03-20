@@ -144,5 +144,49 @@ class TestRayTracer3D(unittest.TestCase):
         # Should not terminate inside (should pass through or exit immediately)
         self.assertFalse(ray.terminated, "Ray terminated inside crossed lens region")
 
+    def test_cemented_doublet_trace(self):
+        """Test tracing through a cemented doublet (surfaces touching)."""
+        # Create two lenses that touch
+        # Lens 1: Biconvex
+        lens1 = Lens(
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=-50.0, 
+            thickness=5.0,
+            diameter=20.0,
+            refractive_index=1.5
+        )
+        
+        # Lens 2: Matches lens1 back curvature
+        lens2 = Lens(
+            radius_of_curvature_1=-50.0, # Matches lens1 back
+            radius_of_curvature_2=50.0,
+            thickness=5.0,
+            diameter=20.0,
+            refractive_index=1.6
+        )
+        
+        class MockElement:
+            def __init__(self, lens, pos):
+                self.lens = lens
+                self.position = pos
+
+        class MockSystem:
+            def __init__(self):
+                # Lens 1 at 0. Ends at 5.
+                # Lens 2 at 5. Ends at 10.
+                self.elements = [MockElement(lens1, 0), MockElement(lens2, 5.0)]
+        
+        system = MockSystem()
+        tracer = SystemRayTracer3D(system)
+        
+        # Trace on-axis ray
+        ray = Ray3D(origin=vec3(-10, 0, 0), direction=vec3(1, 0, 0))
+        tracer.trace_ray(ray)
+        
+        self.assertFalse(ray.terminated, "Ray terminated in cemented doublet")
+        # Path: Start(-10), L1F(0), L1B/L2F(5), L2B(10), End(60)
+        # Should have at least 5 points
+        self.assertGreaterEqual(len(ray.path), 5)
+
 if __name__ == '__main__':
     unittest.main()

@@ -203,13 +203,40 @@ class OpticalSystem:
             except (ZeroDivisionError, OverflowError):
                 return None
         
-        # For more complex systems, use matrix method (simplified)
-        return self._calculate_system_focal_length_matrix()
+        # For more complex systems, use matrix method
+        matrix = self._calculate_system_matrix()
+        if not matrix:
+            return None
+            
+        A, B, C, D = matrix
+        
+        # System Focal Length f = -1 / C
+        if abs(C) < 1e-10:
+            return None # Infinite focal length (afocal)
+            
+        return -1.0 / C
     
-    def _calculate_system_focal_length_matrix(self) -> Optional[float]:
+    def calculate_back_focal_length(self) -> Optional[float]:
         """
-        Calculate system focal length using paraxial ray tracing matrix method.
-        Treats each surface and thickness individually.
+        Calculate Back Focal Length (BFL) of the system.
+        BFL is the distance from the last surface to the back focal point.
+        BFL = -A / C
+        """
+        matrix = self._calculate_system_matrix()
+        if not matrix:
+            return None
+            
+        A, B, C, D = matrix
+        
+        if abs(C) < 1e-10:
+            return None # Infinite focal length
+            
+        return -A / C
+
+    def _calculate_system_matrix(self) -> Optional[Tuple[float, float, float, float]]:
+        """
+        Calculate system ray transfer matrix [A, B; C, D].
+        Treats each surface and thickness individually (thick lens model).
         """
         if not self.elements:
             return None
@@ -309,11 +336,7 @@ class OpticalSystem:
                 B = B + gap * D
                 # C, D unchanged
         
-        # System Focal Length f = -1 / C
-        if abs(C) < 1e-10:
-            return None # Infinite focal length (afocal)
-            
-        return -1.0 / C
+        return A, B, C, D
     
     def get_numerical_aperture(self) -> float:
         """Calculate system numerical aperture (based on first lens)"""

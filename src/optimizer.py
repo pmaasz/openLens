@@ -42,6 +42,7 @@ class OptimizationVariable:
     min_value: float
     max_value: float
     step_size: float = 1.0  # Initial step size for optimization
+    linked_targets: List[Tuple[int, str]] = field(default_factory=list)  # Other parameters controlled by this variable
     
     def is_valid(self, value: float) -> bool:
         """Check if value is within bounds"""
@@ -398,20 +399,29 @@ class LensOptimizer:
         
         # Apply variable values
         for var, value in zip(self.variables, values):
-            if var.parameter == "radius_of_curvature_1":
-                system.elements[var.element_index].lens.radius_of_curvature_1 = value
-            elif var.parameter == "radius_of_curvature_2":
-                system.elements[var.element_index].lens.radius_of_curvature_2 = value
-            elif var.parameter == "thickness":
-                system.elements[var.element_index].lens.thickness = value
-            elif var.parameter == "air_gap":
-                if var.element_index < len(system.air_gaps):
-                    system.air_gaps[var.element_index].thickness = value
+            # Apply to primary target
+            self._apply_single_variable(system, var.element_index, var.parameter, value)
+            
+            # Apply to linked targets
+            for elem_idx, param in var.linked_targets:
+                self._apply_single_variable(system, elem_idx, param, value)
         
         # Update positions after changes
         system._update_positions()
         
         return system
+
+    def _apply_single_variable(self, system: OpticalSystem, element_index: int, parameter: str, value: float):
+        """Apply a single variable value to the system"""
+        if parameter == "radius_of_curvature_1":
+            system.elements[element_index].lens.radius_of_curvature_1 = value
+        elif parameter == "radius_of_curvature_2":
+            system.elements[element_index].lens.radius_of_curvature_2 = value
+        elif parameter == "thickness":
+            system.elements[element_index].lens.thickness = value
+        elif parameter == "air_gap":
+            if element_index < len(system.air_gaps):
+                system.air_gaps[element_index].thickness = value
 
 
 def create_doublet_optimizer(system: OpticalSystem, target_focal_length: float = 100.0) -> LensOptimizer:
@@ -423,12 +433,10 @@ def create_doublet_optimizer(system: OpticalSystem, target_focal_length: float =
         OptimizationVariable("R1 Crown", 0, "radius_of_curvature_1",
                            system.elements[0].lens.radius_of_curvature_1,
                            20.0, 500.0, 10.0),
-        OptimizationVariable("R2 Crown", 0, "radius_of_curvature_2",
+        OptimizationVariable("Interface Curvature", 0, "radius_of_curvature_2",
                            system.elements[0].lens.radius_of_curvature_2,
-                           -500.0, -20.0, 10.0),
-        OptimizationVariable("R1 Flint", 1, "radius_of_curvature_1",
-                           system.elements[1].lens.radius_of_curvature_1,
-                           -500.0, -20.0, 10.0),
+                           -500.0, -20.0, 10.0,
+                           linked_targets=[(1, "radius_of_curvature_1")]),
         OptimizationVariable("R2 Flint", 1, "radius_of_curvature_2",
                            system.elements[1].lens.radius_of_curvature_2,
                            20.0, 500.0, 10.0),

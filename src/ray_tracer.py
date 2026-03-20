@@ -848,7 +848,8 @@ class LensRayTracer3D:
         t1 = (-b - sqrt_disc) / (2*a)
         t2 = (-b + sqrt_disc) / (2*a)
         
-        valid_ts = [t for t in [t1, t2] if t > EPSILON]
+        # Allow t roughly >= 0 to handle rays starting on the surface
+        valid_ts = [t for t in [t1, t2] if t > -EPSILON]
         if not valid_ts:
             return None
 
@@ -875,7 +876,7 @@ class LensRayTracer3D:
             return None
         
         t = (point_on_plane - ray.origin).dot(normal) / denom
-        if t < EPSILON:
+        if t < -EPSILON:
             return None
             
         return ray.origin + ray.direction * t

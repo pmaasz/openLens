@@ -84,6 +84,7 @@ try:
         PerformanceController,
         ExportController
     )
+    from ..gui.optimization_controller import OptimizationController
     CONTROLLERS_AVAILABLE = True
 except ImportError:
     try:
@@ -94,6 +95,13 @@ except ImportError:
             PerformanceController,
             ExportController
         )
+        # Try importing from local gui/optimization_controller.py
+        try:
+            from gui.optimization_controller import OptimizationController
+        except ImportError:
+             # If running from src/ directly
+            from optimization_controller import OptimizationController
+
         CONTROLLERS_AVAILABLE = True
     except ImportError:
         CONTROLLERS_AVAILABLE = False
@@ -140,6 +148,7 @@ class LensEditorWindow:
         self.editor_controller: Optional['LensEditorController'] = None
         self.simulation_controller: Optional['SimulationController'] = None
         self.performance_controller: Optional['PerformanceController'] = None
+        self.optimization_controller: Optional['OptimizationController'] = None
         self.export_controller: Optional['ExportController'] = None
         
         # Configure dark mode
@@ -182,6 +191,10 @@ class LensEditorWindow:
         # Create Performance tab (disabled until lens selected)
         self.performance_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.performance_tab, text="Performance", state='disabled')
+
+        # Create Optimization tab (disabled until lens selected)
+        self.optimization_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.optimization_tab, text="Optimization", state='disabled')
         
         # Create Export tab (disabled until lens selected)
         self.export_tab = ttk.Frame(self.notebook)
@@ -200,6 +213,7 @@ class LensEditorWindow:
         self.setup_editor_tab()
         self.setup_simulation_tab()
         self.setup_performance_tab()
+        self.setup_optimization_tab()
         self.setup_export_tab()
         
         # Status bar (below tabs)
@@ -256,14 +270,18 @@ class LensEditorWindow:
             self.notebook.tab(1, state='disabled') # Editor
             self.notebook.tab(2, state='normal')   # Simulation
             self.notebook.tab(3, state='disabled') # Performance
-            self.notebook.tab(4, state='disabled') # Export
+            self.notebook.tab(4, state='normal')   # Optimization
+            self.notebook.tab(5, state='disabled') # Export
             
             # Switch to Simulation tab automatically
             self.notebook.select(2)
             
-            # Load system into simulation controller
+            # Load system into controllers
             if self.simulation_controller:
                 self.simulation_controller.load_lens(lens)
+                
+            if self.optimization_controller:
+                self.optimization_controller.load_lens(lens)
                 
             self.update_status(f"Optical System selected ({len(lens.elements)} elements) - Ready to simulate")
             
@@ -272,7 +290,8 @@ class LensEditorWindow:
             self.notebook.tab(1, state='normal')
             self.notebook.tab(2, state='normal')
             self.notebook.tab(3, state='normal')
-            self.notebook.tab(4, state='normal')
+            self.notebook.tab(4, state='normal')   # Optimization
+            self.notebook.tab(5, state='normal')
             
             # Switch to editor and load lens
             self.notebook.select(1)
@@ -286,6 +305,9 @@ class LensEditorWindow:
             
             if self.performance_controller:
                 self.performance_controller.load_lens(lens)
+            
+            if self.optimization_controller:
+                self.optimization_controller.load_lens(lens)
             
             if self.export_controller:
                 self.export_controller.load_lens(lens)
@@ -303,7 +325,8 @@ class LensEditorWindow:
         self.notebook.tab(1, state='normal')
         self.notebook.tab(2, state='normal')
         self.notebook.tab(3, state='normal')
-        self.notebook.tab(4, state='normal')
+        self.notebook.tab(4, state='normal')   # Optimization
+        self.notebook.tab(5, state='normal')
         
         # Switch to editor
         self.notebook.select(1)
@@ -363,13 +386,37 @@ class LensEditorWindow:
             self.notebook.tab(2, state='disabled')
             self.notebook.tab(3, state='disabled')
             self.notebook.tab(4, state='disabled')
+            self.notebook.tab(5, state='disabled')
         
         self.update_status(f"Lens '{lens.name}' deleted")
     
     def on_lens_updated_callback(self, lens: Optional['Lens'] = None) -> None:
         """Callback when lens data is updated"""
-        # If a lens was passed and it's not in our list (newly created), add it
-        if lens and lens not in self.lenses:
+        if not lens:
+            self.save_lenses()
+            if self.selection_controller:
+                self.selection_controller.refresh_lens_list()
+            return
+
+        # Check if lens is already in the list (by ID or identity)
+        found = False
+        for i, existing in enumerate(self.lenses):
+            # Check identity first
+            if existing is lens:
+                found = True
+                break
+            # Check ID if available
+            if hasattr(existing, 'id') and hasattr(lens, 'id') and existing.id == lens.id:
+                # Replace the existing object with the new one (e.g. from optimizer)
+                self.lenses[i] = lens
+                found = True
+                
+                # If we replaced the current lens, update the reference
+                if self.current_lens is existing:
+                    self.current_lens = lens
+                break
+        
+        if not found:
             self.lenses.append(lens)
             self.current_lens = lens
             self.update_status(f"New lens '{lens.name}' created")
@@ -565,6 +612,28 @@ class LensEditorWindow:
         except Exception as e:
             logger.error("PerformanceController failed to load: %s", e)
             ttk.Label(self.performance_tab, text=f"Error loading performance tab: {e}").pack(padx=20, pady=20)
+
+    def setup_optimization_tab(self) -> None:
+        """Setup the Optimization tab"""
+        try:
+            if CONTROLLERS_AVAILABLE:
+                if TYPE_CHECKING:
+                     assert OptimizationController is not None
+                
+                self.optimization_controller = OptimizationController(
+                    colors=self.colors,
+                    on_lens_updated=self.on_lens_updated_callback
+                )
+                self.optimization_controller.parent_window = self
+                self.optimization_controller.setup_ui(self.optimization_tab)
+                
+                logger.debug("OptimizationController integrated successfully")
+            else:
+                 ttk.Label(self.optimization_tab, text="Optimization Controller not available").pack(padx=20, pady=20)
+            
+        except Exception as e:
+            logger.error("OptimizationController failed to load: %s", e)
+            ttk.Label(self.optimization_tab, text=f"Error loading optimization tab: {e}").pack(padx=20, pady=20)
 
     def setup_export_tab(self) -> None:
         """Setup the Export Enhancements tab"""
