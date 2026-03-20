@@ -75,12 +75,14 @@ try:
     import test_analysis
     import test_tolerancing
     import test_environmental
+    import test_spot_diagram_chromatic
     
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     suite.addTests(loader.loadTestsFromModule(test_analysis))
     suite.addTests(loader.loadTestsFromModule(test_tolerancing))
     suite.addTests(loader.loadTestsFromModule(test_environmental))
+    suite.addTests(loader.loadTestsFromModule(test_spot_diagram_chromatic))
     
     runner = unittest.TextTestRunner(verbosity=2)
     result_analysis = runner.run(suite)

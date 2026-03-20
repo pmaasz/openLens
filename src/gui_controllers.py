@@ -1463,7 +1463,7 @@ class PerformanceController:
         self.current_lens = lens
     
     def show_spot_diagram(self):
-        """Display Spot Diagram in a new window"""
+        """Display Spot Diagram in a new window with multi-field/wavelength support"""
         if self.current_lens is None:
             root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
             CopyableMessageBox.showwarning(root, "No Lens", "Please select a lens first")
@@ -1473,6 +1473,7 @@ class PerformanceController:
             import matplotlib.pyplot as plt
             from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
             from matplotlib.figure import Figure
+            import numpy as np
             
             # Import Analysis
             try:
@@ -1502,70 +1503,139 @@ class PerformanceController:
         # Create Window
         window = tk.Toplevel()
         window.title(f"Spot Diagram - {system.name}")
-        window.geometry("600x650")
+        window.geometry("800x900")
         
-        # Parse Parameters
-        try:
-            wavelength = float(self.wavelength_var.get())
-        except ValueError:
-            wavelength = 550.0
-            
-        # Generate Data
-        try:
+        # Control Frame
+        control_frame = ttk.Frame(window)
+        control_frame.pack(side=tk.TOP, fill=tk.X, pady=PADDING_MEDIUM)
+        
+        # Max Field Angle
+        tk.Label(control_frame, text="Max Field (deg):").pack(side=tk.LEFT, padx=5)
+        field_var = tk.StringVar(value="0.0")
+        tk.Entry(control_frame, textvariable=field_var, width=8).pack(side=tk.LEFT, padx=5)
+        
+        # Focus Shift
+        tk.Label(control_frame, text="Focus Shift (mm):").pack(side=tk.LEFT, padx=5)
+        shift_var = tk.StringVar(value="0.0")
+        tk.Entry(control_frame, textvariable=shift_var, width=8).pack(side=tk.LEFT, padx=5)
+        
+        # Canvas Frame
+        canvas_frame = ttk.Frame(window)
+        canvas_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        
+        def update_plot():
+            # Clear previous
+            for widget in canvas_frame.winfo_children():
+                widget.destroy()
+                
+            try:
+                max_field = float(field_var.get())
+                focus_shift = float(shift_var.get())
+            except ValueError:
+                return
+
             analyzer = SpotDiagram(system)
-            # Trace spot (on-axis for now, can add field angle later)
-            result = analyzer.trace_spot(wavelength=wavelength, num_rings=6)
             
-            points = result['points']
-            rms = result['rms_radius']
-            geo = result['geo_radius']
+            # Wavelengths: F (Blue), d (Green/Yellow), C (Red)
+            wavelengths = [
+                (486.1, 'b', 'F (486nm)'),
+                (587.6, 'g', 'd (588nm)'),
+                (656.3, 'r', 'C (656nm)')
+            ]
             
-            # Create Plot
-            fig = Figure(figsize=(5, 5), dpi=100)
-            ax = fig.add_subplot(111)
+            # Fields: 0, 0.7*Max, Max
+            fields = [0.0]
+            if max_field > 0.001:
+                fields.append(0.707 * max_field)
+                fields.append(max_field)
             
-            if points:
-                y = [p[0]*1000 for p in points] # Convert to microns
-                z = [p[1]*1000 for p in points]
+            # Calculate common image plane (using d-line on-axis)
+            ref_result = analyzer.trace_spot(wavelength=587.6, field_angle_y=0.0, focus_shift=focus_shift)
+            image_plane_x = ref_result['image_plane_x']
+            
+            # Create subplots
+            fig = Figure(figsize=(8, 3 * len(fields)), dpi=100)
+            fig.subplots_adjust(left=0.1, right=0.8, hspace=0.4, top=0.95, bottom=0.05)
+            
+            # Airy Disk Radius (at d-line)
+            f_num = system.get_system_f_number() or 10.0
+            airy_r_microns = 1.22 * (587.6 * 1e-6) * f_num * 1000
+            
+            # Find global max scale for consistent axes
+            max_extent = airy_r_microns * 2 # Min extent
+            
+            # Store all results first to find scale
+            all_spots = []
+            
+            for i, field_angle in enumerate(fields):
+                field_data = []
+                for wl, color, name in wavelengths:
+                    res = analyzer.trace_spot(
+                        wavelength=wl, 
+                        field_angle_y=field_angle,
+                        image_plane_x=image_plane_x, # Use fixed plane
+                        num_rings=6
+                    )
+                    points_um = [(p[0]*1000, p[1]*1000) for p in res['points']]
+                    
+                    # Update max extent
+                    if points_um:
+                        local_max = max(max([abs(p[0]) for p in points_um]), max([abs(p[1]) for p in points_um]))
+                        max_extent = max(max_extent, local_max)
+                        
+                    field_data.append({
+                        'wl': wl, 'color': color, 'name': name,
+                        'points': points_um,
+                        'rms': res['rms_radius']*1000,
+                        'geo': res['geo_radius']*1000
+                    })
+                all_spots.append((field_angle, field_data))
+            
+            limit = max_extent * 1.2
+            
+            # Plot
+            for i, (field_angle, data_list) in enumerate(all_spots):
+                ax = fig.add_subplot(len(fields), 1, i+1)
                 
-                ax.scatter(y, z, c='b', marker='.', alpha=0.6, s=10)
+                # Plot spots
+                rms_texts = []
+                for data in data_list:
+                    pts = data['points']
+                    if pts:
+                        y = [p[0] for p in pts]
+                        z = [p[1] for p in pts]
+                        ax.scatter(y, z, c=data['color'], marker='.', s=10, alpha=0.6, label=data['name'])
+                    rms_texts.append(f"{data['name'][0]}: RMS {data['rms']:.1f}µm")
+                
+                # Airy Disk
+                circle = plt.Circle((0, 0), airy_r_microns, color='k', fill=False, linestyle='--', label='Airy Disk')
+                ax.add_patch(circle)
+                
                 ax.set_aspect('equal')
-                
-                # Auto-scale or set reasonable limits
-                max_val = max(max([abs(v) for v in y]), max([abs(v) for v in z])) if y else 10
-                limit = max_val * 1.2 if max_val > 0 else 10
                 ax.set_xlim(-limit, limit)
                 ax.set_ylim(-limit, limit)
-                
-                ax.set_xlabel('Y (μm)')
-                ax.set_ylabel('Z (μm)')
-                ax.set_title(f'Spot Diagram\nRMS: {rms*1000:.3f} μm | GEO: {geo*1000:.3f} μm')
                 ax.grid(True, alpha=0.3)
+                ax.set_title(f"Field: {field_angle:.2f}°")
+                if i == len(fields)-1:
+                    ax.set_xlabel("Y (μm)")
+                ax.set_ylabel("Z (μm)")
                 
-                # Draw Airy Disk circle reference if possible
-                try:
-                    f_num = system.get_system_f_number()
-                    if f_num:
-                        airy_r = 1.22 * (wavelength * 1e-6) * f_num * 1000 # microns
-                        circle = plt.Circle((0, 0), airy_r, color='k', fill=False, linestyle='--', label='Airy Disk')
-                        ax.add_patch(circle)
-                        ax.legend()
-                except Exception:
-                    pass
-            else:
-                ax.text(0.5, 0.5, "No Rays reached Image Plane", ha='center')
+                # Add text box for stats
+                stats = "\n".join(rms_texts)
+                ax.text(1.02, 0.5, stats, transform=ax.transAxes, va='center', fontsize=9, 
+                       bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
                 
-            canvas = FigureCanvasTkAgg(fig, master=window)
+                if i == 0:
+                    ax.legend(loc='upper right', bbox_to_anchor=(1.35, 1.0), fontsize='small')
+
+            canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
             canvas.draw()
             canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-            
-            # Info Label
-            info = f"Wavelength: {wavelength} nm | Rays: {result.get('valid_rays', 0)}"
-            tk.Label(window, text=info, font=('Arial', 9)).pack(pady=5)
-            
-        except Exception as e:
-            tk.Label(window, text=f"Error generating spot diagram: {e}", fg="red").pack()
-            logger.error(f"Spot diagram error: {e}")
+
+        ttk.Button(control_frame, text="Update", command=update_plot).pack(side=tk.LEFT, padx=10)
+        
+        # Initial Plot
+        update_plot()
 
     def show_ghost_analysis(self):
         """Display Ghost Analysis in a new window"""

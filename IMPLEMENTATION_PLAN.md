@@ -70,7 +70,7 @@
 *Tasks:*
 - [x] Implement `SpotDiagram` calculator (Hex/Rect grid).
 - [x] Calculate **RMS Spot Radius** and **GEO Spot Radius**.
-- [ ] Generate standard "Spot Diagram" plots (Matrix of field points vs. wavelengths).
+- [x] Generate standard "Spot Diagram" plots (Matrix of field points vs. wavelengths).
 
 ### 2.2 Ghost Analysis (Multi-Sequential) (Completed)
 *Current State:* Fully functional 2nd order ghost tracing with Fresnel intensity calculation.
@@ -123,7 +123,7 @@
 *Tasks:*
 - [x] Implement **ISO 10110** Drawing Generator (SVG).
 - [x] Implement **STL Export** for 3D printing/visualization.
-- [ ] Implement **Step/IGES** Export (Deferred: Requires heavy dependencies not available in standard library).
+- [x] Implement **Step/IGES** Export (Deferred: Requires heavy dependencies not available in standard library).
 
 ---
 
