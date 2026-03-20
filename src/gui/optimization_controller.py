@@ -171,6 +171,16 @@ class OptimizationController:
         ttk.Checkbutton(options_frame, text="Maintain Cemented Interfaces", 
                        variable=self.target_vars['maintain_cemented']).pack(anchor=tk.W, pady=(5,0))
 
+        # Algorithm Selection
+        algo_frame = ttk.Frame(options_frame)
+        algo_frame.pack(fill=tk.X, pady=(5, 0))
+        ttk.Label(algo_frame, text="Algorithm:").pack(side=tk.LEFT)
+        
+        self.algorithm_var = tk.StringVar(value="Local (Simplex)")
+        algo_combo = ttk.Combobox(algo_frame, textvariable=self.algorithm_var, state="readonly")
+        algo_combo['values'] = ("Local (Simplex)", "Global (Simulated Annealing)", "Global (Genetic Algorithm)")
+        algo_combo.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+
         # 4. Actions
         actions_frame = ttk.Frame(left_panel)
         actions_frame.pack(fill=tk.X, pady=10)
@@ -491,11 +501,37 @@ class OptimizationController:
 
             # 3. Create Optimizer
             system_to_optimize = temp_system if is_single_lens_optimization and temp_system else self.current_lens
-            optimizer = LensOptimizer(system_to_optimize, variables, targets, constraints=constraints)
+            
+            # Check selected algorithm
+            algorithm = self.algorithm_var.get() if hasattr(self, 'algorithm_var') else "Local (Simplex)"
+            
+            if "Global" in algorithm:
+                try:
+                    from ..global_optimizer import GlobalOptimizer
+                except ImportError:
+                    try:
+                        from global_optimizer import GlobalOptimizer
+                    except ImportError:
+                        self.log("Global optimizer not found, falling back to local.")
+                        optimizer = LensOptimizer(system_to_optimize, variables, targets, constraints=constraints)
+                        algorithm = "Local (Simplex)"
+                    else:
+                        optimizer = GlobalOptimizer(system_to_optimize, variables, targets, constraints=constraints)
+                else:
+                    optimizer = GlobalOptimizer(system_to_optimize, variables, targets, constraints=constraints)
+            else:
+                optimizer = LensOptimizer(system_to_optimize, variables, targets, constraints=constraints)
             
             # 4. Run
             self.log(f"Starting optimization with {len(variables)} variables and {len(targets)} targets...")
-            result = optimizer.optimize(max_iterations=50) # Keep iterations low for UI responsiveness
+            self.log(f"Algorithm: {algorithm}")
+            
+            if "Simulated Annealing" in algorithm:
+                result = optimizer.optimize_simulated_annealing(max_iterations=1000, initial_temperature=50.0)
+            elif "Genetic Algorithm" in algorithm:
+                result = optimizer.optimize_genetic(population_size=30, generations=20)
+            else:
+                result = optimizer.optimize(max_iterations=50) # Keep iterations low for UI responsiveness
             
             if result.success:
                 self.log(f"Success! Merit improved from {result.initial_merit:.4f} to {result.final_merit:.4f}")
