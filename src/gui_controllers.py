@@ -1623,6 +1623,14 @@ class PerformanceController:
                   command=self.show_spot_diagram).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(btn_frame, text="Ghost Analysis", 
                   command=self.show_ghost_analysis).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        ttk.Button(btn_frame, text="PSF Analysis", 
+                  command=self.show_psf).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        ttk.Button(btn_frame, text="MTF Analysis", 
+                  command=self.show_mtf).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        ttk.Button(btn_frame, text="Wavefront Map", 
+                  command=self.show_wavefront_map).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        ttk.Button(btn_frame, text="Image Simulation", 
+                  command=self.show_image_simulation).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(btn_frame, text="Export Report", 
                   command=self.export_report).pack(side=tk.LEFT, padx=PADDING_SMALL)
     
@@ -1921,6 +1929,523 @@ class PerformanceController:
             tk.Label(window, text=f"Error running ghost analysis: {e}", fg="red").pack()
             logger.error(f"Ghost analysis error: {e}")
 
+    def show_psf(self):
+        """Display Point Spread Function (PSF) Analysis"""
+        if self.current_lens is None:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showwarning(root, "No Lens", "Please select a lens first")
+            return
+
+        try:
+            import matplotlib.pyplot as plt
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            from matplotlib.figure import Figure
+            import numpy as np
+            
+            try:
+                from .analysis.psf_mtf import ImageQualityAnalyzer
+                from .optical_system import OpticalSystem
+            except ImportError:
+                import sys
+                import os
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+                from src.analysis.psf_mtf import ImageQualityAnalyzer
+                from src.optical_system import OpticalSystem
+        except ImportError:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showerror(root, "Missing Dependency", "PSF Analysis requires matplotlib and numpy.\nInstall with: pip install matplotlib numpy")
+            return
+
+        # Prepare System
+        system = None
+        if isinstance(self.current_lens, OpticalSystem):
+            system = self.current_lens
+        else:
+            system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
+            system.add_lens(self.current_lens)
+            
+        # Create Window
+        window = tk.Toplevel()
+        window.title(f"PSF Analysis - {system.name}")
+        window.geometry("800x700")
+        
+        # Control Frame
+        control_frame = ttk.Frame(window)
+        control_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
+        
+        tk.Label(control_frame, text="Field (deg):").pack(side=tk.LEFT, padx=5)
+        field_var = tk.StringVar(value="0.0")
+        tk.Entry(control_frame, textvariable=field_var, width=6).pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(control_frame, text="Focus Shift (mm):").pack(side=tk.LEFT, padx=5)
+        shift_var = tk.StringVar(value="0.0")
+        tk.Entry(control_frame, textvariable=shift_var, width=6).pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(control_frame, text="Size (μm):").pack(side=tk.LEFT, padx=5)
+        size_var = tk.StringVar(value="100.0") # 100 microns
+        tk.Entry(control_frame, textvariable=size_var, width=6).pack(side=tk.LEFT, padx=5)
+        
+        diff_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(control_frame, text="Diffraction", variable=diff_var).pack(side=tk.LEFT, padx=5)
+        
+        # Plot Frame
+        plot_frame = ttk.Frame(window)
+        plot_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        
+        def update_plot():
+            for widget in plot_frame.winfo_children():
+                widget.destroy()
+            
+            try:
+                field = float(field_var.get())
+                shift = float(shift_var.get())
+                size_mm = float(size_var.get()) / 1000.0
+                use_diff = diff_var.get()
+            except ValueError:
+                return
+                
+            analyzer = ImageQualityAnalyzer(system)
+            
+            # Wavelengths (F, d, C)
+            wavelengths = [
+                (486.1, 'Blues', 'F (486nm)'),
+                (587.6, 'Greens', 'd (588nm)'),
+                (656.3, 'Reds', 'C (656nm)')
+            ]
+            
+            fig = Figure(figsize=(10, 4), dpi=100)
+            
+            for i, (wl, cmap, name) in enumerate(wavelengths):
+                ax = fig.add_subplot(1, 3, i+1)
+                
+                res = analyzer.calculate_psf(
+                    field_angle=field,
+                    wavelength=wl,
+                    focus_shift=shift,
+                    sensor_size=size_mm,
+                    pixels=64,
+                    use_diffraction=use_diff
+                )
+                
+                img = res['image']
+                extent = [-size_mm*500, size_mm*500, -size_mm*500, size_mm*500] # mm to microns / 2
+                
+                im = ax.imshow(img, extent=extent, cmap=cmap, origin='lower', interpolation='bicubic')
+                ax.set_title(f"{name}")
+                ax.set_xlabel("Z (μm)") # Sagittal
+                if i==0: ax.set_ylabel("Y (μm)") # Tangential
+            
+            mode = "Diffraction" if use_diff else "Geometric"
+            fig.suptitle(f"{mode} PSF (Field: {field}°, Defocus: {shift}mm)")
+            fig.tight_layout()
+            
+            canvas = FigureCanvasTkAgg(fig, master=plot_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        ttk.Button(control_frame, text="Update", command=update_plot).pack(side=tk.LEFT, padx=10)
+        update_plot()
+
+    def show_mtf(self):
+        """Display Modulation Transfer Function (MTF) Analysis"""
+        if self.current_lens is None:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showwarning(root, "No Lens", "Please select a lens first")
+            return
+
+        try:
+            import matplotlib.pyplot as plt
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            from matplotlib.figure import Figure
+            import numpy as np
+            
+            try:
+                from .analysis.psf_mtf import ImageQualityAnalyzer
+                from .optical_system import OpticalSystem
+            except ImportError:
+                import sys
+                import os
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+                from src.analysis.psf_mtf import ImageQualityAnalyzer
+                from src.optical_system import OpticalSystem
+        except ImportError:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showerror(root, "Missing Dependency", "MTF Analysis requires matplotlib and numpy.\nInstall with: pip install matplotlib numpy")
+            return
+
+        # Prepare System
+        system = None
+        if isinstance(self.current_lens, OpticalSystem):
+            system = self.current_lens
+        else:
+            system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
+            system.add_lens(self.current_lens)
+            
+        # Create Window
+        window = tk.Toplevel()
+        window.title(f"MTF Analysis - {system.name}")
+        window.geometry("800x600")
+        
+        # Control Frame
+        control_frame = ttk.Frame(window)
+        control_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
+        
+        tk.Label(control_frame, text="Field (deg):").pack(side=tk.LEFT, padx=5)
+        field_var = tk.StringVar(value="0.0")
+        tk.Entry(control_frame, textvariable=field_var, width=6).pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(control_frame, text="Focus Shift (mm):").pack(side=tk.LEFT, padx=5)
+        shift_var = tk.StringVar(value="0.0")
+        tk.Entry(control_frame, textvariable=shift_var, width=6).pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(control_frame, text="Max Freq (lp/mm):").pack(side=tk.LEFT, padx=5)
+        freq_var = tk.StringVar(value="100.0")
+        tk.Entry(control_frame, textvariable=freq_var, width=6).pack(side=tk.LEFT, padx=5)
+        
+        diff_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(control_frame, text="Diffraction", variable=diff_var).pack(side=tk.LEFT, padx=5)
+        
+        # Plot Frame
+        plot_frame = ttk.Frame(window)
+        plot_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        
+        def update_plot():
+            for widget in plot_frame.winfo_children():
+                widget.destroy()
+            
+            try:
+                field = float(field_var.get())
+                shift = float(shift_var.get())
+                max_f = float(freq_var.get())
+                use_diff = diff_var.get()
+            except ValueError:
+                return
+                
+            analyzer = ImageQualityAnalyzer(system)
+            
+            # Wavelengths (F, d, C)
+            wavelengths = [
+                (486.1, 'b', 'F (486nm)'),
+                (587.6, 'g', 'd (588nm)'),
+                (656.3, 'r', 'C (656nm)')
+            ]
+            
+            fig = Figure(figsize=(8, 6), dpi=100)
+            ax = fig.add_subplot(111)
+            
+            for wl, color, name in wavelengths:
+                res = analyzer.calculate_mtf(
+                    field_angle=field,
+                    wavelength=wl,
+                    focus_shift=shift,
+                    max_freq=max_f,
+                    use_diffraction=use_diff
+                )
+                
+                freqs = res['freq']
+                tan = res['mtf_tan']
+                sag = res['mtf_sag']
+                
+                ax.plot(freqs, tan, color=color, linestyle='-', label=f'{name} (Tan)')
+                ax.plot(freqs, sag, color=color, linestyle='--', label=f'{name} (Sag)')
+                
+            ax.set_xlim(0, max_f)
+            ax.set_ylim(0, 1.05)
+            ax.set_xlabel("Spatial Frequency (lp/mm)")
+            ax.set_ylabel("Modulation")
+            mode = "Diffraction" if use_diff else "Geometric"
+            ax.set_title(f"{mode} MTF (Field: {field}°, Defocus: {shift}mm)")
+            ax.grid(True, which='both', alpha=0.3)
+            ax.legend()
+            
+            canvas = FigureCanvasTkAgg(fig, master=plot_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        ttk.Button(control_frame, text="Update", command=update_plot).pack(side=tk.LEFT, padx=10)
+        update_plot()
+
+    def show_wavefront_map(self):
+        """Display Wavefront Map Analysis"""
+        if self.current_lens is None:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showwarning(root, "No Lens", "Please select a lens first")
+            return
+
+        try:
+            import matplotlib.pyplot as plt
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            from matplotlib.figure import Figure
+            import numpy as np
+            
+            try:
+                from .analysis.diffraction_psf import WavefrontSensor
+                from .optical_system import OpticalSystem
+            except ImportError:
+                import sys
+                import os
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+                from src.analysis.diffraction_psf import WavefrontSensor
+                from src.optical_system import OpticalSystem
+        except ImportError:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showerror(root, "Missing Dependency", "Wavefront Analysis requires matplotlib and numpy.\nInstall with: pip install matplotlib numpy")
+            return
+
+        # Prepare System
+        system = None
+        if isinstance(self.current_lens, OpticalSystem):
+            system = self.current_lens
+        else:
+            system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
+            system.add_lens(self.current_lens)
+            
+        # Create Window
+        window = tk.Toplevel()
+        window.title(f"Wavefront Map - {system.name}")
+        window.geometry("700x600")
+        
+        # Control Frame
+        control_frame = ttk.Frame(window)
+        control_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
+        
+        tk.Label(control_frame, text="Field (deg):").pack(side=tk.LEFT, padx=5)
+        field_var = tk.StringVar(value="0.0")
+        tk.Entry(control_frame, textvariable=field_var, width=6).pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(control_frame, text="Wavelength (nm):").pack(side=tk.LEFT, padx=5)
+        wave_var = tk.StringVar(value="550")
+        tk.Entry(control_frame, textvariable=wave_var, width=6).pack(side=tk.LEFT, padx=5)
+        
+        # Plot Frame
+        plot_frame = ttk.Frame(window)
+        plot_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        
+        def update_plot():
+            for widget in plot_frame.winfo_children():
+                widget.destroy()
+            
+            try:
+                field = float(field_var.get())
+                wavelength_nm = float(wave_var.get())
+            except ValueError:
+                return
+                
+            sensor = WavefrontSensor(system)
+            wf = sensor.get_pupil_wavefront(field_angle=field, wavelength=wavelength_nm*1e-6)
+            
+            fig = Figure(figsize=(8, 6), dpi=100)
+            ax = fig.add_subplot(111)
+            
+            # wf.W is in waves
+            # Mask NaNs for better plotting (or set to 0, or use masked array)
+            W_masked = np.ma.masked_invalid(wf.W)
+            
+            if W_masked.count() == 0:
+                ax.text(0.5, 0.5, "No valid rays passed the pupil.", ha='center')
+            else:
+                # Plot
+                # extent should be physical pupil coords
+                if wf.Y.size > 0:
+                    y_min, y_max = wf.Y.min(), wf.Y.max()
+                    z_min, z_max = wf.Z.min(), wf.Z.max()
+                    extent = [y_min, y_max, z_min, z_max]
+                    
+                    # Compute stats
+                    pv = W_masked.max() - W_masked.min()
+                    rms = np.sqrt(np.mean(W_masked**2)) # Simple RMS assuming 0 mean (removed in backend)
+                    
+                    im = ax.imshow(W_masked, extent=extent, origin='lower', cmap='jet')
+                    cb = fig.colorbar(im, ax=ax, label='OPD (waves)')
+                    
+                    ax.set_title(f"Wavefront Map (λ={wavelength_nm}nm, Field={field}°)\nRMS: {rms:.4f} λ, PV: {pv:.4f} λ")
+                    ax.set_xlabel("Y Pupil (mm)")
+                    ax.set_ylabel("Z Pupil (mm)")
+                else:
+                    ax.text(0.5, 0.5, "No pupil data.", ha='center')
+
+            canvas = FigureCanvasTkAgg(fig, master=plot_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        ttk.Button(control_frame, text="Update", command=update_plot).pack(side=tk.LEFT, padx=10)
+        update_plot()
+
+    def show_image_simulation(self):
+        """Display Image Simulation Tool"""
+        if self.current_lens is None:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showwarning(root, "No Lens", "Please select a lens first")
+            return
+
+        try:
+            import matplotlib.pyplot as plt
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            from matplotlib.figure import Figure
+            import numpy as np
+            from PIL import Image
+            import os
+            
+            try:
+                from .analysis.psf_mtf import ImageQualityAnalyzer
+                from .optical_system import OpticalSystem
+            except ImportError:
+                import sys
+                import os
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+                from src.analysis.psf_mtf import ImageQualityAnalyzer
+                from src.optical_system import OpticalSystem
+        except ImportError as e:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showerror(root, "Missing Dependency", f"Image Simulation requires matplotlib, numpy, scipy and Pillow.\\nError: {e}\\nInstall with: pip install matplotlib numpy scipy Pillow")
+            return
+
+        # Prepare System
+        system = None
+        if isinstance(self.current_lens, OpticalSystem):
+            system = self.current_lens
+        else:
+            system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
+            system.add_lens(self.current_lens)
+            
+        # Create Window
+        window = tk.Toplevel()
+        window.title(f"Image Simulation - {system.name}")
+        window.geometry("1000x600")
+        
+        # Control Frame
+        control_frame = ttk.Frame(window)
+        control_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
+        
+        # Load Image Button
+        self.source_image = None
+        self.source_image_path = None
+        
+        def load_image():
+            from tkinter import filedialog
+            file_path = filedialog.askopenfilename(
+                title="Select Image",
+                filetypes=[("Image files", "*.jpg *.jpeg *.png *.bmp *.tif")]
+            )
+            if file_path:
+                try:
+                    img = Image.open(file_path)
+                    # Resize if too large to prevent slow simulation
+                    max_size = 512
+                    if img.width > max_size or img.height > max_size:
+                        img.thumbnail((max_size, max_size))
+                    
+                    self.source_image = np.array(img).astype(float) / 255.0
+                    self.source_image_path = file_path
+                    
+                    # Handle RGBA
+                    if self.source_image.shape[2] == 4:
+                         self.source_image = self.source_image[:,:,:3]
+                    # Handle Grayscale
+                    if len(self.source_image.shape) == 2:
+                         self.source_image = np.stack((self.source_image,)*3, axis=-1)
+                         
+                    update_display(original_only=True)
+                    status_var.set(f"Loaded: {os.path.basename(file_path)}")
+                except Exception as e:
+                    CopyableMessageBox.showerror(window, "Error", f"Failed to load image: {e}")
+
+        ttk.Button(control_frame, text="Load Image", command=load_image).pack(side=tk.LEFT, padx=10)
+        
+        status_var = tk.StringVar(value="No image loaded")
+        ttk.Label(control_frame, textvariable=status_var).pack(side=tk.LEFT, padx=5)
+        
+        # Parameters
+        param_frame = ttk.Frame(window)
+        param_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
+        
+        tk.Label(param_frame, text="Field (deg):").pack(side=tk.LEFT, padx=5)
+        field_var = tk.StringVar(value="0.0")
+        tk.Entry(param_frame, textvariable=field_var, width=6).pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(param_frame, text="Defocus (mm):").pack(side=tk.LEFT, padx=5)
+        shift_var = tk.StringVar(value="0.0")
+        tk.Entry(param_frame, textvariable=shift_var, width=6).pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(param_frame, text="Pixel Size (μm):").pack(side=tk.LEFT, padx=5)
+        pixel_var = tk.StringVar(value="5.0")
+        tk.Entry(param_frame, textvariable=pixel_var, width=6).pack(side=tk.LEFT, padx=5)
+
+        # Plot Frame
+        plot_frame = ttk.Frame(window)
+        plot_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        
+        # Matplotlib Figure
+        fig = Figure(figsize=(10, 5), dpi=100)
+        ax1 = fig.add_subplot(121)
+        ax2 = fig.add_subplot(122)
+        fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.9)
+        
+        canvas = FigureCanvasTkAgg(fig, master=plot_frame)
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        
+        def update_display(original_only=False, simulated_img=None):
+            if self.source_image is None:
+                return
+                
+            ax1.clear()
+            ax1.imshow(self.source_image)
+            ax1.set_title("Original Source")
+            ax1.axis('off')
+            
+            ax2.clear()
+            if simulated_img is not None:
+                ax2.imshow(simulated_img)
+                ax2.set_title("Simulated Image")
+            else:
+                ax2.text(0.5, 0.5, "Click 'Run Simulation'", ha='center', va='center')
+                ax2.set_title("Simulated Image")
+            ax2.axis('off')
+            
+            canvas.draw()
+
+        def run_simulation():
+            if self.source_image is None:
+                CopyableMessageBox.showwarning(window, "No Image", "Please load an image first")
+                return
+                
+            try:
+                field = float(field_var.get())
+                shift = float(shift_var.get())
+                pixel_size_mm = float(pixel_var.get()) / 1000.0
+            except ValueError:
+                CopyableMessageBox.showerror(window, "Invalid Input", "Please check your parameters")
+                return
+                
+            status_var.set("Simulating... Please wait.")
+            window.update()
+            
+            try:
+                analyzer = ImageQualityAnalyzer(system)
+                
+                simulated = analyzer.simulate_image(
+                    self.source_image,
+                    pixel_size=pixel_size_mm,
+                    field_angle=field,
+                    focus_shift=shift
+                )
+                
+                update_display(simulated_img=simulated)
+                status_var.set("Simulation Complete")
+                
+            except Exception as e:
+                CopyableMessageBox.showerror(window, "Simulation Error", f"Error: {e}")
+                status_var.set("Error during simulation")
+
+        ttk.Button(param_frame, text="Run Simulation", command=run_simulation).pack(side=tk.LEFT, padx=20)
+        
+        # Initial draw
+        ax1.text(0.5, 0.5, "No Image Loaded", ha='center')
+        ax2.text(0.5, 0.5, "No Simulation", ha='center')
+        ax1.axis('off')
+        ax2.axis('off')
+        canvas.draw()
+
     def _draw_lens_on_ax(self, ax, lens, offset):
         """Helper to draw a single lens on a matplotlib axis"""
         try:
@@ -2028,6 +2553,13 @@ class PerformanceController:
                 result += "SYSTEM PROPERTIES:\n"
                 if f_system:
                     result += f"  Effective Focal Length: {f_system:.3f} mm\n"
+                    # Calculate BFL
+                    bfl = self.current_lens.calculate_back_focal_length()
+                    if bfl is not None:
+                        result += f"  Back Focal Length: {bfl:.3f} mm\n"
+                    else:
+                        result += "  Back Focal Length: Undefined\n"
+                        
                     f_number = abs(f_system) / entrance_pupil if entrance_pupil > 0 else 0
                     result += f"  F-Number (approx): {f_number:.2f}\n"
                     result += f"  Optical Power: {1000/f_system:.2f} D\n"

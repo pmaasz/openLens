@@ -1,6 +1,5 @@
 from typing import List, Tuple, Dict, Any, Optional
 import math
-import numpy as np
 
 # Import dependencies
 try:

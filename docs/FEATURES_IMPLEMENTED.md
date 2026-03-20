@@ -33,11 +33,18 @@
   - Airy disk radius
   - Depth of field calculator
 
-- [x] **#6 Export Enhancements** - PARTIAL
+- [x] **#5 Comparison Mode** - COMPLETE
+  - Side-by-side lens comparison
+  - Weighted ranking system
+  - CSV export of comparison data
+  - Radar charts and tables
+
+- [x] **#6 Export Enhancements** - COMPLETE
   - Zemax .zmx format export
   - Prescription file format
   - STL export (existing)
   - JSON system save/load
+  - STEP and ISO 10110 drawing export
 
 ### Nice to Have (v1.3.0+)
 - [x] **#7 Wavelength-Dependent Calculations** - COMPLETE
@@ -57,15 +64,27 @@
   - Merit function framework
   - Variable bounds and constraints
   - Doublet optimization preset
+  - **GUI Integration**: Optimization tab with support for single lenses and multi-element systems
+  - **Cemented Doublet Support**: Automatic linking of interface radii
   - History tracking
 
+- [x] **#10 Coating Designer** - COMPLETE
+  - Anti-reflection (AR) coating design
+  - Single-layer (MgF2) and dual-layer optimization
+  - Reflectivity vs Wavelength curves
+  - Fresnel reflection analysis
+  - 7 coating materials
+
+- [x] **#11 Image Simulation** - COMPLETE
+  - **Spot Diagrams**: Multi-field, multi-wavelength analysis
+  - **PSF Analysis**: Geometric Point Spread Function visualization
+  - **MTF Analysis**: Modulation Transfer Function (Tangential & Sagittal)
+  - Ghost Analysis (2nd order reflections)
+
 ## 🚧 Partially Implemented
-- **#6 Export Enhancements** - Missing PDF drawings, SVG cross-sections
-- **#5 Comparison Mode** - Not yet implemented
+- None currently.
 
 ## 📋 Not Yet Implemented
-- **#10 Coating Designer** - Anti-reflection coatings, reflectivity curves
-- **#11 Image Simulation** - Spot diagrams, PSF, image quality
 - **#12 Mechanical Design** - Lens mounts, edge thickness, housing
 - **#13 Diffraction Effects** - Airy disk (basic done), full diffraction model
 - **#14 Polarization** - Birefringent materials, Brewster angle
@@ -74,31 +93,34 @@
 
 ## Statistics
 - **Total Features**: 16 planned
-- **Completed**: 8 features (50%)
-- **Partial**: 1 feature (6%)
-- **Not Started**: 7 features (44%)
+- **Completed**: 11 features (69%)
+- **Partial**: 0 features (0%)
+- **Not Started**: 5 features (31%)
 
 ## Test Coverage
 - Material Database: 22 tests ✅
 - Optical Systems: 25 tests ✅
 - Optimization Engine: 19 tests ✅
+- **Optimization GUI**: Tests present ✅
 - Ray Tracing: Tests present ✅
 - Aberrations: Tests present ✅
-- **Total**: 66+ functional tests
+- **Image Quality (PSF/MTF)**: Tests present ✅
+- **Total**: 80+ functional tests
 
 ## Key Accomplishments
 1. Professional material database with temperature/wavelength dependence
 2. Multi-element system design with automatic achromatic doublet optimization
 3. Full ray tracing engine with visualization
 4. Comprehensive performance metrics
-5. Optimization engine with multiple algorithms
-6. Export to industry standard formats
+5. Optimization engine with multiple algorithms and full GUI integration
+6. Export to industry standard formats (Zemax, STEP, ISO 10110)
 7. Preset library for quick starts
-8. 66+ functional tests ensuring quality
+8. Lens Comparison and Coating Design tools
+9. Advanced Image Quality Analysis (Spot, PSF, MTF)
+10. 80+ functional tests ensuring quality
 
 ## Next Priority
 Based on impact and feasibility:
-1. Image simulation (spot diagrams, PSF) - High visual impact
-2. Coating designer - Professional necessity
-3. Comparison mode - Useful for design iteration
-4. Diffraction effects - Complete physical model
+1. Diffraction effects - Complete physical model
+2. Mechanical Design - Lens mounts
+3. Polarization - Advanced analysis
