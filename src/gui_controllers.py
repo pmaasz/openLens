@@ -1681,6 +1681,12 @@ class PerformanceController:
         window.title(f"Spot Diagram - {system.name}")
         window.geometry("800x900")
         
+        # Import PADDING_MEDIUM locally if needed, or use a default
+        try:
+            from .constants import PADDING_MEDIUM
+        except ImportError:
+            PADDING_MEDIUM = 5
+
         # Control Frame
         control_frame = ttk.Frame(window)
         control_frame.pack(side=tk.TOP, fill=tk.X, pady=PADDING_MEDIUM)

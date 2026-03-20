@@ -102,13 +102,16 @@ class MeritFunction:
                 # Get spherical aberration for first lens
                 if system.elements:
                     calc = AberrationsCalculator(system.elements[0].lens)
-                    aberr = calc.calculate_spherical_aberration()
-                    value = abs(aberr['longitudinal'])
-                    
-                    if target.target_type == "minimize":
-                        merit += target.weight * value
-                    elif target.target_type == "target":
-                        merit += target.weight * (value - target.target_value)**2
+                    results = calc.calculate_all_aberrations()
+                    if results.get('spherical_aberration') is not None:
+                        value = abs(results['spherical_aberration'])
+                        
+                        if target.target_type == "minimize":
+                            merit += target.weight * value
+                        elif target.target_type == "target":
+                            merit += target.weight * (value - target.target_value)**2
+                    else:
+                         merit += 1e6 # Penalty if calculation fails
             
             elif target.name == "chromatic_aberration":
                 chrom = system.calculate_chromatic_aberration()
@@ -199,6 +202,13 @@ class LensOptimizer:
         self.targets = targets
         self.merit_function = MeritFunction(system, targets)
     
+    def optimize(self, max_iterations: int = 100, tolerance: float = 1e-6) -> OptimizationResult:
+        """
+        Run optimization using the default algorithm (Simplex).
+        Wrapper for compatibility with controllers.
+        """
+        return self.optimize_simplex(max_iterations, tolerance)
+
     def optimize_simplex(self, max_iterations: int = 100, tolerance: float = 1e-6) -> OptimizationResult:
         """
         Nelder-Mead simplex optimization
