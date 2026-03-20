@@ -1095,6 +1095,8 @@ class SimulationController:
         btn_frame = ttk.Frame(self.system_builder_frame)
         btn_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
         
+        ttk.Button(btn_frame, text="Add Lens", command=self.add_element).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_frame, text="Remove", command=self.remove_element).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_frame, text="Move Up", command=self.move_element_up).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_frame, text="Move Down", command=self.move_element_down).pack(side=tk.LEFT, padx=2)
         
@@ -1128,6 +1130,81 @@ class SimulationController:
             else:
                 text = f"{i+1}. {name} (Gap: {gap:.2f}mm)"
             self.element_listbox.insert(tk.END, text)
+
+    def add_element(self):
+        """Open dialog to add a lens to the system"""
+        if not self.parent_window or not hasattr(self.parent_window, 'lenses'):
+            return
+            
+        # Create dialog
+        dialog = tk.Toplevel(self.parent_window.root)
+        dialog.title("Add Lens to System")
+        # Center dialog
+        x = self.parent_window.root.winfo_x() + 100
+        y = self.parent_window.root.winfo_y() + 100
+        dialog.geometry(f"300x150+{x}+{y}")
+        dialog.transient(self.parent_window.root)
+        dialog.grab_set()
+        
+        ttk.Label(dialog, text="Select Lens to Add:").pack(pady=10)
+        
+        # Filter available lenses (exclude systems to prevent recursion)
+        available_lenses = []
+        lens_map = {} # map name -> lens object
+        
+        for item in self.parent_window.lenses:
+            # Check if it's a single lens (has no elements attribute)
+            if not hasattr(item, 'elements'):
+                name = item.name
+                available_lenses.append(name)
+                lens_map[name] = item
+                
+        if not available_lenses:
+             ttk.Label(dialog, text="No single lenses available.\nCreate a lens first.").pack()
+             ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
+             return
+
+        combo = ttk.Combobox(dialog, values=available_lenses, state="readonly")
+        combo.pack(pady=5, padx=20, fill=tk.X)
+        if available_lenses:
+            combo.set(available_lenses[0])
+            
+        def on_add():
+            name = combo.get()
+            if name in lens_map:
+                lens = lens_map[name]
+                # Add to system with default gap
+                if self.current_lens and hasattr(self.current_lens, 'add_lens'):
+                    self.current_lens.add_lens(lens, air_gap_before=5.0)
+                    self.refresh_system_list()
+                    self.run_simulation()
+                    
+                    # Also notify parent window that lens was updated (to save)
+                    if hasattr(self.parent_window, 'save_lenses'):
+                        self.parent_window.save_lenses()
+                        
+                dialog.destroy()
+                
+        ttk.Button(dialog, text="Add", command=on_add).pack(pady=10)
+
+    def remove_element(self):
+        """Remove selected element from system"""
+        if not self.element_listbox or not self.current_lens:
+            return
+            
+        selection = self.element_listbox.curselection()
+        if not selection:
+            return
+            
+        index = selection[0]
+        if hasattr(self.current_lens, 'remove_lens'):
+            if self.current_lens.remove_lens(index):
+                self.refresh_system_list()
+                self.run_simulation()
+                
+                # Notify parent to save
+                if self.parent_window and hasattr(self.parent_window, 'save_lenses'):
+                    self.parent_window.save_lenses()
 
     def on_element_selected(self, event):
         """Update gap entry when element selected"""

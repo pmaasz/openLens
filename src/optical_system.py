@@ -88,6 +88,21 @@ class OpticalSystem:
         # Rebuild flat lists from tree to maintain compatibility
         self._rebuild_from_tree()
 
+    def remove_lens(self, index: int) -> bool:
+        """Remove a lens element by index"""
+        if not 0 <= index < len(self.elements):
+            return False
+            
+        # Remove corresponding node from root children
+        # Note: This assumes simple flat hierarchy where children map 1:1 to elements
+        # If we have nested assemblies, this logic needs to be more robust
+        if index < len(self.root.children):
+            self.root.children.pop(index)
+            self._rebuild_from_tree()
+            return True
+            
+        return False
+
     def _rebuild_from_tree(self):
         """Rebuild legacy flat lists from hierarchical tree."""
         # Get flattened list of (node, global_pos)
