@@ -67,16 +67,15 @@ class OptimizationController:
     def setup_ui(self, parent_frame: ttk.Frame):
         """Set up the optimization tab UI"""
         
-        # Main layout: Left for config, Right for log/results
-        parent_frame.columnconfigure(0, weight=1)
-        parent_frame.columnconfigure(1, weight=1)
-        parent_frame.rowconfigure(0, weight=1)
+        # Main layout: Splitter between Config and Results
+        self.main_paned = ttk.PanedWindow(parent_frame, orient=tk.HORIZONTAL)
+        self.main_paned.pack(fill=tk.BOTH, expand=True)
 
-        left_panel = ttk.Frame(parent_frame, padding="10")
-        left_panel.grid(row=0, column=0, sticky="nsew")
+        left_panel = ttk.Frame(self.main_paned, padding="10")
+        self.main_paned.add(left_panel, weight=1)
         
-        right_panel = ttk.Frame(parent_frame, padding="10")
-        right_panel.grid(row=0, column=1, sticky="nsew")
+        right_panel = ttk.Frame(self.main_paned, padding="10")
+        self.main_paned.add(right_panel, weight=1)
 
         # --- Left Panel: Configuration ---
         

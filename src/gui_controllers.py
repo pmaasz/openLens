@@ -969,10 +969,14 @@ class SimulationController:
                                font=(FONT_FAMILY, 14, 'bold'))
         title_label.grid(row=0, column=0, pady=PADDING_MEDIUM)
         
-        # Simulation canvas area
-        sim_frame = ttk.LabelFrame(parent_frame, text="Ray Tracing Simulation", 
+        # Simulation canvas area (using PanedWindow for resizable split)
+        self.sim_paned = ttk.PanedWindow(parent_frame, orient=tk.HORIZONTAL)
+        self.sim_paned.grid(row=1, column=0, sticky="nsew", pady=PADDING_MEDIUM)
+        
+        sim_frame = ttk.LabelFrame(self.sim_paned, text="Ray Tracing Simulation", 
                                   padding=PADDING_MEDIUM, height=450)
-        sim_frame.grid(row=1, column=0, sticky="nsew", pady=PADDING_MEDIUM)
+        self.sim_paned.add(sim_frame, weight=3)
+        
         sim_frame.columnconfigure(0, weight=1)
         sim_frame.rowconfigure(0, weight=1)
         sim_frame.grid_propagate(False)
@@ -1075,16 +1079,13 @@ class SimulationController:
 
     def create_system_builder_ui(self):
         """Create UI for editing optical system (reorder, air gaps)"""
-        # Find the parent frame (simulation tab)
-        # We need to access the parent frame passed in setup_ui. 
-        # Since we didn't save it, we can look at sim_frame's parent.
-        if not self.sim_canvas_widget:
+        if not hasattr(self, 'sim_paned'):
             return
-            
-        parent = self.sim_canvas_widget.master.master # Canvas -> Frame -> Parent
+
+        self.system_builder_frame = ttk.LabelFrame(self.sim_paned, text="System Builder", padding="10")
+        self.sim_paned.add(self.system_builder_frame, weight=1)
         
-        self.system_builder_frame = ttk.LabelFrame(parent, text="System Builder", padding="10")
-        self.system_builder_frame.grid(row=1, column=1, sticky="nsew", padx=10, pady=10)
+        # List of elements
         
         # List of elements
         self.element_listbox = tk.Listbox(self.system_builder_frame, height=10, width=30)

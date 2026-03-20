@@ -75,6 +75,14 @@ except ImportError:
         ABERRATIONS_AVAILABLE = False
         logger.info("Aberrations calculator not available.")
 
+# Initialize controller classes to None to avoid LSP warnings
+LensSelectionController = None
+LensEditorController = None
+SimulationController = None
+PerformanceController = None
+ExportController = None
+OptimizationController = None
+
 # Try to import GUI controllers
 try:
     from ..gui_controllers import (
@@ -432,14 +440,14 @@ class LensEditorWindow:
             ttk.Label(self.editor_tab, text="Error: GUI Controllers not available").pack(padx=20, pady=20)
             return
 
-        # Configure tab grid
-        self.editor_tab.columnconfigure(0, weight=1)
-        self.editor_tab.columnconfigure(1, weight=1)
-        self.editor_tab.rowconfigure(0, weight=1)
+        # Use PanedWindow for resizable split view
+        self.editor_paned = ttk.PanedWindow(self.editor_tab, orient=tk.HORIZONTAL)
+        self.editor_paned.pack(fill=tk.BOTH, expand=True)
 
         # Left panel: Editor properties
-        left_container = ttk.Frame(self.editor_tab)
-        left_container.grid(row=0, column=0, sticky="nsew")
+        left_container = ttk.Frame(self.editor_paned)
+        self.editor_paned.add(left_container, weight=1)
+        
         left_container.columnconfigure(0, weight=1)
         left_container.rowconfigure(1, weight=1)
         
@@ -467,8 +475,9 @@ class LensEditorWindow:
             ttk.Label(editor_frame, text=f"Error loading editor: {e}").pack(padx=20, pady=20)
 
         # Right panel: Visualization
-        viz_outer_frame = ttk.Frame(self.editor_tab)
-        viz_outer_frame.grid(row=0, column=1, sticky="nsew")
+        viz_outer_frame = ttk.Frame(self.editor_paned)
+        self.editor_paned.add(viz_outer_frame, weight=3)
+        
         viz_outer_frame.columnconfigure(0, weight=1)
         viz_outer_frame.rowconfigure(1, weight=1)
         
