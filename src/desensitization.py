@@ -26,8 +26,9 @@ class RobustMeritFunction(MeritFunction):
     Merit = Nominal_Merit + Weight * Sensitivity
     """
     def __init__(self, system: OpticalSystem, targets: List[OptimizationTarget], 
-                 tolerances: List[ToleranceOperand], sensitivity_weight: float = 1.0):
-        super().__init__(system, targets)
+                 tolerances: List[ToleranceOperand], sensitivity_weight: float = 1.0,
+                 constraints: Optional[Dict[str, float]] = None):
+        super().__init__(system, targets, constraints)
         self.tolerances = tolerances
         self.sensitivity_weight = sensitivity_weight
         
@@ -146,7 +147,17 @@ class DesensitizationOptimizer(LensOptimizer):
         """
         # Replace default merit function with RobustMeritFunction
         original_merit_function = self.merit_function
-        self.merit_function = RobustMeritFunction(self.system, self.targets, tolerances, sensitivity_weight)
+        
+        # Preserve constraints if they exist
+        constraints = getattr(original_merit_function, 'constraints', None)
+        
+        self.merit_function = RobustMeritFunction(
+            self.system, 
+            self.targets, 
+            tolerances, 
+            sensitivity_weight,
+            constraints=constraints
+        )
         
         # Run simplex
         result = self.optimize_simplex(max_iterations=max_iterations)

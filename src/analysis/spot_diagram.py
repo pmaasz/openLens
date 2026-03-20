@@ -1,231 +1,211 @@
-from typing import List, Tuple, Dict, Any, Optional
 import math
+from typing import List, Tuple, Optional, Dict, Any
 
-# Import dependencies
 try:
     from ..vector3 import Vector3, vec3
     from ..ray_tracer import Ray3D, SystemRayTracer3D
     from ..optical_system import OpticalSystem
-    from ..constants import NM_TO_MM
+    from ..constants import NM_TO_MM, WAVELENGTH_GREEN
 except ImportError:
-    # Fallback for different environment contexts
+    # Fallback for direct execution
     try:
         from src.vector3 import Vector3, vec3
         from src.ray_tracer import Ray3D, SystemRayTracer3D
         from src.optical_system import OpticalSystem
-        from src.constants import NM_TO_MM
+        from src.constants import NM_TO_MM, WAVELENGTH_GREEN
     except ImportError:
-        # Last resort (if running from src directly)
         from vector3 import Vector3, vec3
         from ray_tracer import Ray3D, SystemRayTracer3D
         from optical_system import OpticalSystem
-        from constants import NM_TO_MM
+        from constants import NM_TO_MM, WAVELENGTH_GREEN
 
 class SpotDiagram:
     """
-    Analyzer for generating spot diagrams of optical systems.
+    Spot Diagram Analysis Tool.
+    Generates and analyzes spot diagrams for optical systems.
     """
     
     def __init__(self, system: OpticalSystem):
         self.system = system
         self.tracer = SystemRayTracer3D(system)
         
-    def trace_spot(self, wavelength: float = 550.0, 
-                   field_angle_y: float = 0.0, 
-                   focus_shift: float = 0.0,
-                   num_rings: int = 6,
-                   image_plane_x: Optional[float] = None) -> Dict[str, Any]:
+    def generate_hexapolar_grid(self, rings: int = 6, diameter: Optional[float] = None) -> List[Tuple[float, float]]:
         """
-        Trace a bundle of rays to generate a spot diagram.
+        Generate a hexapolar grid of points in the entrance pupil.
         
         Args:
-            wavelength: Wavelength in nm
-            field_angle_y: Field angle in Y direction (degrees)
-            focus_shift: Shift from paraxial focus (mm)
-            num_rings: Number of rings in the ray grid
-            image_plane_x: Optional fixed image plane position. If None, calculated from paraxial focus.
+            rings: Number of rings in the hexapolar grid.
+            diameter: Diameter of the entrance pupil. If None, uses system first lens diameter.
             
         Returns:
-            Dictionary containing:
-                - points: List of (y, z) tuples in mm on the image plane
-                - rms_radius: RMS radius in mm
-                - geo_radius: Geometric radius in mm
-                - image_plane_x: The X position of the image plane used
+            List of (y, z) offsets from the optical axis.
         """
-        wavelength_mm = wavelength * NM_TO_MM
-        
-        # 1. Determine Image Plane
-        if image_plane_x is None:
-            # Trace a paraxial ray to find focus
-            # Start slightly off-axis to avoid singularities if any
-            paraxial_h = 0.1
-            paraxial_ray = Ray3D(
-                origin=vec3(self._get_start_x(), paraxial_h, 0),
-                direction=vec3(1, 0, 0),
-                wavelength=wavelength_mm
-            )
-            self.tracer.trace_ray(paraxial_ray)
-            
-            # Find intersection with axis (y=0)
-            if len(paraxial_ray.path) >= 2:
-                # Last segment
-                p1 = paraxial_ray.path[-2]
-                p2 = paraxial_ray.path[-1]
-                
-                # Check slope
-                dy = p2.y - p1.y
-                dx = p2.x - p1.x
-                
-                if abs(dy) > 1e-10:
-                    # x where y=0
-                    slope = dy / dx
-                    # y - y1 = m(x - x1) => -y1 = m(x - x1) => x = x1 - y1/m
-                    image_plane_x = p1.x - p1.y / slope
-                else:
-                    image_plane_x = p2.x + 100 # Default if parallel
+        if diameter is None:
+            if self.system.elements:
+                diameter = self.system.elements[0].lens.diameter
             else:
-                image_plane_x = 100.0 # Default
+                return [(0.0, 0.0)]
                 
-            image_plane_x += focus_shift
-            
-        # 2. Generate Ray Bundle (Hexapolar Grid)
-        rays = []
+        radius = diameter / 2.0
+        points = [(0.0, 0.0)] # Center point
         
-        # Entrance Pupil definition (simplify to first lens diameter)
-        if self.system.elements:
-            ep_diameter = self.system.elements[0].lens.diameter
-            ep_radius = ep_diameter / 2.0 * 0.95 # 95% aperture
-        else:
-            ep_radius = 10.0
-            
-        # Beam starting position
-        start_x = self._get_start_x()
+        for i in range(1, rings + 1):
+            num_points = 6 * i
+            r = radius * (i / rings)
+            for j in range(num_points):
+                angle = 2 * math.pi * j / num_points
+                y = r * math.cos(angle)
+                z = r * math.sin(angle)
+                points.append((y, z))
+                
+        return points
         
-        # Calculate Ray Direction based on field angle
-        angle_rad = math.radians(field_angle_y)
-        # Direction vector: (cos(theta), sin(theta), 0)
-        direction = vec3(math.cos(angle_rad), math.sin(angle_rad), 0).normalize()
+    def trace_spot(self, 
+                  field_angle_x: float = 0.0, 
+                  field_angle_y: float = 0.0, 
+                  wavelength: float = WAVELENGTH_GREEN,
+                  image_plane_x: Optional[float] = None,
+                  num_rings: int = 6,
+                  focus_shift: float = 0.0) -> Dict[str, Any]:
+        """
+        Trace rays to generate a spot diagram.
         
-        # Grid Generation
-        # Center ray
-        rays.append(Ray3D(vec3(start_x, 0, 0), direction, wavelength=wavelength_mm))
+        Args:
+            field_angle_x: Field angle in degrees (X-Z plane tilt)
+            field_angle_y: Angle in degrees relative to optical axis in XY plane.
+            wavelength: Wavelength in nm.
+            image_plane_x: Absolute X position of image plane. If None, uses paraxial focus.
+            num_rings: Sampling density.
+            focus_shift: Offset from the nominal image plane (defocus).
+            
+        Returns:
+            Dictionary containing spot data and statistics.
+        """
+        # Convert wavelength to mm
+        wl_mm = wavelength * NM_TO_MM
         
-        for r in range(1, num_rings + 1):
-            normalized_r = r / num_rings
-            current_radius = normalized_r * ep_radius
+        # Store original states and update lenses for this wavelength
+        original_states = []
+        for element in self.system.elements:
+            lens = element.lens
+            original_states.append((lens, lens.wavelength, lens.refractive_index))
+            lens.update_refractive_index(wavelength=wavelength)
             
-            # Number of rays in this ring (6*r)
-            num_azimuth = 6 * r
-            
-            for a in range(num_azimuth):
-                phi = 2 * math.pi * a / num_azimuth
-                
-                # Pupil coordinates
-                y_pupil = current_radius * math.cos(phi)
-                z_pupil = current_radius * math.sin(phi)
-                
-                # Adjust start point based on field angle to aim at pupil center?
-                # For infinite conjugate (collimated), rays are parallel.
-                # The "pupil" is the beam cross-section perpendicular to direction.
-                
-                # We construct the start point by offsetting perpendicular to direction
-                # direction is in XY plane.
-                # Perpendicular vectors: 
-                # Z axis (0,0,1) is perpendicular to direction (since dir.z=0)
-                # "Y" vector in beam coords: cross(dir, z) = (sin, -cos, 0) ? No.
-                # Let's use simple rotation.
-                
-                # If angle is 0: dir=(1,0,0). Beam plane is YZ.
-                # y_pupil maps to Y, z_pupil maps to Z.
-                # origin = (start_x, y_pupil, z_pupil)
-                
-                # If angle is theta:
-                # Rotate (0, y_pupil, z_pupil) by theta around Z?
-                # No, we want rays parallel to direction.
-                
-                # Beam offset vector:
-                # v_offset = y_pupil * up_vector + z_pupil * right_vector
-                # direction = (cos, sin, 0)
-                # up_vector (in plane of incidence) = (-sin, cos, 0)
-                # right_vector (perp to plane) = (0, 0, 1)
-                
-                up = vec3(-math.sin(angle_rad), math.cos(angle_rad), 0)
-                right = vec3(0, 0, 1)
-                
-                offset = up * y_pupil + right * z_pupil
-                origin = vec3(start_x, 0, 0) + offset
-                
-                # Ray origin must be shifted so that at x=first_element, it hits the pupil?
-                # For collimated, it doesn't matter where we start as long as we cover the aperture.
-                # But to ensure we hit the lens, we should start "on axis" + offset, but back-propagated.
-                
-                # Current origin is at x=start_x (which is far back).
-                # offset is perpendicular to direction.
-                # If start_x is -100, and lens is at 0.
-                # We just fire in 'direction'.
-                
-                rays.append(Ray3D(origin, direction, wavelength=wavelength_mm))
-
-        # 3. Trace Rays
-        spot_points = []
+        target_x = 0.0
         
-        for ray in rays:
-            self.tracer.trace_ray(ray)
+        try:
+            # Determine image plane position
+            if image_plane_x is None:
+                # Calculate paraxial focus position
+                # Find system total length
+                length = self.system.get_total_length()
+                
+                # Trace a paraxial ray to find focus
+                # Start slightly off-axis
+                start_x = self.system.elements[0].position - 10.0
+                para_ray = Ray3D(vec3(start_x, 0.001, 0), vec3(1, 0, 0), wavelength=wl_mm)
+                self.tracer.trace_ray(para_ray)
+                
+                # Find intersection with axis (y=0)
+                if len(para_ray.path) >= 2:
+                    p2 = para_ray.path[-1]
+                    p1 = para_ray.path[-2]
+                    # Linear interpolation for y=0
+                    # y = m*x + c  -> x = (y-c)/m
+                    # slope m = (y2-y1)/(x2-x1)
+                    dx = p2.x - p1.x
+                    dy = p2.y - p1.y
+                    if abs(dy) > 1e-9:
+                        slope = dy/dx
+                        # y - y1 = m(x - x1) -> -y1 = m(x_focus - x1) -> x_focus = x1 - y1/m
+                        x_focus = p1.x - p1.y / slope
+                        image_plane_x = x_focus
+                    else:
+                        image_plane_x = length + 100 # Default if collimated
+                else:
+                    image_plane_x = length + 100
             
-            # Intersect with Image Plane
-            if len(ray.path) >= 2:
-                # Project last segment to x = image_plane_x
-                p_last = ray.path[-1]
-                p_prev = ray.path[-2]
+            target_x = image_plane_x + focus_shift
+            
+            # Generate pupil points
+            pupil_points = self.generate_hexapolar_grid(rings=num_rings)
+            
+            # Calculate ray direction based on field angles
+            # Tan(theta)
+            tan_y = math.tan(math.radians(field_angle_y))
+            tan_z = math.tan(math.radians(field_angle_x))
+            
+            # Direction vector (normalized later by Ray3D)
+            # dx=1, dy=tan_y, dz=tan_z
+            direction = vec3(1.0, tan_y, tan_z).normalize()
+            
+            # Start rays before first element
+            start_x = self.system.elements[0].position - 50.0
+            
+            spot_points = []
+            valid_rays = 0
+            
+            first_lens_x = self.system.elements[0].position
+            
+            for py, pz in pupil_points:
+                # Launch ray from pupil coordinate projected back to start_x
+                # Back-propagate from aperture to start position
+                dist = first_lens_x - start_x
                 
-                # We need the direction of the final segment
-                # Ray3D updates direction as it goes
-                final_dir = ray.direction
+                t = dist / direction.x
+                origin = vec3(first_lens_x, py, pz) - direction * t
                 
-                # However, if ray terminated inside, ray.terminated is True
-                if ray.terminated:
-                    continue
+                ray = Ray3D(origin, direction, wavelength=wl_mm)
+                self.tracer.trace_ray(ray)
+                
+                if not ray.terminated:
+                    # Find intersection with image plane X = target_x
+                    if abs(ray.direction.x) > 1e-6:
+                        t = (target_x - ray.origin.x) / ray.direction.x
+                        
+                        spot_y = ray.origin.y + t * ray.direction.y
+                        spot_z = ray.origin.z + t * ray.direction.z
+                        
+                        spot_points.append((spot_y, spot_z))
+                        valid_rays += 1
+                        
+        finally:
+            # Restore original states
+            for lens, wl, n in original_states:
+                lens.wavelength = wl
+                lens.refractive_index = n
                     
-                # Calculate intersection
-                # x(t) = p_last.x + t * dir.x = image_plane_x
-                # t = (image_plane_x - p_last.x) / dir.x
-                
-                if abs(final_dir.x) > 1e-6:
-                    t = (image_plane_x - p_last.x) / final_dir.x
-                    y_spot = p_last.y + t * final_dir.y
-                    z_spot = p_last.z + t * final_dir.z
-                    
-                    spot_points.append((y_spot, z_spot))
-
-        # 4. Calculate Statistics
+        # Calculate Statistics
         if not spot_points:
-            return {
-                'points': [],
-                'rms_radius': 0.0,
-                'geo_radius': 0.0,
-                'image_plane_x': image_plane_x
-            }
+            # FIX: Raise error to prevent optimizer from seeing 0.0 as perfect score
+            raise RuntimeError("No rays reached the image plane (blocked or TIR)")
             
-        # Calculate centroid
-        ys = [p[0] for p in spot_points]
-        zs = [p[1] for p in spot_points]
+        # Centroid
+        sum_y = sum(p[0] for p in spot_points)
+        sum_z = sum(p[1] for p in spot_points)
+        cent_y = sum_y / valid_rays
+        cent_z = sum_z / valid_rays
         
-        centroid_y = sum(ys) / len(ys)
-        centroid_z = sum(zs) / len(zs)
+        # RMS Radius (relative to centroid)
+        sum_sq_dist = 0.0
+        max_dist_sq = 0.0
         
-        # Calculate radii relative to centroid
-        sq_distances = [(y - centroid_y)**2 + (z - centroid_z)**2 for y, z in spot_points]
-        rms = math.sqrt(sum(sq_distances) / len(sq_distances))
-        geo = math.sqrt(max(sq_distances)) if sq_distances else 0.0
+        for y, z in spot_points:
+            dy = y - cent_y
+            dz = z - cent_z
+            dist_sq = dy*dy + dz*dz
+            sum_sq_dist += dist_sq
+            if dist_sq > max_dist_sq:
+                max_dist_sq = dist_sq
+                
+        rms_radius = math.sqrt(sum_sq_dist / valid_rays)
+        geo_radius = math.sqrt(max_dist_sq)
         
         return {
+            'rms_radius': rms_radius, # mm
+            'geo_radius': geo_radius, # mm
+            'centroid': (cent_y, cent_z), # mm
             'points': spot_points,
-            'rms_radius': rms,
-            'geo_radius': geo,
-            'image_plane_x': image_plane_x
+            'valid_rays': valid_rays,
+            'image_plane_x': target_x
         }
-
-    def _get_start_x(self):
-        if self.system.elements:
-            return self.system.elements[0].position - 50.0
-        return -50.0

@@ -144,9 +144,32 @@ class OptimizationController:
         options_frame = ttk.LabelFrame(left_panel, text="Constraints & Options", padding="10")
         options_frame.pack(fill=tk.X, pady=(0, 10))
         
+        # Physical constraints grid
+        constraints_grid = ttk.Frame(options_frame)
+        constraints_grid.pack(fill=tk.X, pady=5)
+        
+        # Center Thickness Min/Max
+        ttk.Label(constraints_grid, text="Min Thickness:").grid(row=0, column=0, sticky=tk.W, padx=2)
+        self.target_vars['min_thickness'] = tk.DoubleVar(value=1.0)
+        ttk.Entry(constraints_grid, textvariable=self.target_vars['min_thickness'], width=6).grid(row=0, column=1, sticky=tk.W)
+        
+        ttk.Label(constraints_grid, text="Max Thickness:").grid(row=0, column=2, sticky=tk.W, padx=2)
+        self.target_vars['max_thickness'] = tk.DoubleVar(value=100.0)
+        ttk.Entry(constraints_grid, textvariable=self.target_vars['max_thickness'], width=6).grid(row=0, column=3, sticky=tk.W)
+
+        # Edge Thickness & Air Gap
+        ttk.Label(constraints_grid, text="Min Edge Thick:").grid(row=1, column=0, sticky=tk.W, padx=2, pady=2)
+        self.target_vars['min_edge_thickness'] = tk.DoubleVar(value=0.5)
+        ttk.Entry(constraints_grid, textvariable=self.target_vars['min_edge_thickness'], width=6).grid(row=1, column=1, sticky=tk.W)
+
+        ttk.Label(constraints_grid, text="Min Air Gap:").grid(row=1, column=2, sticky=tk.W, padx=2, pady=2)
+        self.target_vars['min_air_gap'] = tk.DoubleVar(value=0.1)
+        ttk.Entry(constraints_grid, textvariable=self.target_vars['min_air_gap'], width=6).grid(row=1, column=3, sticky=tk.W)
+        
+        # Cemented Checkbox
         self.target_vars['maintain_cemented'] = tk.BooleanVar(value=True)
-        ttk.Checkbutton(options_frame, text="Maintain Cemented Interfaces (Link Radii)", 
-                       variable=self.target_vars['maintain_cemented']).pack(anchor=tk.W)
+        ttk.Checkbutton(options_frame, text="Maintain Cemented Interfaces", 
+                       variable=self.target_vars['maintain_cemented']).pack(anchor=tk.W, pady=(5,0))
 
         # 4. Actions
         actions_frame = ttk.Frame(left_panel)
@@ -265,6 +288,22 @@ class OptimizationController:
 
             # 1. Collect Variables
             variables: List[OptimizationVariable] = []
+            
+            # Get constraints from UI
+            min_thickness = self.target_vars.get('min_thickness', tk.DoubleVar(value=1.0)).get()
+            max_thickness = self.target_vars.get('max_thickness', tk.DoubleVar(value=100.0)).get()
+            min_air_gap = self.target_vars.get('min_air_gap', tk.DoubleVar(value=0.1)).get()
+            min_edge_thickness = self.target_vars.get('min_edge_thickness', tk.DoubleVar(value=0.5)).get()
+            
+            # Package constraints for optimizer
+            constraints = {
+                'min_center_thickness': min_thickness,
+                'max_center_thickness': max_thickness,
+                'min_edge_thickness': min_edge_thickness,
+                'min_air_gap': min_air_gap,
+                'min_edge_clearance': 0.1 # Default, maybe add UI later
+            }
+
             is_single_lens_optimization = False
             temp_system = None
             
@@ -342,7 +381,7 @@ class OptimizationController:
                             element_index=i,
                             parameter="thickness",
                             current_value=current_val,
-                            min_value=0.1, max_value=50.0 # Reasonable bounds
+                            min_value=min_thickness, max_value=max_thickness
                         )
                         variables.append(var)
 
@@ -359,7 +398,7 @@ class OptimizationController:
                                     element_index=i,
                                     parameter="air_gap",
                                     current_value=current_val,
-                                    min_value=0.1, max_value=100.0
+                                    min_value=min_air_gap, max_value=100.0
                                 )
                                 variables.append(var)
             else:
@@ -376,7 +415,8 @@ class OptimizationController:
                         self.log("Error: OpticalSystem class missing")
                         self._optimization_finished(False)
                         return
-
+                        
+                # Ensure constraints are valid for single lens too
                 temp_system = OpticalSystem()
                 # We need to make a COPY of the lens to avoid modifying the original in place until success
                 # But OpticalSystem.add_lens stores the object. 
@@ -412,7 +452,7 @@ class OptimizationController:
                         element_index=0,
                         parameter="thickness",
                         current_value=self.current_lens.thickness,
-                        min_value=0.1, max_value=100.0
+                        min_value=min_thickness, max_value=max_thickness
                     )
                     variables.append(var)
 
@@ -433,7 +473,7 @@ class OptimizationController:
                 targets.append(OptimizationTarget("focal_length", target_val, weight=10.0))
             
             if self.target_vars['spot_size_enabled'].get():
-                targets.append(OptimizationTarget("spot_size", 0.0, weight=100.0, target_type="minimize"))
+                targets.append(OptimizationTarget("rms_spot_radius", 0.0, weight=100.0, target_type="minimize"))
                 
             if self.target_vars['spherical_enabled'].get():
                 targets.append(OptimizationTarget("spherical_aberration", 0.0, weight=5.0, target_type="minimize"))
@@ -451,7 +491,7 @@ class OptimizationController:
 
             # 3. Create Optimizer
             system_to_optimize = temp_system if is_single_lens_optimization and temp_system else self.current_lens
-            optimizer = LensOptimizer(system_to_optimize, variables, targets)
+            optimizer = LensOptimizer(system_to_optimize, variables, targets, constraints=constraints)
             
             # 4. Run
             self.log(f"Starting optimization with {len(variables)} variables and {len(targets)} targets...")

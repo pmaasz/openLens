@@ -79,9 +79,16 @@ class OptimizationResult:
 class MeritFunction:
     """Calculate merit function for optical system quality"""
     
-    def __init__(self, system: OpticalSystem, targets: List[OptimizationTarget]):
+    def __init__(self, system: OpticalSystem, targets: List[OptimizationTarget], constraints: Optional[Dict[str, float]] = None):
         self.system = system
         self.targets = targets
+        self.constraints = constraints or {
+            'min_center_thickness': 1.0,
+            'max_center_thickness': 100.0,
+            'min_edge_thickness': 0.5,
+            'min_air_gap': 0.1,
+            'min_edge_clearance': 0.1
+        }
     
     def evaluate(self, system: OpticalSystem) -> float:
         """
@@ -101,10 +108,23 @@ class MeritFunction:
         """
         merit = 0.0
         
+        # Extract constraints for cleaner access
+        min_ct = self.constraints.get('min_center_thickness', 1.0)
+        max_ct = self.constraints.get('max_center_thickness', 100.0)
+        min_et = self.constraints.get('min_edge_thickness', 0.5)
+        min_ag = self.constraints.get('min_air_gap', 0.1)
+        min_ec = self.constraints.get('min_edge_clearance', 0.1)
+        
         # 1. Physical Constraints Penalties
-        # Edge thickness check for all elements
+        # 1a. Edge thickness check for all elements
         for element in system.elements:
             lens = element.lens
+            # Min/Max Thickness penalties
+            if lens.thickness < min_ct: # Minimum center thickness
+                merit += 1e5 * (min_ct - lens.thickness)**2
+            if lens.thickness > max_ct: # Maximum thickness sanity check
+                merit += 1e3 * (lens.thickness - max_ct)**2
+            
             # Calculate sags
             try:
                 # Aperture radius
@@ -125,21 +145,10 @@ class MeritFunction:
                     sag2 = abs(lens.radius_of_curvature_2) - math.sqrt(lens.radius_of_curvature_2**2 - y**2)
                     if lens.radius_of_curvature_2 > 0:
                         sag2 = -sag2 # Concave surface (curves away from direction of light?)
-                        # Sign convention: R2 is typically negative for biconvex.
-                        # R2 > 0 means convex to the right (concave to left)
-                        pass
-                    # Actually, let's use the standard sag formula: z = c*r^2 / (1 + sqrt(1-c^2*r^2))
-                    # c = 1/R. 
-                    # If R > 0, c > 0 -> z > 0 (surface curves towards right)
-                    # If R < 0, c < 0 -> z < 0 (surface curves towards left)
                 else:
                     merit += 1e5
                 
-                # Simplified Edge Thickness Calculation
-                # Te = Tc - Sag1 + Sag2 (using standard sign convention where light goes L->R)
-                # Sag1 = z(y) for first surface
-                # Sag2 = z(y) for second surface
-                
+                # Helper for sag
                 def get_sag(r, h):
                     if abs(r) < 1e-6: return 0 # Plane
                     c = 1.0/r
@@ -151,11 +160,49 @@ class MeritFunction:
                 
                 edge_thickness = lens.thickness - s1 + s2
                 
-                if edge_thickness < 0.5: # Min edge thickness constraint (0.5mm)
-                    merit += 1e4 * (0.5 - edge_thickness)**2
+                if edge_thickness < min_et: # Min edge thickness constraint
+                    merit += 1e4 * (min_et - edge_thickness)**2
                     
             except Exception:
                 merit += 1e5 # Calculation error penalty
+
+        # Helper for sag outside loop
+        def get_sag(r, h):
+            if abs(r) < 1e-6: return 0 # Plane
+            c = 1.0/r
+            if 1 - (c*h)**2 < 0: return r # Invalid
+            return c*h**2 / (1 + math.sqrt(1 - (c*h)**2))
+
+        # 1b. Air Gap Constraints (Collision Detection)
+        for i, gap in enumerate(system.air_gaps):
+            if gap.thickness < min_ag: # Minimum air gap (at center)
+                 merit += 1e5 * (min_ag - gap.thickness)**2
+            
+            # Check edge collision
+            # Gap between Element i (Back) and Element i+1 (Front)
+            if i < len(system.elements) - 1:
+                lens1 = system.elements[i].lens
+                lens2 = system.elements[i+1].lens
+                
+                # Check at max common height
+                max_h = min(lens1.diameter, lens2.diameter) / 2.0
+                
+                # Sag of Back Surface of Lens 1 (R2)
+                # Note: get_sag returns z = c*r^2 / ...
+                # If R2 < 0 (Convex), c < 0 -> z < 0. Surface bulges Left.
+                # If R2 > 0 (Concave), c > 0 -> z > 0. Surface bulges Right.
+                s_back_1 = get_sag(lens1.radius_of_curvature_2, max_h)
+                
+                # Sag of Front Surface of Lens 2 (R1)
+                # If R1 > 0 (Convex), c > 0 -> z > 0. Surface bulges Right.
+                # If R1 < 0 (Concave), c < 0 -> z < 0. Surface bulges Left.
+                s_front_2 = get_sag(lens2.radius_of_curvature_1, max_h)
+                
+                # Edge Clearance = CenterGap + Sag_Front_2 - Sag_Back_1
+                edge_clearance = gap.thickness + s_front_2 - s_back_1
+                
+                if edge_clearance < min_ec: # Min edge clearance
+                    merit += 1e5 * (min_ec - edge_clearance)**2
 
         for target in self.targets:
             if target.name == "spherical_aberration":
@@ -222,8 +269,13 @@ class MeritFunction:
             elif target.name == "rms_spot_radius":
                 try:
                     # Calculate on-axis RMS spot radius
+                    # In try/except blocks at top of file, we import SpotDiagram.
+                    # It might be in globals or locals.
+                    # Best way is to use the imported name if available.
+                    
                     if 'SpotDiagram' in globals():
-                        spot = SpotDiagram(system)
+                        spot_cls = globals()['SpotDiagram']
+                        spot = spot_cls(system)
                         results = spot.trace_spot(field_angle_x=0, field_angle_y=0)
                         value = results.get('rms_radius', 0.0)
                         
@@ -238,36 +290,42 @@ class MeritFunction:
             elif target.name == "mtf":
                 # Maximize MTF volume (area under curve) as a proxy for image quality
                 try:
-                    if 'PSFCalculator' in globals() and 'WavefrontSensor' in globals() and 'NUMPY_AVAILABLE' in globals() and NUMPY_AVAILABLE:
+                    # Check if optional dependencies are available
+                    has_deps = ('PSFCalculator' in globals() and 
+                                'WavefrontSensor' in globals() and 
+                                'NUMPY_AVAILABLE' in globals() and 
+                                globals()['NUMPY_AVAILABLE'])
+                                
+                    if has_deps:
+                        psf_cls = globals()['PSFCalculator']
+                        sensor_cls = globals()['WavefrontSensor']
                         import numpy as np # Local import if available
                         
-                        sensor = WavefrontSensor(system)
+                        sensor = sensor_cls(system)
                         Y, Z, W = sensor.get_pupil_wavefront()
                         
                         if W.size > 0 and not np.all(np.isnan(W)):
-                            psf = PSFCalculator.calculate_psf(Y, Z, W)
-                            mtf = PSFCalculator.calculate_mtf(psf)
+                            psf = psf_cls.calculate_psf(Y, Z, W)
+                            mtf = psf_cls.calculate_mtf(psf)
                             
                             # Metric: MTF Volume (sum of values)
-                            # Normalized such that perfect system has high volume
                             value = np.sum(mtf)
                             
                             if target.target_type == "maximize":
-                                # Minimize the inverse or negative
-                                # Use negative to keep it linear? 
-                                # But merit must be positive usually for some optimizers?
-                                # Simplex doesn't care about sign, but usually we minimize "Error".
-                                # Error = 1/MTF?
                                 if value > 1e-9:
                                     merit += target.weight * (1.0 / value)
                                 else:
                                     merit += target.weight * 1e3
                             elif target.target_type == "target":
                                 merit += target.weight * (value - target.target_value)**2
+                        else:
+                            # Wavefront calculation failed (rays blocked?)
+                            merit += target.weight * 1e3
                     else:
                         pass # Cannot calculate, ignore
                 except Exception:
-                    pass
+                    # Calculation crashed (e.g. singular matrix)
+                    merit += target.weight * 1e3
         
         return merit
 
@@ -276,11 +334,11 @@ class LensOptimizer:
     """Optimize optical system parameters"""
     
     def __init__(self, system: OpticalSystem, variables: List[OptimizationVariable],
-                 targets: List[OptimizationTarget]):
+                 targets: List[OptimizationTarget], constraints: Optional[Dict[str, float]] = None):
         self.system = system
         self.variables = variables
         self.targets = targets
-        self.merit_function = MeritFunction(system, targets)
+        self.merit_function = MeritFunction(system, targets, constraints)
     
     def optimize(self, max_iterations: int = 100, tolerance: float = 1e-6) -> OptimizationResult:
         """
@@ -323,7 +381,10 @@ class LensOptimizer:
         rho = 0.5    # Contraction
         sigma = 0.5  # Shrinkage
         
+        last_iteration = 0
+        
         for iteration in range(max_iterations):
+            last_iteration = iteration
             # Sort vertices by merit (best to worst)
             order = sorted(range(len(merit_values)), key=lambda i: merit_values[i])
             simplex = [simplex[i] for i in order]
@@ -385,6 +446,8 @@ class LensOptimizer:
             # Record history
             variable_history.append(dict(zip([v.name for v in self.variables], simplex[0])))
             merit_history.append(merit_values[0])
+            
+            last_iteration = iteration
         
         # Best solution
         best_values = simplex[0]
@@ -397,14 +460,14 @@ class LensOptimizer:
         
         return OptimizationResult(
             success=True,
-            iterations=iteration + 1,
+            iterations=last_iteration + 1,
             initial_merit=initial_merit,
             final_merit=final_merit,
             improvement=improvement,
             optimized_system=optimized_system,
             variable_history=variable_history,
             merit_history=merit_history,
-            message=f"Converged after {iteration + 1} iterations"
+            message=f"Converged after {last_iteration + 1} iterations"
         )
     
     def optimize_gradient_descent(self, max_iterations: int = 100, 
@@ -419,7 +482,11 @@ class LensOptimizer:
         variable_history = [dict(zip([v.name for v in self.variables], current_values))]
         merit_history = [initial_merit]
         
+        last_iteration = 0
+        
         for iteration in range(max_iterations):
+            last_iteration = iteration
+            last_iteration = iteration
             # Calculate numerical gradient
             gradient = self._calculate_gradient(current_values)
             
@@ -442,6 +509,8 @@ class LensOptimizer:
             current_values = new_values
             variable_history.append(dict(zip([v.name for v in self.variables], current_values)))
             merit_history.append(new_merit)
+            
+            last_iteration = iteration
         
         optimized_system = self._apply_variables(current_values)
         final_merit = merit_history[-1]
@@ -449,14 +518,14 @@ class LensOptimizer:
         
         return OptimizationResult(
             success=True,
-            iterations=iteration + 1,
+            iterations=last_iteration + 1,
             initial_merit=initial_merit,
             final_merit=final_merit,
             improvement=improvement,
             optimized_system=optimized_system,
             variable_history=variable_history,
             merit_history=merit_history,
-            message=f"Completed {iteration + 1} iterations"
+            message=f"Completed {last_iteration + 1} iterations"
         )
     
     def _calculate_gradient(self, values: List[float]) -> List[float]:
