@@ -58,15 +58,13 @@ class ToolTip:
         self.widget.bind("<Leave>", self.hide_tooltip)
     
     def show_tooltip(self, event: Optional[tk.Event] = None) -> None:
-        """Show the tooltip near the widget.
+        """Show the tooltip near the widget."""
+        # Calculate position relative to widget
+        # Note: bbox("insert") only works for text widgets, so we use winfo_root coordinates
+        x = self.widget.winfo_rootx() + TOOLTIP_OFFSET_X
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
         
-        Args:
-            event: The mouse enter event (optional).
-        """
-        x, y, _, _ = self.widget.bbox("insert")
-        x += self.widget.winfo_rootx() + TOOLTIP_OFFSET_X
-        y += self.widget.winfo_rooty() + TOOLTIP_OFFSET_Y
-        
+        # Create tooltip window
         self.tooltip = tk.Toplevel(self.widget)
         self.tooltip.wm_overrideredirect(True)
         self.tooltip.wm_geometry(f"+{x}+{y}")

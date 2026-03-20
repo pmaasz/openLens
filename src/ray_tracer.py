@@ -25,6 +25,7 @@ try:
     HAS_POLARIZATION = True
 except ImportError:
     np = None
+    PolarizationCalculator = None
     HAS_POLARIZATION = False
 
 # Import constants
@@ -585,7 +586,7 @@ class Ray3D:
         
         # Polarization (E-field vector)
         self.polarization_vector = polarization_vector
-        if self.polarization_vector is not None and HAS_POLARIZATION:
+        if self.polarization_vector is not None and HAS_POLARIZATION and np is not None:
             # Ensure it's a numpy array
             if not isinstance(self.polarization_vector, np.ndarray):
                 self.polarization_vector = np.array(self.polarization_vector, dtype=complex)
@@ -617,7 +618,7 @@ class Ray3D:
         """
         Update polarization vector based on interaction (reflect/refract).
         """
-        if self.polarization_vector is None or not HAS_POLARIZATION:
+        if self.polarization_vector is None or not HAS_POLARIZATION or np is None or PolarizationCalculator is None:
             return
 
         k_inc = self.direction # Incident direction
@@ -689,7 +690,8 @@ class Ray3D:
                  return
 
             theta1_rad = math.radians(angle_deg)
-            theta2_rad = math.radians(coeffs['theta_transmitted_deg'])
+            # Use .real and float() to explicitly cast to float for linter
+            theta2_rad = math.radians(float(coeffs['theta_transmitted_deg'].real))
             
             if n1 * math.cos(theta1_rad) > 1e-9:
                 geo_factor = (n2 * math.cos(theta2_rad)) / (n1 * math.cos(theta1_rad))

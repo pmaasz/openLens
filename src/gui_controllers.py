@@ -55,7 +55,7 @@ class LensSelectionController:
     - Update selection info panel
     """
     
-    def __init__(self, parent_window, lens_list, colors, on_lens_selected, on_create_new, on_delete, on_lens_updated, on_export=None):
+    def __init__(self, parent_window, lens_list, colors, on_lens_selected, on_create_new, on_create_system, on_delete, on_lens_updated, on_export=None):
         """
         Initialize the lens selection controller.
         
@@ -65,6 +65,7 @@ class LensSelectionController:
             colors: Color scheme dictionary
             on_lens_selected: Callback when lens is selected
             on_create_new: Callback when creating new lens
+            on_create_system: Callback when creating new optical system
             on_delete: Callback when deleting lens
             on_lens_updated: Callback when lens is updated
             on_export: Callback when exporting lens (optional)
@@ -74,12 +75,14 @@ class LensSelectionController:
         self.colors = colors
         self.on_lens_selected_callback = on_lens_selected
         self.on_create_new_callback = on_create_new
+        self.on_create_system_callback = on_create_system
         self.on_delete_callback = on_delete
         self.on_lens_updated_callback = on_lens_updated
         self.on_export_callback = on_export
         self.selected_lens = None
         self.listbox = None
         self.info_text = None
+        self.save_system_btn = None
         
     def setup_ui(self, parent_frame):
         """Set up the selection tab UI"""
@@ -157,20 +160,29 @@ class LensSelectionController:
         
         ttk.Button(button_frame, text="Create New Lens", 
                   command=self.create_new_lens,
-                  width=20).pack(side=tk.LEFT, padx=PADDING_SMALL)
+                  width=18).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
-        ttk.Button(button_frame, text="Select & Edit / Simulate", 
+        ttk.Button(button_frame, text="Create System", 
+                  command=self.create_new_system,
+                  width=18).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        
+        ttk.Button(button_frame, text="Select / Simulate", 
                   command=self.select_lens,
-                  width=25).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        
-        ttk.Button(button_frame, text="Delete Lens", 
-                  command=self.delete_lens,
                   width=20).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        
+        self.save_system_btn = ttk.Button(button_frame, text="Save System", 
+                  command=self.save_current_system,
+                  width=18, state='disabled')
+        self.save_system_btn.pack(side=tk.LEFT, padx=PADDING_SMALL)
+        
+        ttk.Button(button_frame, text="Delete", 
+                  command=self.delete_lens,
+                  width=15).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         if self.on_export_callback:
-            ttk.Button(button_frame, text="Export to STL", 
+            ttk.Button(button_frame, text="Export STL", 
                       command=self.export_lens,
-                      width=20).pack(side=tk.LEFT, padx=PADDING_SMALL)
+                      width=15).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         # Load initial data
         self.refresh_lens_list()
@@ -178,6 +190,8 @@ class LensSelectionController:
     
     def refresh_lens_list(self):
         """Refresh the lens listbox with current lenses"""
+        if not self.listbox:
+            return
         self.listbox.delete(0, tk.END)
         for lens in self.lens_list:
             # Handle both Lens objects and dicts
@@ -192,6 +206,9 @@ class LensSelectionController:
     
     def update_info(self, event=None):
         """Update the lens information panel when selection changes"""
+        if not self.listbox or not self.info_text:
+            return
+            
         selection = self.listbox.curselection()
         if not selection:
             self.info_text.config(state='normal')
@@ -213,10 +230,17 @@ class LensSelectionController:
                     name = lens.get('name', 'Unknown') if isinstance(lens, dict) else lens.name
                     info += f"{i+1}. {name}\n"
             
-            info += "\nClick 'Select & Edit / Simulate' to build optical system."
+            info += "\nClick 'Select / Simulate' to simulate as a temporary system.\n"
+            info += "Click 'Save System' to save as a new Optical System."
             self.info_text.insert(1.0, info)
             self.info_text.config(state='disabled')
+            
+            if self.save_system_btn:
+                self.save_system_btn.config(state='normal')
             return
+        
+        if self.save_system_btn:
+            self.save_system_btn.config(state='disabled')
         
         index = selection[0]
         if 0 <= index < len(self.lens_list):
@@ -255,6 +279,9 @@ Modified: {lens.modified_at}"""
     
     def select_lens(self):
         """Select a lens and notify parent"""
+        if not self.listbox:
+            return
+            
         selection = self.listbox.curselection()
         if not selection:
             return
@@ -305,6 +332,9 @@ Modified: {lens.modified_at}"""
     
     def delete_lens(self):
         """Delete selected lens and notify parent"""
+        if not self.listbox:
+            return
+            
         selection = self.listbox.curselection()
         if not selection:
             return
@@ -317,14 +347,20 @@ Modified: {lens.modified_at}"""
                 self.refresh_lens_list()
                 
                 # Clear info panel
-                self.info_text.config(state='normal')
-                self.info_text.delete(1.0, tk.END)
-                self.info_text.insert(1.0, "Select a lens to view details")
-                self.info_text.config(state='disabled')
+                if self.info_text:
+                    self.info_text.config(state='normal')
+                    self.info_text.delete(1.0, tk.END)
+                    self.info_text.insert(1.0, "Select a lens to view details")
+                    self.info_text.config(state='disabled')
     
     def export_lens(self):
         """Export selected lens via callback"""
         if self.on_export_callback:
+            if not self.listbox:
+                if self.selected_lens:
+                    self.on_export_callback(self.selected_lens)
+                return
+
             selection = self.listbox.curselection()
             if not selection:
                 # If no selection in listbox, try using selected_lens
@@ -336,6 +372,42 @@ Modified: {lens.modified_at}"""
             if 0 <= index < len(self.lens_list):
                 lens = self.lens_list[index]
                 self.on_export_callback(lens)
+    
+    def create_new_system(self):
+        """Create a new optical system and notify parent"""
+        if self.on_create_system_callback:
+            self.on_create_system_callback()
+
+    def save_current_system(self):
+        """Save the currently selected temporary system as a permanent one"""
+        if not self.selected_lens or not hasattr(self.selected_lens, 'elements'):
+            return
+
+        # It's a system.
+        # Ensure it has an ID (it should from OpticalSystem.__init__)
+        if not hasattr(self.selected_lens, 'id'):
+            from datetime import datetime
+            self.selected_lens.id = datetime.now().strftime("%Y%m%d%H%M%S%f")
+            
+        # Give it a name if it's default
+        if self.selected_lens.name == "Multi-Lens System":
+             self.selected_lens.name = f"System {self.selected_lens.id[-4:]}"
+             
+        # Add to list via callback
+        if self.on_lens_updated_callback:
+            self.on_lens_updated_callback(self.selected_lens)
+            self.refresh_lens_list()
+            
+            # Try to select it in the list
+            # Find index by ID
+            if self.listbox:
+                for i, item in enumerate(self.lens_list):
+                     if hasattr(item, 'id') and item.id == self.selected_lens.id:
+                          self.listbox.selection_clear(0, tk.END)
+                          self.listbox.selection_set(i)
+                          self.listbox.see(i)
+                          self.update_info() # Update buttons state
+                          break
 
 
 class LensEditorController:
@@ -398,31 +470,31 @@ class LensEditorController:
         
         # Properties frame
         props_frame = ttk.LabelFrame(scrollable_frame, text="Lens Properties", padding=PADDING_MEDIUM)
-        props_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=PADDING_SMALL, pady=PADDING_SMALL)
+        props_frame.grid(row=0, column=0, sticky="nsew", padx=PADDING_SMALL, pady=PADDING_SMALL)
         
         # Create input fields
         self.create_property_fields(props_frame)
         
         # Material selection
         material_frame = ttk.LabelFrame(scrollable_frame, text="Material", padding=PADDING_MEDIUM)
-        material_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+        material_frame.grid(row=1, column=0, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
         self.create_material_selector(material_frame)
         
         # Fresnel lens section
         fresnel_frame = ttk.LabelFrame(scrollable_frame, text="Fresnel Properties", padding=PADDING_MEDIUM)
-        fresnel_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+        fresnel_frame.grid(row=2, column=0, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
         self.create_fresnel_fields(fresnel_frame)
         
         # Results frame
         results_frame = ttk.LabelFrame(scrollable_frame, text="Calculated Properties", padding=PADDING_MEDIUM)
-        results_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+        results_frame.grid(row=3, column=0, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
         
         # Create result labels
         self.create_result_fields(results_frame)
         
         # Control buttons
         button_frame = ttk.Frame(scrollable_frame)
-        button_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_MEDIUM)
+        button_frame.grid(row=4, column=0, sticky="ew", padx=PADDING_SMALL, pady=PADDING_MEDIUM)
         
         ttk.Button(button_frame, text="Calculate", 
                   command=self.calculate_properties, width=15).pack(side=tk.LEFT, padx=PADDING_SMALL)
@@ -464,12 +536,12 @@ class LensEditorController:
                              "Meniscus Convex", "Meniscus Concave"]
                 combo = ttk.Combobox(parent, values=lens_types, width=18, state="readonly")
                 combo.set(default)
-                combo.grid(row=i, column=1, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+                combo.grid(row=i, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
                 combo.bind('<<ComboboxSelected>>', self.on_field_changed)
                 self.entry_fields[key] = combo
             else:
                 entry = ttk.Entry(parent, width=20)
-                entry.grid(row=i, column=1, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+                entry.grid(row=i, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
                 entry.insert(0, default)
                 
                 # Bind auto-calculate (but not for name field)
@@ -495,7 +567,7 @@ class LensEditorController:
         
         self.material_menu = ttk.Combobox(parent, textvariable=self.material_var, 
                                           values=materials, width=18, state="readonly")
-        self.material_menu.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.material_menu.grid(row=0, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
         self.material_menu.bind('<<ComboboxSelected>>', self.on_material_changed)
         
         parent.columnconfigure(1, weight=1)
@@ -517,14 +589,14 @@ class LensEditorController:
         # Groove pitch
         ttk.Label(parent, text="Groove Pitch (mm):").grid(row=1, column=0, sticky=tk.W, pady=PADDING_SMALL)
         self.entry_fields['groove_pitch'] = ttk.Entry(parent, width=20)
-        self.entry_fields['groove_pitch'].grid(row=1, column=1, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.entry_fields['groove_pitch'].grid(row=1, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
         self.entry_fields['groove_pitch'].insert(0, "0.5")
         self.entry_fields['groove_pitch'].bind('<KeyRelease>', self.on_field_changed)
         
         # Number of grooves (readonly)
         ttk.Label(parent, text="Number of Grooves:").grid(row=2, column=0, sticky=tk.W, pady=PADDING_SMALL)
         self.entry_fields['num_grooves'] = ttk.Entry(parent, width=20, state='readonly')
-        self.entry_fields['num_grooves'].grid(row=2, column=1, sticky=(tk.W, tk.E), padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self.entry_fields['num_grooves'].grid(row=2, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
         
         parent.columnconfigure(1, weight=1)
         
@@ -871,6 +943,8 @@ class SimulationController:
         self.sim_canvas_widget = None
         self.num_rays_var = None
         self.ray_angle_var = None
+        self.system_builder_frame = None
+        self.element_listbox = None
     
     def setup_ui(self, parent_frame):
         """Set up the simulation tab UI"""
@@ -898,7 +972,7 @@ class SimulationController:
         # Simulation canvas area
         sim_frame = ttk.LabelFrame(parent_frame, text="Ray Tracing Simulation", 
                                   padding=PADDING_MEDIUM, height=450)
-        sim_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=PADDING_MEDIUM)
+        sim_frame.grid(row=1, column=0, sticky="nsew", pady=PADDING_MEDIUM)
         sim_frame.columnconfigure(0, weight=1)
         sim_frame.rowconfigure(0, weight=1)
         sim_frame.grid_propagate(False)
@@ -946,7 +1020,7 @@ class SimulationController:
         # Simulation controls
         controls_frame = ttk.LabelFrame(parent_frame, text="Simulation Controls", 
                                        padding=PADDING_MEDIUM)
-        controls_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM)
+        controls_frame.grid(row=2, column=0, sticky="ew", pady=PADDING_MEDIUM)
         
         # Ray parameters
         ttk.Label(controls_frame, text="Number of Rays:").grid(
@@ -975,7 +1049,7 @@ class SimulationController:
         self.current_lens = lens
         
         # Clear previous system builder if exists
-        if hasattr(self, 'system_builder_frame'):
+        if hasattr(self, 'system_builder_frame') and self.system_builder_frame:
             self.system_builder_frame.destroy()
             del self.system_builder_frame
 
@@ -1010,7 +1084,7 @@ class SimulationController:
         parent = self.sim_canvas_widget.master.master # Canvas -> Frame -> Parent
         
         self.system_builder_frame = ttk.LabelFrame(parent, text="System Builder", padding="10")
-        self.system_builder_frame.grid(row=1, column=1, sticky=(tk.N, tk.S, tk.W, tk.E), padx=10, pady=10)
+        self.system_builder_frame.grid(row=1, column=1, sticky="nsew", padx=10, pady=10)
         
         # List of elements
         self.element_listbox = tk.Listbox(self.system_builder_frame, height=10, width=30)
@@ -1039,6 +1113,9 @@ class SimulationController:
 
     def refresh_system_list(self):
         """Refresh the list of elements in system builder"""
+        if not self.element_listbox or not self.current_lens:
+            return
+        
         self.element_listbox.delete(0, tk.END)
         for i, element in enumerate(self.current_lens.elements):
             name = element.lens.name
@@ -1054,6 +1131,9 @@ class SimulationController:
 
     def on_element_selected(self, event):
         """Update gap entry when element selected"""
+        if not self.element_listbox:
+            return
+            
         selection = self.element_listbox.curselection()
         if not selection:
             return
@@ -1070,6 +1150,9 @@ class SimulationController:
 
     def update_air_gap(self, event=None):
         """Update air gap based on entry"""
+        if not self.element_listbox:
+            return
+            
         selection = self.element_listbox.curselection()
         if not selection:
             return
@@ -1089,6 +1172,9 @@ class SimulationController:
 
     def move_element_up(self):
         """Move selected element up in the sequence"""
+        if not self.element_listbox:
+            return
+
         selection = self.element_listbox.curselection()
         if not selection:
             return
@@ -1112,6 +1198,9 @@ class SimulationController:
 
     def move_element_down(self):
         """Move selected element down in the sequence"""
+        if not self.element_listbox:
+            return
+
         selection = self.element_listbox.curselection()
         if not selection:
             return
@@ -1397,13 +1486,13 @@ class PerformanceController:
         # Metrics display area
         metrics_frame = ttk.LabelFrame(parent_frame, text="Optical Performance Metrics", 
                                       padding=PADDING_MEDIUM)
-        metrics_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=PADDING_MEDIUM)
+        metrics_frame.grid(row=1, column=0, sticky="nsew", pady=PADDING_MEDIUM)
         metrics_frame.columnconfigure(0, weight=1)
         metrics_frame.rowconfigure(0, weight=1)
         
         # Text widget for metrics display
         metrics_scroll = ttk.Scrollbar(metrics_frame)
-        metrics_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        metrics_scroll.grid(row=0, column=1, sticky="ns")
         
         self.metrics_text = tk.Text(metrics_frame, height=20, width=80,
                                    wrap=tk.WORD,
@@ -1411,7 +1500,7 @@ class PerformanceController:
                                    fg=self.colors.get('fg', '#e0e0e0'),
                                    font=('Courier', 10),
                                    yscrollcommand=metrics_scroll.set)
-        self.metrics_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.metrics_text.grid(row=0, column=0, sticky="nsew")
         metrics_scroll.config(command=self.metrics_text.yview)
         
         self.metrics_text.insert('1.0', "Select a lens and click 'Calculate Metrics' to view performance data.")
@@ -1420,7 +1509,7 @@ class PerformanceController:
         # Controls
         controls_frame = ttk.LabelFrame(parent_frame, text="Calculation Parameters", 
                                        padding=PADDING_MEDIUM)
-        controls_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM)
+        controls_frame.grid(row=2, column=0, sticky="ew", pady=PADDING_MEDIUM)
         
         # Parameter inputs
         ttk.Label(controls_frame, text="Entrance Pupil Diameter (mm):").grid(
@@ -2061,7 +2150,7 @@ class ExportController:
         
         # Main content frame
         content_frame = ttk.Frame(parent_frame, padding="10")
-        content_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        content_frame.grid(row=0, column=0, sticky="nsew")
         content_frame.columnconfigure(0, weight=1)
         
         # Title
@@ -2073,42 +2162,42 @@ class ExportController:
         
         # JSON Export
         json_frame = ttk.LabelFrame(content_frame, text="JSON Format", padding="15")
-        json_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
+        json_frame.grid(row=row, column=0, sticky="ew", pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
         ttk.Label(json_frame, text="Export lens data as JSON", font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(side=tk.LEFT, padx=PADDING_MEDIUM)
         ttk.Button(json_frame, text="Export JSON", command=self.export_json, width=15).pack(side=tk.RIGHT, padx=PADDING_MEDIUM)
         row += 1
         
         # STL Export
         stl_frame = ttk.LabelFrame(content_frame, text="3D Model (STL)", padding="15")
-        stl_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
+        stl_frame.grid(row=row, column=0, sticky="ew", pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
         ttk.Label(stl_frame, text="Export 3D model for CAD/3D printing", font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(side=tk.LEFT, padx=PADDING_MEDIUM)
         ttk.Button(stl_frame, text="Export STL", command=self.export_stl, width=15).pack(side=tk.RIGHT, padx=PADDING_MEDIUM)
         row += 1
 
         # STEP Export
         step_frame = ttk.LabelFrame(content_frame, text="3D Model (STEP)", padding="15")
-        step_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
+        step_frame.grid(row=row, column=0, sticky="ew", pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
         ttk.Label(step_frame, text="Export solid geometry for CAD (ISO 10303-21)", font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(side=tk.LEFT, padx=PADDING_MEDIUM)
         ttk.Button(step_frame, text="Export STEP", command=self.export_step, width=15).pack(side=tk.RIGHT, padx=PADDING_MEDIUM)
         row += 1
         
         # ISO 10110 Export
         iso_frame = ttk.LabelFrame(content_frame, text="Manufacturing Drawing (ISO 10110)", padding="15")
-        iso_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
+        iso_frame.grid(row=row, column=0, sticky="ew", pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
         ttk.Label(iso_frame, text="Export ISO 10110 compliant SVG drawing", font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(side=tk.LEFT, padx=PADDING_MEDIUM)
         ttk.Button(iso_frame, text="Export ISO Drawing", command=self.export_iso10110, width=15).pack(side=tk.RIGHT, padx=PADDING_MEDIUM)
         row += 1
         
         # Technical Report
         report_frame = ttk.LabelFrame(content_frame, text="Technical Report", padding="15")
-        report_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
+        report_frame.grid(row=row, column=0, sticky="ew", pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
         ttk.Label(report_frame, text="Generate detailed technical report", font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(side=tk.LEFT, padx=PADDING_MEDIUM)
         ttk.Button(report_frame, text="Generate Report", command=self.export_report, width=15).pack(side=tk.RIGHT, padx=PADDING_MEDIUM)
         row += 1
         
         # Status area
         status_frame = ttk.LabelFrame(content_frame, text="Export Status", padding="10")
-        status_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
+        status_frame.grid(row=row, column=0, sticky="ew", pady=PADDING_MEDIUM, padx=PADDING_XLARGE)
         
         self.status_text = tk.Text(status_frame, height=8, width=80,
                                    wrap=tk.WORD,

@@ -17,6 +17,9 @@ except ImportError:
     EPSILON = 1e-10
 
 # Try to import material database (optional)
+get_material_database = None
+MATERIAL_DB_AVAILABLE = False
+
 try:
     from .material_database import get_material_database
     MATERIAL_DB_AVAILABLE = True

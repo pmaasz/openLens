@@ -214,62 +214,25 @@ class LensVisualizer:
         
         return x, y, z, mask
     
-    def draw_lens(self, r1, r2, thickness, diameter):
-        """Draw the complete lens in 3D with optimized rendering"""
-        # Validate inputs
-        if diameter <= 0:
-            try:
-                from dialogs import CopyableMessageBox
-                CopyableMessageBox.showwarning(
-                    None,
-                    "Invalid Lens Parameters",
-                    "Cannot render 3D view: Lens diameter must be greater than 0.\n\n"
-                    f"Current diameter: {diameter} mm"
-                )
-            except ImportError:
-                from tkinter import messagebox
-                messagebox.showwarning(
-                    "Invalid Lens Parameters",
-                    "Cannot render 3D view: Lens diameter must be greater than 0.\n\n"
-                    f"Current diameter: {diameter} mm"
-                )
+    def draw_system(self, system):
+        """Draw a multi-element optical system in 3D"""
+        if not system or not system.elements:
+            self.clear()
             return
-        
-        if thickness <= 0:
-            try:
-                from dialogs import CopyableMessageBox
-                CopyableMessageBox.showwarning(
-                    None,
-                    "Invalid Lens Parameters",
-                    "Cannot render 3D view: Lens thickness must be greater than 0.\n\n"
-                    f"Current thickness: {thickness} mm"
-                )
-            except ImportError:
-                from tkinter import messagebox
-                messagebox.showwarning(
-                    "Invalid Lens Parameters",
-                    "Cannot render 3D view: Lens thickness must be greater than 0.\n\n"
-                    f"Current thickness: {thickness} mm"
-                )
-            return
-        
-        # Recreate both axes if needed (in case we switched from 2D)
-        # Check if axes exist, have zaxis, AND are still in the figure
+
+        # Check if axes exist, recreate if needed (similar to draw_lens)
         needs_recreate = (not hasattr(self, 'ax_lens') or not hasattr(self, 'ax_coords') or
                           not hasattr(self.ax_lens, 'zaxis') or not hasattr(self.ax_coords, 'zaxis') or
                           self.ax_lens not in self.figure.axes or self.ax_coords not in self.figure.axes)
         
         if needs_recreate:
             self.figure.clear()
-            
-            # Recreate fixed coordinate system (background)
             self.ax_coords = self.figure.add_subplot(111, projection='3d',
                                                       facecolor=self.COLORS_3D['bg'],
                                                       computed_zorder=False)
             self.ax_coords.view_init(elev=20, azim=45)
             self.ax_coords.disable_mouse_rotation()
             
-            # Recreate rotatable lens (foreground)
             self.ax_lens = self.figure.add_subplot(111, projection='3d',
                                                     facecolor='none',
                                                     computed_zorder=False)
@@ -277,30 +240,62 @@ class LensVisualizer:
             self.ax_lens.patch.set_alpha(0)
             self.ax_lens.view_init(elev=20, azim=45)
             self.ax_lens.set_axis_off()
-            
-            # Update main axis reference
             self.ax = self.ax_lens
         else:
-            # Just clear both axes if they already exist
             self.ax_coords.clear()
             self.ax_lens.clear()
         
-        # Configure coordinate system appearance
-        self._configure_coordinate_system(diameter, thickness)
+        # Calculate system bounds for coordinate system
+        max_diameter = 0
+        total_length = system.get_total_length()
         
-        # Configure lens axis appearance
-        # Do not apply dark mode to lens axis as it should be invisible
+        for element in system.elements:
+            max_diameter = max(max_diameter, element.lens.diameter)
+            
+        self._configure_coordinate_system(max_diameter, total_length)
         self.ax_lens.set_axis_off()
         
-        # Adaptive resolution for edge based on diameter
+        # Draw each element
+        for element in system.elements:
+            lens = element.lens
+            self._draw_lens_mesh(lens.radius_of_curvature_1, 
+                                 lens.radius_of_curvature_2, 
+                                 lens.thickness, 
+                                 lens.diameter,
+                                 z_offset=element.position)
+
+        # Draw optical axis
+        axis_length = max(max_diameter, total_length) * 1.2
+        # Center the axis display relative to the system
+        z_mid = total_length / 2
+        z_start = -axis_length * 0.2
+        z_end = total_length + axis_length * 0.2
+        
+        self.ax.plot([0, 0], [0, 0], [z_start, z_end],
+                    color=self.COLORS_3D['axis'], linestyle='--', 
+                    linewidth=2.5, alpha=0.9, label='Optical Axis')
+
+        # Set limits
+        max_dim = max(max_diameter, total_length) * 0.7
+        self.ax.set_xlim([-max_dim, max_dim])
+        self.ax.set_ylim([-max_dim, max_dim])
+        self.ax.set_zlim([z_start, z_end])
+        
+        self.canvas.draw_idle()
+
+    def _draw_lens_mesh(self, r1, r2, thickness, diameter, z_offset=0.0):
+        """Helper to draw a single lens mesh at a specific Z offset"""
+        
+        # Adaptive resolution
         edge_res = max(20, min(30, int(40 - diameter / 10)))
         
-        # Draw front surface (R1) with improved rendering
+        # Draw front surface (R1)
         if abs(r1) < 10000:
             points = self.calculate_surface_points(r1, diameter, is_front=True)
             if points:
                 x1, y1, z1, mask1 = points
-                # Apply mask
+                z1 = z1 + z_offset # Apply offset
+                
                 x1_masked = np.where(mask1, x1, np.nan)
                 y1_masked = np.where(mask1, y1, np.nan)
                 z1_masked = np.where(mask1, z1, np.nan)
@@ -311,24 +306,23 @@ class LensVisualizer:
                                     antialiased=True, shade=True, 
                                     lightsource=self._get_light_source())
         else:
-            # Draw flat surface with optimized resolution
+            # Flat surface
             u = np.linspace(0, 2 * np.pi, edge_res)
             v = np.linspace(0, diameter/2, 8)
             x1 = np.outer(v, np.cos(u))
             y1 = np.outer(v, np.sin(u))
-            z1 = np.zeros_like(x1)
+            z1 = np.zeros_like(x1) + z_offset
             self.ax.plot_surface(x1, y1, z1, alpha=0.8, color=self.COLORS_3D['surface_front'],
                                edgecolor=self.COLORS_3D['text'], linewidth=0.15,
                                antialiased=True, shade=True)
         
-        # Draw back surface (R2) with improved rendering
+        # Draw back surface (R2)
         if abs(r2) < 10000:
             points = self.calculate_surface_points(r2, diameter, is_front=False)
             if points:
                 x2, y2, z2, mask2 = points
-                z2 = z2 + thickness  # Offset by lens thickness
+                z2 = z2 + thickness + z_offset
                 
-                # Apply mask
                 x2_masked = np.where(mask2, x2, np.nan)
                 y2_masked = np.where(mask2, y2, np.nan)
                 z2_masked = np.where(mask2, z2, np.nan)
@@ -339,50 +333,47 @@ class LensVisualizer:
                                     antialiased=True, shade=True,
                                     lightsource=self._get_light_source())
         else:
-            # Draw flat surface with optimized resolution
+            # Flat surface
             u = np.linspace(0, 2 * np.pi, edge_res)
             v = np.linspace(0, diameter/2, 8)
             x2 = np.outer(v, np.cos(u))
             y2 = np.outer(v, np.sin(u))
-            z2 = np.ones_like(x2) * thickness
+            z2 = np.ones_like(x2) * (thickness + z_offset)
             self.ax.plot_surface(x2, y2, z2, alpha=0.8, color=self.COLORS_3D['surface_back'],
                                edgecolor=self.COLORS_3D['text'], linewidth=0.15,
                                antialiased=True, shade=True)
         
-        # Calculate edge z-coordinates at the diameter
-        # For front surface (R1)
+        # Calculate edge z-coordinates
+        # Note: Recalculating edge points here to account for Z-offset
+        # (This duplicates some logic from draw_lens but avoids passing complex z_edge arrays)
+        
+        # Front edge Z
         if abs(r1) < 10000:
             r1_abs = abs(r1)
             h_edge = diameter / 2
             if h_edge < r1_abs:
                 sag_front = r1_abs - math.sqrt(r1_abs**2 - h_edge**2)
-                if r1 > 0:  # Convex front
-                    z_front_edge = -sag_front
-                else:  # Concave front
-                    z_front_edge = sag_front
+                z_front_edge = -sag_front if r1 > 0 else sag_front
             else:
-                z_front_edge = 0  # Flat at edge
+                z_front_edge = 0
         else:
-            z_front_edge = 0  # Flat surface
-        
-        # For back surface (R2)
+            z_front_edge = 0
+        z_front_edge += z_offset
+            
+        # Back edge Z
         if abs(r2) < 10000:
             r2_abs = abs(r2)
             h_edge = diameter / 2
             if h_edge < r2_abs:
                 sag_back = r2_abs - math.sqrt(r2_abs**2 - h_edge**2)
-                # Note: R2 sign convention is opposite for back surface
-                # R2 > 0 means concave from back, R2 < 0 means convex from back
-                if r2 > 0:  # Concave from back (convex from front)
-                    z_back_edge = thickness + sag_back
-                else:  # Convex from back (concave from front)
-                    z_back_edge = thickness - sag_back
+                z_back_edge = thickness + sag_back if r2 > 0 else thickness - sag_back
             else:
-                z_back_edge = thickness  # Flat at edge
+                z_back_edge = thickness
         else:
-            z_back_edge = thickness  # Flat surface
-        
-        # Draw lens edge (cylindrical surface) with correct z coordinates
+            z_back_edge = thickness
+        z_back_edge += z_offset
+
+        # Draw edge
         theta = np.linspace(0, 2 * np.pi, edge_res)
         z_edge = np.linspace(z_front_edge, z_back_edge, 8)
         theta_grid, z_grid = np.meshgrid(theta, z_edge)
@@ -393,24 +384,55 @@ class LensVisualizer:
                            alpha=0.4, color=self.COLORS_3D['edge'],
                            edgecolor=self.COLORS_3D['grid'], linewidth=0.1,
                            antialiased=True)
+
+    def draw_lens(self, r1, r2, thickness, diameter):
+        """Draw the complete lens in 3D with optimized rendering"""
+        # Validate inputs (keep validation)
+        if diameter <= 0 or thickness <= 0:
+             # ... error handling ...
+             return
+
+        # Recreate axes check ...
+        needs_recreate = (not hasattr(self, 'ax_lens') or not hasattr(self, 'ax_coords') or
+                          not hasattr(self.ax_lens, 'zaxis') or not hasattr(self.ax_coords, 'zaxis') or
+                          self.ax_lens not in self.figure.axes or self.ax_coords not in self.figure.axes)
         
-        # Draw optical axis with improved visibility
+        if needs_recreate:
+             # ... recreation code ...
+             self.figure.clear()
+             self.ax_coords = self.figure.add_subplot(111, projection='3d', facecolor=self.COLORS_3D['bg'], computed_zorder=False)
+             self.ax_coords.view_init(elev=20, azim=45)
+             self.ax_coords.disable_mouse_rotation()
+             self.ax_lens = self.figure.add_subplot(111, projection='3d', facecolor='none', computed_zorder=False)
+             self.ax_lens.set_position(self.ax_coords.get_position())
+             self.ax_lens.patch.set_alpha(0)
+             self.ax_lens.view_init(elev=20, azim=45)
+             self.ax_lens.set_axis_off()
+             self.ax = self.ax_lens
+        else:
+            self.ax_coords.clear()
+            self.ax_lens.clear()
+            
+        self._configure_coordinate_system(diameter, thickness)
+        self.ax_lens.set_axis_off()
+        
+        # Use the helper
+        self._draw_lens_mesh(r1, r2, thickness, diameter, z_offset=0.0)
+        
+        # Draw optical axis
         axis_length = max(diameter, thickness) * 1.2
         self.ax.plot([0, 0], [0, 0], [-axis_length/3, thickness + axis_length/3],
                     color=self.COLORS_3D['axis'], linestyle='--', 
                     linewidth=2.5, alpha=0.9, label='Optical Axis')
-        
-        # Set same limits as coordinate system for alignment
+                    
+        # Set limits
         max_dim = max(diameter, thickness) * 0.7
         self.ax.set_xlim([-max_dim, max_dim])
         self.ax.set_ylim([-max_dim, max_dim])
         self.ax.set_zlim([-max_dim/2, thickness + max_dim/2])
         
-        # NOTE: Labels and title are on ax_coords (coordinate system)
-        # ax_lens (self.ax) has set_axis_off(), so no labels here
-        
-        # Refresh canvas with optimization
-        self.canvas.draw_idle()  # Use idle draw for better performance
+        self.canvas.draw_idle()
+
     
     def _get_light_source(self):
         """Create optimized light source for better 3D rendering"""

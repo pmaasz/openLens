@@ -9,10 +9,11 @@ import logging
 import tkinter as tk
 from tkinter import ttk
 import os
-from typing import Optional, List, Any, TYPE_CHECKING, cast
+from typing import Optional, List, Any, TYPE_CHECKING, cast, Union
 
 if TYPE_CHECKING:
     from ..lens import Lens
+    from ..optical_system import OpticalSystem
     from ..gui_controllers import (
         LensSelectionController,
         LensEditorController,
@@ -101,14 +102,17 @@ except ImportError:
 # Import Lens model
 try:
     from ..lens import Lens
+    from ..optical_system import OpticalSystem
 except ImportError:
     try:
         from lens import Lens
+        from optical_system import OpticalSystem
     except ImportError:
         logger.error("Could not import Lens model")
         # Runtime fallback
         if not TYPE_CHECKING:
             class Lens: pass
+            class OpticalSystem: pass
 
 class LensEditorWindow:
     
@@ -120,9 +124,9 @@ class LensEditorWindow:
         # Initialize storage
         self.storage_file = "lenses.json"
         self.storage = LensStorage(self.storage_file, self.update_status)
-        self.lenses: List['Lens'] = self.storage.load_lenses()
+        self.lenses: List[Any] = self.storage.load_lenses()
         
-        self.current_lens: Optional['Lens'] = None
+        self.current_lens: Optional[Any] = None
         self.visualizer: Optional['LensVisualizer'] = None
         self.selected_lens_id: Optional[str] = None
         self._loading_lens: bool = False
@@ -229,6 +233,7 @@ class LensEditorWindow:
                 colors=self.colors,
                 on_lens_selected=self.on_lens_selected_callback,
                 on_create_new=self.on_create_new_lens,
+                on_create_system=self.on_create_new_system,
                 on_delete=self.on_delete_lens,
                 on_lens_updated=self.on_lens_updated_callback,
                 on_export=None
@@ -239,7 +244,7 @@ class LensEditorWindow:
             ttk.Label(self.selection_tab, text=f"Error loading selection tab: {e}").pack(padx=20, pady=20)
     
     # Controller callback methods
-    def on_lens_selected_callback(self, lens: 'Lens') -> None:
+    def on_lens_selected_callback(self, lens: Any) -> None:
         """Callback when a lens is selected from the controller"""
         self.current_lens = lens
         
@@ -308,6 +313,42 @@ class LensEditorWindow:
             self.editor_controller.load_lens(None)  # Clears form
             
         self.update_status("Ready to create new lens")
+    
+    def on_create_new_system(self) -> None:
+        """Callback when creating a new optical system"""
+        # Create new OpticalSystem
+        try:
+            from ..optical_system import OpticalSystem
+            system = OpticalSystem()
+        except ImportError:
+             # Try local import
+            try:
+                from optical_system import OpticalSystem
+                system = OpticalSystem()
+            except ImportError:
+                # Fallback if class not available
+                logger.error("OpticalSystem class not available")
+                return
+
+        # Add to list
+        self.lenses.append(system)
+        
+        # Save and refresh
+        self.save_lenses()
+        
+        if self.selection_controller:
+            self.selection_controller.refresh_lens_list()
+            # Select the new system
+            if self.selection_controller.listbox:
+                idx = len(self.lenses) - 1
+                self.selection_controller.listbox.selection_clear(0, tk.END)
+                self.selection_controller.listbox.selection_set(idx)
+                self.selection_controller.listbox.see(idx)
+                
+                # Manually trigger selection update
+                self.selection_controller.select_lens()
+        
+        self.update_status(f"New system '{system.name}' created")
     
     def on_delete_lens(self, lens: 'Lens') -> None:
         """Callback when a lens is deleted"""

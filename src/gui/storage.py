@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..lens import Lens
+    from ..optical_system import OpticalSystem
     from ..validation import (
         validate_json_file_path,
         validate_file_path,
@@ -31,6 +32,18 @@ else:
             logger.error("Could not import Lens model")
             class Lens:
                 """Fallback Lens class."""
+                pass
+                
+    # Import OpticalSystem model (Runtime)
+    try:
+        from ..optical_system import OpticalSystem
+    except ImportError:
+        try:
+            from optical_system import OpticalSystem
+        except ImportError:
+            logger.warning("Could not import OpticalSystem model")
+            class OpticalSystem:
+                """Fallback OpticalSystem class."""
                 pass
 
     # Import validation utilities (Runtime)
@@ -98,11 +111,11 @@ class LensStorage:
         """
         self.status_callback(message)
     
-    def load_lenses(self) -> List['Lens']:
-        """Load lenses from JSON storage file with path validation.
+    def load_lenses(self) -> List[Any]:
+        """Load lenses and optical systems from JSON storage file with path validation.
         
         Returns:
-            List of Lens objects loaded from the file.
+            List of Lens and OpticalSystem objects loaded from the file.
             Returns empty list if file doesn't exist or contains invalid data.
         """
         try:
@@ -122,15 +135,18 @@ class LensStorage:
                 logger.warning("Storage file contains invalid data structure")
                 return []
             
-            # Load lenses
-            lenses = []
-            for i, lens_data in enumerate(data):
+            # Load lenses and systems
+            items = []
+            for i, item_data in enumerate(data):
                 try:
-                    lenses.append(Lens.from_dict(lens_data))
+                    if item_data.get('type') == 'OpticalSystem':
+                        items.append(OpticalSystem.from_dict(item_data))
+                    else:
+                        items.append(Lens.from_dict(item_data))
                 except Exception as e:
-                    logger.warning("Failed to load lens %d: %s", i, e)
+                    logger.warning("Failed to load item %d: %s", i, e)
             
-            return lenses
+            return items
             
         except ValidationError:
             # File doesn't exist - return empty list
@@ -142,11 +158,11 @@ class LensStorage:
             logger.error("Failed to load lenses: %s", e)
             return []
     
-    def save_lenses(self, lenses: List['Lens']) -> bool:
-        """Save all lenses to JSON storage file with path validation.
+    def save_lenses(self, items: List[Any]) -> bool:
+        """Save all lenses and optical systems to JSON storage file.
         
         Args:
-            lenses: List of Lens objects to save.
+            items: List of Lens/OpticalSystem objects to save.
         
         Returns:
             True if save was successful, False otherwise.
@@ -167,8 +183,8 @@ class LensStorage:
                 self._update_status(f"Error: Directory is not writable: {parent_dir}")
                 return False
             
-            # Serialize lenses to JSON
-            data = [lens.to_dict() for lens in lenses]
+            # Serialize items to JSON
+            data = [item.to_dict() for item in items]
             
             # Write to file with atomic operation (write to temp, then rename)
             temp_path = file_path.with_suffix('.tmp')
@@ -179,7 +195,7 @@ class LensStorage:
                 # Atomic rename
                 temp_path.replace(file_path)
                 
-                self._update_status(f"Saved {len(lenses)} lens(es)")
+                self._update_status(f"Saved {len(items)} item(s)")
                 return True
                 
             finally:
@@ -201,28 +217,28 @@ class LensStorage:
             return False
 
 
-def load_lenses(storage_file: str = "lenses.json") -> List['Lens']:
-    """Convenience function to load lenses from a file.
+def load_lenses(storage_file: str = "lenses.json") -> List[Any]:
+    """Convenience function to load lenses and systems from a file.
     
     Args:
         storage_file: Path to the JSON storage file.
     
     Returns:
-        List of Lens objects.
+        List of Lens/OpticalSystem objects.
     """
     storage = LensStorage(storage_file)
     return storage.load_lenses()
 
 
 def save_lenses(
-    lenses: List['Lens'],
+    items: List[Any],
     storage_file: str = "lenses.json",
     status_callback: Optional[Callable[[str], None]] = None
 ) -> bool:
-    """Convenience function to save lenses to a file.
+    """Convenience function to save lenses and systems to a file.
     
     Args:
-        lenses: List of Lens objects to save.
+        items: List of Lens/OpticalSystem objects to save.
         storage_file: Path to the JSON storage file.
         status_callback: Optional callback for status messages.
     
@@ -230,4 +246,4 @@ def save_lenses(
         True if save was successful, False otherwise.
     """
     storage = LensStorage(storage_file, status_callback)
-    return storage.save_lenses(lenses)
+    return storage.save_lenses(items)

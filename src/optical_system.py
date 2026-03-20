@@ -8,6 +8,7 @@ from typing import List, Tuple, Optional
 from dataclasses import dataclass, field
 import math
 import json
+from datetime import datetime
 
 try:
     from .lens import Lens
@@ -46,6 +47,9 @@ class OpticalSystem:
     """Multi-element optical system"""
     
     def __init__(self, name: str = "Optical System"):
+        self.id = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        self.created_at = datetime.now().isoformat()
+        self.modified_at = datetime.now().isoformat()
         self.name = name
         self.elements: List[LensElement] = []
         self.air_gaps: List[AirGap] = []
@@ -188,38 +192,113 @@ class OpticalSystem:
         return self._calculate_system_focal_length_matrix()
     
     def _calculate_system_focal_length_matrix(self) -> Optional[float]:
-        """Calculate focal length using ABCD matrix method"""
-        # Start with identity matrix
+        """
+        Calculate system focal length using paraxial ray tracing matrix method.
+        Treats each surface and thickness individually.
+        """
+        if not self.elements:
+            return None
+
+        # Matrix for ray vector [y, u] (height, angle)
+        # M = [[A, B], [C, D]]
+        # Initial matrix is identity
         A, B, C, D = 1.0, 0.0, 0.0, 1.0
         
-        for i, element in enumerate(self.elements):
-            f = element.lens.calculate_focal_length()
-            if f is None or f == 0:
-                continue
-            
-            # Lens matrix: [1, 0; -1/f, 1]
-            A_new = A * 1 + B * (-1/f)
-            B_new = A * 0 + B * 1
-            C_new = C * 1 + D * (-1/f)
-            D_new = C * 0 + D * 1
-            
-            A, B, C, D = A_new, B_new, C_new, D_new
-            
-            # Air gap matrix if not last element
-            if i < len(self.air_gaps):
-                d = self.air_gaps[i].thickness
-                # Translation matrix: [1, d; 0, 1]
-                A_new = A * 1 + B * 0
-                B_new = A * d + B * 1
-                C_new = C * 1 + D * 0
-                D_new = C * d + D * 1
-                
-                A, B, C, D = A_new, B_new, C_new, D_new
+        # Current refractive index (starts in air)
+        n_current = 1.0
         
-        # Back focal length: f = -1/C
-        if C != 0:
-            return -1/C
-        return None
+        for i, element in enumerate(self.elements):
+            lens = element.lens
+            n_lens = lens.refractive_index
+            
+            # --- Surface 1 ---
+            R1 = lens.radius_of_curvature_1
+            # Power of surface 1: (n' - n) / R
+            # If R is infinite (0 curvature), power is 0
+            if abs(R1) < 1e-9: # Avoid division by zero, treat as very strong or handle specifically?
+                 # Actually usually R=inf means planar. But here R is radius. 
+                 # If R is very small, power is huge. 
+                 # If input R is 0? Lens data usually stores infinite radius as... high number? 
+                 # Or maybe 0 means planar in some conventions? 
+                 # In this project, let's assume R!=0. Planar is typically R=inf.
+                 # But float('inf') might be used.
+                 # Let's check Lens validation. Lensmaker checks abs(R)<EPSILON -> None.
+                 # So we assume R is not 0.
+                 pass
+            
+            # Refraction at surface 1 (n_current -> n_lens)
+            # u' = (n/n')u - y(n'-n)/(n'R)
+            # Matrix: [[1, 0], [-(n'-n)/(n'R), n/n']]
+            
+            power1 = (n_lens - n_current) / R1 if abs(R1) > 1e-9 else 0.0
+            
+            m1_A = 1.0
+            m1_B = 0.0
+            m1_C = -power1 / n_lens
+            m1_D = n_current / n_lens
+            
+            # Multiply: M_new = M_surf1 * M_old
+            # [m1_A m1_B] [A B]   [m1_A*A + m1_B*C   m1_A*B + m1_B*D]
+            # [m1_C m1_D] [C D] = [m1_C*A + m1_D*C   m1_C*B + m1_D*D]
+            
+            new_A = m1_A * A + m1_B * C
+            new_B = m1_A * B + m1_B * D
+            new_C = m1_C * A + m1_D * C
+            new_D = m1_C * B + m1_D * D
+            
+            A, B, C, D = new_A, new_B, new_C, new_D
+            
+            # --- Thickness ---
+            t = lens.thickness
+            # Translation in medium n_lens
+            # Matrix: [[1, t], [0, 1]]
+            
+            # M_new = M_trans * M_old
+            # [1 t] [A B]   [A + t*C   B + t*D]
+            # [0 1] [C D]   [C         D      ]
+            
+            A = A + t * C
+            B = B + t * D
+            # C, D unchanged
+            
+            # --- Surface 2 ---
+            R2 = lens.radius_of_curvature_2
+            # Refraction at surface 2 (n_lens -> air (or next gap))
+            # Usually we assume air between lenses.
+            n_next = 1.0 
+            
+            power2 = (n_next - n_lens) / R2 if abs(R2) > 1e-9 else 0.0
+            
+            m2_A = 1.0
+            m2_B = 0.0
+            m2_C = -power2 / n_next
+            m2_D = n_lens / n_next
+            
+            new_A = m2_A * A + m2_B * C
+            new_B = m2_A * B + m2_B * D
+            new_C = m2_C * A + m2_D * C
+            new_D = m2_C * B + m2_D * D
+            
+            A, B, C, D = new_A, new_B, new_C, new_D
+            
+            # Current index is now air
+            n_current = 1.0
+            
+            # --- Air Gap to next lens ---
+            if i < len(self.air_gaps):
+                gap = self.air_gaps[i].thickness
+                # Translation in air
+                # Matrix: [[1, gap], [0, 1]]
+                
+                A = A + gap * C
+                B = B + gap * D
+                # C, D unchanged
+        
+        # System Focal Length f = -1 / C
+        if abs(C) < 1e-10:
+            return None # Infinite focal length (afocal)
+            
+        return -1.0 / C
     
     def get_numerical_aperture(self) -> float:
         """Calculate system numerical aperture (based on first lens)"""
@@ -282,7 +361,11 @@ class OpticalSystem:
     def to_dict(self) -> dict:
         """Export system to dictionary"""
         return {
+            'id': self.id,
             'name': self.name,
+            'type': 'OpticalSystem',
+            'created_at': self.created_at,
+            'modified_at': self.modified_at,
             'elements': [
                 {
                     'lens': elem.lens.to_dict(),
@@ -303,14 +386,23 @@ class OpticalSystem:
     def from_dict(cls, data: dict):
         """Import system from dictionary"""
         system = cls(name=data.get('name', 'Optical System'))
+        system.id = data.get('id', system.id)
+        system.created_at = data.get('created_at', system.created_at)
+        system.modified_at = data.get('modified_at', system.modified_at)
         
         elements_data = data.get('elements', [])
         gaps_data = data.get('air_gaps', [])
         
         for i, elem_data in enumerate(elements_data):
             lens = Lens.from_dict(elem_data['lens'])
-            air_gap = gaps_data[i]['thickness'] if i < len(gaps_data) else 0.0
-            system.add_lens(lens, air_gap_before=air_gap if i > 0 else 0.0)
+            # Gap logic: 
+            # If adding the first lens (i=0), gap_before is 0.
+            # If adding subsequent lenses (i>0), gap_before is the gap stored at index i-1.
+            air_gap = 0.0
+            if i > 0 and i-1 < len(gaps_data):
+                air_gap = gaps_data[i-1]['thickness']
+                
+            system.add_lens(lens, air_gap_before=air_gap)
         
         return system
     
@@ -355,30 +447,48 @@ class AchromaticDoubletDesigner:
         v1 = crown.vd
         v2 = flint.vd
         
-        # Calculate individual focal lengths
-        # f1/v1 + f2/v2 = 0  =>  f2 = -f1 * v2/v1
-        # 1/f = 1/f1 + 1/f2  =>  1/f = 1/f1 - v1/(f1*v2)
-        # Solving: f1 = f * (1 + v1/v2)
+        # Power distribution for achromat:
+        # P1 = P * V1 / (V1 - V2)
+        # P2 = P * V2 / (V2 - V1)
+        # f1 = 1/P1, f2 = 1/P2
         
-        f1 = focal_length * (1 + v1/v2)
-        f2 = -f1 * v2/v1
+        if v1 == v2:
+             # Impossible to achromatize with same Abbe number
+             f1 = focal_length * 2
+             f2 = focal_length * 2
+        else:
+            f1 = focal_length * (v1 - v2) / v1
+            f2 = focal_length * (v2 - v1) / v2
         
         # Calculate radii for each element
-        # Using equiconvex/equiconcave approximation
+        # Crown (Equiconvex approximation)
         n1 = crown.nd
         n2 = flint.nd
         
-        # For crown (positive): R1 > 0, R2 < 0
         # Lensmaker: 1/f = (n-1)(1/R1 - 1/R2)
-        # For symmetric: R1 = -R2 = R
-        # 1/f = (n-1)*2/R  =>  R = 2*f*(n-1)
+        # Equiconvex: R1 = -R2 = 2*f*(n-1)
         
-        R1_crown = 2 * f1 * (n1 - 1) / 1.5  # Slightly asymmetric for better correction
-        R2_crown = -R1_crown * 1.2  # Contact surface (shared with flint)
+        R1_crown = 2 * f1 * (n1 - 1)
+        R2_crown = -R1_crown
         
-        # Flint element (negative): R1 = R2_crown, R2 > 0
+        # Flint element (negative)
+        # Cemented: R1_flint = R2_crown
         R1_flint = R2_crown
-        R2_flint = 1 / (1/(2*f2*(n2-1)) - 1/R1_flint) if f2 != 0 else -R2_crown * 1.5
+        
+        # Calculate R2_flint to satisfy f2
+        # P2 = 1/f2 = (n2-1)(1/R1_flint - 1/R2_flint)
+        # 1/f2 / (n2-1) = 1/R1_flint - 1/R2_flint
+        # 1/R2_flint = 1/R1_flint - 1/(f2*(n2-1))
+        
+        term = 1.0/(f2 * (n2 - 1))
+        inv_R2 = (1.0 / R1_flint) - term
+        
+        if abs(inv_R2) < 1e-10:
+             R2_flint = 0.0 # Planar? Or infinite?
+             # For this codebase, let's use a very large number for infinity
+             R2_flint = 1e10
+        else:
+             R2_flint = 1.0 / inv_R2
         
         # Create lenses
         crown_lens = Lens(
@@ -439,16 +549,25 @@ def create_triplet(focal_length: float = 100.0, diameter: float = 50.0) -> Optic
     """Create a simple triplet (Cooke triplet approximation)"""
     
     # Simplified Cooke triplet design
-    # Positive crown - negative flint - positive crown
+    # Powers chosen to roughly sum to 1/f with spacing
     
-    f1 = focal_length * 0.6
-    f2 = -focal_length * 0.4
-    f3 = focal_length * 0.6
+    f1 = focal_length * 0.75
+    f2 = -focal_length * 0.5
+    f3 = focal_length * 0.75
+    
+    # Calculate radii
+    # Lens 1 (BK7): Equiconvex
+    n_bk7 = 1.5168
+    r1_crown = 2 * f1 * (n_bk7 - 1)
+    
+    # Lens 2 (SF11): Equiconcave
+    n_sf11 = 1.7847
+    r_flint = 2 * abs(f2) * (n_sf11 - 1)
     
     lens1 = Lens(
         name="Front Crown",
-        radius_of_curvature_1=60,
-        radius_of_curvature_2=-60,
+        radius_of_curvature_1=r1_crown,
+        radius_of_curvature_2=-r1_crown,
         thickness=diameter * 0.1,
         diameter=diameter,
         material="BK7"
@@ -456,8 +575,8 @@ def create_triplet(focal_length: float = 100.0, diameter: float = 50.0) -> Optic
     
     lens2 = Lens(
         name="Flint",
-        radius_of_curvature_1=-50,
-        radius_of_curvature_2=50,
+        radius_of_curvature_1=-r_flint,
+        radius_of_curvature_2=r_flint,
         thickness=diameter * 0.05,
         diameter=diameter * 0.8,
         material="SF11"
@@ -465,16 +584,20 @@ def create_triplet(focal_length: float = 100.0, diameter: float = 50.0) -> Optic
     
     lens3 = Lens(
         name="Rear Crown",
-        radius_of_curvature_1=60,
-        radius_of_curvature_2=-60,
+        radius_of_curvature_1=r1_crown,
+        radius_of_curvature_2=-r1_crown,
         thickness=diameter * 0.1,
         diameter=diameter,
         material="BK7"
     )
     
     system = OpticalSystem(name="Triplet")
+    
+    # Air gaps roughly 10% of focal length or based on diameter
+    gap = focal_length * 0.05
+    
     system.add_lens(lens1, air_gap_before=0)
-    system.add_lens(lens2, air_gap_before=diameter * 0.1)
-    system.add_lens(lens3, air_gap_before=diameter * 0.1)
+    system.add_lens(lens2, air_gap_before=gap)
+    system.add_lens(lens3, air_gap_before=gap)
     
     return system
