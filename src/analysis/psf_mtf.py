@@ -1,6 +1,13 @@
 from typing import List, Tuple, Dict, Any, Optional, Union
 import math
-import numpy as np
+
+# Optional dependencies
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+    np = None # Dummy
 
 # Import dependencies
 try:
@@ -422,10 +429,13 @@ class ImageQualityAnalyzer:
         """
         try:
             from scipy.signal import fftconvolve
+            # Helper for when scipy is available
+            def _convolve(img, kern):
+                return fftconvolve(img, kern, mode='same')
         except ImportError:
-            # Fallback: simple blur if scipy is missing
-            # But we really should have scipy for this
-            return image_array
+            # Fallback: use numpy-based fft convolution
+            def _convolve(img, kern):
+                return self._numpy_fftconvolve(img, kern)
 
         output_image = np.zeros_like(image_array)
         
@@ -465,8 +475,39 @@ class ImageQualityAnalyzer:
             # Convolve
             channel = image_array[:, :, i]
             # mode='same' keeps the output size same as input
-            convolved = fftconvolve(channel, kernel, mode='same')
+            convolved = _convolve(channel, kernel)
             
             output_image[:, :, i] = convolved
             
         return np.clip(output_image, 0, 1)
+
+    def _numpy_fftconvolve(self, img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
+        """
+        Fallback FFT convolution using numpy.
+        """
+        h, w = img.shape
+        kh, kw = kernel.shape
+        
+        # Pad to size M + N - 1
+        shape = (h + kh - 1, w + kw - 1)
+        
+        # FFT
+        fft_img = np.fft.fft2(img, s=shape)
+        fft_ker = np.fft.fft2(kernel, s=shape)
+        
+        # Multiply
+        fft_out = fft_img * fft_ker
+        
+        # IFFT
+        out_full = np.real(np.fft.ifft2(fft_out))
+        
+        # Crop to 'same' size
+        # Center of full convolution is at (h+kh-2)/2, (w+kw-2)/2
+        # We want window of size h, w around center
+        
+        start_y = (kh - 1) // 2
+        start_x = (kw - 1) // 2
+        
+        out_crop = out_full[start_y:start_y+h, start_x:start_x+w]
+        
+        return out_crop
