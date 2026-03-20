@@ -552,6 +552,42 @@ class MaterialDatabase:
             with open(output_file, 'w') as f:
                 json.dump(mat.to_dict(), f, indent=2)
 
+    @staticmethod
+    def calculate_model_index(nd: float, vd: float, wavelength_nm: float) -> float:
+        """
+        Calculate refractive index for a 'Model Glass' defined by nd and Vd.
+        Uses a simplified 2-term Cauchy dispersion model.
+        
+        n(λ) = A + B/λ²
+        
+        A and B are derived from nd (at 587.6nm), nF (486.1nm), nC (656.3nm)
+        and the definition of Abbe number Vd = (nd - 1) / (nF - nC).
+        """
+        # Wavelengths in micrometers
+        wl_d = 0.58756
+        wl_F = 0.48613
+        wl_C = 0.65627
+        
+        wl_nm_um = wavelength_nm / 1000.0
+        
+        # 1. Calculate B
+        # B = (nd - 1) / (Vd * (1/wl_F² - 1/wl_C²))
+        term = (1.0 / (wl_F**2)) - (1.0 / (wl_C**2))
+        
+        if abs(vd * term) < 1e-9:
+             return nd # Avoid division by zero
+             
+        B = (nd - 1.0) / (vd * term)
+        
+        # 2. Calculate A
+        # A = nd - B/wl_d²
+        A = nd - (B / (wl_d**2))
+        
+        # 3. Calculate n at target wavelength
+        n = A + (B / (wl_nm_um**2))
+        
+        return n
+
 
 # Convenience function
 def get_material_database() -> MaterialDatabase:

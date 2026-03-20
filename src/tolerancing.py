@@ -28,6 +28,7 @@ class ToleranceType(enum.Enum):
     TILT_X = "Tilt X"
     TILT_Y = "Tilt Y"
     AIR_GAP = "Air Gap"
+    ABBE_NUMBER = "Abbe Number"
 
 @dataclass
 class ToleranceOperand:
@@ -95,7 +96,35 @@ class MonteCarloAnalyzer:
             elif tol.param_type == ToleranceType.THICKNESS:
                 lens.thickness += delta
             elif tol.param_type == ToleranceType.REFRACTIVE_INDEX:
-                lens.refractive_index += delta
+                # Ensure we are in model glass mode for consistent updates
+                if not lens.model_glass_mode:
+                    lens.model_glass_mode = True
+                    lens.model_nd = lens.refractive_index
+                    # Get Vd if possible, otherwise keep default
+                    try:
+                        from .material_database import get_material_database
+                        db = get_material_database()
+                        mat = db.get_material(lens.material)
+                        if mat: lens.model_vd = mat.vd
+                    except: pass
+                
+                lens.model_nd += delta
+                lens.update_refractive_index()
+                
+            elif tol.param_type == ToleranceType.ABBE_NUMBER:
+                if not lens.model_glass_mode:
+                    lens.model_glass_mode = True
+                    lens.model_nd = lens.refractive_index
+                    try:
+                        from .material_database import get_material_database
+                        db = get_material_database()
+                        mat = db.get_material(lens.material)
+                        if mat: lens.model_vd = mat.vd
+                    except: pass
+                
+                lens.model_vd += delta
+                lens.update_refractive_index()
+
             elif tol.param_type == ToleranceType.DECENTER_Y:
                 node.position.y += delta
             elif tol.param_type == ToleranceType.TILT_X:
@@ -259,7 +288,31 @@ class InverseSensitivityAnalyzer:
         elif tol.param_type == ToleranceType.THICKNESS:
             lens.thickness += value
         elif tol.param_type == ToleranceType.REFRACTIVE_INDEX:
-            lens.refractive_index += value
+            if not lens.model_glass_mode:
+                lens.model_glass_mode = True
+                lens.model_nd = lens.refractive_index
+                try:
+                    from .material_database import get_material_database
+                    db = get_material_database()
+                    mat = db.get_material(lens.material)
+                    if mat: lens.model_vd = mat.vd
+                except: pass
+            lens.model_nd += value
+            lens.update_refractive_index()
+            
+        elif tol.param_type == ToleranceType.ABBE_NUMBER:
+            if not lens.model_glass_mode:
+                lens.model_glass_mode = True
+                lens.model_nd = lens.refractive_index
+                try:
+                    from .material_database import get_material_database
+                    db = get_material_database()
+                    mat = db.get_material(lens.material)
+                    if mat: lens.model_vd = mat.vd
+                except: pass
+            lens.model_vd += value
+            lens.update_refractive_index()
+            
         elif tol.param_type == ToleranceType.DECENTER_Y:
             node.position.y += value
         elif tol.param_type == ToleranceType.TILT_X:

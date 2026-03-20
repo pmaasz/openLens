@@ -592,6 +592,16 @@ class LensOptimizer:
         elif parameter == "air_gap":
             if element_index < len(system.air_gaps):
                 system.air_gaps[element_index].thickness = value
+        elif parameter == "refractive_index":
+            lens = system.elements[element_index].lens
+            lens.model_glass_mode = True
+            lens.model_nd = value
+            lens.update_refractive_index()
+        elif parameter == "abbe_number":
+            lens = system.elements[element_index].lens
+            lens.model_glass_mode = True
+            lens.model_vd = value
+            lens.update_refractive_index()
 
 
 def create_doublet_optimizer(system: OpticalSystem, target_focal_length: float = 100.0) -> LensOptimizer:

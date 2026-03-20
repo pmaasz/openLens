@@ -265,6 +265,31 @@ class OptimizationController:
             self._add_variable_checkbox(group, f"Thick ({element.lens.thickness:.2f})", 
                                       f"th_{i}", default=False)
             
+            # Glass Properties
+            # Get current Vd for display
+            vd_display = 0.0
+            nd_display = element.lens.refractive_index
+            
+            if element.lens.model_glass_mode:
+                nd_display = element.lens.model_nd
+                vd_display = element.lens.model_vd
+            else:
+                # Try to look up Vd from material name
+                try:
+                    # Import here to avoid circular deps if any
+                    from ..material_database import get_material_database
+                    db = get_material_database()
+                    mat = db.get_material(element.lens.material)
+                    if mat:
+                        vd_display = mat.vd
+                except:
+                    pass
+            
+            self._add_variable_checkbox(group, f"Index ({nd_display:.4f})", 
+                                      f"nd_{i}", default=False)
+            self._add_variable_checkbox(group, f"Abbe ({vd_display:.1f})", 
+                                      f"vd_{i}", default=False)
+            
             # Air gap (if not last)
             if i < len(self.current_lens.air_gaps):
                 gap = self.current_lens.air_gaps[i]
@@ -485,6 +510,46 @@ class OptimizationController:
                             min_value=min_thickness, max_value=max_thickness
                         )
                         variables.append(var)
+
+                    # Refractive Index (Nd)
+                    if self.variable_vars.get(f"nd_{i}", tk.BooleanVar(value=False)).get():
+                         current_lens = self.current_lens.elements[i].lens
+                         val = current_lens.model_nd if current_lens.model_glass_mode else current_lens.refractive_index
+                         
+                         var = OptimizationVariable(
+                            name=f"Nd_Elem{i+1}",
+                            element_index=i,
+                            parameter="refractive_index",
+                            current_value=val,
+                            min_value=1.3, max_value=2.4,
+                            step_size=0.01
+                         )
+                         variables.append(var)
+
+                    # Abbe Number (Vd)
+                    if self.variable_vars.get(f"vd_{i}", tk.BooleanVar(value=False)).get():
+                         current_lens = self.current_lens.elements[i].lens
+                         val = 64.17 # Default fallback
+                         
+                         if current_lens.model_glass_mode:
+                             val = current_lens.model_vd
+                         else:
+                             try:
+                                 from ..material_database import get_material_database
+                                 db = get_material_database()
+                                 mat = db.get_material(current_lens.material)
+                                 if mat: val = mat.vd
+                             except: pass
+                             
+                         var = OptimizationVariable(
+                            name=f"Vd_Elem{i+1}",
+                            element_index=i,
+                            parameter="abbe_number",
+                            current_value=val,
+                            min_value=10.0, max_value=100.0,
+                            step_size=1.0
+                         )
+                         variables.append(var)
 
                     # Air Gap
                     if i < num_elements - 1:

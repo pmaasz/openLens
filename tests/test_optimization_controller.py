@@ -142,5 +142,66 @@ class TestOptimizationController(unittest.TestCase):
         self.assertIsInstance(self.controller.current_lens, Lens)
         self.assertEqual(self.controller.current_lens.radius_of_curvature_1, 55)
 
+    def test_glass_variables_ui(self):
+        """Test that Glass (Index/Abbe) variables appear in UI"""
+        # Create a system (glass vars only appear for system optimization currently, or should check logic)
+        # Logic says: if hasattr(elements)... else single lens mode.
+        # Single lens mode logic (lines 507+) in controller only adds R1, R2, Th.
+        # Glass vars were added only in the 'Multi-element system' block (lines 251+).
+        # So we must use OpticalSystem.
+        
+        sys_obj = OpticalSystem()
+        l1 = Lens(name="L1", material="BK7")
+        sys_obj.add_lens(l1)
+        
+        self.controller.load_lens(sys_obj)
+        
+        # Check for Index/Abbe checkboxes
+        self.assertIn('nd_0', self.controller.variable_vars)
+        self.assertIn('vd_0', self.controller.variable_vars)
+        
+        # Defaults should be False
+        self.assertFalse(self.controller.variable_vars['nd_0'].get())
+        self.assertFalse(self.controller.variable_vars['vd_0'].get())
+
+    @patch('gui.optimization_controller.LensOptimizer')
+    def test_run_optimization_glass_variables(self, MockOptimizer):
+        sys_obj = OpticalSystem()
+        l1 = Lens(name="L1", material="BK7")
+        sys_obj.add_lens(l1)
+        self.controller.load_lens(sys_obj)
+        
+        # Enable Glass Variables
+        if 'nd_0' in self.controller.variable_vars:
+            self.controller.variable_vars['nd_0'].set(True)
+        if 'vd_0' in self.controller.variable_vars:
+            self.controller.variable_vars['vd_0'].set(True)
+        
+        # Mock Optimizer
+        mock_instance = MockOptimizer.return_value
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.initial_merit = 1.0
+        mock_result.final_merit = 0.5
+        mock_result.optimized_system = sys_obj
+        mock_instance.optimize.return_value = mock_result
+        
+        # Run worker
+        self.controller._optimization_worker()
+        
+        # Verify variables passed to optimizer
+        call_args = MockOptimizer.call_args
+        if call_args:
+            variables_passed = call_args[0][1]
+            
+            nd_var = next((v for v in variables_passed if v.parameter == "refractive_index"), None)
+            vd_var = next((v for v in variables_passed if v.parameter == "abbe_number"), None)
+            
+            self.assertIsNotNone(nd_var)
+            self.assertIsNotNone(vd_var)
+            
+            self.assertEqual(nd_var.element_index, 0)
+            self.assertEqual(vd_var.element_index, 0)
+
 if __name__ == '__main__':
     unittest.main()

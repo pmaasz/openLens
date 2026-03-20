@@ -51,7 +51,10 @@ class Lens:
                  temperature: float = 20.0,
                  is_fresnel: bool = False,
                  groove_pitch: float = DEFAULT_THICKNESS,
-                 num_grooves: Optional[int] = None) -> None:
+                 num_grooves: Optional[int] = None,
+                 model_glass_mode: bool = False,
+                 model_nd: float = 1.5168,
+                 model_vd: float = 64.17) -> None:
         
         self.id = datetime.now().strftime("%Y%m%d%H%M%S%f")
         self.name = name
@@ -63,8 +66,24 @@ class Lens:
         self.wavelength = wavelength  # Design wavelength in nm
         self.temperature = temperature  # Operating temperature in °C
         
+        # Model Glass Properties
+        self.model_glass_mode = model_glass_mode
+        self.model_nd = model_nd
+        self.model_vd = model_vd
+
         # Get refractive index from material database if available
-        if MATERIAL_DB_AVAILABLE:
+        if self.model_glass_mode and MATERIAL_DB_AVAILABLE:
+            try:
+                db = get_material_database()
+                # Check if db has the new method (it might not if reload failed, but here we assume it works)
+                if hasattr(db, 'calculate_model_index'):
+                    self.refractive_index = db.calculate_model_index(self.model_nd, self.model_vd, self.wavelength)
+                else:
+                     # Fallback if method missing
+                     self.refractive_index = self.model_nd
+            except Exception:
+                self.refractive_index = self.model_nd
+        elif MATERIAL_DB_AVAILABLE:
             try:
                 db = get_material_database()
                 mat = db.get_material(material)
@@ -102,7 +121,18 @@ class Lens:
         if temperature is not None:
             self.temperature = temperature
         
-        if MATERIAL_DB_AVAILABLE:
+        if self.model_glass_mode and MATERIAL_DB_AVAILABLE:
+            try:
+                db = get_material_database()
+                if hasattr(db, 'calculate_model_index'):
+                    self.refractive_index = db.calculate_model_index(
+                        self.model_nd, self.model_vd, self.wavelength
+                    )
+                else:
+                    self.refractive_index = self.model_nd
+            except Exception:
+                pass
+        elif MATERIAL_DB_AVAILABLE:
             try:
                 db = get_material_database()
                 self.refractive_index = db.get_refractive_index(
@@ -135,6 +165,9 @@ class Lens:
             "is_fresnel": self.is_fresnel,
             "groove_pitch": self.groove_pitch,
             "num_grooves": self.num_grooves,
+            "model_glass_mode": self.model_glass_mode,
+            "model_nd": self.model_nd,
+            "model_vd": self.model_vd,
             "created_at": self.created_at,
             "modified_at": self.modified_at
         }
@@ -155,7 +188,10 @@ class Lens:
             temperature=data.get("temperature", 20.0),
             is_fresnel=data.get("is_fresnel", False),
             groove_pitch=data.get("groove_pitch", DEFAULT_THICKNESS),
-            num_grooves=data.get("num_grooves", None)
+            num_grooves=data.get("num_grooves", None),
+            model_glass_mode=data.get("model_glass_mode", False),
+            model_nd=data.get("model_nd", 1.5168),
+            model_vd=data.get("model_vd", 64.17)
         )
         lens.id = data.get("id", lens.id)
         lens.created_at = data.get("created_at", lens.created_at)
