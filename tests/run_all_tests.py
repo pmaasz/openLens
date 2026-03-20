@@ -76,6 +76,8 @@ try:
     import test_tolerancing
     import test_environmental
     import test_spot_diagram_chromatic
+    import test_polarization_ray_tracing
+    import test_material_cache
     
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
@@ -83,6 +85,8 @@ try:
     suite.addTests(loader.loadTestsFromModule(test_tolerancing))
     suite.addTests(loader.loadTestsFromModule(test_environmental))
     suite.addTests(loader.loadTestsFromModule(test_spot_diagram_chromatic))
+    suite.addTests(loader.loadTestsFromModule(test_polarization_ray_tracing))
+    suite.addTests(loader.loadTestsFromModule(test_material_cache))
     
     runner = unittest.TextTestRunner(verbosity=2)
     result_analysis = runner.run(suite)
