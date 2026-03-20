@@ -12,6 +12,7 @@ import csv
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 import math
+from functools import lru_cache
 
 # Setup module logger
 logger = logging.getLogger(__name__)
@@ -268,6 +269,8 @@ class MaterialDatabase:
     def add_material(self, material: MaterialProperties):
         """Add or update material"""
         self.materials[material.name.upper()] = material
+        # Clear cache as material properties might have changed
+        self.get_refractive_index.cache_clear()
         self.save_database()
     
     def list_materials(self, catalog: Optional[str] = None) -> List[str]:
@@ -277,11 +280,14 @@ class MaterialDatabase:
                    if mat.catalog.upper() == catalog.upper()]
         return list(self.materials.keys())
     
+    @lru_cache(maxsize=1024)
     def get_refractive_index(self, material_name: str, wavelength_nm: float, 
                             temperature_c: float = 20.0) -> float:
         """
         Calculate refractive index at specific wavelength and temperature
-        using Sellmeier equation and temperature coefficients
+        using Sellmeier equation and temperature coefficients.
+        
+        Cached for performance (LRU 1024 entries).
         """
         mat = self.get_material(material_name)
         if not mat:
@@ -310,6 +316,10 @@ class MaterialDatabase:
             n_base += dn_abs + dn_rel
         
         return n_base
+    
+    def clear_cache(self):
+        """Clear refractive index cache"""
+        self.get_refractive_index.cache_clear()
     
     def get_transmission(self, material_name: str, wavelength_nm: float, thickness_mm: float = 10.0) -> float:
         """
