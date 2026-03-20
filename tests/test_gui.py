@@ -14,7 +14,8 @@ import sys
 
 # Add src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
-from lens_editor_gui import Lens, LensEditorWindow
+from lens import Lens
+from lens_editor_gui import LensEditorWindow
 
 
 class TestGUILensEditor(unittest.TestCase):
@@ -368,7 +369,7 @@ class TestGUIDataPersistence(unittest.TestCase):
         root2.withdraw()
         editor2 = LensEditorWindow(root2)
         editor2.storage_file = self.temp_file.name
-        editor2.lenses = editor2.load_lenses()
+        editor2.lenses = editor2.storage.load_lenses()
         
         self.assertEqual(len(editor2.lenses), 2)
         self.assertEqual(editor2.lenses[0].name, "Saved Lens 1")

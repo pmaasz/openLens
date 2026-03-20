@@ -2,53 +2,543 @@
 OpenLens GUI Main Window Module
 
 This module provides the main LensEditorWindow class for the OpenLens
-application. It re-exports from the original lens_editor_gui module
-for backward compatibility while providing a cleaner package structure.
-
-The full implementation remains in src/lens_editor_gui.py to maintain
-compatibility with existing code. This module provides:
-- LensEditorWindow: The main application window class
-- Helper utilities for GUI setup
-
-Future versions may migrate more functionality into this module.
+application.
 """
 
 import logging
-from typing import TYPE_CHECKING
+import tkinter as tk
+from tkinter import ttk
+import os
+from typing import Optional, List, Any, TYPE_CHECKING, cast
 
+if TYPE_CHECKING:
+    from ..lens import Lens
+    from ..gui_controllers import (
+        LensSelectionController,
+        LensEditorController,
+        SimulationController,
+        PerformanceController,
+        ExportController
+    )
+    from ..lens_visualizer import LensVisualizer
+
+# Configure module logger
 logger = logging.getLogger(__name__)
 
-# Re-export the main window class from the original module
+# Import constants
 try:
-    from ..lens_editor_gui import LensEditorWindow, ToolTip
+    from ..constants import (
+        # GUI Colors
+        COLOR_BG_DARK, COLOR_FG,
+        # Font settings
+        FONT_FAMILY, FONT_SIZE_NORMAL, FONT_SIZE_LARGE, FONT_SIZE_TITLE,
+        # Padding
+        PADDING_SMALL, PADDING_XLARGE,
+    )
+except ImportError:
+    # Fallback if constants module not found
+    COLOR_BG_DARK = '#252526'
+    COLOR_FG = '#e0e0e0'
+    FONT_FAMILY = 'Arial'
+    FONT_SIZE_NORMAL = 10
+    FONT_SIZE_LARGE = 12
+    FONT_SIZE_TITLE = 14
+    PADDING_SMALL = 5
+    PADDING_XLARGE = 20
+
+# Import theme and storage
+from .theme import ThemeManager, COLORS, setup_dark_mode
+from .storage import LensStorage
+
+# Try to import visualization (optional dependency)
+try:
+    from ..lens_visualizer import LensVisualizer
+    VISUALIZATION_AVAILABLE = True
 except ImportError:
     try:
-        from lens_editor_gui import LensEditorWindow, ToolTip
+        from lens_visualizer import LensVisualizer
+        VISUALIZATION_AVAILABLE = True
     except ImportError:
-        logger.error("Could not import LensEditorWindow from lens_editor_gui")
-        # Provide stub for type checking
-        if TYPE_CHECKING:
-            class LensEditorWindow:  # type: ignore
-                """Stub class for type checking."""
-                pass
+        VISUALIZATION_AVAILABLE = False
+        logger.info("matplotlib not available. 3D visualization disabled.")
+
+# Try to import aberrations calculator
+try:
+    from ..aberrations import AberrationsCalculator
+    ABERRATIONS_AVAILABLE = True
+except ImportError:
+    try:
+        from aberrations import AberrationsCalculator
+        ABERRATIONS_AVAILABLE = True
+    except ImportError:
+        ABERRATIONS_AVAILABLE = False
+        logger.info("Aberrations calculator not available.")
+
+# Try to import GUI controllers
+try:
+    from ..gui_controllers import (
+        LensSelectionController,
+        LensEditorController,
+        SimulationController,
+        PerformanceController,
+        ExportController
+    )
+    CONTROLLERS_AVAILABLE = True
+except ImportError:
+    try:
+        from gui_controllers import (
+            LensSelectionController,
+            LensEditorController,
+            SimulationController,
+            PerformanceController,
+            ExportController
+        )
+        CONTROLLERS_AVAILABLE = True
+    except ImportError:
+        CONTROLLERS_AVAILABLE = False
+        logger.info("GUI controllers not available.")
+
+# Import Lens model
+try:
+    from ..lens import Lens
+except ImportError:
+    try:
+        from lens import Lens
+    except ImportError:
+        logger.error("Could not import Lens model")
+        # Runtime fallback
+        if not TYPE_CHECKING:
+            class Lens: pass
+
+class LensEditorWindow:
+    
+    def __init__(self, root: tk.Tk) -> None:
+        self.root = root
+        self.root.title("openlens - Optical Lens Editor")
+        self.root.geometry("1400x800")
+        
+        # Initialize storage
+        self.storage_file = "lenses.json"
+        self.storage = LensStorage(self.storage_file, self.update_status)
+        self.lenses: List['Lens'] = self.storage.load_lenses()
+        
+        self.current_lens: Optional['Lens'] = None
+        self.visualizer: Optional['LensVisualizer'] = None
+        self.selected_lens_id: Optional[str] = None
+        self._loading_lens: bool = False
+        self._autosave_timer: Optional[str] = None
+        
+        # Initialize status_var early
+        self.status_var = tk.StringVar(value="Welcome to openlens")
+        
+        # Initialize controllers (None until UI setup)
+        self.selection_controller: Optional['LensSelectionController'] = None
+        self.editor_controller: Optional['LensEditorController'] = None
+        self.simulation_controller: Optional['SimulationController'] = None
+        self.performance_controller: Optional['PerformanceController'] = None
+        self.export_controller: Optional['ExportController'] = None
+        
+        # Configure dark mode
+        self.colors = COLORS
+        self.theme_manager = setup_dark_mode(self.root, self.colors)
+        
+        self.setup_ui()
+        
+    def save_lenses(self) -> bool:
+        """Save all lenses to JSON storage file"""
+        return self.storage.save_lenses(self.lenses)
+    
+    def setup_ui(self) -> None:
+        # Main container
+        main_frame = ttk.Frame(self.root, padding="10")
+        main_frame.grid(row=0, column=0, sticky="nsew")
+        
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(0, weight=1)
+        
+        # Create tabbed interface
+        self.notebook = ttk.Notebook(main_frame)
+        self.notebook.grid(row=0, column=0, sticky="nsew")
+        self.notebook.bind('<<NotebookTabChanged>>', self.on_tab_changed)
+        
+        # Create Lens Selection tab (always enabled)
+        self.selection_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.selection_tab, text="Lens Selection")
+        
+        # Create Editor tab (disabled until lens selected)
+        self.editor_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.editor_tab, text="Editor", state='disabled')
+        
+        # Create Simulation tab (disabled until lens selected)
+        self.simulation_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.simulation_tab, text="Simulation", state='disabled')
+        
+        # Create Performance tab (disabled until lens selected)
+        self.performance_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.performance_tab, text="Performance", state='disabled')
+        
+        # Create Export tab (disabled until lens selected)
+        self.export_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.export_tab, text="Export", state='disabled')
+        
+        # Configure tabs grid
+        self.selection_tab.columnconfigure(0, weight=1)
+        self.selection_tab.rowconfigure(0, weight=1)
+        
+        self.editor_tab.columnconfigure(1, weight=1)
+        self.editor_tab.columnconfigure(2, weight=1)
+        self.editor_tab.rowconfigure(0, weight=1)
+        
+        # Setup tab content
+        self.setup_selection_tab()
+        self.setup_editor_tab()
+        self.setup_simulation_tab()
+        self.setup_performance_tab()
+        self.setup_export_tab()
+        
+        # Status bar (below tabs)
+        status_frame = ttk.Frame(main_frame)
+        status_frame.grid(row=1, column=0, sticky="ew", pady=PADDING_SMALL, padx=PADDING_SMALL)
+        
+        self.status_var = tk.StringVar(value="Select or create a lens to begin")
+        status_label = ttk.Label(status_frame, textvariable=self.status_var, 
+                                 relief=tk.SUNKEN, anchor=tk.W,
+                                 font=('Arial', 9, 'bold'),
+                                 padding=(5, 3))
+        status_label.pack(fill=tk.X)
+        
+        self.update_status("Select or create a lens to begin")
+    
+    def setup_selection_tab(self) -> None:
+        """Setup the Lens Selection tab using controller"""
+        if not CONTROLLERS_AVAILABLE:
+            ttk.Label(self.selection_tab, text="Error: GUI Controllers not available").pack(padx=20, pady=20)
+            return
+
+        try:
+            # We know LensSelectionController is available here because of the check above
+            # but we need to satisfy static analysis
+            if TYPE_CHECKING:
+                assert LensSelectionController is not None
+
+            self.selection_controller = LensSelectionController(
+                parent_window=self,
+                lens_list=self.lenses,
+                colors=self.colors,
+                on_lens_selected=self.on_lens_selected_callback,
+                on_create_new=self.on_create_new_lens,
+                on_delete=self.on_delete_lens,
+                on_lens_updated=self.on_lens_updated_callback,
+                on_export=None
+            )
+            self.selection_controller.setup_ui(self.selection_tab)
+        except Exception as e:
+            logger.error("Failed to initialize selection controller: %s", e)
+            ttk.Label(self.selection_tab, text=f"Error loading selection tab: {e}").pack(padx=20, pady=20)
+    
+    # Controller callback methods
+    def on_lens_selected_callback(self, lens: 'Lens') -> None:
+        """Callback when a lens is selected from the controller"""
+        self.current_lens = lens
+        
+        # Check if it's an OpticalSystem (multi-lens)
+        is_system = hasattr(lens, 'elements') and hasattr(lens, 'air_gaps')
+        
+        if is_system:
+            # Multi-lens system selected
+            self.notebook.tab(1, state='disabled') # Editor
+            self.notebook.tab(2, state='normal')   # Simulation
+            self.notebook.tab(3, state='disabled') # Performance
+            self.notebook.tab(4, state='disabled') # Export
             
-            class ToolTip:  # type: ignore
-                """Stub class for type checking."""
-                pass
+            # Switch to Simulation tab automatically
+            self.notebook.select(2)
+            
+            # Load system into simulation controller
+            if self.simulation_controller:
+                self.simulation_controller.load_lens(lens)
+                
+            self.update_status(f"Optical System selected ({len(lens.elements)} elements) - Ready to simulate")
+            
+        else:
+            # Single lens selected
+            self.notebook.tab(1, state='normal')
+            self.notebook.tab(2, state='normal')
+            self.notebook.tab(3, state='normal')
+            self.notebook.tab(4, state='normal')
+            
+            # Switch to editor and load lens
+            self.notebook.select(1)
+            
+            # Load lens into controllers
+            if self.editor_controller:
+                self.editor_controller.load_lens(lens)
+                
+            if self.simulation_controller:
+                self.simulation_controller.load_lens(lens)
+            
+            if self.performance_controller:
+                self.performance_controller.load_lens(lens)
+            
+            if self.export_controller:
+                self.export_controller.load_lens(lens)
+            
+            # Update visualization
+            self.on_viz_tab_changed(None)
+            
+            self.update_status(f"Lens selected: '{lens.name}' - Ready to edit")
+    
+    def on_create_new_lens(self) -> None:
+        """Callback when creating a new lens"""
+        self.current_lens = None
+        
+        # Enable tabs
+        self.notebook.tab(1, state='normal')
+        self.notebook.tab(2, state='normal')
+        self.notebook.tab(3, state='normal')
+        self.notebook.tab(4, state='normal')
+        
+        # Switch to editor
+        self.notebook.select(1)
+        
+        # Clear/Prepare editor
+        if self.editor_controller:
+            self.editor_controller.load_lens(None)  # Clears form
+            
+        self.update_status("Ready to create new lens")
+    
+    def on_delete_lens(self, lens: 'Lens') -> None:
+        """Callback when a lens is deleted"""
+        if lens in self.lenses:
+            self.lenses.remove(lens)
+            self.save_lenses()
+        
+        # If current lens was deleted, clear it and disable tabs
+        if self.current_lens == lens:
+            self.current_lens = None
+            self.notebook.tab(1, state='disabled')
+            self.notebook.tab(2, state='disabled')
+            self.notebook.tab(3, state='disabled')
+            self.notebook.tab(4, state='disabled')
+        
+        self.update_status(f"Lens '{lens.name}' deleted")
+    
+    def on_lens_updated_callback(self, lens: Optional['Lens'] = None) -> None:
+        """Callback when lens data is updated"""
+        # If a lens was passed and it's not in our list (newly created), add it
+        if lens and lens not in self.lenses:
+            self.lenses.append(lens)
+            self.current_lens = lens
+            self.update_status(f"New lens '{lens.name}' created")
+            
+        self.save_lenses()
+        if self.selection_controller:
+            self.selection_controller.refresh_lens_list()
 
-# Re-export theme and storage from this package
-from .theme import ThemeManager, COLORS, setup_dark_mode
-from .storage import LensStorage, load_lenses, save_lenses
-from .tooltip import ToolTip as ToolTipWidget
+    def setup_editor_tab(self) -> None:
+        """Setup the Editor tab with lens properties using controller"""
+        if not CONTROLLERS_AVAILABLE:
+            ttk.Label(self.editor_tab, text="Error: GUI Controllers not available").pack(padx=20, pady=20)
+            return
 
-__all__ = [
-    'LensEditorWindow',
-    'ToolTip',
-    'ToolTipWidget',
-    'ThemeManager',
-    'COLORS',
-    'setup_dark_mode',
-    'LensStorage',
-    'load_lenses',
-    'save_lenses',
-]
+        # Configure tab grid
+        self.editor_tab.columnconfigure(0, weight=1)
+        self.editor_tab.columnconfigure(1, weight=1)
+        self.editor_tab.rowconfigure(0, weight=1)
+
+        # Left panel: Editor properties
+        left_container = ttk.Frame(self.editor_tab)
+        left_container.grid(row=0, column=0, sticky="nsew")
+        left_container.columnconfigure(0, weight=1)
+        left_container.rowconfigure(1, weight=1)
+        
+        # Fixed header
+        header_frame = ttk.Frame(left_container, padding="5")
+        header_frame.grid(row=0, column=0, sticky="ew")
+        ttk.Label(header_frame, text="Optical Lens Properties", font=(FONT_FAMILY, FONT_SIZE_TITLE, 'bold')).pack(anchor=tk.W)
+        
+        # Editor content area
+        editor_frame = ttk.Frame(left_container)
+        editor_frame.grid(row=1, column=0, sticky="nsew")
+        
+        try:
+            if TYPE_CHECKING:
+                 assert LensEditorController is not None
+
+            self.editor_controller = LensEditorController(
+                colors=self.colors,
+                on_lens_updated=self.on_lens_updated_callback
+            )
+            self.editor_controller.parent_window = self  # Give access to parent window
+            self.editor_controller.setup_ui(editor_frame)
+        except Exception as e:
+            logger.error("Failed to initialize editor controller: %s", e)
+            ttk.Label(editor_frame, text=f"Error loading editor: {e}").pack(padx=20, pady=20)
+
+        # Right panel: Visualization
+        viz_outer_frame = ttk.Frame(self.editor_tab)
+        viz_outer_frame.grid(row=0, column=1, sticky="nsew")
+        viz_outer_frame.columnconfigure(0, weight=1)
+        viz_outer_frame.rowconfigure(1, weight=1)
+        
+        # Header with title
+        viz_header = ttk.Frame(viz_outer_frame)
+        viz_header.grid(row=0, column=0, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
+        ttk.Label(viz_header, text="Lens Visualization", font=(FONT_FAMILY, FONT_SIZE_LARGE, 'bold')).pack(side=tk.LEFT)
+        
+        # Visualization mode toggle using tabs
+        self.viz_mode_var = tk.StringVar(value="3D")
+        
+        # Create notebook for 2D/3D tabs
+        self.viz_notebook = ttk.Notebook(viz_outer_frame)
+        self.viz_notebook.grid(row=1, column=0, sticky="nsew", padx=PADDING_SMALL, pady=(0, 5))
+        
+        # Create frames for 2D and 3D tabs
+        self.viz_2d_frame = ttk.Frame(self.viz_notebook)
+        self.viz_3d_frame = ttk.Frame(self.viz_notebook)
+        
+        self.viz_notebook.add(self.viz_2d_frame, text="2D")
+        self.viz_notebook.add(self.viz_3d_frame, text="3D")
+        
+        # Bind tab change event
+        self.viz_notebook.bind('<<NotebookTabChanged>>', self.on_viz_tab_changed)
+        
+        # Select 3D tab by default
+        self.viz_notebook.select(1)
+        
+        if VISUALIZATION_AVAILABLE:
+            try:
+                # Create visualizer in the 3D frame initially
+                if TYPE_CHECKING:
+                    assert LensVisualizer is not None
+                
+                self.visualizer = LensVisualizer(self.viz_3d_frame, width=6, height=6)
+            except Exception as e:
+                ttk.Label(self.viz_3d_frame, text=f"Visualization error: {e}", 
+                         wraplength=300).pack(pady=PADDING_XLARGE)
+                self.visualizer = None
+        else:
+            msg = "Visualization not available.\\n\\nInstall dependencies:\\n  pip install matplotlib numpy"
+            ttk.Label(self.viz_3d_frame, text=msg, justify=tk.CENTER, 
+                      font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(pady=PADDING_SMALL)
+            self.visualizer = None
+    
+    def on_viz_tab_changed(self, event: Optional[tk.Event]) -> None:
+        """Handle visualization tab change between 2D and 3D"""
+        if not self.visualizer:
+            return
+        
+        # Get selected tab index
+        try:
+            selected_tab = self.viz_notebook.index(self.viz_notebook.select())
+        except tk.TclError:
+            return
+        
+        # Reparent the canvas to the selected tab's frame
+        if selected_tab == 0:  # 2D tab
+            self.viz_mode_var.set("2D")
+            self.visualizer.reparent_canvas(self.viz_2d_frame)
+        else:  # 3D tab
+            self.viz_mode_var.set("3D")
+            self.visualizer.reparent_canvas(self.viz_3d_frame)
+        
+        # Update the visualization using current lens from controller
+        if self.editor_controller and self.editor_controller.current_lens:
+            lens = self.editor_controller.current_lens
+            mode = self.viz_mode_var.get()
+            try:
+                if mode == "2D":
+                    self.visualizer.draw_lens_2d(
+                        lens.radius_of_curvature_1, 
+                        lens.radius_of_curvature_2, 
+                        lens.thickness, 
+                        lens.diameter
+                    )
+                else:
+                    self.visualizer.draw_lens(
+                        lens.radius_of_curvature_1, 
+                        lens.radius_of_curvature_2, 
+                        lens.thickness, 
+                        lens.diameter
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to update visualization: {e}")
+
+    def setup_simulation_tab(self) -> None:
+        """Setup the Simulation tab for ray tracing and optical analysis"""
+        if not CONTROLLERS_AVAILABLE:
+            ttk.Label(self.simulation_tab, text="Error: GUI Controllers not available").pack(padx=20, pady=20)
+            return
+
+        # Try to use controller if available
+        try:
+            if TYPE_CHECKING:
+                assert SimulationController is not None
+
+            self.simulation_controller = SimulationController(
+                colors=self.colors,
+                visualization_available=VISUALIZATION_AVAILABLE
+            )
+            self.simulation_controller.parent_window = self  # Give access to parent window
+            self.simulation_controller.setup_ui(self.simulation_tab)
+            
+            logger.debug("SimulationController integrated successfully")
+            
+        except Exception as e:
+            logger.error("SimulationController failed to load: %s", e)
+            ttk.Label(self.simulation_tab, text=f"Error loading simulation: {e}").pack(padx=20, pady=20)
+
+    def on_tab_changed(self, event: tk.Event) -> None:
+        """Handle tab change events"""
+        # Get the currently selected tab index
+        try:
+            selected_tab = self.notebook.index(self.notebook.select())
+        except tk.TclError:
+            return
+        
+        # If switching to simulation tab (index 2) and we have a current lens
+        if selected_tab == 2 and self.current_lens:
+            if self.simulation_controller:
+                self.simulation_controller.load_lens(self.current_lens)
+                self.simulation_controller.run_simulation()
+
+    def setup_performance_tab(self) -> None:
+        """Setup the Performance Metrics Dashboard tab"""
+        try:
+            if CONTROLLERS_AVAILABLE:
+                if TYPE_CHECKING:
+                    assert PerformanceController is not None
+
+                self.performance_controller = PerformanceController(
+                    colors=self.colors,
+                    aberrations_available=ABERRATIONS_AVAILABLE
+                )
+                self.performance_controller.setup_ui(self.performance_tab)
+                
+                logger.debug("PerformanceController integrated successfully")
+            else:
+                 ttk.Label(self.performance_tab, text="Performance Controller not available").pack(padx=20, pady=20)
+            
+        except Exception as e:
+            logger.error("PerformanceController failed to load: %s", e)
+            ttk.Label(self.performance_tab, text=f"Error loading performance tab: {e}").pack(padx=20, pady=20)
+
+    def setup_export_tab(self) -> None:
+        """Setup the Export Enhancements tab"""
+        if CONTROLLERS_AVAILABLE:
+            try:
+                if TYPE_CHECKING:
+                    assert ExportController is not None
+
+                self.export_controller = ExportController(self, self.colors)
+                self.export_controller.setup_ui(self.export_tab)
+                return
+            except Exception as e:
+                logger.warning("Failed to initialize ExportController: %s", e)
+                self.export_controller = None
+
+    def update_status(self, message: str) -> None:
+        self.status_var.set(message)
+        self.root.update_idletasks()

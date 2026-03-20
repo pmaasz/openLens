@@ -122,5 +122,27 @@ class TestRayTracer3D(unittest.TestCase):
         self.assertGreaterEqual(len(ray.path), 6)
         self.assertFalse(ray.terminated)
 
+    def test_trace_edge_ray_crossed(self):
+        # Create a lens with crossed surfaces at the edge
+        # R=100, D=50, Th=5. Sag at D/2=25 is ~3.2mm. TotalSag ~6.4 > 5.0.
+        # This creates a lens where surfaces cross near the edge.
+        crossed_lens = Lens(
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=50.0,
+            refractive_index=1.5
+        )
+        tracer = LensRayTracer3D(crossed_lens)
+        
+        # Ray at edge y=24
+        # At y=24, sag is large enough to cross
+        ray = Ray3D(vec3(-50, 24, 0), vec3(1, 0, 0))
+        
+        tracer.trace_ray(ray)
+        
+        # Should not terminate inside (should pass through or exit immediately)
+        self.assertFalse(ray.terminated, "Ray terminated inside crossed lens region")
+
 if __name__ == '__main__':
     unittest.main()

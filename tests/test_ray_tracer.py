@@ -298,12 +298,14 @@ class TestLensRayTracer(unittest.TestCase):
         self.assertEqual(tracer.front_vertex_x, tracer.lens_offset)
         self.assertEqual(tracer.back_vertex_x, tracer.lens_offset + self.biconvex.thickness)
         
-        # Front surface center: For R1>0 (convex), center is to the left
-        expected_front_center = tracer.lens_offset - abs(self.biconvex.radius_of_curvature_1)
+        # Front surface center: For R1>0 (convex), center is to the RIGHT (standard sign convention)
+        # Center = Vertex + R
+        expected_front_center = tracer.front_vertex_x + self.biconvex.radius_of_curvature_1
         self.assertAlmostEqual(tracer.front_center_x, expected_front_center)
         
-        # Back surface center: For R2<0 (convex), center is to the right
-        expected_back_center = tracer.back_vertex_x + abs(self.biconvex.radius_of_curvature_2)
+        # Back surface center: For R2<0 (convex), center is to the LEFT (standard sign convention)
+        # Center = Vertex + R
+        expected_back_center = tracer.back_vertex_x + self.biconvex.radius_of_curvature_2
         self.assertAlmostEqual(tracer.back_center_x, expected_back_center)
 
 

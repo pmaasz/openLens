@@ -3,8 +3,10 @@ import math
 from typing import List, Optional, Tuple, Any, Dict, Union
 try:
     from .vector3 import Vector3, vec3
+    from .transform import Matrix4x4
 except ImportError:
     from vector3 import Vector3, vec3
+    from transform import Matrix4x4
 
 class OpticalNode:
     """
@@ -21,24 +23,39 @@ class OpticalNode:
         self.rotation = vec3(0, 0, 0) # Euler angles (deg): Tilt X, Tilt Y, Tilt Z
         
         # Cache for global transform
-        self._global_position: Optional[Vector3] = None
-        self._global_rotation_matrix = None # To be implemented later
+        self._global_transform: Optional[Matrix4x4] = None
 
     def add_child(self, node: 'OpticalNode'):
         node.parent = self
         self.children.append(node)
         
-    def get_global_position(self) -> Vector3:
-        """Recursive calculation of global position"""
+    def get_local_transform(self) -> Matrix4x4:
+        """Calculates local transformation matrix (T * R)"""
+        # Create rotation matrix (R)
+        rot_mat = Matrix4x4.from_euler(self.rotation.x, self.rotation.y, self.rotation.z)
+        # Create translation matrix (T)
+        trans_mat = Matrix4x4.from_translation(self.position.x, self.position.y, self.position.z)
+        # Combine: M = T * R (Standard: Rotate then Translate relative to parent)
+        return trans_mat * rot_mat
+
+    def get_global_transform(self) -> Matrix4x4:
+        """Recursive calculation of global transform matrix"""
+        # We could cache this, but need to know when to invalidate.
+        # For now, compute on fly.
+        local_transform = self.get_local_transform()
+        
         if self.parent is None:
-            return self.position
-        
-        # TODO: Implement full 3D transform with rotation
-        # For now, assuming simple translation hierarchy or paraxial layout (mostly along X)
-        # Ideally: P_global = Parent_Global_Pos + Parent_Global_Rot * P_local
-        
-        # Simple recursive sum for translation only (assuming no rotation for now)
-        return self.parent.get_global_position() + self.position
+            return local_transform
+            
+        parent_transform = self.parent.get_global_transform()
+        # Global = ParentGlobal * Local
+        return parent_transform * local_transform
+
+    def get_global_position(self) -> Vector3:
+        """Returns the global position of this node's origin"""
+        global_transform = self.get_global_transform()
+        # Transform (0,0,0) to get position
+        return global_transform.multiply_point(vec3(0, 0, 0))
 
     @property
     def is_element(self) -> bool:
@@ -47,20 +64,28 @@ class OpticalNode:
     def get_flat_list(self, parent_global_pos: Optional[Vector3] = None) -> List[Tuple['OpticalNode', Vector3]]:
         """
         Returns a list of (element, global_position) tuples by traversing the hierarchy.
+        Maintained for backward compatibility.
         """
-        if parent_global_pos is None:
-            parent_global_pos = vec3(0, 0, 0)
+        # Ignoring parent_global_pos argument as we calculate full transform now
+        # But for efficiency in recursion we could pass transform.
+        
+        return self._get_flat_list_recursive(None)
 
-        # Calculate my global position
-        # P_global = Parent_Global + P_local (Simplified, ignoring rotation)
-        my_global_pos = parent_global_pos + self.position
+    def _get_flat_list_recursive(self, parent_transform: Optional[Matrix4x4]) -> List[Tuple['OpticalNode', Vector3]]:
+        local = self.get_local_transform()
+        if parent_transform:
+            global_transform = parent_transform * local
+        else:
+            global_transform = local
+            
+        global_pos = global_transform.multiply_point(vec3(0, 0, 0))
         
         result = []
         if self.is_element:
-            result.append((self, my_global_pos))
-        
+            result.append((self, global_pos))
+            
         for child in self.children:
-            result.extend(child.get_flat_list(my_global_pos))
+            result.extend(child._get_flat_list_recursive(global_transform))
             
         return result
 

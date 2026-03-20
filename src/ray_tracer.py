@@ -10,8 +10,10 @@ from typing import List, Optional, Tuple, Any
 # Import vector class
 try:
     from .vector3 import Vector3, vec3
+    from .transform import Matrix4x4
 except ImportError:
     from vector3 import Vector3, vec3
+    from transform import Matrix4x4
 
 # Import numpy and polarization
 try:
@@ -101,11 +103,6 @@ class Ray:
         # Use (1.0 - EPSILON) to handle floating-point edge cases at critical angle
         if abs(sin_ratio) >= (1.0 - EPSILON):
             # Total internal reflection - reflect instead of refract
-            # For reflection, we reflect around the *surface* normal (effective or not works, but typically same side)
-            # If we used effective normal, we are "entering" new medium? No, TIR means we stay in old.
-            # But the formula 2*normal - angle works for mirror reflection.
-            # If normal is flipped, 2*(norm+pi) - angle = 2*norm + 2pi - angle = 2*norm - angle (mod 2pi).
-            # So reflection formula is invariant to normal flip.
             self.angle = 2 * surface_normal_angle - self.angle
             return False
         
@@ -179,14 +176,6 @@ class LensRayTracer:
     def _get_surface_normal_angle(self, x: float, y: float, surface_type: str) -> float:
         """
         Calculate surface normal angle at a point.
-        
-        Args:
-            x: X coordinate
-            y: Y coordinate
-            surface_type: 'front' or 'back'
-        
-        Returns:
-            Angle of surface normal in radians
         """
         if surface_type == 'front':
             if self.front_is_flat:
@@ -206,12 +195,7 @@ class LensRayTracer:
                 return math.atan2(dy, dx)
     
     def _intersect_front_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
-        """
-        Find intersection point of ray with front surface.
-        
-        Returns:
-            (x, y) intersection point, or None if no intersection
-        """
+        """Find intersection point of ray with front surface."""
         if self.front_is_flat:
             # Flat surface at x=0
             if abs(math.cos(ray.angle)) < EPSILON:
@@ -231,9 +215,6 @@ class LensRayTracer:
         
         else:
             # Spherical surface - solve ray-sphere intersection
-            # Ray: (x, y) = (ray.x, ray.y) + t*(cos(angle), sin(angle))
-            # Sphere: (x - cx)^2 + y^2 = R^2
-            
             cx = self.front_center_x
             R = abs(self.R1)
             
@@ -265,8 +246,6 @@ class LensRayTracer:
                 return None  # No valid intersection in front of ray
             
             # Choose appropriate intersection based on surface curvature
-            # For Convex front (R1 > 0), we hit the near side (min t)
-            # For Concave front (R1 < 0), we hit the far side (max t)
             if self.R1 > 0:
                 t = min(valid_ts)
             else:
@@ -282,12 +261,7 @@ class LensRayTracer:
             return (x, y)
     
     def _intersect_back_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
-        """
-        Find intersection point of ray with back surface.
-        
-        Returns:
-            (x, y) intersection point, or None if no intersection
-        """
+        """Find intersection point of ray with back surface."""
         if self.back_is_flat:
             # Flat surface at x=d
             if abs(math.cos(ray.angle)) < EPSILON:
@@ -318,25 +292,38 @@ class LensRayTracer:
             
             discriminant = b*b - 4*a*c
             
-            # Handle floating-point edge cases
             if discriminant < -EPSILON:
-                return None  # Definitely no intersection
+                return None
             
-            # Clamp small negative discriminant to zero (tangent case)
             discriminant = max(0, discriminant)
             
             sqrt_disc = math.sqrt(discriminant)
             t1 = (-b - sqrt_disc) / (2*a)
             t2 = (-b + sqrt_disc) / (2*a)
             
-            # Filter to only positive t values (intersections in front of ray)
             valid_ts = [t for t in [t1, t2] if t > EPSILON]
             if not valid_ts:
-                return None  # No valid intersection in front of ray
+                # Check if we are already past the surface (physically outside lens volume)
+                # This handles cases where surfaces cross (lens too thin for diameter)
+                dist_sq = (ray.x - cx)**2 + ray.y**2
+                R_sq = R**2
+                
+                already_exited = False
+                # For convex back surface (R2 < 0), glass is inside the sphere.
+                # If we are outside the sphere (dist > R), we have exited.
+                if self.R2 < 0 and dist_sq > R_sq:
+                    already_exited = True
+                # For concave back surface (R2 > 0), glass is outside the sphere.
+                # If we are inside the sphere (dist < R), we have exited.
+                elif self.R2 > 0 and dist_sq < R_sq:
+                    already_exited = True
+                    
+                if already_exited:
+                    return (ray.x, ray.y)
+                
+                return None
             
             # Choose appropriate intersection based on surface curvature
-            # For Concave back (R2 > 0), we hit the near side (min t)
-            # For Convex back (R2 < 0), we hit the far side (max t)
             if self.R2 > 0:
                 t = min(valid_ts)
             else:
@@ -351,16 +338,7 @@ class LensRayTracer:
             return (x, y)
     
     def trace_ray(self, ray: Ray, propagate_distance: float = (DEFAULT_RADIUS_1)) -> Ray:
-        """
-        Trace a ray through the lens.
-        
-        Args:
-            ray: Ray object to trace
-            propagate_distance: Distance to propagate after lens (mm)
-        
-        Returns:
-            Ray object with updated path
-        """
+        """Trace a ray through the lens."""
         # Find intersection with front surface
         intersection = self._intersect_front_surface(ray)
         
@@ -398,7 +376,6 @@ class LensRayTracer:
         normal_angle = self._get_surface_normal_angle(x2, y2, 'back')
         if not ray.refract(self.n, REFRACTIVE_INDEX_AIR, normal_angle):
             # Total internal reflection at back surface
-            # This can happen for high-index glass at steep angles
             ray.terminated = True
             return ray
         
@@ -411,18 +388,7 @@ class LensRayTracer:
                            ray_height_range: Optional[Tuple[float, float]] = None, 
                            wavelength: float = WAVELENGTH_GREEN * NM_TO_MM,
                            angle: float = 0.0) -> List[Ray]:
-        """
-        Trace parallel rays (collimated beam) through the lens.
-        
-        Args:
-            num_rays: Number of rays to trace
-            ray_height_range: (min_height, max_height) in mm, or None for full aperture
-            wavelength: Wavelength in mm
-            angle: Angle of the parallel beam in degrees (default 0.0)
-        
-        Returns:
-            List of traced Ray objects
-        """
+        """Trace parallel rays (collimated beam) through the lens."""
         if ray_height_range is None:
             max_height = self.D / 2 * 0.95  # Use 95% of aperture
             ray_height_range = (-max_height, max_height)
@@ -443,11 +409,6 @@ class LensRayTracer:
             else:
                 height = min_h + (max_h - min_h) * i / (num_rays - 1)
             
-            # Calculate starting y so ray hits the lens at 'height'
-            # y = y_start + (x - x_start) * tan(angle)
-            # height = y_start + (lens_x - start_x) * tan(angle)
-            # y_start = height - (lens_x - start_x) * tan(angle)
-            
             y_start = height - (lens_x - start_x) * math.tan(angle_rad)
             
             ray = Ray(start_x, y_start, angle=angle_rad, wavelength=wavelength)
@@ -459,19 +420,7 @@ class LensRayTracer:
     def trace_point_source_rays(self, source_x: float, source_y: float, 
                                num_rays: int = DEFAULT_NUM_RAYS, max_angle: float = DEFAULT_ANGLE_RANGE[1], 
                                wavelength: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray]:
-        """
-        Trace rays from a point source.
-        
-        Args:
-            source_x: X position of source (mm)
-            source_y: Y position of source (mm)
-            num_rays: Number of rays to trace
-            max_angle: Maximum ray angle from horizontal (degrees)
-            wavelength: Wavelength in mm
-        
-        Returns:
-            List of traced Ray objects
-        """
+        """Trace rays from a point source."""
         rays = []
         max_angle_rad = math.radians(max_angle)
         
@@ -488,16 +437,7 @@ class LensRayTracer:
         return rays
     
     def find_focal_point(self, rays: List[Ray]) -> Optional[Tuple[float, float]]:
-        """
-        Find the focal point from a set of traced parallel rays.
-        
-        Args:
-            rays: List of traced Ray objects
-        
-        Returns:
-            (x, y) focal point, or None if rays don't converge
-        """
-        # Find where rays cross the optical axis (y=0)
+        """Find the focal point from a set of traced parallel rays."""
         crossings = []
         
         for ray in rays:
@@ -524,15 +464,7 @@ class LensRayTracer:
         return (focal_x, 0)
     
     def get_lens_outline(self, num_points: int = MESH_RESOLUTION_HIGH) -> List[Tuple[float, float]]:
-        """
-        Get points defining the lens outline for visualization.
-        
-        Args:
-            num_points: Number of points per surface
-        
-        Returns:
-            List of (x, y) points outlining the lens
-        """
+        """Get points defining the lens outline for visualization."""
         points = []
         
         # Front surface
@@ -543,8 +475,6 @@ class LensRayTracer:
             if self.front_is_flat:
                 x = self.lens_offset
             else:
-                # Sphere equation: (x - Cx)^2 + y^2 = R^2
-                # x = Cx ± sqrt(R^2 - y^2)
                 R = abs(self.R1)
                 if y*y <= R*R:
                     if self.R1 > 0:  # Convex - use right side of sphere
@@ -584,17 +514,7 @@ class SystemRayTracer:
     def trace_parallel_rays(self, num_rays: int = DEFAULT_NUM_RAYS, 
                            angle: float = 0.0,
                            wavelength: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray]:
-        """
-        Trace parallel rays through the entire optical system.
-        
-        Args:
-            num_rays: Number of rays to trace
-            angle: Angle of the parallel beam in degrees
-            wavelength: Wavelength in mm
-        
-        Returns:
-            List of fully traced Ray objects
-        """
+        """Trace parallel rays through the entire optical system."""
         if not self.system.elements:
             return []
         
@@ -616,10 +536,6 @@ class SystemRayTracer:
             else:
                 height = min_h + (max_h - min_h) * i / (num_rays - 1)
             
-            # Calculate starting y so ray hits the first lens at 'height'
-            # y = y_start + (x - x_start) * tan(angle)
-            # height = y_start + (first_pos - start_x) * tan(angle)
-            # y_start = height - (first_pos - start_x) * tan(angle)
             y_start = height - (first_pos - start_x) * math.tan(angle_rad)
             
             # Create ray
@@ -640,12 +556,9 @@ class SystemRayTracer:
                 break
             
             # Create a tracer for this specific element at its position
-            # We must account for the element's position
             lens_tracer = LensRayTracer(element.lens, x_offset=element.position)
             
             # Trace through this lens
-            # The tracer will find the intersection with the front surface
-            # So we don't need to manually propagate exactly to the front
             lens_tracer.trace_ray(ray, propagate_distance=0)
             
             # If this is the last element and ray is not terminated, propagate out
@@ -655,15 +568,6 @@ class SystemRayTracer:
 class Ray3D:
     """
     Represents a light ray in 3D space with optional polarization.
-    
-    Attributes:
-        origin: Starting position (Vector3)
-        direction: Direction vector (Vector3, normalized)
-        wavelength: Wavelength in mm
-        intensity: Ray intensity/power (0-1)
-        n: Current refractive index
-        path: List of points along the ray path
-        polarization_vector: Optional complex 3D E-field vector (numpy array)
     """
     
     def __init__(self, origin: Vector3, direction: Vector3, 
@@ -712,7 +616,6 @@ class Ray3D:
                              new_direction: Vector3, interaction: str) -> None:
         """
         Update polarization vector based on interaction (reflect/refract).
-        Uses Fresnel equations for s and p components.
         """
         if self.polarization_vector is None or not HAS_POLARIZATION:
             return
@@ -721,14 +624,10 @@ class Ray3D:
         n = normal
         
         # 1. Calculate Basis Vectors
-        # s-vector: perpendicular to plane of incidence (k x n)
         s_vec = k_inc.cross(n)
         s_mag = s_vec.magnitude()
         
         if s_mag < 1e-6:
-            # Normal incidence: k parallel to n.
-            # Plane of incidence undefined. s and p are arbitrary.
-            # Pick arbitrary s perpendicular to k
             if abs(k_inc.x) < 0.9:
                 arb = vec3(1, 0, 0)
             else:
@@ -737,36 +636,22 @@ class Ray3D:
         else:
             s_vec = s_vec.normalize()
             
-        # p-vector incident: in plane, perpendicular to k (s x k) -> (p, k, s) right-handed? No usually (k, s, p) or (s, p, k)
-        # Standard basis: s (perp), p (parallel)
-        # Let's define p = k x s (so s, p, k is right handed? s x p = k)
-        # Wait, usually (p, s, k). p x s = k?
-        # Let's just use geometry: p is in plane of incidence.
-        # k_inc x s_vec = p_inc
         p_inc = s_vec.cross(k_inc).normalize()
         
-        # p-vector outgoing (reflected or refracted)
+        # p-vector outgoing
         k_out = new_direction
-        # s_vec is same for outgoing (planar geometry)
-        # p_out = s_vec x k_out (to maintain orientation relative to k)
-        # Wait, if we use p = k x s? No, p should be component in plane.
-        # Let's stick to: p = s x k? No.
-        # p = k x s.
         p_out = s_vec.cross(k_out).normalize()
         
         # 2. Project E-field onto s and p
-        # Convert vectors to numpy for dot product
         E = self.polarization_vector
         s_np = np.array([s_vec.x, s_vec.y, s_vec.z])
         p_inc_np = np.array([p_inc.x, p_inc.y, p_inc.z])
         p_out_np = np.array([p_out.x, p_out.y, p_out.z])
         
-        # Components
         E_s = np.dot(E, s_np)
         E_p = np.dot(E, p_inc_np)
         
         # 3. Fresnel Coefficients
-        # Calculate incident angle
         cos_i = abs(k_inc.dot(n))
         angle_deg = math.degrees(math.acos(min(1.0, cos_i)))
         
@@ -778,18 +663,13 @@ class Ray3D:
             r_s = coeffs['r_s']
             r_p = coeffs['r_p']
             
-            # Reflected E-field
             E_new = r_s * E_s * s_np + r_p * E_p * p_out_np
             
-            # Update Intensity (Reflectance)
-            # Power reflectance is |r|^2 for both components
             R_s = np.abs(r_s)**2
             R_p = np.abs(r_p)**2
             
-            # Fraction of power in s and p
             P_total_old = np.abs(E_s)**2 + np.abs(E_p)**2
             if P_total_old > 1e-9:
-                # Update total intensity based on power reflectance of components
                 reflectance_factor = (R_s * np.abs(E_s)**2 + R_p * np.abs(E_p)**2) / P_total_old
                 self.intensity *= reflectance_factor
             else:
@@ -801,26 +681,20 @@ class Ray3D:
             t_s = coeffs['t_s']
             t_p = coeffs['t_p']
             
-            # Transmitted E-field
             E_new = t_s * E_s * s_np + t_p * E_p * p_out_np
             
-            # Update Intensity (Transmittance)
-            # Power transmittance requires geometric factor
             if coeffs['total_internal_reflection']:
                  self.intensity = 0.0
-                 # E-field is evanescent/zero for ray tracing purposes
                  self.polarization_vector = np.zeros(3, dtype=complex)
                  return
 
             theta1_rad = math.radians(angle_deg)
             theta2_rad = math.radians(coeffs['theta_transmitted_deg'])
             
-            # Geometric factor (n2 cos t2) / (n1 cos t1)
-            # Avoid divide by zero
             if n1 * math.cos(theta1_rad) > 1e-9:
                 geo_factor = (n2 * math.cos(theta2_rad)) / (n1 * math.cos(theta1_rad))
             else:
-                geo_factor = 0 # Should not happen for valid transmission
+                geo_factor = 0
             
             T_s = geo_factor * np.abs(t_s)**2
             T_p = geo_factor * np.abs(t_p)**2
@@ -837,7 +711,6 @@ class Ray3D:
     def reflect(self, normal: Vector3, n1: Optional[float] = None, n2: Optional[float] = None) -> None:
         """
         Reflect ray off a surface normal.
-        Optionally apply Fresnel reflection if refractive indices are provided.
         """
         old_direction = self.direction
         dot = self.direction.dot(normal)
@@ -848,21 +721,14 @@ class Ray3D:
         self.direction = new_direction
         
         if n1 is not None and n2 is not None:
-             # Handle polarization if enabled
              if self.polarization_vector is not None and HAS_POLARIZATION:
-                 # Restore old direction for calculation (needed for basis vectors)
-                 temp_ray_dir = self.direction # Store new
-                 self.direction = old_direction # Restore old temporarily
-                 
+                 temp_ray_dir = self.direction
+                 self.direction = old_direction
                  self._update_polarization(normal, n1, n2, new_direction, 'reflect')
-                 
-                 self.direction = temp_ray_dir # Restore new
+                 self.direction = temp_ray_dir
                  return
 
-             # Standard unpolarized Fresnel
              cos_i = abs(dot)
-             
-             # Calculate cos_t using Snell's law
              ratio = n1 / n2
              sin2_t = ratio**2 * (1.0 - cos_i**2)
              
@@ -877,10 +743,7 @@ class Ray3D:
     def refract(self, n1: float, n2: float, normal: Vector3) -> bool:
         """
         Apply Snell's law at an interface using vector math.
-        Updates intensity using Fresnel transmission.
         """
-        # Ensure normal points against the ray for standard calculation
-        old_direction = self.direction
         cos_i = -self.direction.dot(normal)
         effective_normal = normal
         
@@ -892,32 +755,23 @@ class Ray3D:
         sin2_t = ratio**2 * (1.0 - cos_i**2)
         
         if sin2_t > 1.0:
-            # Total internal reflection
             self.reflect(effective_normal, n1, n2)
             return False
         
         cos_t = math.sqrt(1.0 - sin2_t)
         
-        # Calculate new direction
         new_direction = self.direction * ratio + effective_normal * (ratio * cos_i - cos_t)
         new_direction = new_direction.normalize()
         
-        # Handle Polarization
         if self.polarization_vector is not None and HAS_POLARIZATION:
             self._update_polarization(effective_normal, n1, n2, new_direction, 'refract')
-            
-            # _update_polarization handles intensity and vector update.
-            # Just need to set direction and n.
             self.direction = new_direction
             self.n = n2
             return True
         
-        # Standard Unpolarized Physics
-        # Calculate Transmission (1 - R)
         R = self._compute_fresnel_reflectance(n1, n2, cos_i, cos_t)
         self.intensity *= (1.0 - R)
         
-        # Vector Snell's Law
         self.direction = new_direction
         self.n = n2
         
@@ -926,58 +780,60 @@ class Ray3D:
 class LensRayTracer3D:
     """
     3D Ray tracing engine for single lens elements.
+    Accepts an optional transformation matrix for position/orientation.
     """
     
-    def __init__(self, lens: Any, x_offset: float = 0.0) -> None:
+    def __init__(self, lens: Any, transform: Optional[Matrix4x4] = None, x_offset: float = 0.0) -> None:
         self.lens = lens
         self.R1 = lens.radius_of_curvature_1
         self.R2 = lens.radius_of_curvature_2
         self.d = lens.thickness
         self.D = lens.diameter
         self.n = lens.refractive_index
-        self.x_offset = x_offset
         
-        # Calculate lens geometry
+        if transform:
+            self.transform = transform
+        else:
+            self.transform = Matrix4x4.from_translation(x_offset, 0, 0)
+        
         self._calculate_geometry()
     
     def _calculate_geometry(self) -> None:
-        """Calculate lens surface positions and centers in 3D"""
-        # Centers are on the optical axis (X-axis)
-        # Front surface vertex
-        self.front_vertex = vec3(self.x_offset, 0, 0)
-        self.back_vertex = vec3(self.x_offset + self.d, 0, 0)
+        """Calculate lens surface positions and centers in 3D using transform"""
+        # Canonical positions (lens along X axis, Front vertex at 0)
+        v0 = vec3(0, 0, 0)
+        v1 = vec3(self.d, 0, 0)
         
-        # Front surface (R1)
+        # Front Vertex
+        self.front_vertex = self.transform.multiply_point(v0)
+        
+        # Back Vertex
+        self.back_vertex = self.transform.multiply_point(v1)
+        
+        # Front Center
         if abs(self.R1) > 1e6:
             self.front_center = self.front_vertex
             self.front_is_flat = True
         else:
-            self.front_center = vec3(self.x_offset + self.R1, 0, 0)
+            self.front_center = self.transform.multiply_point(vec3(self.R1, 0, 0))
             self.front_is_flat = False
         
-        # Back surface (R2)
+        # Back Center
         if abs(self.R2) > 1e6:
             self.back_center = self.back_vertex
             self.back_is_flat = True
         else:
-            self.back_center = vec3(self.x_offset + self.d + self.R2, 0, 0)
+            self.back_center = self.transform.multiply_point(vec3(self.d + self.R2, 0, 0))
             self.back_is_flat = False
 
+        # Orientation Vectors (for plane normals)
+        # Canonical normal is +X (1,0,0)
+        self.optical_axis = self.transform.multiply_vector(vec3(1, 0, 0)).normalize()
+
     def _intersect_sphere(self, ray: Ray3D, center: Vector3, radius: float, is_convex: bool) -> Optional[Vector3]:
-        """
-        Intersect ray with a sphere.
-        
-        Args:
-            ray: Ray3D object
-            center: Sphere center
-            radius: Sphere radius (absolute value)
-            is_convex: True if surface is convex relative to incoming light
-        
-        Returns:
-            Intersection point or None
-        """
+        """Intersect ray with a sphere."""
         oc = ray.origin - center
-        a = ray.direction.magnitude_sq() # Should be 1
+        a = ray.direction.magnitude_sq()
         b = 2.0 * oc.dot(ray.direction)
         c = oc.magnitude_sq() - radius**2
         
@@ -990,16 +846,24 @@ class LensRayTracer3D:
         t1 = (-b - sqrt_disc) / (2*a)
         t2 = (-b + sqrt_disc) / (2*a)
         
-        # Filter to only positive t values (intersections in front of ray)
         valid_ts = [t for t in [t1, t2] if t > EPSILON]
         if not valid_ts:
             return None
 
-        # Choose appropriate intersection based on surface curvature
-        if is_convex: # R > 0 convention
-            t = min(valid_ts)
+        # R > 0 (Convex) means center is further along axis.
+        # But this assumes we approach from "left" relative to the surface curvature.
+        # Since we are working in 3D global space, 'min' vs 'max' depends on whether we are inside or outside.
+        
+        # Simple heuristic:
+        # If we are outside the sphere (distance to center > radius), we hit the near side (min t).
+        # If we are inside (distance < radius), we hit the far side (max t).
+        dist_sq = oc.magnitude_sq()
+        is_inside = dist_sq < radius**2
+        
+        if is_inside:
+             t = max(valid_ts)
         else:
-            t = max(valid_ts)
+             t = min(valid_ts)
             
         return ray.origin + ray.direction * t
 
@@ -1015,25 +879,15 @@ class LensRayTracer3D:
         return ray.origin + ray.direction * t
 
     def trace_surface(self, ray: Ray3D, surface_type: str, interaction: str = 'refract') -> bool:
-        """
-        Trace ray interaction with a specific surface.
-        
-        Args:
-            ray: Ray to trace (modified in place)
-            surface_type: 'front' or 'back'
-            interaction: 'refract' or 'reflect'
-            
-        Returns:
-            True if interaction successful (ray continues), False if terminated/missed
-        """
-        # 1. Determine surface parameters
+        """Trace ray interaction with a specific surface."""
         if surface_type == 'front':
             center = self.front_center
             is_flat = self.front_is_flat
             vertex = self.front_vertex
             R = self.R1
-            is_convex = (R > 0)
-            # Default transition for front: Air -> Glass
+            # Normal for flat front surface points opposite to incoming? No, along optical axis.
+            # If flat, normal is self.optical_axis.
+            # Transition: Air -> Glass
             default_n1 = REFRACTIVE_INDEX_AIR
             default_n2 = self.n
         elif surface_type == 'back':
@@ -1041,57 +895,117 @@ class LensRayTracer3D:
             is_flat = self.back_is_flat
             vertex = self.back_vertex
             R = self.R2
-            is_convex = (R > 0)
-            # Default transition for back: Glass -> Air
+            # Transition: Glass -> Air
             default_n1 = self.n
             default_n2 = REFRACTIVE_INDEX_AIR
         else:
             return False
 
-        # 2. Intersect
+        # Intersect
         if is_flat:
-            # Use standard trace_ray normal direction for intersection plane (1,0,0)
-            intersection = self._intersect_plane(ray, vertex, vec3(1,0,0))
+            # Planar intersection
+            # Normal is optical axis
+            normal = self.optical_axis
+            intersection = self._intersect_plane(ray, vertex, normal)
         else:
-            intersection = self._intersect_sphere(ray, center, abs(R), is_convex)
+            # Spherical intersection
+            # Note: We don't need is_convex flag anymore with the inside/outside logic
+            intersection = self._intersect_sphere(ray, center, abs(R), (R > 0))
         
         if intersection is None:
+            # Check for "already exited" condition (crossed surfaces)
+            # Only relevant for back surface (exiting lens)
+            if surface_type == 'back' and not is_flat:
+                dist_sq = (ray.origin - center).magnitude_sq()
+                R_abs = abs(R)
+                already_exited = False
+                
+                # R < 0 (Convex back): Glass is inside sphere.
+                # If dist > R, we are outside (in Air).
+                if R < 0 and dist_sq > R_abs**2:
+                    already_exited = True
+                # R > 0 (Concave back): Glass is outside sphere.
+                # If dist < R, we are inside (in Air).
+                elif R > 0 and dist_sq < R_abs**2:
+                    already_exited = True
+                    
+                if already_exited:
+                    # We are already in air.
+                    ray.n = default_n2
+                    return True
+            
             return False
             
-        # Check aperture
-        r_sq = intersection.y**2 + intersection.z**2
-        if r_sq > ((self.D/2) + 1e-9)**2:
+        # Check aperture (distance from optical axis line)
+        # Vector from vertex to intersection
+        v_to_i = intersection - vertex
+        # Project onto optical axis
+        proj = v_to_i.dot(self.optical_axis)
+        # Distance squared from axis = |v_to_i|^2 - proj^2
+        dist_sq = v_to_i.magnitude_sq() - proj**2
+        
+        if dist_sq > ((self.D/2) + 1e-4)**2: # Tolerance
              return False
 
-        # Move ray to intersection
+        # Move ray
         ray.origin = intersection
         ray.path.append(intersection)
         
-        # 3. Calculate Normal
+        # Calculate Normal
         if is_flat:
+            # If front, normal is optical axis (pointing into lens).
+            # If back, normal is -optical axis (pointing out of lens).
+            # Wait, normal should usually point OUT of the object for standard renderers,
+            # but for refraction n1->n2, normal usually points from n1 into n2?
+            # Or just surface normal.
+            # Let's align normal with optical axis for Front, opposite for Back?
+            # Actually, sphere normal is (intersection - center).
+            # For Convex Front (Center to right), normal points Left (out).
+            # For Flat Front, normal should point Left (out)?
+            # My previous logic used (1,0,0) for front flat. That points IN.
+            
+            # Let's standardize: Normal points OUT of the lens volume.
             if surface_type == 'front':
-                normal = vec3(1,0,0)
+                normal = -self.optical_axis
             else:
-                normal = vec3(-1,0,0) # Back surface points out (left)
+                normal = self.optical_axis
         else:
+            # Sphere normal: (intersection - center).normalize()
+            # If Convex Front (Center inside): Normal points In -> Out.
+            # If Concave Front (Center outside): Normal points Out -> In?
+            # (P - C).
+            # R1 > 0 (Convex Front): C is to right. P is to left. P-C points Left (Out). Correct.
+            # R1 < 0 (Concave Front): C is to left. P is to right. P-C points Right (In).
+            # We want Outward normal.
             normal = (intersection - center).normalize()
+            if R < 0: # Concave front means center is on air side. P-C points into glass?
+                # Let's check. R < 0. Center is at -|R|. P is at 0. P-C = 0 - (-R) = +R. Points Right (Into Glass).
+                # We want Outward normal (Left). So flip.
+                normal = -normal
+            
+            # For Back Surface:
+            # R2 < 0 (Convex Back): Center is left. P is right. P-C points Right (Out). Correct.
+            # R2 > 0 (Concave Back): Center is right. P is left. P-C points Left (In).
+            # We want Outward normal (Right). So flip.
+            if surface_type == 'back' and R > 0:
+                normal = -normal
 
-        # 4. Interact
-        # Determine n1 (current) and n2 (target)
+        # Interact
         current_n = ray.n
         
+        # Logic to determine n1/n2 based on direction vs normal
+        # If ray enters (dot(ray, normal) < 0), we go n1 -> n2.
+        # If ray exits (dot(ray, normal) > 0), we go n2 -> n1?
+        # Actually, trace_surface assumes we know the transition (default_n1 -> default_n2).
+        # But we might be tracing rays backwards or internally?
+        # Let's trust the surface type defaults for now, but verify with ray.n.
+        
         if abs(current_n - default_n1) < 1e-3:
-            # Standard direction
-            n1 = current_n
-            n2 = default_n2
+            n1, n2 = default_n1, default_n2
         elif abs(current_n - default_n2) < 1e-3:
-            # Reverse direction
-            n1 = current_n
-            n2 = default_n1
+            n1, n2 = default_n2, default_n1
         else:
-            # Fallback
-            n1 = current_n
-            n2 = default_n2
+            n1, n2 = current_n, default_n2 # Guess
             
         if interaction == 'reflect':
             ray.reflect(normal, n1, n2)
@@ -1104,39 +1018,10 @@ class LensRayTracer3D:
     def trace_ray(self, ray: Ray3D, propagate_distance: float = DEFAULT_RADIUS_1) -> Ray3D:
         # 1. Intersect Front Surface
         if not self.trace_surface(ray, 'front', 'refract'):
-            # Ray missed or TIR (terminated)
-            if not ray.terminated: # If terminated by trace_surface (TIR), keep it. If just False (missed), propagate.
-                # Wait, trace_surface doesn't set terminated for miss.
-                # If trace_surface returns False:
-                # - Missed aperture/surface: ray position updated? No.
-                # - TIR: ray.terminated is NOT set by trace_surface (refract returns False but reflects).
-                # Actually, refract returns False on TIR. trace_surface returns that False.
-                
-                # Handling miss vs TIR:
-                # If ray path length didn't change (no intersection), it's a miss.
-                # But trace_surface updates path only on intersection.
-                # Checking path length is tricky if we don't know start.
-                pass
-            
-            # Legacy behavior for trace_ray:
-            # If miss front: propagate and terminate.
-            # If TIR front: terminate.
-            
-            # Check if we intersected (ray path grew)
-            # Actually, let's just use the logic: if terminated, done. If not, propagate and done.
-            # But trace_surface doesn't set terminated.
-            
-            # Let's revert to manual check or improve trace_surface return?
-            # Or just check if ray position changed?
-            
-            # If refraction failed (TIR), trace_surface returns False.
-            # If intersection failed, trace_surface returns False.
-            
-            # Let's just handle it simply:
-            if len(ray.path) == 1: # No intersection added (assuming start with 1 point)
-                ray.propagate(propagate_distance)
-            
-            ray.terminated = True
+            if not ray.terminated:
+                 # Missed
+                 ray.propagate(propagate_distance)
+                 ray.terminated = True
             return ray
             
         # 2. Intersect Back Surface
@@ -1157,18 +1042,31 @@ class SystemRayTracer3D:
     
     def trace_ray(self, ray: Ray3D) -> Ray3D:
         """Trace a single ray through the entire system."""
-        for i, element in enumerate(self.system.elements):
+        
+        # Collect elements with transforms
+        elements = []
+        if hasattr(self.system, 'root'):
+             # Use hierarchy
+             nodes = self.system.root.get_flat_list()
+             for node, _ in nodes:
+                 if getattr(node, 'is_element', False):
+                     transform = node.get_global_transform()
+                     elements.append((node.element_model, transform))
+        else:
+             # Fallback
+             for elem in self.system.elements:
+                 t = Matrix4x4.from_translation(elem.position, 0, 0)
+                 elements.append((elem.lens, t))
+
+        for lens, transform in elements:
             if ray.terminated:
                 break
             
-            # Create tracer for this element
-            # Note: We must create the tracer with the correct x_offset for the element
-            lens_tracer = LensRayTracer3D(element.lens, x_offset=element.position)
+            tracer = LensRayTracer3D(lens, transform=transform)
+            # Propagate distance 0 because we loop through next element
+            tracer.trace_ray(ray, propagate_distance=0)
             
-            # Trace through lens (propagate_distance=0 because we handle propagation between lenses manually or let the loop handle it)
-            lens_tracer.trace_ray(ray, propagate_distance=0)
-            
-        # Propagate a bit after last element if not terminated
+        # Propagate a bit after last element
         if not ray.terminated:
              ray.propagate(50.0)
              
@@ -1178,14 +1076,6 @@ class SystemRayTracer3D:
                    wavelength: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray3D]:
         """
         Trace a grid of parallel rays (simulating a collimated beam).
-        
-        Args:
-            size: Width/Height of grid (mm)
-            grid_points: Number of points along one axis (total rays = points^2)
-            wavelength: Wavelength
-            
-        Returns:
-            List of traced Ray3D objects
         """
         rays = []
         if not self.system.elements:
@@ -1210,5 +1100,3 @@ class SystemRayTracer3D:
                 rays.append(ray)
                 
         return rays
-
-

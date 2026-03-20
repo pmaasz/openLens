@@ -269,9 +269,9 @@ class CalculationService:
         
         try:
             try:
-                from .ray_tracer import LensRayTracer
+                from .ray_tracer import LensRayTracer, SystemRayTracer
             except ImportError:
-                from ray_tracer import LensRayTracer
+                from ray_tracer import LensRayTracer, SystemRayTracer
             self._ray_tracer_available = True
         except ImportError:
             pass
@@ -342,6 +342,32 @@ class CalculationService:
                 raise ValueError(f"Unknown ray type: {ray_type}")
         except Exception as e:
             logger.error("Error tracing rays: %s", e)
+            return None
+
+    def trace_system_rays(self, system: 'OpticalSystem', 
+                         num_rays: int = 11,
+                         angle: float = 0.0) -> Optional[List]:
+        """
+        Trace rays through an optical system.
+        
+        Args:
+            system: Optical system to trace through
+            num_rays: Number of rays to trace
+            angle: Angle of parallel beam
+            
+        Returns:
+            List of traced rays or None if not available
+        """
+        if not self._ray_tracer_available:
+            return None
+        
+        try:
+            from .ray_tracer import SystemRayTracer
+            
+            tracer = SystemRayTracer(system)
+            return tracer.trace_parallel_rays(num_rays=num_rays, angle=angle)
+        except Exception as e:
+            logger.error("Error tracing system rays: %s", e)
             return None
     
     def assess_lens_quality(self, lens: 'Lens') -> Optional[Dict[str, Any]]:

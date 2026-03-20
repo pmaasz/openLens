@@ -8,48 +8,56 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional, Callable, Any
+from typing import List, Optional, Callable, Any, TYPE_CHECKING
 
 # Configure module logger
 logger = logging.getLogger(__name__)
 
-# Import Lens model
-try:
+if TYPE_CHECKING:
     from ..lens import Lens
-except ImportError:
-    try:
-        from lens import Lens
-    except ImportError:
-        logger.error("Could not import Lens model")
-        class Lens:  # type: ignore
-            """Fallback Lens class."""
-            pass
-
-# Import validation utilities
-try:
     from ..validation import (
         validate_json_file_path,
         validate_file_path,
         ValidationError
     )
-except ImportError:
+else:
+    # Import Lens model (Runtime)
     try:
-        from validation import (
+        from ..lens import Lens
+    except ImportError:
+        try:
+            from lens import Lens
+        except ImportError:
+            logger.error("Could not import Lens model")
+            class Lens:
+                """Fallback Lens class."""
+                pass
+
+    # Import validation utilities (Runtime)
+    try:
+        from ..validation import (
             validate_json_file_path,
             validate_file_path,
             ValidationError
         )
     except ImportError:
-        # Fallback if validation module not available
-        ValidationError = ValueError  # type: ignore
-        
-        def validate_json_file_path(path: Any, **kwargs: Any) -> Path:
-            """Fallback validation function."""
-            return Path(path)
-        
-        def validate_file_path(path: Any, **kwargs: Any) -> Path:
-            """Fallback validation function."""
-            return Path(path)
+        try:
+            from validation import (
+                validate_json_file_path,
+                validate_file_path,
+                ValidationError
+            )
+        except ImportError:
+            # Fallback if validation module not available
+            ValidationError = ValueError
+            
+            def validate_json_file_path(path: Any, **kwargs: Any) -> Path:
+                """Fallback validation function."""
+                return Path(path)
+            
+            def validate_file_path(path: Any, **kwargs: Any) -> Path:
+                """Fallback validation function."""
+                return Path(path)
 
 
 class LensStorage:
@@ -90,7 +98,7 @@ class LensStorage:
         """
         self.status_callback(message)
     
-    def load_lenses(self) -> List[Lens]:
+    def load_lenses(self) -> List['Lens']:
         """Load lenses from JSON storage file with path validation.
         
         Returns:
@@ -134,7 +142,7 @@ class LensStorage:
             logger.error("Failed to load lenses: %s", e)
             return []
     
-    def save_lenses(self, lenses: List[Lens]) -> bool:
+    def save_lenses(self, lenses: List['Lens']) -> bool:
         """Save all lenses to JSON storage file with path validation.
         
         Args:
@@ -193,7 +201,7 @@ class LensStorage:
             return False
 
 
-def load_lenses(storage_file: str = "lenses.json") -> List[Lens]:
+def load_lenses(storage_file: str = "lenses.json") -> List['Lens']:
     """Convenience function to load lenses from a file.
     
     Args:
@@ -207,7 +215,7 @@ def load_lenses(storage_file: str = "lenses.json") -> List[Lens]:
 
 
 def save_lenses(
-    lenses: List[Lens],
+    lenses: List['Lens'],
     storage_file: str = "lenses.json",
     status_callback: Optional[Callable[[str], None]] = None
 ) -> bool:

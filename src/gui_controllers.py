@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from lens import Lens
-    from lens_editor_gui import LensEditorWindow
+    from gui.main_window import LensEditorWindow
 
 # Import CopyableMessageBox for copyable error dialogs
 try:
@@ -359,6 +359,7 @@ class LensEditorController:
         """
         self.colors = colors
         self.on_lens_updated_callback = on_lens_updated
+        self.parent_window: Optional['LensEditorWindow'] = None
         self.current_lens = None
         self.entry_fields = {}
         self.result_labels = {}
@@ -859,6 +860,7 @@ class SimulationController:
         """
         self.colors = colors
         self.visualization_available = visualization_available
+        self.parent_window: Optional['LensEditorWindow'] = None
         self.current_lens = None
         self.ray_tracer = None
         
