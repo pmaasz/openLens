@@ -13,6 +13,7 @@ from tkinter import ttk
 import logging
 from typing import List, Dict, Any, Optional, Tuple, TYPE_CHECKING
 import threading
+import copy
 
 if TYPE_CHECKING:
     from ..lens import Lens
@@ -310,14 +311,29 @@ class OptimizationController:
         ttk.Checkbutton(frame, text=label, variable=var).pack(side=tk.LEFT)
 
     def log(self, message: str):
-        """Append message to log"""
-        if self.log_text:
+        """Append message to log (Thread-safe)"""
+        # Also log to system logger (safe from any thread)
+        logger.info(message)
+        
+        # Schedule UI update on main thread if needed
+        if threading.current_thread() is not threading.main_thread():
+            if self.parent_window:
+                self.parent_window.root.after(0, lambda: self._log_to_ui(message))
+            return
+
+        self._log_to_ui(message)
+
+    def _log_to_ui(self, message: str):
+        if not self.log_text:
+            return
+            
+        try:
             self.log_text.config(state='normal')
             self.log_text.insert(tk.END, message + "\n")
             self.log_text.see(tk.END)
             self.log_text.config(state='disabled')
-        # Also log to system logger
-        logger.info(message)
+        except tk.TclError:
+            pass # Window destroyed
 
     def _update_graph(self):
         """Redraw the graph with current data"""
@@ -397,14 +413,42 @@ class OptimizationController:
         self.graph_data = []
         self.graph_canvas.delete("all")
         
-        # Run in thread to keep UI responsive
-        threading.Thread(target=self._optimization_worker, daemon=True).start()
-
-    def _optimization_worker(self):
+        # Capture configuration (Main Thread)
+        config = {
+            'variables': {k: v.get() for k, v in self.variable_vars.items()},
+            'targets': {
+                'focal_length_enabled': self.target_vars['focal_length_enabled'].get(),
+                'focal_length_value': self.target_vars['focal_length_value'].get(),
+                'spot_size_enabled': self.target_vars['spot_size_enabled'].get(),
+                'spherical_enabled': self.target_vars['spherical_enabled'].get(),
+                'coma_enabled': self.target_vars['coma_enabled'].get(),
+                'astigmatism_enabled': self.target_vars['astigmatism_enabled'].get(),
+                'min_thickness': self.target_vars['min_thickness'].get(),
+                'max_thickness': self.target_vars['max_thickness'].get(),
+                'min_air_gap': self.target_vars['min_air_gap'].get(),
+                'min_edge_thickness': self.target_vars['min_edge_thickness'].get(),
+                'maintain_cemented': self.target_vars['maintain_cemented'].get(),
+                'robust_mode': self.target_vars['robust_mode'].get(),
+            },
+            'algorithm': self.algorithm_var.get() if hasattr(self, 'algorithm_var') else "Local (Simplex)"
+        }
+        
+        # Deepcopy lens for thread safety
         try:
-            if not self.current_lens:
-                return
+            lens_copy = copy.deepcopy(self.current_lens)
+        except Exception as e:
+            self.log(f"Error copying lens: {e}")
+            self._optimization_finished(False)
+            return
 
+        # Run in thread to keep UI responsive
+        threading.Thread(target=self._optimization_worker, args=(lens_copy, config), daemon=True).start()
+
+    def _optimization_worker(self, current_lens_copy, config):
+        try:
+            # Use local copy instead of self.current_lens
+            current_lens = current_lens_copy
+            
             # Callback for live updates
             def update_ui(iteration, merit, values):
                 self.graph_data.append((iteration, merit))
@@ -415,11 +459,11 @@ class OptimizationController:
             # 1. Collect Variables
             variables: List[OptimizationVariable] = []
             
-            # Get constraints from UI
-            min_thickness = self.target_vars.get('min_thickness', tk.DoubleVar(value=1.0)).get()
-            max_thickness = self.target_vars.get('max_thickness', tk.DoubleVar(value=100.0)).get()
-            min_air_gap = self.target_vars.get('min_air_gap', tk.DoubleVar(value=0.1)).get()
-            min_edge_thickness = self.target_vars.get('min_edge_thickness', tk.DoubleVar(value=0.5)).get()
+            # Get constraints from config
+            min_thickness = config['targets']['min_thickness']
+            max_thickness = config['targets']['max_thickness']
+            min_air_gap = config['targets']['min_air_gap']
+            min_edge_thickness = config['targets']['min_edge_thickness']
             
             # Package constraints for optimizer
             constraints = {
@@ -435,35 +479,30 @@ class OptimizationController:
             
             # Identify cemented interfaces first if option enabled
             cemented_pairs = [] # List of (index_prev, index_next)
-            if self.target_vars['maintain_cemented'].get() and hasattr(self.current_lens, 'elements'):
-                 for i in range(len(self.current_lens.elements) - 1):
+            if config['targets']['maintain_cemented'] and hasattr(current_lens, 'elements'):
+                 for i in range(len(current_lens.elements) - 1):
                     # Check if air gap is effectively zero (cemented)
-                    if i < len(self.current_lens.air_gaps):
-                        gap = self.current_lens.air_gaps[i].thickness
+                    if i < len(current_lens.air_gaps):
+                        gap = current_lens.air_gaps[i].thickness
                         if gap < 0.01: # Threshold for "cemented"
                             # Check if radii match (R2 of first == R1 of second)
-                            r2_prev = self.current_lens.elements[i].lens.radius_of_curvature_2
-                            r1_next = self.current_lens.elements[i+1].lens.radius_of_curvature_1
+                            r2_prev = current_lens.elements[i].lens.radius_of_curvature_2
+                            r1_next = current_lens.elements[i+1].lens.radius_of_curvature_1
                             if abs(r2_prev - r1_next) < 0.1: # Tolerance
                                 cemented_pairs.append((i, i+1))
                                 self.log(f"Detected cemented interface between Element {i+1} and {i+2}")
 
-            # Collect from UI selections
-            # We need to map UI keys back to actual parameters
-            # Keys are like "r1_0", "r2_0", "th_0", "gap_0"
-            
-            processed_keys = set()
-            
-            if hasattr(self.current_lens, 'elements'):
-                num_elements = len(self.current_lens.elements)
+            # Collect from UI selections using config['variables']
+            if hasattr(current_lens, 'elements'):
+                num_elements = len(current_lens.elements)
                 
                 for i in range(num_elements):
                     # R1
-                    if self.variable_vars.get(f"r1_{i}", tk.BooleanVar(value=False)).get():
+                    if config['variables'].get(f"r1_{i}", False):
                         # Check if this is the SECOND part of a cemented pair
                         is_cemented_secondary = any(pair[1] == i for pair in cemented_pairs)
                         if not is_cemented_secondary:
-                            current_val = self.current_lens.elements[i].lens.radius_of_curvature_1
+                            current_val = current_lens.elements[i].lens.radius_of_curvature_1
                             var = OptimizationVariable(
                                 name=f"R1_Elem{i+1}",
                                 element_index=i,
@@ -471,16 +510,11 @@ class OptimizationController:
                                 current_value=current_val,
                                 min_value=-1000, max_value=1000
                             )
-                            # Check if this is the FIRST part of a cemented pair -> LINK IT
-                            for pair in cemented_pairs:
-                                if pair[0] == i and pair[1] == i + 1: # Optimization logic bug? 
-                                    # Wait, R1 of elem i is unrelated to interface i/i+1 (which involves R2 of i)
-                                    pass
                             variables.append(var)
                         
                     # R2
-                    if self.variable_vars.get(f"r2_{i}", tk.BooleanVar(value=False)).get():
-                        current_val = self.current_lens.elements[i].lens.radius_of_curvature_2
+                    if config['variables'].get(f"r2_{i}", False):
+                        current_val = current_lens.elements[i].lens.radius_of_curvature_2
                         var = OptimizationVariable(
                             name=f"R2_Elem{i+1}",
                             element_index=i,
@@ -500,8 +534,8 @@ class OptimizationController:
                         variables.append(var)
 
                     # Thickness
-                    if self.variable_vars.get(f"th_{i}", tk.BooleanVar(value=False)).get():
-                        current_val = self.current_lens.elements[i].lens.thickness
+                    if config['variables'].get(f"th_{i}", False):
+                        current_val = current_lens.elements[i].lens.thickness
                         var = OptimizationVariable(
                             name=f"Th_Elem{i+1}",
                             element_index=i,
@@ -512,9 +546,9 @@ class OptimizationController:
                         variables.append(var)
 
                     # Refractive Index (Nd)
-                    if self.variable_vars.get(f"nd_{i}", tk.BooleanVar(value=False)).get():
-                         current_lens = self.current_lens.elements[i].lens
-                         val = current_lens.model_nd if current_lens.model_glass_mode else current_lens.refractive_index
+                    if config['variables'].get(f"nd_{i}", False):
+                         elem_lens = current_lens.elements[i].lens
+                         val = elem_lens.model_nd if elem_lens.model_glass_mode else elem_lens.refractive_index
                          
                          var = OptimizationVariable(
                             name=f"Nd_Elem{i+1}",
@@ -527,17 +561,17 @@ class OptimizationController:
                          variables.append(var)
 
                     # Abbe Number (Vd)
-                    if self.variable_vars.get(f"vd_{i}", tk.BooleanVar(value=False)).get():
-                         current_lens = self.current_lens.elements[i].lens
+                    if config['variables'].get(f"vd_{i}", False):
+                         elem_lens = current_lens.elements[i].lens
                          val = 64.17 # Default fallback
                          
-                         if current_lens.model_glass_mode:
-                             val = current_lens.model_vd
+                         if elem_lens.model_glass_mode:
+                             val = elem_lens.model_vd
                          else:
                              try:
                                  from ..material_database import get_material_database
                                  db = get_material_database()
-                                 mat = db.get_material(current_lens.material)
+                                 mat = db.get_material(elem_lens.material)
                                  if mat: val = mat.vd
                              except: pass
                              
@@ -553,12 +587,11 @@ class OptimizationController:
 
                     # Air Gap
                     if i < num_elements - 1:
-                        if self.variable_vars.get(f"gap_{i}", tk.BooleanVar(value=False)).get():
+                        if config['variables'].get(f"gap_{i}", False):
                             # Check if it's cemented -> if so, DON'T optimize gap usually? 
-                            # Or allow it to break cement? For now, if cemented, maybe don't optimize gap?
                             is_cemented = any(pair[0] == i for pair in cemented_pairs)
                             if not is_cemented:
-                                current_val = self.current_lens.air_gaps[i].thickness
+                                current_val = current_lens.air_gaps[i].thickness
                                 var = OptimizationVariable(
                                     name=f"Gap_{i+1}-{i+2}",
                                     element_index=i,
@@ -570,7 +603,6 @@ class OptimizationController:
             else:
                 # Single lens logic
                 # Create temporary OpticalSystem to wrap the lens
-                # We need OpticalSystem class. Try to import it.
                 try:
                     from ..optical_system import OpticalSystem
                 except ImportError:
@@ -584,46 +616,42 @@ class OptimizationController:
                         
                 # Ensure constraints are valid for single lens too
                 temp_system = OpticalSystem()
-                # We need to make a COPY of the lens to avoid modifying the original in place until success
-                # But OpticalSystem.add_lens stores the object. 
-                # LensOptimizer makes a deepcopy of system anyway.
-                temp_system.add_lens(self.current_lens)
+                temp_system.add_lens(current_lens)
                 
                 # R1
-                if self.variable_vars.get("radius_of_curvature_1_0", tk.BooleanVar(value=False)).get():
+                if config['variables'].get("radius_of_curvature_1_0", False):
                     var = OptimizationVariable(
                         name="R1",
                         element_index=0,
                         parameter="radius_of_curvature_1",
-                        current_value=self.current_lens.radius_of_curvature_1,
+                        current_value=current_lens.radius_of_curvature_1,
                         min_value=-1000, max_value=1000
                     )
                     variables.append(var)
 
                 # R2
-                if self.variable_vars.get("radius_of_curvature_2_0", tk.BooleanVar(value=False)).get():
+                if config['variables'].get("radius_of_curvature_2_0", False):
                     var = OptimizationVariable(
                         name="R2",
                         element_index=0,
                         parameter="radius_of_curvature_2",
-                        current_value=self.current_lens.radius_of_curvature_2,
+                        current_value=current_lens.radius_of_curvature_2,
                         min_value=-1000, max_value=1000
                     )
                     variables.append(var)
 
                 # Thickness
-                if self.variable_vars.get("thickness_0", tk.BooleanVar(value=False)).get():
+                if config['variables'].get("thickness_0", False):
                     var = OptimizationVariable(
                         name="Thickness",
                         element_index=0,
                         parameter="thickness",
-                        current_value=self.current_lens.thickness,
+                        current_value=current_lens.thickness,
                         min_value=min_thickness, max_value=max_thickness
                     )
                     variables.append(var)
 
                 # Optimization requires a system, so we use temp_system
-                # But when result comes back, we need to extract the lens
                 is_single_lens_optimization = True
 
             if not variables:
@@ -634,20 +662,20 @@ class OptimizationController:
             # 2. Collect Targets
             targets: List[OptimizationTarget] = []
             
-            if self.target_vars['focal_length_enabled'].get():
-                target_val = self.target_vars['focal_length_value'].get()
+            if config['targets']['focal_length_enabled']:
+                target_val = config['targets']['focal_length_value']
                 targets.append(OptimizationTarget("focal_length", target_val, weight=10.0))
             
-            if self.target_vars['spot_size_enabled'].get():
+            if config['targets']['spot_size_enabled']:
                 targets.append(OptimizationTarget("rms_spot_radius", 0.0, weight=100.0, target_type="minimize"))
                 
-            if self.target_vars['spherical_enabled'].get():
+            if config['targets']['spherical_enabled']:
                 targets.append(OptimizationTarget("spherical_aberration", 0.0, weight=5.0, target_type="minimize"))
 
-            if self.target_vars['coma_enabled'].get():
+            if config['targets']['coma_enabled']:
                 targets.append(OptimizationTarget("coma", 0.0, weight=5.0, target_type="minimize"))
 
-            if self.target_vars['astigmatism_enabled'].get():
+            if config['targets']['astigmatism_enabled']:
                 targets.append(OptimizationTarget("astigmatism", 0.0, weight=5.0, target_type="minimize"))
 
             if not targets:
@@ -656,13 +684,13 @@ class OptimizationController:
                 return
 
             # Check robust mode
-            robust_mode = self.target_vars['robust_mode'].get()
+            robust_mode = config['targets']['robust_mode']
             
             # Create Optimizer
-            system_to_optimize = temp_system if is_single_lens_optimization and temp_system else self.current_lens
+            system_to_optimize = temp_system if is_single_lens_optimization and temp_system else current_lens
             
             # Check selected algorithm
-            algorithm = self.algorithm_var.get() if hasattr(self, 'algorithm_var') else "Local (Simplex)"
+            algorithm = config['algorithm']
             
             # Robust Optimization Setup
             if robust_mode:
@@ -693,9 +721,6 @@ class OptimizationController:
                     elif var.parameter == "refractive_index": tol_type = ToleranceType.REFRACTIVE_INDEX
                     
                     if tol_type:
-                        # Assume 1% tolerance or fixed value
-                        # For R: 0.1% or 0.05mm? Let's say 0.1mm
-                        # For Th: 0.1mm
                         val = 0.1
                         if tol_type == ToleranceType.REFRACTIVE_INDEX: val = 0.001
                         
@@ -707,8 +732,6 @@ class OptimizationController:
                 
                 self.log(f"Generated {len(tolerances)} tolerances for robust optimization")
                 
-                # Robust only supports simplex currently via optimize_robust
-                # So we override algorithm choice implicitly or explicitly
                 result = optimizer.optimize_robust(tolerances, sensitivity_weight=1.0, max_iterations=50, callback=update_ui)
                 
             else:
@@ -746,11 +769,10 @@ class OptimizationController:
                 
                 if is_single_lens_optimization:
                     # Extract the optimized lens from the system result
-                    # result.optimized_system is an OpticalSystem. We need the Lens object inside.
-                    # OptimizationResult is mutable, so we can replace the field at runtime.
-                    # This allows _apply_results to receive the Lens object instead of OpticalSystem wrapper.
                     result.optimized_system = result.optimized_system.elements[0].lens
                 
+                # Update current_lens in controller to the NEW optimized one
+                # Note: This is the result object which will be passed to UI
                 self.current_lens = result.optimized_system
                 
                 # Update UI in main thread

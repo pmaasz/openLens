@@ -1613,25 +1613,34 @@ class PerformanceController:
         ttk.Entry(controls_frame, textvariable=self.sensor_size_var, width=15).grid(
             row=1, column=3, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
         
-        # Buttons
-        btn_frame = ttk.Frame(controls_frame)
-        btn_frame.grid(row=2, column=0, columnspan=4, pady=PADDING_MEDIUM)
+        # Buttons - Row 1: Geometric Analysis
+        btn_frame1 = ttk.Frame(controls_frame)
+        btn_frame1.grid(row=2, column=0, columnspan=4, pady=(PADDING_MEDIUM, PADDING_SMALL))
         
-        ttk.Button(btn_frame, text="Calculate Metrics", 
+        ttk.Button(btn_frame1, text="Calculate Metrics", 
                   command=self.calculate_metrics).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        ttk.Button(btn_frame, text="Spot Diagram", 
+        ttk.Button(btn_frame1, text="Spot Diagram", 
                   command=self.show_spot_diagram).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        ttk.Button(btn_frame, text="Ghost Analysis", 
+        ttk.Button(btn_frame1, text="Ray Fan", 
+                  command=self.show_ray_fan).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        ttk.Button(btn_frame1, text="Field Curves", 
+                  command=self.show_field_curves).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        ttk.Button(btn_frame1, text="Ghost Analysis", 
                   command=self.show_ghost_analysis).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        ttk.Button(btn_frame, text="PSF Analysis", 
+
+        # Buttons - Row 2: Image Quality & Export
+        btn_frame2 = ttk.Frame(controls_frame)
+        btn_frame2.grid(row=3, column=0, columnspan=4, pady=(0, PADDING_MEDIUM))
+
+        ttk.Button(btn_frame2, text="PSF Analysis", 
                   command=self.show_psf).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        ttk.Button(btn_frame, text="MTF Analysis", 
+        ttk.Button(btn_frame2, text="MTF Analysis", 
                   command=self.show_mtf).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        ttk.Button(btn_frame, text="Wavefront Map", 
+        ttk.Button(btn_frame2, text="Wavefront Map", 
                   command=self.show_wavefront_map).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        ttk.Button(btn_frame, text="Image Simulation", 
+        ttk.Button(btn_frame2, text="Image Simulation", 
                   command=self.show_image_simulation).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        ttk.Button(btn_frame, text="Export Report", 
+        ttk.Button(btn_frame2, text="Export Report", 
                   command=self.export_report).pack(side=tk.LEFT, padx=PADDING_SMALL)
     
     def load_lens(self, lens):
@@ -1694,7 +1703,8 @@ class PerformanceController:
         # Max Field Angle
         tk.Label(control_frame, text="Max Field (deg):").pack(side=tk.LEFT, padx=5)
         field_var = tk.StringVar(value="0.0")
-        tk.Entry(control_frame, textvariable=field_var, width=8).pack(side=tk.LEFT, padx=5)
+        entry = tk.Entry(control_frame, textvariable=field_var, width=8)
+        entry.pack(side=tk.LEFT, padx=5)
         
         # Focus Shift
         tk.Label(control_frame, text="Focus Shift (mm):").pack(side=tk.LEFT, padx=5)
@@ -1813,10 +1823,230 @@ class PerformanceController:
             canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
             canvas.draw()
             canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-
+            
         ttk.Button(control_frame, text="Update", command=update_plot).pack(side=tk.LEFT, padx=10)
-        
         # Initial Plot
+        update_plot()
+
+    def show_ray_fan(self):
+        """Display Ray Fan Analysis"""
+        if self.current_lens is None:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showwarning(root, "No Lens", "Please select a lens first")
+            return
+
+        try:
+            import matplotlib.pyplot as plt
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            from matplotlib.figure import Figure
+            
+            try:
+                from .analysis.geometric import GeometricTraceAnalysis
+                from .optical_system import OpticalSystem
+            except ImportError:
+                import sys
+                import os
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+                from src.analysis.geometric import GeometricTraceAnalysis
+                from src.optical_system import OpticalSystem
+        except ImportError:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showerror(root, "Missing Dependency", "Ray Fan requires matplotlib.\nInstall with: pip install matplotlib")
+            return
+
+        # Prepare System
+        system = None
+        if isinstance(self.current_lens, OpticalSystem):
+            system = self.current_lens
+        else:
+            system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
+            system.add_lens(self.current_lens)
+            
+        # Create Window
+        window = tk.Toplevel()
+        window.title(f"Ray Fan - {system.name}")
+        window.geometry("800x600")
+        
+        # Control Frame
+        control_frame = ttk.Frame(window)
+        control_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
+        
+        tk.Label(control_frame, text="Field (deg):").pack(side=tk.LEFT, padx=5)
+        field_var = tk.StringVar(value="0.0")
+        tk.Entry(control_frame, textvariable=field_var, width=6).pack(side=tk.LEFT, padx=5)
+        
+        plot_frame = ttk.Frame(window)
+        plot_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        
+        def update_plot():
+            for widget in plot_frame.winfo_children():
+                widget.destroy()
+            try:
+                field = float(field_var.get())
+            except ValueError:
+                return
+                
+            analyzer = GeometricTraceAnalysis(system)
+            
+            wavelengths = [
+                (486.1, 'b', 'F (486nm)'),
+                (587.6, 'g', 'd (588nm)'),
+                (656.3, 'r', 'C (656nm)')
+            ]
+            
+            fig = Figure(figsize=(10, 5), dpi=100)
+            ax_tan = fig.add_subplot(1, 2, 1)
+            ax_sag = fig.add_subplot(1, 2, 2)
+            
+            max_err = 0.001
+            
+            for wl, color, name in wavelengths:
+                # Tangential Fan (Py vs Ey)
+                res_tan = analyzer.calculate_ray_fan(field_angle=field, wavelength=wl, pupil_axis='y')
+                py = res_tan['pupil_coords']
+                ey = res_tan['ray_errors']
+                
+                # Sagittal Fan (Px vs Ex)
+                # Note: usually sagittal fan plots Ex vs Px
+                res_sag = analyzer.calculate_ray_fan(field_angle=field, wavelength=wl, pupil_axis='z')
+                px = res_sag['pupil_coords']
+                ex = res_sag['ray_errors']
+                
+                if ey:
+                    ax_tan.plot(py, ey, color=color, label=name)
+                    max_err = max(max_err, max([abs(e) for e in ey]))
+                
+                if ex:
+                    ax_sag.plot(px, ex, color=color, label=name)
+                    max_err = max(max_err, max([abs(e) for e in ex]))
+            
+            # Pad limits
+            lim = max_err * 1.1
+            
+            ax_tan.set_title("Tangential Fan")
+            ax_tan.set_xlabel("Relative Pupil Coordinate (Y)")
+            ax_tan.set_ylabel("Transverse Error Ey (mm)")
+            ax_tan.set_xlim(-1, 1)
+            ax_tan.set_ylim(-lim, lim)
+            ax_tan.grid(True, alpha=0.3)
+            ax_tan.legend()
+            
+            ax_sag.set_title("Sagittal Fan")
+            ax_sag.set_xlabel("Relative Pupil Coordinate (X)")
+            ax_sag.set_ylabel("Transverse Error Ex (mm)")
+            ax_sag.set_xlim(-1, 1)
+            ax_sag.set_ylim(-lim, lim)
+            ax_sag.grid(True, alpha=0.3)
+            ax_sag.legend()
+            
+            fig.suptitle(f"Ray Aberration Fans (Field: {field}°)")
+            fig.tight_layout()
+            
+            canvas = FigureCanvasTkAgg(fig, master=plot_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            
+        ttk.Button(control_frame, text="Update", command=update_plot).pack(side=tk.LEFT, padx=10)
+        update_plot()
+
+    def show_field_curves(self):
+        """Display Field Curvature and Distortion"""
+        if self.current_lens is None:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showwarning(root, "No Lens", "Please select a lens first")
+            return
+
+        try:
+            import matplotlib.pyplot as plt
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            from matplotlib.figure import Figure
+            
+            try:
+                from .analysis.geometric import GeometricTraceAnalysis
+                from .optical_system import OpticalSystem
+            except ImportError:
+                import sys
+                import os
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+                from src.analysis.geometric import GeometricTraceAnalysis
+                from src.optical_system import OpticalSystem
+        except ImportError:
+            root = self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None
+            CopyableMessageBox.showerror(root, "Missing Dependency", "Field Curves requires matplotlib.\nInstall with: pip install matplotlib")
+            return
+
+        # Prepare System
+        system = None
+        if isinstance(self.current_lens, OpticalSystem):
+            system = self.current_lens
+        else:
+            system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
+            system.add_lens(self.current_lens)
+            
+        # Create Window
+        window = tk.Toplevel()
+        window.title(f"Field Curvature & Distortion - {system.name}")
+        window.geometry("800x600")
+        
+        control_frame = ttk.Frame(window)
+        control_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
+        
+        tk.Label(control_frame, text="Max Field (deg):").pack(side=tk.LEFT, padx=5)
+        field_var = tk.StringVar(value="20.0")
+        tk.Entry(control_frame, textvariable=field_var, width=6).pack(side=tk.LEFT, padx=5)
+        
+        plot_frame = ttk.Frame(window)
+        plot_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        
+        def update_plot():
+            for widget in plot_frame.winfo_children():
+                widget.destroy()
+            try:
+                max_field = float(field_var.get())
+            except ValueError:
+                return
+                
+            analyzer = GeometricTraceAnalysis(system)
+            
+            # Calculate for d-line (primary wavelength)
+            res = analyzer.calculate_field_curvature_distortion(max_field_angle=max_field, wavelength=587.6)
+            
+            angles = res['field_angles']
+            tan = res['tan_focus_shift']
+            sag = res['sag_focus_shift']
+            dist = res['distortion_pct']
+            
+            fig = Figure(figsize=(10, 5), dpi=100)
+            ax_fc = fig.add_subplot(1, 2, 1)
+            ax_dist = fig.add_subplot(1, 2, 2)
+            
+            # Plot Field Curvature (X=Focus Shift, Y=Field Angle) - standard format
+            ax_fc.plot(tan, angles, 'b-', label='Tangential (T)')
+            ax_fc.plot(sag, angles, 'g--', label='Sagittal (S)')
+            ax_fc.axvline(0, color='k', linestyle=':', alpha=0.5)
+            
+            ax_fc.set_title("Field Curvature")
+            ax_fc.set_xlabel("Focus Shift (mm)")
+            ax_fc.set_ylabel("Field Angle (deg)")
+            ax_fc.grid(True, alpha=0.3)
+            ax_fc.legend()
+            
+            # Plot Distortion (X=Distortion %, Y=Field Angle)
+            ax_dist.plot(dist, angles, 'r-')
+            ax_dist.axvline(0, color='k', linestyle=':', alpha=0.5)
+            
+            ax_dist.set_title("Distortion")
+            ax_dist.set_xlabel("Distortion (%)")
+            ax_dist.set_ylabel("Field Angle (deg)")
+            ax_dist.grid(True, alpha=0.3)
+            
+            fig.tight_layout()
+            
+            canvas = FigureCanvasTkAgg(fig, master=plot_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            
+        ttk.Button(control_frame, text="Update", command=update_plot).pack(side=tk.LEFT, padx=10)
         update_plot()
 
     def show_ghost_analysis(self):
@@ -3050,3 +3280,7 @@ __all__ = [
     'PerformanceController',
     'ExportController'
 ]
+
+
+
+

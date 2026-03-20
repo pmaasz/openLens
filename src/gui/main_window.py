@@ -84,7 +84,8 @@ try:
         PerformanceController,
         ExportController
     )
-    from ..gui.optimization_controller import OptimizationController
+    # Import OptimizationController from its dedicated module (sibling)
+    from .optimization_controller import OptimizationController
     CONTROLLERS_AVAILABLE = True
 except ImportError:
     try:
@@ -99,7 +100,7 @@ except ImportError:
         try:
             from gui.optimization_controller import OptimizationController
         except ImportError:
-             # If running from src/ directly
+             # If running from src/ directly or finding module locally
             from optimization_controller import OptimizationController
 
         CONTROLLERS_AVAILABLE = True
