@@ -401,7 +401,10 @@ openLens/
 ├── src/                     # Source code directory
 │   ├── __init__.py
 │   ├── lens_editor.py       # CLI application
-│   ├── lens_editor_gui.py   # GUI application
+│   ├── lens_editor_gui.py   # GUI entry point
+│   ├── gui/                 # GUI implementation
+│   │   ├── main_window.py
+│   │   └── ...
 │   ├── lens_visualizer.py   # 3D visualization
 │   └── stl_export.py        # STL export functionality
 ├── tests/                   # Test directory

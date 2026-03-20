@@ -24,12 +24,15 @@ OpenLens is an interactive optical lens design and simulation tool for single gl
 Key source files:
 - `src/lens.py` - Core Lens class model
 - `src/lens_editor.py` - CLI application and LensManager
-- `src/lens_editor_gui.py` - GUI application (tkinter)
+- `src/lens_editor_gui.py` - GUI entry point
+- `src/gui/` - GUI implementation (main_window, tabs, etc.)
 - `src/aberrations.py` - Aberrations calculator
 - `src/ray_tracer.py` - Ray tracing engine
 - `src/validation.py` - Input validation utilities
 - `src/services.py` - Service layer (business logic)
 - `src/constants.py` - All constants and configuration
+- `src/optical_node.py` - 3D scene graph node
+- `src/transform.py` - Matrix transformations
 
 ## Build/Lint/Test Commands
 

@@ -6,10 +6,14 @@ presentation and handle complex operations with proper error handling.
 """
 
 import logging
-from typing import Optional, Dict, List, Tuple, Any
+from typing import Optional, Dict, List, Tuple, Any, TYPE_CHECKING
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from .lens import Lens
+    from .optical_system import OpticalSystem
 
 
 class LensService:
@@ -182,13 +186,18 @@ class LensService:
         """
         try:
             focal_length = lens.calculate_focal_length()
+            if focal_length is None:
+                focal_length = float('inf')
+                
             optical_power = lens.calculate_optical_power()
+            if optical_power is None:
+                optical_power = 0.0
             
             return {
                 'focal_length': focal_length,
                 'optical_power': optical_power,
-                'f_number': focal_length / lens.diameter if lens.diameter > 0 and focal_length else float('inf'),
-                'numerical_aperture': lens.diameter / (2 * abs(focal_length)) if focal_length and focal_length != 0 else 0
+                'f_number': focal_length / lens.diameter if lens.diameter > 0 and focal_length != float('inf') else float('inf'),
+                'numerical_aperture': lens.diameter / (2 * abs(focal_length)) if focal_length != float('inf') and focal_length != 0 else 0
             }
         except Exception as e:
             logger.error("Error calculating properties: %s", e)
