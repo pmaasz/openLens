@@ -126,6 +126,20 @@ class OptimizationController:
         ttk.Checkbutton(sa_frame, text="Minimize Spherical Aberration", 
                        variable=self.target_vars['spherical_enabled']).pack(side=tk.LEFT)
         
+        # Target: Coma
+        coma_frame = ttk.Frame(self.targets_frame)
+        coma_frame.pack(fill=tk.X, pady=2)
+        self.target_vars['coma_enabled'] = tk.BooleanVar(value=False)
+        ttk.Checkbutton(coma_frame, text="Minimize Coma", 
+                       variable=self.target_vars['coma_enabled']).pack(side=tk.LEFT)
+
+        # Target: Astigmatism
+        ast_frame = ttk.Frame(self.targets_frame)
+        ast_frame.pack(fill=tk.X, pady=2)
+        self.target_vars['astigmatism_enabled'] = tk.BooleanVar(value=False)
+        ttk.Checkbutton(ast_frame, text="Minimize Astigmatism", 
+                       variable=self.target_vars['astigmatism_enabled']).pack(side=tk.LEFT)
+        
         # 3. Constraints / Options
         options_frame = ttk.LabelFrame(left_panel, text="Constraints & Options", padding="10")
         options_frame.pack(fill=tk.X, pady=(0, 10))
@@ -423,6 +437,12 @@ class OptimizationController:
                 
             if self.target_vars['spherical_enabled'].get():
                 targets.append(OptimizationTarget("spherical_aberration", 0.0, weight=5.0, target_type="minimize"))
+
+            if self.target_vars['coma_enabled'].get():
+                targets.append(OptimizationTarget("coma", 0.0, weight=5.0, target_type="minimize"))
+
+            if self.target_vars['astigmatism_enabled'].get():
+                targets.append(OptimizationTarget("astigmatism", 0.0, weight=5.0, target_type="minimize"))
 
             if not targets:
                 self.log("No targets selected!")

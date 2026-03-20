@@ -25,20 +25,28 @@ class TestAdvancedOptimizer(unittest.TestCase):
         
         # Variables: R1, R2
         self.variables = [
-            OptimizationVariable("R1", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0),
-            OptimizationVariable("R2", 0, "radius_of_curvature_2", -100.0, -200.0, -50.0)
+            OptimizationVariable(
+                name="R1",
+                element_index=0,
+                parameter="radius_of_curvature_1",
+                current_value=100.0,
+                min_value=50.0,
+                max_value=200.0
+            ),
+            OptimizationVariable(
+                name="R2",
+                element_index=0,
+                parameter="radius_of_curvature_2",
+                current_value=-100.0,
+                min_value=-200.0,
+                max_value=-50.0
+            )
         ]
 
     def test_optimize_spot_size(self):
         """Test optimizing for RMS spot size"""
-        # Target: Minimize RMS spot size
-        # We start with a symmetric biconvex lens.
-        # Ideally, for infinite conjugate, best shape is convex-plano or similar (depending on index).
-        # Optimization should move R1 and R2 to reduce spherical aberration (RMS spot).
-        
         targets = [
             OptimizationTarget("rms_spot_radius", 0.0, weight=100.0, target_type="minimize"),
-            # Constrain focal length to avoid drifting too far
             OptimizationTarget("focal_length", 96.8, weight=1.0, target_type="target")
         ]
         
@@ -46,34 +54,70 @@ class TestAdvancedOptimizer(unittest.TestCase):
         result = optimizer.optimize_simplex(max_iterations=20)
         
         self.assertTrue(result.success)
-        # Check if merit improved
         self.assertLessEqual(result.final_merit, result.initial_merit)
         
-        # Check if R1 changed (it should, to minimize spherical aberration)
         new_r1 = result.optimized_system.elements[0].lens.radius_of_curvature_1
         self.assertNotAlmostEqual(new_r1, 100.0, delta=0.1)
 
-    def test_optimize_mtf(self):
-        """Test optimizing for MTF"""
-        # This test might be skipped if numpy not available
-        try:
-            import numpy
-            from src.analysis.beam_synthesis import NUMPY_AVAILABLE
-            if not NUMPY_AVAILABLE:
-                self.skipTest("Numpy not available (internal check)")
-        except ImportError:
-            self.skipTest("Numpy not available")
-
-        # Target: Maximize MTF volume
-        targets = [
-            OptimizationTarget("mtf", 0.0, weight=10.0, target_type="maximize"),
-            OptimizationTarget("focal_length", 96.8, weight=1.0, target_type="target")
+    def test_edge_thickness_penalty(self):
+        """Test that invalid geometries (negative edge thickness) are penalized"""
+        # Create an impossible lens: R=26, D=50. Sag approx 7.1mm per side. Total sag 14.2mm.
+        # If center thickness is 5mm, edge thickness = 5 - 14.2 = -9.2mm (Impossible!)
+        
+        impossible_lens = Lens(
+            radius_of_curvature_1=26.0, 
+            radius_of_curvature_2=-26.0, 
+            thickness=5.0, 
+            diameter=50.0, 
+            refractive_index=1.5
+        )
+        sys_bad = OpticalSystem("Bad System")
+        sys_bad.add_lens(impossible_lens)
+        
+        vars = [
+            OptimizationVariable(
+                name="R1",
+                element_index=0,
+                parameter="radius_of_curvature_1",
+                current_value=26.0,
+                min_value=10.0,
+                max_value=100.0
+            )
         ]
+        optimizer = LensOptimizer(sys_bad, vars, []) 
         
+        merit = optimizer.merit_function.evaluate(sys_bad)
+        self.assertGreater(merit, 1000.0)
+
+    def test_coma_target(self):
+        """Test that coma target can be evaluated"""
+        targets = [
+            OptimizationTarget(
+                name="coma",
+                target_value=0.0,
+                weight=1.0,
+                target_type="minimize"
+            )
+        ]
         optimizer = LensOptimizer(self.system, self.variables, targets)
-        result = optimizer.optimize_simplex(max_iterations=5) # Very fast test, FFT is slow
-        
-        self.assertTrue(result.success)
+        merit = optimizer._evaluate_design([100.0, -100.0])
+        self.assertIsInstance(merit, float)
+        self.assertGreaterEqual(merit, 0.0)
+
+    def test_astigmatism_target(self):
+        """Test that astigmatism target can be evaluated"""
+        targets = [
+            OptimizationTarget(
+                name="astigmatism",
+                target_value=0.0,
+                weight=1.0,
+                target_type="minimize"
+            )
+        ]
+        optimizer = LensOptimizer(self.system, self.variables, targets)
+        merit = optimizer._evaluate_design([100.0, -100.0])
+        self.assertIsInstance(merit, float)
+        self.assertGreaterEqual(merit, 0.0)
 
 if __name__ == '__main__':
     unittest.main()

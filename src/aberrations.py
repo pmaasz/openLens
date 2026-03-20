@@ -7,6 +7,17 @@ Calculates primary optical aberrations for single lens elements
 import math
 from typing import Optional, Dict, Any
 
+# Import ray tracer for exact calculations
+try:
+    from .ray_tracer import LensRayTracer, Ray
+except ImportError:
+    # Handle circular imports or running as script
+    try:
+        from ray_tracer import LensRayTracer, Ray
+    except ImportError:
+        LensRayTracer = None
+        Ray = None
+
 # Import constants
 try:
     from .constants import (
@@ -142,20 +153,78 @@ class AberrationsCalculator:
         """
         Calculate longitudinal spherical aberration (LSA).
         
-        Uses the third-order Seidel spherical aberration coefficient for a thin lens.
-        The formula accounts for both shape factor (q) and position factor (p).
+        Attempts to use exact ray tracing first. If ray tracing fails or
+        dependencies are missing, falls back to third-order Seidel approximation.
         
-        For collimated light (object at infinity), position factor p = -1.
+        LSA = Marginal Focus - Paraxial Focus
         
-        The shape factor q = (R2 + R1) / (R2 - R1) determines the lens bend.
-        
-        LSA = (y^2 / (2*f)) * S_I
-        
-        where S_I is the Seidel spherical aberration coefficient depending on
-        shape factor, position factor, and refractive index.
+        For Seidel approximation:
+        LSA = -K * y^4 / f^3
         
         Returns:
             Longitudinal spherical aberration in mm
+        """
+        if abs(focal_length) < EPSILON:
+            return 0
+            
+        # Try exact calculation first
+        exact_lsa = self._calculate_spherical_aberration_exact()
+        if exact_lsa is not None:
+            return exact_lsa
+            
+        # Fallback to Seidel approximation
+        return self._calculate_spherical_aberration_seidel(focal_length)
+
+    def _calculate_spherical_aberration_exact(self) -> Optional[float]:
+        """
+        Calculate LSA using exact ray tracing.
+        Returns None if calculation fails (e.g. TIR, missing dependencies).
+        """
+        if LensRayTracer is None or Ray is None:
+            return None
+            
+        try:
+            tracer = LensRayTracer(self.lens)
+            
+            # Start position for rays (before lens)
+            start_x = -10.0 - self.d
+            
+            # 1. Trace Marginal Ray (at edge of aperture)
+            y_marginal = self.D / 2.0
+            ray_marginal = Ray(start_x, y_marginal, angle=0.0)
+            tracer.trace_ray(ray_marginal)
+            
+            if ray_marginal.terminated and abs(ray_marginal.y) > self.D/2:
+                # Ray missed lens or TIR
+                return None
+                
+            # Calculate marginal focus
+            # Ray exits at (x, y) with angle.
+            # Focus X = x - y / tan(angle)
+            if abs(math.tan(ray_marginal.angle)) < 1e-9:
+                return None # Infinite focus
+                
+            marginal_focus = ray_marginal.x - ray_marginal.y / math.tan(ray_marginal.angle)
+            
+            # 2. Trace Paraxial Ray (close to axis)
+            y_paraxial = self.D / 2.0 * 0.01 # 1% of aperture
+            ray_paraxial = Ray(start_x, y_paraxial, angle=0.0)
+            tracer.trace_ray(ray_paraxial)
+            
+            if abs(math.tan(ray_paraxial.angle)) < 1e-9:
+                return None # Infinite focus
+                
+            paraxial_focus = ray_paraxial.x - ray_paraxial.y / math.tan(ray_paraxial.angle)
+            
+            # LSA = Marginal - Paraxial
+            return marginal_focus - paraxial_focus
+            
+        except Exception:
+            return None
+
+    def _calculate_spherical_aberration_seidel(self, focal_length: float) -> float:
+        """
+        Calculate longitudinal spherical aberration (LSA) using Seidel approximation.
         """
         if abs(focal_length) < EPSILON:
             return 0

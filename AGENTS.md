@@ -224,6 +224,16 @@ Business logic is in `src/services.py`, keeping UI code thin:
 result = services.calculate_lens_properties(lens_data)
 ```
 
+### Optimization Pattern
+The `LensOptimizer` in `src/optimizer.py` uses a flexible target/variable system.
+Always use the high-level `optimize()` wrapper which selects the best algorithm (defaulting to simplex):
+```python
+optimizer = LensOptimizer(system, variables, targets)
+result = optimizer.optimize(max_iterations=100)
+```
+Do not call `optimize_simplex` or `optimize_gradient_descent` directly unless you need specific algorithm control.
+The merit function automatically handles penalties for invalid geometries (e.g., negative edge thickness).
+
 ### Validation Before Processing
 Always validate inputs before calculations:
 ```python

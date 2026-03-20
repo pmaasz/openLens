@@ -94,9 +94,69 @@ class MeritFunction:
         - Astigmatism
         - Focal length target
         - RMS spot size
+        - System Length
+        - MTF
+        
+        Also adds penalties for invalid geometries (edge thickness).
         """
         merit = 0.0
         
+        # 1. Physical Constraints Penalties
+        # Edge thickness check for all elements
+        for element in system.elements:
+            lens = element.lens
+            # Calculate sags
+            try:
+                # Aperture radius
+                y = lens.diameter / 2.0
+                
+                # Sag 1
+                if abs(lens.radius_of_curvature_1) > y:
+                    sag1 = abs(lens.radius_of_curvature_1) - math.sqrt(lens.radius_of_curvature_1**2 - y**2)
+                    if lens.radius_of_curvature_1 < 0:
+                        sag1 = -sag1 # Concave surface (curves away)
+                else:
+                    # Invalid geometry (hemisphere or more)
+                    merit += 1e5
+                    sag1 = 0
+                    
+                # Sag 2
+                if abs(lens.radius_of_curvature_2) > y:
+                    sag2 = abs(lens.radius_of_curvature_2) - math.sqrt(lens.radius_of_curvature_2**2 - y**2)
+                    if lens.radius_of_curvature_2 > 0:
+                        sag2 = -sag2 # Concave surface (curves away from direction of light?)
+                        # Sign convention: R2 is typically negative for biconvex.
+                        # R2 > 0 means convex to the right (concave to left)
+                        pass
+                    # Actually, let's use the standard sag formula: z = c*r^2 / (1 + sqrt(1-c^2*r^2))
+                    # c = 1/R. 
+                    # If R > 0, c > 0 -> z > 0 (surface curves towards right)
+                    # If R < 0, c < 0 -> z < 0 (surface curves towards left)
+                else:
+                    merit += 1e5
+                
+                # Simplified Edge Thickness Calculation
+                # Te = Tc - Sag1 + Sag2 (using standard sign convention where light goes L->R)
+                # Sag1 = z(y) for first surface
+                # Sag2 = z(y) for second surface
+                
+                def get_sag(r, h):
+                    if abs(r) < 1e-6: return 0 # Plane
+                    c = 1.0/r
+                    if 1 - (c*h)**2 < 0: return r # Invalid
+                    return c*h**2 / (1 + math.sqrt(1 - (c*h)**2))
+
+                s1 = get_sag(lens.radius_of_curvature_1, y)
+                s2 = get_sag(lens.radius_of_curvature_2, y)
+                
+                edge_thickness = lens.thickness - s1 + s2
+                
+                if edge_thickness < 0.5: # Min edge thickness constraint (0.5mm)
+                    merit += 1e4 * (0.5 - edge_thickness)**2
+                    
+            except Exception:
+                merit += 1e5 # Calculation error penalty
+
         for target in self.targets:
             if target.name == "spherical_aberration":
                 # Get spherical aberration for first lens
@@ -113,6 +173,26 @@ class MeritFunction:
                     else:
                          merit += 1e6 # Penalty if calculation fails
             
+            elif target.name == "coma":
+                if system.elements:
+                    calc = AberrationsCalculator(system.elements[0].lens)
+                    # Use a default field angle if not specified, say 5 degrees
+                    # Or get from target? For now hardcode or use generic
+                    results = calc.calculate_all_aberrations(field_angle=5.0)
+                    if results.get('coma') is not None:
+                         value = abs(results['coma'])
+                         if target.target_type == "minimize":
+                            merit += target.weight * value
+            
+            elif target.name == "astigmatism":
+                if system.elements:
+                    calc = AberrationsCalculator(system.elements[0].lens)
+                    results = calc.calculate_all_aberrations(field_angle=5.0)
+                    if results.get('astigmatism') is not None:
+                         value = abs(results['astigmatism'])
+                         if target.target_type == "minimize":
+                            merit += target.weight * value
+
             elif target.name == "chromatic_aberration":
                 chrom = system.calculate_chromatic_aberration()
                 value = chrom['longitudinal']
