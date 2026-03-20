@@ -181,6 +181,11 @@ class OptimizationController:
         algo_combo['values'] = ("Local (Simplex)", "Global (Simulated Annealing)", "Global (Genetic Algorithm)")
         algo_combo.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
 
+        # Robust Mode Checkbox
+        self.target_vars['robust_mode'] = tk.BooleanVar(value=False)
+        ttk.Checkbutton(options_frame, text="Robust Mode (Yield Optimization)", 
+                       variable=self.target_vars['robust_mode']).pack(anchor=tk.W, pady=(5,0))
+
         # 4. Actions
         actions_frame = ttk.Frame(left_panel)
         actions_frame.pack(fill=tk.X, pady=10)
@@ -194,8 +199,17 @@ class OptimizationController:
         log_frame = ttk.LabelFrame(right_panel, text="Optimization Log", padding="5")
         log_frame.pack(fill=tk.BOTH, expand=True)
         
-        self.log_text = tk.Text(log_frame, height=20, width=40, state='disabled', font=('Consolas', 9))
+        self.log_text = tk.Text(log_frame, height=10, width=40, state='disabled', font=('Consolas', 9))
         self.log_text.pack(fill=tk.BOTH, expand=True)
+
+        # Graph Area
+        graph_frame = ttk.LabelFrame(right_panel, text="Merit Function History", padding="5")
+        graph_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+        
+        self.graph_canvas = tk.Canvas(graph_frame, height=200, bg="white")
+        self.graph_canvas.pack(fill=tk.BOTH, expand=True)
+        self.graph_data = [] # List of (iteration, merit)
+
 
     def load_lens(self, lens: Optional[Any]):
         """Load lens data into the optimization tab"""
@@ -280,13 +294,83 @@ class OptimizationController:
         # Also log to system logger
         logger.info(message)
 
+    def _update_graph(self):
+        """Redraw the graph with current data"""
+        if not self.graph_data:
+            return
+            
+        w = self.graph_canvas.winfo_width()
+        h = self.graph_canvas.winfo_height()
+        # Fallback if unmapped
+        if w <= 1: w = 300
+        if h <= 1: h = 200
+        
+        self.graph_canvas.delete("all")
+        
+        # Margins
+        pad_x = 30
+        pad_y = 20
+        plot_w = w - 2*pad_x
+        plot_h = h - 2*pad_y
+        
+        # Axis lines
+        self.graph_canvas.create_line(pad_x, h-pad_y, w-pad_x, h-pad_y, width=2) # X
+        self.graph_canvas.create_line(pad_x, h-pad_y, pad_x, pad_y, width=2) # Y
+        
+        # Data range
+        iterations = [d[0] for d in self.graph_data]
+        merits = [d[1] for d in self.graph_data]
+        
+        if not iterations: return
+        
+        max_iter = max(iterations) if iterations else 1
+        max_merit = max(merits) if merits else 1.0
+        min_merit = min(merits) if merits else 0.0
+        
+        # Scaling
+        # Avoid div by zero
+        x_scale = plot_w / max_iter if max_iter > 0 else 1
+        
+        merit_range = max_merit - min_merit
+        if merit_range < 1e-9: merit_range = 1.0
+        y_scale = plot_h / merit_range
+        
+        # Draw points
+        points = []
+        for it, val in self.graph_data:
+            x = pad_x + it * x_scale
+            # Y is inverted (0 at top)
+            # Normalized value from 0 to 1 (0 being min_merit)
+            norm_val = (val - min_merit)
+            y = (h - pad_y) - (norm_val * y_scale)
+            points.append((x, y))
+            
+        if len(points) > 1:
+            self.graph_canvas.create_line(points, fill="blue", width=2, smooth=True)
+            
+        # Draw labels
+        # Min/Max Y
+        self.graph_canvas.create_text(pad_x - 5, pad_y, text=f"{max_merit:.2g}", anchor="e", font=("Arial", 8))
+        self.graph_canvas.create_text(pad_x - 5, h-pad_y, text=f"{min_merit:.2g}", anchor="e", font=("Arial", 8))
+        
+        # Max X
+        self.graph_canvas.create_text(w-pad_x, h-pad_y+10, text=f"{max_iter}", anchor="n", font=("Arial", 8))
+
+
     def run_optimization(self):
         """Execute the optimization process"""
         if not self.current_lens:
             return
             
         self.optimize_btn.config(state='disabled', text="Optimizing...")
+        self.log_text.config(state='normal')
+        self.log_text.delete(1.0, tk.END)
+        self.log_text.config(state='disabled')
         self.log("Starting optimization...")
+        
+        # Reset graph
+        self.graph_data = []
+        self.graph_canvas.delete("all")
         
         # Run in thread to keep UI responsive
         threading.Thread(target=self._optimization_worker, daemon=True).start()
@@ -295,6 +379,13 @@ class OptimizationController:
         try:
             if not self.current_lens:
                 return
+
+            # Callback for live updates
+            def update_ui(iteration, merit, values):
+                self.graph_data.append((iteration, merit))
+                if iteration % 5 == 0: # Throttle UI updates
+                    if self.parent_window:
+                        self.parent_window.root.after(0, self._update_graph_and_log, iteration, merit)
 
             # 1. Collect Variables
             variables: List[OptimizationVariable] = []
@@ -499,39 +590,91 @@ class OptimizationController:
                 self._optimization_finished(False)
                 return
 
-            # 3. Create Optimizer
+            # Check robust mode
+            robust_mode = self.target_vars['robust_mode'].get()
+            
+            # Create Optimizer
             system_to_optimize = temp_system if is_single_lens_optimization and temp_system else self.current_lens
             
             # Check selected algorithm
             algorithm = self.algorithm_var.get() if hasattr(self, 'algorithm_var') else "Local (Simplex)"
             
-            if "Global" in algorithm:
+            # Robust Optimization Setup
+            if robust_mode:
                 try:
-                    from ..global_optimizer import GlobalOptimizer
+                    from ..desensitization import DesensitizationOptimizer
+                    from ..tolerancing import ToleranceOperand, ToleranceType
                 except ImportError:
                     try:
-                        from global_optimizer import GlobalOptimizer
+                        from desensitization import DesensitizationOptimizer
+                        from tolerancing import ToleranceOperand, ToleranceType
                     except ImportError:
-                        self.log("Global optimizer not found, falling back to local.")
-                        optimizer = LensOptimizer(system_to_optimize, variables, targets, constraints=constraints)
-                        algorithm = "Local (Simplex)"
+                        self.log("Robust optimizer not found.")
+                        robust_mode = False
+            
+            optimizer = None
+            if robust_mode and 'DesensitizationOptimizer' in locals():
+                optimizer = DesensitizationOptimizer(system_to_optimize, variables, targets, constraints=constraints)
+                self.log("Using Robust Optimizer (Desensitization)")
+                
+                # Create default tolerances based on variables
+                tolerances = []
+                for var in variables:
+                    # Map variable to tolerance type
+                    tol_type = None
+                    if var.parameter == "radius_of_curvature_1": tol_type = ToleranceType.RADIUS_1
+                    elif var.parameter == "radius_of_curvature_2": tol_type = ToleranceType.RADIUS_2
+                    elif var.parameter == "thickness": tol_type = ToleranceType.THICKNESS
+                    elif var.parameter == "refractive_index": tol_type = ToleranceType.REFRACTIVE_INDEX
+                    
+                    if tol_type:
+                        # Assume 1% tolerance or fixed value
+                        # For R: 0.1% or 0.05mm? Let's say 0.1mm
+                        # For Th: 0.1mm
+                        val = 0.1
+                        if tol_type == ToleranceType.REFRACTIVE_INDEX: val = 0.001
+                        
+                        tolerances.append(ToleranceOperand(
+                            element_index=var.element_index,
+                            param_type=tol_type,
+                            min_val=-val, max_val=val
+                        ))
+                
+                self.log(f"Generated {len(tolerances)} tolerances for robust optimization")
+                
+                # Robust only supports simplex currently via optimize_robust
+                # So we override algorithm choice implicitly or explicitly
+                result = optimizer.optimize_robust(tolerances, sensitivity_weight=1.0, max_iterations=50, callback=update_ui)
+                
+            else:
+                # Standard Global/Local
+                if "Global" in algorithm:
+                    try:
+                        from ..global_optimizer import GlobalOptimizer
+                    except ImportError:
+                        try:
+                            from global_optimizer import GlobalOptimizer
+                        except ImportError:
+                            self.log("Global optimizer not found, falling back to local.")
+                            optimizer = LensOptimizer(system_to_optimize, variables, targets, constraints=constraints)
+                            algorithm = "Local (Simplex)"
+                        else:
+                            optimizer = GlobalOptimizer(system_to_optimize, variables, targets, constraints=constraints)
                     else:
                         optimizer = GlobalOptimizer(system_to_optimize, variables, targets, constraints=constraints)
                 else:
-                    optimizer = GlobalOptimizer(system_to_optimize, variables, targets, constraints=constraints)
-            else:
-                optimizer = LensOptimizer(system_to_optimize, variables, targets, constraints=constraints)
-            
-            # 4. Run
-            self.log(f"Starting optimization with {len(variables)} variables and {len(targets)} targets...")
-            self.log(f"Algorithm: {algorithm}")
-            
-            if "Simulated Annealing" in algorithm:
-                result = optimizer.optimize_simulated_annealing(max_iterations=1000, initial_temperature=50.0)
-            elif "Genetic Algorithm" in algorithm:
-                result = optimizer.optimize_genetic(population_size=30, generations=20)
-            else:
-                result = optimizer.optimize(max_iterations=50) # Keep iterations low for UI responsiveness
+                    optimizer = LensOptimizer(system_to_optimize, variables, targets, constraints=constraints)
+                
+                # 4. Run
+                self.log(f"Starting optimization with {len(variables)} variables and {len(targets)} targets...")
+                self.log(f"Algorithm: {algorithm}")
+                
+                if "Simulated Annealing" in algorithm and hasattr(optimizer, 'optimize_simulated_annealing'):
+                    result = optimizer.optimize_simulated_annealing(max_iterations=1000, initial_temperature=50.0, callback=update_ui)
+                elif "Genetic Algorithm" in algorithm and hasattr(optimizer, 'optimize_genetic'):
+                    result = optimizer.optimize_genetic(population_size=30, generations=20, callback=update_ui)
+                else:
+                    result = optimizer.optimize(max_iterations=50, callback=update_ui)
             
             if result.success:
                 self.log(f"Success! Merit improved from {result.initial_merit:.4f} to {result.final_merit:.4f}")
@@ -567,6 +710,66 @@ class OptimizationController:
             
         self.log("System updated.")
         self._optimization_finished(True)
+
+    def _update_graph_and_log(self, iteration, merit):
+        """Update UI from main thread"""
+        self.log_text.config(state='normal')
+        self.log_text.insert(tk.END, f"Iter {iteration}: Merit {merit:.4f}\n")
+        self.log_text.see(tk.END)
+        self.log_text.config(state='disabled')
+        
+        # Redraw graph
+        # Clear
+        self.graph_canvas.delete("all")
+        
+        w = self.graph_canvas.winfo_width()
+        h = self.graph_canvas.winfo_height()
+        # Fallback
+        if w <= 1: w = 300
+        if h <= 1: h = 200
+        
+        pad_x = 30
+        pad_y = 20
+        plot_w = w - 2*pad_x
+        plot_h = h - 2*pad_y
+        
+        # Draw Axes
+        self.graph_canvas.create_line(pad_x, h-pad_y, w-pad_x, h-pad_y, width=2)
+        self.graph_canvas.create_line(pad_x, h-pad_y, pad_x, pad_y, width=2)
+        
+        if not self.graph_data: return
+        
+        iterations = [d[0] for d in self.graph_data]
+        merits = [d[1] for d in self.graph_data]
+        
+        max_iter = max(iterations) if iterations else 1
+        # Start X from 0 if possible
+        min_iter = min(iterations) if iterations else 0
+        iter_range = max_iter - min_iter
+        if iter_range == 0: iter_range = 1
+        
+        max_merit = max(merits) if merits else 1.0
+        min_merit = min(merits) if merits else 0.0
+        merit_range = max_merit - min_merit
+        if merit_range < 1e-9: merit_range = 1.0
+        
+        x_scale = plot_w / iter_range
+        y_scale = plot_h / merit_range
+        
+        points = []
+        for it, val in self.graph_data:
+            x = pad_x + (it - min_iter) * x_scale
+            y = (h - pad_y) - ((val - min_merit) * y_scale)
+            points.append(x)
+            points.append(y)
+            
+        if len(points) >= 4:
+            self.graph_canvas.create_line(points, fill="blue", width=2)
+            
+        # Labels
+        self.graph_canvas.create_text(pad_x-2, pad_y, text=f"{max_merit:.2g}", anchor="e", font=("Arial", 8))
+        self.graph_canvas.create_text(pad_x-2, h-pad_y, text=f"{min_merit:.2g}", anchor="e", font=("Arial", 8))
+        self.graph_canvas.create_text(w-pad_x, h-pad_y+2, text=f"{max_iter}", anchor="n", font=("Arial", 8))
 
     def _optimization_finished(self, success):
         if self.parent_window:

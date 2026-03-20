@@ -5,7 +5,7 @@ Optimizes optical systems for manufacturing yield by minimizing sensitivity to t
 
 import math
 import copy
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Callable
 from dataclasses import dataclass
 
 try:
@@ -133,17 +133,10 @@ class DesensitizationOptimizer(LensOptimizer):
     Optimizes for Yield.
     """
     def optimize_robust(self, tolerances: List[ToleranceOperand], sensitivity_weight: float = 1.0, 
-                       max_iterations: int = 50) -> OptimizationResult:
+                       max_iterations: int = 50,
+                       callback: Optional[Callable[[int, float, List[float]], None]] = None) -> OptimizationResult:
         """
         Run robust optimization.
-        
-        Args:
-            tolerances: List of tolerances to be insensitive to.
-            sensitivity_weight: Weight of sensitivity term in merit function.
-            max_iterations: Max iterations.
-            
-        Returns:
-            OptimizationResult.
         """
         # Replace default merit function with RobustMeritFunction
         original_merit_function = self.merit_function
@@ -160,7 +153,7 @@ class DesensitizationOptimizer(LensOptimizer):
         )
         
         # Run simplex
-        result = self.optimize_simplex(max_iterations=max_iterations)
+        result = self.optimize_simplex(max_iterations=max_iterations, callback=callback)
         
         # Restore merit function
         self.merit_function = original_merit_function

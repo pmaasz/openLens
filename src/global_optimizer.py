@@ -29,18 +29,10 @@ class GlobalOptimizer(LensOptimizer):
                                      max_iterations: int = 1000, 
                                      initial_temperature: float = 100.0,
                                      cooling_rate: float = 0.95,
-                                     restart_threshold: float = 1e-4) -> OptimizationResult:
+                                     restart_threshold: float = 1e-4,
+                                     callback: Optional[Callable[[int, float, List[float]], None]] = None) -> OptimizationResult:
         """
         Simulated Annealing global optimization.
-        
-        Args:
-            max_iterations: Maximum number of iterations.
-            initial_temperature: Starting temperature (affects probability of accepting worse solutions).
-            cooling_rate: Rate at which temperature decreases (0.0 to 1.0).
-            restart_threshold: If improvement is small, consider local optimization.
-            
-        Returns:
-            OptimizationResult object.
         """
         current_values = [var.current_value for var in self.variables]
         current_merit = self._evaluate_design(current_values)
@@ -56,6 +48,10 @@ class GlobalOptimizer(LensOptimizer):
         n_vars = len(self.variables)
         
         for iteration in range(max_iterations):
+            # Callback
+            if callback:
+                callback(iteration, best_merit, best_values)
+
             # Create neighbor solution
             # Perturb one or more variables
             neighbor_values = list(current_values)
@@ -143,7 +139,8 @@ class GlobalOptimizer(LensOptimizer):
                         population_size: int = 50,
                         generations: int = 50,
                         mutation_rate: float = 0.1,
-                        crossover_rate: float = 0.7) -> OptimizationResult:
+                        crossover_rate: float = 0.7,
+                        callback: Optional[Callable[[int, float, List[float]], None]] = None) -> OptimizationResult:
         """
         Genetic Algorithm global optimization.
         Uses real-valued encoding.
@@ -170,6 +167,10 @@ class GlobalOptimizer(LensOptimizer):
         history_merit = []
         
         for gen in range(generations):
+            # Callback
+            if callback and best_overall_design:
+                 callback(gen, best_overall_merit, best_overall_design)
+
             # Evaluate population
             merits = []
             for ind in population:

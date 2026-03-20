@@ -340,14 +340,21 @@ class LensOptimizer:
         self.targets = targets
         self.merit_function = MeritFunction(system, targets, constraints)
     
-    def optimize(self, max_iterations: int = 100, tolerance: float = 1e-6) -> OptimizationResult:
+    def optimize(self, max_iterations: int = 100, tolerance: float = 1e-6, 
+                 callback: Optional[Callable[[int, float, List[float]], None]] = None) -> OptimizationResult:
         """
         Run optimization using the default algorithm (Simplex).
         Wrapper for compatibility with controllers.
+        
+        Args:
+            max_iterations: Maximum number of iterations.
+            tolerance: Convergence threshold.
+            callback: Function called at each iteration with (iteration, merit, current_values).
         """
-        return self.optimize_simplex(max_iterations, tolerance)
+        return self.optimize_simplex(max_iterations, tolerance, callback)
 
-    def optimize_simplex(self, max_iterations: int = 100, tolerance: float = 1e-6) -> OptimizationResult:
+    def optimize_simplex(self, max_iterations: int = 100, tolerance: float = 1e-6,
+                        callback: Optional[Callable[[int, float, List[float]], None]] = None) -> OptimizationResult:
         """
         Nelder-Mead simplex optimization
         Simple but robust algorithm for lens optimization
@@ -389,6 +396,10 @@ class LensOptimizer:
             order = sorted(range(len(merit_values)), key=lambda i: merit_values[i])
             simplex = [simplex[i] for i in order]
             merit_values = [merit_values[i] for i in order]
+            
+            # Callback with best solution so far
+            if callback:
+                callback(iteration, merit_values[0], simplex[0])
             
             # Check convergence
             merit_range = merit_values[-1] - merit_values[0]
