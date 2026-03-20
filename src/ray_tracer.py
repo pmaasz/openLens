@@ -13,6 +13,18 @@ try:
 except ImportError:
     from vector3 import Vector3, vec3
 
+# Import numpy and polarization
+try:
+    import numpy as np
+    try:
+        from .polarization import PolarizationCalculator
+    except ImportError:
+        from polarization import PolarizationCalculator
+    HAS_POLARIZATION = True
+except ImportError:
+    np = None
+    HAS_POLARIZATION = False
+
 # Import constants
 try:
     from .constants import (
@@ -642,20 +654,22 @@ class SystemRayTracer:
 
 class Ray3D:
     """
-    Represents a light ray in 3D space.
+    Represents a light ray in 3D space with optional polarization.
     
     Attributes:
         origin: Starting position (Vector3)
         direction: Direction vector (Vector3, normalized)
         wavelength: Wavelength in mm
-        intensity: Ray intensity (0-1)
+        intensity: Ray intensity/power (0-1)
         n: Current refractive index
         path: List of points along the ray path
+        polarization_vector: Optional complex 3D E-field vector (numpy array)
     """
     
     def __init__(self, origin: Vector3, direction: Vector3, 
                  wavelength: float = WAVELENGTH_GREEN * NM_TO_MM, 
-                 intensity: float = 1.0, n: float = REFRACTIVE_INDEX_AIR) -> None:
+                 intensity: float = 1.0, n: float = REFRACTIVE_INDEX_AIR,
+                 polarization_vector: Optional[Any] = None) -> None:
         self.origin = origin
         self.direction = direction.normalize()
         self.wavelength = wavelength
@@ -664,6 +678,13 @@ class Ray3D:
         self.path: List[Vector3] = [origin]
         self.terminated = False
         self.optical_path_length: float = 0.0
+        
+        # Polarization (E-field vector)
+        self.polarization_vector = polarization_vector
+        if self.polarization_vector is not None and HAS_POLARIZATION:
+            # Ensure it's a numpy array
+            if not isinstance(self.polarization_vector, np.ndarray):
+                self.polarization_vector = np.array(self.polarization_vector, dtype=complex)
     
     def propagate(self, distance: float) -> None:
         """Propagate ray in current direction"""
@@ -687,16 +708,158 @@ class Ray3D:
         
         return 0.5 * (rs + rp)
 
+    def _update_polarization(self, normal: Vector3, n1: float, n2: float, 
+                             new_direction: Vector3, interaction: str) -> None:
+        """
+        Update polarization vector based on interaction (reflect/refract).
+        Uses Fresnel equations for s and p components.
+        """
+        if self.polarization_vector is None or not HAS_POLARIZATION:
+            return
+
+        k_inc = self.direction # Incident direction
+        n = normal
+        
+        # 1. Calculate Basis Vectors
+        # s-vector: perpendicular to plane of incidence (k x n)
+        s_vec = k_inc.cross(n)
+        s_mag = s_vec.magnitude()
+        
+        if s_mag < 1e-6:
+            # Normal incidence: k parallel to n.
+            # Plane of incidence undefined. s and p are arbitrary.
+            # Pick arbitrary s perpendicular to k
+            if abs(k_inc.x) < 0.9:
+                arb = vec3(1, 0, 0)
+            else:
+                arb = vec3(0, 1, 0)
+            s_vec = k_inc.cross(arb).normalize()
+        else:
+            s_vec = s_vec.normalize()
+            
+        # p-vector incident: in plane, perpendicular to k (s x k) -> (p, k, s) right-handed? No usually (k, s, p) or (s, p, k)
+        # Standard basis: s (perp), p (parallel)
+        # Let's define p = k x s (so s, p, k is right handed? s x p = k)
+        # Wait, usually (p, s, k). p x s = k?
+        # Let's just use geometry: p is in plane of incidence.
+        # k_inc x s_vec = p_inc
+        p_inc = s_vec.cross(k_inc).normalize()
+        
+        # p-vector outgoing (reflected or refracted)
+        k_out = new_direction
+        # s_vec is same for outgoing (planar geometry)
+        # p_out = s_vec x k_out (to maintain orientation relative to k)
+        # Wait, if we use p = k x s? No, p should be component in plane.
+        # Let's stick to: p = s x k? No.
+        # p = k x s.
+        p_out = s_vec.cross(k_out).normalize()
+        
+        # 2. Project E-field onto s and p
+        # Convert vectors to numpy for dot product
+        E = self.polarization_vector
+        s_np = np.array([s_vec.x, s_vec.y, s_vec.z])
+        p_inc_np = np.array([p_inc.x, p_inc.y, p_inc.z])
+        p_out_np = np.array([p_out.x, p_out.y, p_out.z])
+        
+        # Components
+        E_s = np.dot(E, s_np)
+        E_p = np.dot(E, p_inc_np)
+        
+        # 3. Fresnel Coefficients
+        # Calculate incident angle
+        cos_i = abs(k_inc.dot(n))
+        angle_deg = math.degrees(math.acos(min(1.0, cos_i)))
+        
+        calc = PolarizationCalculator()
+        coeffs = calc.fresnel_coefficients(n1, n2, angle_deg)
+        
+        # 4. Update E-field and Intensity
+        if interaction == 'reflect':
+            r_s = coeffs['r_s']
+            r_p = coeffs['r_p']
+            
+            # Reflected E-field
+            E_new = r_s * E_s * s_np + r_p * E_p * p_out_np
+            
+            # Update Intensity (Reflectance)
+            # Power reflectance is |r|^2 for both components
+            R_s = np.abs(r_s)**2
+            R_p = np.abs(r_p)**2
+            
+            # Fraction of power in s and p
+            P_total_old = np.abs(E_s)**2 + np.abs(E_p)**2
+            if P_total_old > 1e-9:
+                # Update total intensity based on power reflectance of components
+                reflectance_factor = (R_s * np.abs(E_s)**2 + R_p * np.abs(E_p)**2) / P_total_old
+                self.intensity *= reflectance_factor
+            else:
+                self.intensity = 0.0
+
+            self.polarization_vector = E_new
+            
+        elif interaction == 'refract':
+            t_s = coeffs['t_s']
+            t_p = coeffs['t_p']
+            
+            # Transmitted E-field
+            E_new = t_s * E_s * s_np + t_p * E_p * p_out_np
+            
+            # Update Intensity (Transmittance)
+            # Power transmittance requires geometric factor
+            if coeffs['total_internal_reflection']:
+                 self.intensity = 0.0
+                 # E-field is evanescent/zero for ray tracing purposes
+                 self.polarization_vector = np.zeros(3, dtype=complex)
+                 return
+
+            theta1_rad = math.radians(angle_deg)
+            theta2_rad = math.radians(coeffs['theta_transmitted_deg'])
+            
+            # Geometric factor (n2 cos t2) / (n1 cos t1)
+            # Avoid divide by zero
+            if n1 * math.cos(theta1_rad) > 1e-9:
+                geo_factor = (n2 * math.cos(theta2_rad)) / (n1 * math.cos(theta1_rad))
+            else:
+                geo_factor = 0 # Should not happen for valid transmission
+            
+            T_s = geo_factor * np.abs(t_s)**2
+            T_p = geo_factor * np.abs(t_p)**2
+            
+            P_total_old = np.abs(E_s)**2 + np.abs(E_p)**2
+            if P_total_old > 1e-9:
+                transmittance_factor = (T_s * np.abs(E_s)**2 + T_p * np.abs(E_p)**2) / P_total_old
+                self.intensity *= transmittance_factor
+            else:
+                self.intensity = 0.0
+                
+            self.polarization_vector = E_new
+
     def reflect(self, normal: Vector3, n1: Optional[float] = None, n2: Optional[float] = None) -> None:
         """
         Reflect ray off a surface normal.
         Optionally apply Fresnel reflection if refractive indices are provided.
         """
+        old_direction = self.direction
         dot = self.direction.dot(normal)
-        self.direction = self.direction - normal * (2 * dot)
-        self.direction = self.direction.normalize()
+        
+        # Calculate new direction first
+        new_direction = self.direction - normal * (2 * dot)
+        new_direction = new_direction.normalize()
+        self.direction = new_direction
         
         if n1 is not None and n2 is not None:
+             # Handle polarization if enabled
+             if self.polarization_vector is not None and HAS_POLARIZATION:
+                 # Restore old direction for calculation (needed for basis vectors)
+                 temp_ray_dir = self.direction # Store new
+                 self.direction = old_direction # Restore old temporarily
+                 
+                 self._update_polarization(normal, n1, n2, new_direction, 'reflect')
+                 
+                 self.direction = temp_ray_dir # Restore new
+                 return
+
+             # Standard unpolarized Fresnel
              cos_i = abs(dot)
              
              # Calculate cos_t using Snell's law
@@ -717,6 +880,7 @@ class Ray3D:
         Updates intensity using Fresnel transmission.
         """
         # Ensure normal points against the ray for standard calculation
+        old_direction = self.direction
         cos_i = -self.direction.dot(normal)
         effective_normal = normal
         
@@ -734,13 +898,27 @@ class Ray3D:
         
         cos_t = math.sqrt(1.0 - sin2_t)
         
+        # Calculate new direction
+        new_direction = self.direction * ratio + effective_normal * (ratio * cos_i - cos_t)
+        new_direction = new_direction.normalize()
+        
+        # Handle Polarization
+        if self.polarization_vector is not None and HAS_POLARIZATION:
+            self._update_polarization(effective_normal, n1, n2, new_direction, 'refract')
+            
+            # _update_polarization handles intensity and vector update.
+            # Just need to set direction and n.
+            self.direction = new_direction
+            self.n = n2
+            return True
+        
+        # Standard Unpolarized Physics
         # Calculate Transmission (1 - R)
         R = self._compute_fresnel_reflectance(n1, n2, cos_i, cos_t)
         self.intensity *= (1.0 - R)
         
         # Vector Snell's Law
-        self.direction = self.direction * ratio + effective_normal * (ratio * cos_i - cos_t)
-        self.direction = self.direction.normalize()
+        self.direction = new_direction
         self.n = n2
         
         return True

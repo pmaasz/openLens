@@ -11,7 +11,11 @@ Implements polarization calculations including:
 
 import numpy as np
 from typing import Tuple, Dict, Optional
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
 from dataclasses import dataclass
 
 
@@ -321,6 +325,10 @@ class PolarizationCalculator:
             n2: Refractive index of transmitted medium
             save_path: Optional path to save plot
         """
+        if not HAS_MATPLOTLIB:
+            print("Warning: matplotlib not installed. Plotting disabled.")
+            return
+
         angles = np.linspace(0, 90, 500)
         R_s = []
         R_p = []
@@ -370,6 +378,10 @@ class PolarizationCalculator:
             state: Polarization state to plot
             save_path: Optional path to save plot
         """
+        if not HAS_MATPLOTLIB:
+            print("Warning: matplotlib not installed. Plotting disabled.")
+            return
+
         # Generate ellipse
         t = np.linspace(0, 2*np.pi, 1000)
         Ex, Ey = state.jones_vector
