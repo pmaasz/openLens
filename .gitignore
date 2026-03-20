@@ -9,6 +9,7 @@ __pycache__/
 venv/
 env/
 ENV/
+.venv/
 
 # IDE
 .vscode/
@@ -26,6 +27,7 @@ lenses.json
 *.json.backup
 docs/codereviews
 IMPLEMENTATION_PLAN.md
+data/
 
 # Testing
 .pytest_cache/
