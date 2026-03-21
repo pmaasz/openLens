@@ -29,14 +29,14 @@ openlens is a desktop application for designing and analyzing **glass optical le
 - Select from common optical materials (BK7, Fused Silica, Crown Glass, etc.)
 - Support for all lens types: Biconvex, Biconcave, Plano-Convex, Plano-Concave, Meniscus
 
-### 🌈 **Ray Tracing Simulation**
+### **Ray Tracing Simulation**
 - Visual ray tracing through lens elements
 - Snell's law physics simulation
 - Parallel rays (collimated beam) and point source modes
 - Automatic focal point detection and display
 - Interactive controls for number of rays and angles
 
-### 🔬 **Aberrations Analysis**
+### **Aberrations Analysis**
 - Calculate five primary (Seidel) aberrations
 - Chromatic aberration with material-specific Abbe numbers
 - Spherical aberration, coma, astigmatism, field curvature, distortion
@@ -45,12 +45,12 @@ openlens is a desktop application for designing and analyzing **glass optical le
 - Numerical aperture and F-number calculations
 - Professional-grade optical analysis
 
-### 🎨 **3D Visualization**
+### **3D Visualization**
 - Interactive 3D rendering of lens cross-section
 - Visualize spherical surfaces and lens geometry
 - Real-time ray path visualization
 
-### 🚀 **Professional Capabilities**
+### **Professional Capabilities**
 - **Optimization:** Global search (Simulated Annealing) and Desensitization optimization for manufacturability.
 - **Tolerancing:** Monte Carlo analysis and Inverse Sensitivity to predict manufacturing yields.
 - **Advanced Analysis:** Ghost analysis (stray light), Physical Optics (Beam Synthesis Propagation), and Diffraction (PSF/MTF).
