@@ -1,4 +1,4 @@
-# openlens
+# openLens
 
 <div align="center">
 
