@@ -14,7 +14,7 @@
 
 ## What is openlens?
 
-openlens is a desktop application for designing and analyzing **single glass optical lenses**. Whether you're a student learning optics, an engineer designing optical systems, or a hobbyist exploring lens physics, openlens provides an intuitive interface to:
+openlens is a desktop application for designing and analyzing **glass optical lenses**. Whether you're a student learning optics, an engineer designing optical systems, or a hobbyist exploring lens physics, openlens provides an intuitive interface to:
 
 - Design optical lenses with precise physical parameters
 - Calculate optical properties using the lensmaker's equation
@@ -332,30 +332,6 @@ openlens includes comprehensive functional tests to ensure accuracy and reliabil
 python3 tests/run_all_tests.py
 ```
 
-### Test Coverage
-
-- **41 total tests** covering:
-  - ✅ Lens creation and properties
-  - ✅ Optical calculations (lensmaker's equation)
-  - ✅ Data persistence and JSON serialization
-  - ✅ GUI operations and validation
-  - ✅ Error handling and edge cases
-  - ✅ Input validation
-
-### Individual Test Suites
-
-```bash
-# Core functionality tests (24 tests)
-python3 test_lens_editor.py
-
-# GUI functionality tests (17 tests)
-python3 test_gui.py
-```
-
-For detailed testing documentation, see [TESTING.md](docs/TESTING.md).
-
----
-
 ## Examples
 
 ### Example 1: Standard Biconvex Lens
@@ -497,14 +473,6 @@ Please read our comprehensive [Contributing Guidelines](docs/CONTRIBUTING.md) fo
 - Testing requirements
 - Pull request process
 - Issue guidelines
-
-### Areas for Enhancement
-
-- [ ] Additional optical aberrations (higher-order)
-- [ ] Import/export to other formats (Zemax, CODE V, etc.)
-- [ ] Polarization ray tracing (Jones Matrices)
-- [ ] Advanced wavefront sensing (Shack-Hartmann simulation)
-- [ ] Multiphysics integration (FEA coupling)
 
 ### Quick Start for Contributors
 
