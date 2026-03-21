@@ -6,7 +6,7 @@ Provides theme management and dark mode styling for the GUI.
 
 import tkinter as tk
 from tkinter import ttk
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 # Import color constants
 try:
@@ -18,22 +18,24 @@ except ImportError:
         COLOR_BG_DARK = '#252526'
 
 
-# Dark mode color scheme
+# Sun Valley Dark inspired color scheme
 COLORS: Dict[str, str] = {
-    'bg': '#1e1e1e',           # Main background
-    'fg': '#e0e0e0',           # Main text
-    'bg_dark': COLOR_BG_DARK,  # Darker sections
-    'bg_light': '#2d2d2d',     # Lighter sections
-    'accent': '#0078d4',       # Accent color (blue)
-    'accent_hover': '#1e88e5', # Accent hover
-    'border': '#3f3f3f',       # Border color
-    'success': '#4caf50',      # Success green
-    'warning': '#ff9800',      # Warning orange
-    'error': '#f44336',        # Error red
-    'text_dim': '#b0b0b0',     # Dimmed text
+    'bg': '#1c1c1c',           # Main window background
+    'fg': '#ffffff',           # Main text
+    'bg_dark': '#202020',      # Darker sections (tab background)
+    'bg_light': '#2c2c2c',     # Lighter sections (card/surface)
+    'accent': '#005fb8',       # Accent color (blue)
+    'accent_hover': '#1a6dc4', # Accent hover
+    'border': '#454545',       # Border color
+    'input_bg': '#383838',     # Input field background
+    'button_bg': '#333333',    # Button background
+    'button_hover': '#454545', # Button hover
+    'success': '#6cc417',      # Success green
+    'warning': '#fca130',      # Warning orange
+    'error': '#ff4d4f',        # Error red
+    'text_dim': '#a0a0a0',     # Dimmed text
     'selected': '#37373d',     # Selected item
-    'entry_bg': '#2b2b2b',     # Entry field background
-    'button_bg': '#3c3c3c',    # Button background
+    'entry_bg': '#2b2b2b',     # Keep for compatibility
 }
 
 
@@ -53,7 +55,7 @@ class ThemeManager:
         >>> theme.setup_dark_mode()
     """
     
-    def __init__(self, root: tk.Tk, colors: Dict[str, str] = None) -> None:
+    def __init__(self, root: tk.Tk, colors: Optional[Dict[str, str]] = None) -> None:
         """Initialize the theme manager.
         
         Args:
@@ -97,7 +99,8 @@ class ThemeManager:
             'TLabelframe',
             background=self.colors['bg'],
             foreground=self.colors['fg'],
-            bordercolor=self.colors['border']
+            bordercolor=self.colors['border'],
+            labelmargins=5
         )
         
         style.configure(
@@ -110,7 +113,8 @@ class ThemeManager:
         style.configure(
             'TLabel',
             background=self.colors['bg'],
-            foreground=self.colors['fg']
+            foreground=self.colors['fg'],
+            padding=2
         )
         
         # Button styles
@@ -121,52 +125,60 @@ class ThemeManager:
             bordercolor=self.colors['border'],
             focuscolor=self.colors['accent'],
             lightcolor=self.colors['bg_light'],
-            darkcolor=self.colors['bg_dark']
+            darkcolor=self.colors['bg_dark'],
+            padding=[8, 4],
+            relief='flat'
         )
         
         style.map(
             'TButton',
             background=[
-                ('active', self.colors['accent']),
-                ('pressed', self.colors['bg_dark'])
+                ('active', self.colors['button_hover']),
+                ('pressed', self.colors['accent'])
             ],
-            foreground=[('active', self.colors['fg'])]
+            foreground=[('active', self.colors['fg'])],
+            bordercolor=[('active', self.colors['accent'])]
         )
         
         # Entry styles
         style.configure(
             'TEntry',
-            fieldbackground=self.colors['entry_bg'],
-            background=self.colors['entry_bg'],
+            fieldbackground=self.colors['input_bg'],
+            background=self.colors['input_bg'],
             foreground=self.colors['fg'],
             bordercolor=self.colors['border'],
-            insertcolor=self.colors['fg']
+            insertcolor=self.colors['fg'],
+            padding=5,
+            relief='flat'
         )
         
         # Readonly entry style (darker background to indicate readonly)
         style.map(
             'TEntry',
             fieldbackground=[('readonly', self.colors['bg_dark'])],
-            foreground=[('readonly', self.colors['text_dim'])]
+            foreground=[('readonly', self.colors['text_dim'])],
+            bordercolor=[('focus', self.colors['accent'])]
         )
         
         # Combobox styles
         style.configure(
             'TCombobox',
-            fieldbackground=self.colors['entry_bg'],
-            background=self.colors['entry_bg'],
+            fieldbackground=self.colors['input_bg'],
+            background=self.colors['input_bg'],
             foreground=self.colors['fg'],
             bordercolor=self.colors['border'],
             arrowcolor=self.colors['fg'],
             selectbackground=self.colors['accent'],
-            selectforeground=self.colors['fg']
+            selectforeground=self.colors['fg'],
+            padding=5
         )
         
         style.map(
             'TCombobox',
-            fieldbackground=[('readonly', self.colors['entry_bg'])],
+            fieldbackground=[('readonly', self.colors['input_bg'])],
             selectbackground=[('readonly', self.colors['accent'])],
-            selectforeground=[('readonly', self.colors['fg'])]
+            selectforeground=[('readonly', self.colors['fg'])],
+            bordercolor=[('focus', self.colors['accent'])]
         )
         
         # Separator style
@@ -202,7 +214,7 @@ class ThemeManager:
         )
 
 
-def setup_dark_mode(root: tk.Tk, colors: Dict[str, str] = None) -> ThemeManager:
+def setup_dark_mode(root: tk.Tk, colors: Optional[Dict[str, str]] = None) -> ThemeManager:
     """Convenience function to set up dark mode on a root window.
     
     Args:
