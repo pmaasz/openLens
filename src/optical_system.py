@@ -216,6 +216,22 @@ class OpticalSystem:
             
         return -1.0 / C
     
+    def get_system_f_number(self) -> Optional[float]:
+        """Calculate system F-number (f/D)"""
+        f = self.get_system_focal_length()
+        if f is None:
+            return None
+        
+        if not self.elements:
+            return None
+            
+        # Approximation: Use first lens diameter as entrance pupil
+        entrance_pupil = self.elements[0].lens.diameter
+        if entrance_pupil <= 1e-9:
+            return None
+            
+        return abs(f) / entrance_pupil
+
     def calculate_back_focal_length(self) -> Optional[float]:
         """
         Calculate Back Focal Length (BFL) of the system.

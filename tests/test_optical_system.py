@@ -75,6 +75,25 @@ class TestOpticalSystem(unittest.TestCase):
         self.assertIsNotNone(calculated_f)
         self.assertAlmostEqual(calculated_f, expected_f, places=1)
 
+    def test_system_f_number(self):
+        """Test system f-number calculation"""
+        system = OpticalSystem()
+        # Single lens
+        system.add_lens(self.lens1)
+        f = self.lens1.calculate_focal_length()
+        D = self.lens1.diameter
+        expected_f_num = f / D
+        
+        self.assertAlmostEqual(system.get_system_f_number(), expected_f_num, places=2)
+        
+        # Two lenses
+        system.add_lens(self.lens2, air_gap_before=20.0)
+        f_sys = system.get_system_focal_length()
+        # Entrance pupil is still lens1 diameter (approximation used in implementation)
+        expected_f_num_sys = abs(f_sys) / D
+        
+        self.assertAlmostEqual(system.get_system_f_number(), expected_f_num_sys, places=2)
+
     def test_achromatic_doublet_creation(self):
         doublet = create_doublet(focal_length=100, diameter=50)
         
