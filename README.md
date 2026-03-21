@@ -24,7 +24,7 @@ openlens is a desktop application for designing and analyzing **glass optical le
 
 ## Features
 
-### 🔬 **Optical Design**
+### **Optical Design**
 - Define lens geometry: radii of curvature, thickness, diameter
 - Select from common optical materials (BK7, Fused Silica, Crown Glass, etc.)
 - Support for all lens types: Biconvex, Biconcave, Plano-Convex, Plano-Concave, Meniscus
