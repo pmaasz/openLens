@@ -1,4 +1,4 @@
-# openlens
+# openLens
 
 <div align="center">
 
@@ -14,7 +14,7 @@
 
 ## What is openlens?
 
-openlens is a desktop application for designing and analyzing **single glass optical lenses**. Whether you're a student learning optics, an engineer designing optical systems, or a hobbyist exploring lens physics, openlens provides an intuitive interface to:
+openlens is a desktop application for designing and analyzing **glass optical lenses**. Whether you're a student learning optics, an engineer designing optical systems, or a hobbyist exploring lens physics, openlens provides an intuitive interface to:
 
 - Design optical lenses with precise physical parameters
 - Calculate optical properties using the lensmaker's equation
@@ -24,19 +24,19 @@ openlens is a desktop application for designing and analyzing **single glass opt
 
 ## Features
 
-### 🔬 **Optical Design**
+### **Optical Design**
 - Define lens geometry: radii of curvature, thickness, diameter
 - Select from common optical materials (BK7, Fused Silica, Crown Glass, etc.)
 - Support for all lens types: Biconvex, Biconcave, Plano-Convex, Plano-Concave, Meniscus
 
-### 🌈 **Ray Tracing Simulation**
+### **Ray Tracing Simulation**
 - Visual ray tracing through lens elements
 - Snell's law physics simulation
 - Parallel rays (collimated beam) and point source modes
 - Automatic focal point detection and display
 - Interactive controls for number of rays and angles
 
-### 🔬 **Aberrations Analysis**
+### **Aberrations Analysis**
 - Calculate five primary (Seidel) aberrations
 - Chromatic aberration with material-specific Abbe numbers
 - Spherical aberration, coma, astigmatism, field curvature, distortion
@@ -45,12 +45,12 @@ openlens is a desktop application for designing and analyzing **single glass opt
 - Numerical aperture and F-number calculations
 - Professional-grade optical analysis
 
-### 🎨 **3D Visualization**
+### **3D Visualization**
 - Interactive 3D rendering of lens cross-section
 - Visualize spherical surfaces and lens geometry
 - Real-time ray path visualization
 
-### 🚀 **Professional Capabilities**
+### **Professional Capabilities**
 - **Optimization:** Global search (Simulated Annealing) and Desensitization optimization for manufacturability.
 - **Tolerancing:** Monte Carlo analysis and Inverse Sensitivity to predict manufacturing yields.
 - **Advanced Analysis:** Ghost analysis (stray light), Physical Optics (Beam Synthesis Propagation), and Diffraction (PSF/MTF).
@@ -332,30 +332,6 @@ openlens includes comprehensive functional tests to ensure accuracy and reliabil
 python3 tests/run_all_tests.py
 ```
 
-### Test Coverage
-
-- **41 total tests** covering:
-  - ✅ Lens creation and properties
-  - ✅ Optical calculations (lensmaker's equation)
-  - ✅ Data persistence and JSON serialization
-  - ✅ GUI operations and validation
-  - ✅ Error handling and edge cases
-  - ✅ Input validation
-
-### Individual Test Suites
-
-```bash
-# Core functionality tests (24 tests)
-python3 test_lens_editor.py
-
-# GUI functionality tests (17 tests)
-python3 test_gui.py
-```
-
-For detailed testing documentation, see [TESTING.md](docs/TESTING.md).
-
----
-
 ## Examples
 
 ### Example 1: Standard Biconvex Lens
@@ -497,14 +473,6 @@ Please read our comprehensive [Contributing Guidelines](docs/CONTRIBUTING.md) fo
 - Testing requirements
 - Pull request process
 - Issue guidelines
-
-### Areas for Enhancement
-
-- [ ] Additional optical aberrations (higher-order)
-- [ ] Import/export to other formats (Zemax, CODE V, etc.)
-- [ ] Polarization ray tracing (Jones Matrices)
-- [ ] Advanced wavefront sensing (Shack-Hartmann simulation)
-- [ ] Multiphysics integration (FEA coupling)
 
 ### Quick Start for Contributors
 
