@@ -945,6 +945,13 @@ class SimulationController:
         self.ray_angle_var = None
         self.system_builder_frame = None
         self.element_listbox = None
+        
+        # Pan/Zoom state
+        self._pan_start_x = None
+        self._pan_start_y = None
+        self._pan_xlim = None
+        self._pan_ylim = None
+        self._zoom_factor = 1.2  # Zoom factor for mouse wheel
     
     def setup_ui(self, parent_frame):
         """Set up the simulation tab UI"""
@@ -1047,6 +1054,93 @@ class SimulationController:
                   command=self.run_simulation).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(btn_frame, text="Clear Simulation", 
                   command=self.clear_simulation).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        
+        # Connect pan/zoom event handlers if canvas was created
+        if self.sim_canvas is not None:
+            self._setup_pan_zoom()
+    
+    def _setup_pan_zoom(self):
+        """Set up mouse event handlers for pan and zoom."""
+        # Enable scroll wheel zoom
+        self.sim_canvas.mpl_connect('scroll_event', self._on_mouse_scroll)
+        # Enable mouse drag panning
+        self.sim_canvas.mpl_connect('button_press_event', self._on_press)
+        self.sim_canvas.mpl_connect('motion_notify_event', self._on_drag)
+        self.sim_canvas.mpl_connect('button_release_event', self._on_release)
+    
+    def _on_mouse_scroll(self, event):
+        """Handle mouse scroll wheel for zoom in/out."""
+        if event.inaxes != self.sim_ax:
+            return
+        
+        # Get current limits
+        xlim = self.sim_ax.get_xlim()
+        ylim = self.sim_ax.get_ylim()
+        
+        # Mouse position in data coordinates
+        x_mouse = event.xdata
+        y_mouse = event.ydata
+        
+        if x_mouse is None or y_mouse is None:
+            return
+        
+        # Determine zoom direction
+        if event.button == 'up':
+            # Zoom in
+            scale_factor = 1 / self._zoom_factor
+        else:
+            # Zoom out
+            scale_factor = self._zoom_factor
+        
+        # Calculate new limits centered on mouse position
+        x_range = (xlim[1] - xlim[0]) * scale_factor
+        y_range = (ylim[1] - ylim[0]) * scale_factor
+        
+        # Keep the mouse point fixed
+        x_new_min = x_mouse - (x_mouse - xlim[0]) * scale_factor
+        x_new_max = x_mouse + (xlim[1] - x_mouse) * scale_factor
+        y_new_min = y_mouse - (y_mouse - ylim[0]) * scale_factor
+        y_new_max = y_mouse + (ylim[1] - y_mouse) * scale_factor
+        
+        # Apply new limits
+        self.sim_ax.set_xlim(x_new_min, x_new_max)
+        self.sim_ax.set_ylim(y_new_min, y_new_max)
+        self.sim_canvas.draw_idle()
+    
+    def _on_press(self, event):
+        """Handle mouse button press for panning."""
+        if event.inaxes != self.sim_ax:
+            return
+        if event.button != 1:  # Only left mouse button
+            return
+        
+        self._pan_start_x = event.xdata
+        self._pan_start_y = event.ydata
+        self._pan_xlim = self.sim_ax.get_xlim()
+        self._pan_ylim = self.sim_ax.get_ylim()
+    
+    def _on_drag(self, event):
+        """Handle mouse drag for panning."""
+        if self._pan_start_x is None or self._pan_start_y is None:
+            return
+        if event.inaxes != self.sim_ax:
+            return
+        
+        # Calculate delta
+        dx = self._pan_start_x - event.xdata
+        dy = self._pan_start_y - event.ydata
+        
+        # Apply pan
+        self.sim_ax.set_xlim(self._pan_xlim[0] + dx, self._pan_xlim[1] + dx)
+        self.sim_ax.set_ylim(self._pan_ylim[0] + dy, self._pan_ylim[1] + dy)
+        self.sim_canvas.draw_idle()
+    
+    def _on_release(self, event):
+        """Handle mouse button release."""
+        self._pan_start_x = None
+        self._pan_start_y = None
+        self._pan_xlim = None
+        self._pan_ylim = None
     
     def load_lens(self, lens):
         """Load lens for simulation"""
@@ -1356,14 +1450,22 @@ class SimulationController:
             x_max = total_length + 50
             x_min = -50
             name = self.current_lens.name
+            # Find max diameter for Y-axis scaling
+            max_diameter = max(elem.lens.diameter for elem in self.current_lens.elements)
         else:
             x_max = 150
             x_min = -100
             name = self.current_lens.name
+            max_diameter = self.current_lens.diameter
+
+        # Set Y limits based on lens diameter (with some margin)
+        y_margin = max_diameter * 0.3
+        y_max = max_diameter / 2 + y_margin
+        y_min = -y_max
 
         # Redraw axes
         self.sim_ax.set_xlim(x_min, x_max)
-        self.sim_ax.set_ylim(-30, 30)
+        self.sim_ax.set_ylim(y_min, y_max)
         self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
         self.sim_ax.set_xlabel('Position (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
         self.sim_ax.set_ylabel('Height (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
@@ -1408,70 +1510,72 @@ class SimulationController:
 
     def _draw_single_lens_element(self, lens, offset):
         """Helper to draw a single lens at an offset"""
-        try:
-            from ray_tracer import LensRayTracer
-            tracer = LensRayTracer(lens, x_offset=offset)
-            points = tracer.get_lens_outline(num_points=100)
-            
-            poly_x = [p[0] for p in points]
-            poly_y = [p[1] for p in points]
-            
-            self.sim_ax.fill(poly_x, poly_y, facecolor='#e6f3ff', edgecolor='none', alpha=0.4)
-            self.sim_ax.plot(poly_x, poly_y, 'k-', linewidth=1.5)
-            
-            # Draw center line (approximate from bounds)
-            if poly_x:
-                min_x = min(poly_x)
-                max_x = max(poly_x)
-                center_x = (min_x + max_x) / 2
-                self.sim_ax.plot([center_x, center_x], [0, 0], 'k+', markersize=5, alpha=0.5)
-                
-        except ImportError:
-            # Fallback to manual drawing if ray_tracer not available
-            r1 = lens.radius_of_curvature_1
-            r2 = lens.radius_of_curvature_2
-            thickness = lens.thickness
-            diameter = lens.diameter
-            
-            # Generate y coordinates for the lens aperture
-            num_points = 100
-            half_diam = diameter / 2.0
-            y = [(-half_diam + i * diameter / (num_points - 1)) for i in range(num_points)]
-            
-            # Helper function
-            def calculate_surface_x(r, y_val, is_front):
-                if abs(r) > 10000 or abs(r) < 1e-10:
-                    return offset if is_front else offset + float(thickness)
-                
-                r_abs = abs(r)
-                if abs(y_val) >= r_abs:
-                    sag_term = 0.0
-                else:
-                    sag_term = math.sqrt(r_abs**2 - y_val**2)
-                
-                if is_front:
-                    if r > 0:
-                        return offset - r_abs + sag_term
-                    else:
-                        return offset + r_abs - sag_term
-                else:
-                    if r > 0:
-                        return offset + thickness + r_abs - sag_term
-                    else:
-                        return offset + thickness - r_abs + sag_term
-
-            # Surface 1
-            x1 = [calculate_surface_x(r1, y_val, is_front=True) for y_val in y]
-            
-            # Surface 2
-            x2 = [calculate_surface_x(r2, y_val, is_front=False) for y_val in y]
-            
-            # Draw filled polygon
+        import math
+        
+        r1 = lens.radius_of_curvature_1
+        r2 = lens.radius_of_curvature_2
+        thickness = lens.thickness
+        diameter = lens.diameter
+        
+        y_max = diameter / 2.0
+        num_points = 100
+        y_values = [y_max - 2 * y_max * i / (num_points - 1) for i in range(num_points)]
+        
+        x1 = []
+        x2 = []
+        y1_vals = []
+        y2_vals = []
+        
+        # Front surface (R1)
+        if abs(r1) >= 10000 or abs(r1) < 1e-10:
+            # Flat surface
+            x1 = [offset] * num_points
+            y1_vals = y_values
+        else:
+            r1_abs = abs(r1)
+            for y in y_values:
+                if y * y <= r1_abs * r1_abs:
+                    if r1 > 0:  # Convex - sag = R - sqrt(R^2 - y^2)
+                        x_val = offset + r1_abs - math.sqrt(r1_abs**2 - y**2)
+                    else:  # Concave - sag = -R + sqrt(R^2 - y^2)  
+                        x_val = offset - r1_abs + math.sqrt(r1_abs**2 - y**2)
+                    x1.append(x_val)
+                    y1_vals.append(y)
+        
+        # Back surface (R2)
+        if abs(r2) >= 10000 or abs(r2) < 1e-10:
+            # Flat surface
+            x2 = [offset + thickness] * num_points
+            y2_vals = y_values
+        else:
+            r2_abs = abs(r2)
+            for y in y_values:
+                if y * y <= r2_abs * r2_abs:
+                    if r2 > 0:  # Convex from inside - formula from lens_visualizer
+                        x_val = offset + thickness + r2_abs - math.sqrt(r2_abs**2 - y**2)
+                    else:  # Concave - formula from lens_visualizer
+                        x_val = offset + thickness - r2_abs + math.sqrt(r2_abs**2 - y**2)
+                    x2.append(x_val)
+                    y2_vals.append(y)
+        
+        # Build polygon for fill
+        if len(x1) > 0 and len(x2) > 0:
             poly_x = x1 + x2[::-1]
-            poly_y = y + y[::-1]
+            poly_y = y1_vals + y2_vals[::-1]
             
+            # Draw filled lens
             self.sim_ax.fill(poly_x, poly_y, facecolor='#e6f3ff', edgecolor='none', alpha=0.4)
-            self.sim_ax.plot(poly_x, poly_y, 'k-', linewidth=1.5)
+            
+            # Draw front and back surfaces as lines
+            if len(x1) > 1:
+                self.sim_ax.plot(x1, y1_vals, 'k-', linewidth=1.5)
+            if len(x2) > 1:
+                self.sim_ax.plot(x2, y2_vals, 'k-', linewidth=1.5)
+            
+            # Draw edges (top and bottom)
+            if len(x1) > 0 and len(x2) > 0:
+                self.sim_ax.plot([x1[0], x2[0]], [y1_vals[0], y2_vals[0]], 'k-', linewidth=1.5)
+                self.sim_ax.plot([x1[-1], x2[-1]], [y1_vals[-1], y2_vals[-1]], 'k-', linewidth=1.5)
 
     def _draw_lens(self):
         """Draw lens outline on the plot (legacy wrapper)"""
@@ -1480,7 +1584,6 @@ class SimulationController:
         self._draw_single_lens_element(self.current_lens, 0.0)
 
 
-    
     def clear_simulation(self):
         """Clear simulation canvas"""
         if not self.sim_ax or not self.sim_canvas:

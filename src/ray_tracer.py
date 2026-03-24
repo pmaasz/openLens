@@ -478,10 +478,13 @@ class LensRayTracer:
             else:
                 R = abs(self.R1)
                 if y*y <= R*R:
-                    if self.R1 > 0:  # Convex - use right side of sphere
-                        x = self.front_center_x + math.sqrt(R*R - y*y)
-                    else:  # Concave - use left side of sphere
-                        x = self.front_center_x - math.sqrt(R*R - y*y)
+                    # Front surface sag formula (matches lens_visualizer)
+                    # R1 > 0: center to right, surface at left = offset + R - sqrt(R^2 - y^2)
+                    # R1 < 0: center to left, surface at right = offset + R + sqrt(R^2 - y^2)
+                    if self.R1 > 0:
+                        x = self.lens_offset + R - math.sqrt(R*R - y*y)
+                    else:
+                        x = self.lens_offset + R + math.sqrt(R*R - y*y)
                 else:
                     continue
             
@@ -494,10 +497,13 @@ class LensRayTracer:
             else:
                 R = abs(self.R2)
                 if y*y <= R*R:
-                    if self.R2 < 0:  # Convex (from inside) - use left side of sphere
-                        x = self.back_center_x - math.sqrt(R*R - y*y)
-                    else:  # Concave - use right side of sphere
-                        x = self.back_center_x + math.sqrt(R*R - y*y)
+                    # Back surface formula (matches lens_visualizer)
+                    # R2 > 0: center to right of back vertex, surface at left
+                    # R2 < 0: center to left of back vertex, surface at right
+                    if self.R2 > 0:
+                        x = self.lens_offset + self.d + R - math.sqrt(R*R - y*y)
+                    else:
+                        x = self.lens_offset + self.d + self.R2 + math.sqrt(R*R - y*y)
                 else:
                     continue
             
