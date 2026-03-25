@@ -1535,10 +1535,10 @@ class SimulationController:
             r1_abs = abs(r1)
             for y in y_values:
                 if y * y <= r1_abs * r1_abs:
-                    if r1 > 0:  # Convex - sag = R - sqrt(R^2 - y^2)
-                        x_val = offset + r1_abs - math.sqrt(r1_abs**2 - y**2)
-                    else:  # Concave - sag = -R + sqrt(R^2 - y^2)  
+                    if r1 > 0:  # Convex - formula from lens_visualizer
                         x_val = offset - r1_abs + math.sqrt(r1_abs**2 - y**2)
+                    else:  # Concave
+                        x_val = offset + r1_abs - math.sqrt(r1_abs**2 - y**2)
                     x1.append(x_val)
                     y1_vals.append(y)
         

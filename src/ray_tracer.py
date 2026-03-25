@@ -479,12 +479,12 @@ class LensRayTracer:
                 R = abs(self.R1)
                 if y*y <= R*R:
                     # Front surface sag formula (matches lens_visualizer)
-                    # R1 > 0: center to right, surface at left = offset + R - sqrt(R^2 - y^2)
-                    # R1 < 0: center to left, surface at right = offset + R + sqrt(R^2 - y^2)
+                    # R1 > 0: convex surface, x = offset - R + sqrt(R^2 - y^2)
+                    # R1 < 0: concave surface, x = offset + R - sqrt(R^2 - y^2)
                     if self.R1 > 0:
-                        x = self.lens_offset + R - math.sqrt(R*R - y*y)
+                        x = self.lens_offset - R + math.sqrt(R*R - y*y)
                     else:
-                        x = self.lens_offset + R + math.sqrt(R*R - y*y)
+                        x = self.lens_offset + R - math.sqrt(R*R - y*y)
                 else:
                     continue
             
@@ -498,12 +498,12 @@ class LensRayTracer:
                 R = abs(self.R2)
                 if y*y <= R*R:
                     # Back surface formula (matches lens_visualizer)
-                    # R2 > 0: center to right of back vertex, surface at left
-                    # R2 < 0: center to left of back vertex, surface at right
+                    # R2 > 0: convex, x = offset + thickness + R - sqrt(R^2 - y^2)
+                    # R2 < 0: concave, x = offset + thickness - R + sqrt(R^2 - y^2)
                     if self.R2 > 0:
                         x = self.lens_offset + self.d + R - math.sqrt(R*R - y*y)
                     else:
-                        x = self.lens_offset + self.d + self.R2 + math.sqrt(R*R - y*y)
+                        x = self.lens_offset + self.d - R + math.sqrt(R*R - y*y)
                 else:
                     continue
             
