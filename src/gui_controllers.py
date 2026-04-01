@@ -137,26 +137,10 @@ class LensSelectionController:
         
         # Bind events
         self.listbox.bind('<Double-Button-1>', lambda e: self.select_lens())
-        self.listbox.bind('<<ListboxSelect>>', self.update_info)
-        
-        # Lens info panel
-        info_frame = ttk.LabelFrame(content_frame, text="Lens Information", padding="10")
-        info_frame.grid(row=2, column=0, sticky="ew", pady=PADDING_XLARGE)
-        
-        self.info_text = tk.Text(info_frame, 
-                                 height=9, 
-                                 bg=self.colors['entry_bg'],
-                                 fg=self.colors['fg'],
-                                 font=(FONT_FAMILY, FONT_SIZE_NORMAL),
-                                 wrap=tk.WORD,
-                                 borderwidth=1,
-                                 relief=tk.SOLID,
-                                 state='disabled')
-        self.info_text.pack(fill=tk.BOTH, expand=True)
         
         # Button frame
         button_frame = ttk.Frame(content_frame)
-        button_frame.grid(row=3, column=0, pady=PADDING_XLARGE)
+        button_frame.grid(row=2, column=0, pady=PADDING_XLARGE)
         
         ttk.Button(button_frame, text="Create New Lens", 
                   command=self.create_new_lens,
@@ -208,77 +192,8 @@ class LensSelectionController:
             self.listbox.insert(tk.END, display_text)
     
     def update_info(self, event=None):
-        """Update the lens information panel when selection changes"""
-        if not self.listbox or not self.info_text:
-            return
-            
-        selection = self.listbox.curselection()
-        if not selection:
-            self.info_text.config(state='normal')
-            self.info_text.delete(1.0, tk.END)
-            self.info_text.insert(1.0, "Select a lens to view details")
-            self.info_text.config(state='disabled')
-            return
-        
-        if len(selection) > 1:
-            # Multiple selection info
-            self.info_text.config(state='normal')
-            self.info_text.delete(1.0, tk.END)
-            info = f"Multi-Lens System Selected ({len(selection)} lenses)\n\n"
-            info += "Lenses in system:\n"
-            
-            for i, idx in enumerate(selection):
-                if 0 <= idx < len(self.lens_list):
-                    lens = self.lens_list[idx]
-                    name = lens.get('name', 'Unknown') if isinstance(lens, dict) else lens.name
-                    info += f"{i+1}. {name}\n"
-            
-            info += "\nClick 'Select / Simulate' to simulate as a temporary system.\n"
-            info += "Click 'Save System' to save as a new Optical System."
-            self.info_text.insert(1.0, info)
-            self.info_text.config(state='disabled')
-            
-            if self.save_system_btn:
-                self.save_system_btn.config(state='normal')
-            return
-        
-        if self.save_system_btn:
-            self.save_system_btn.config(state='disabled')
-        
-        index = selection[0]
-        if 0 <= index < len(self.lens_list):
-            lens = self.lens_list[index]
-            
-            # Handle both Lens objects and dicts
-            if isinstance(lens, dict):
-                focal_length = 0  # Simplified for dicts
-                info = f"""Name: {lens.get('name', 'Unknown')}
-Type: {lens.get('type', 'Unknown')}
-Material: {lens.get('material', 'Unknown')}
-Radius 1: {lens.get('radius1', 0):.3f} mm
-Radius 2: {lens.get('radius2', 0):.3f} mm
-Center Thickness: {lens.get('thickness', 0):.3f} mm
-Diameter: {lens.get('diameter', 0):.3f} mm
-Refractive Index: {lens.get('refractive_index', 1.5):.3f}"""
-            else:
-                focal_length = lens.calculate_focal_length() or 0
-                info = f"""ID: {lens.id}
-Name: {lens.name}
-Type: {lens.lens_type}
-Material: {lens.material}
-Radius 1: {lens.radius_of_curvature_1:.3f} mm
-Radius 2: {lens.radius_of_curvature_2:.3f} mm
-Center Thickness: {lens.thickness:.3f} mm
-Diameter: {lens.diameter:.3f} mm
-Refractive Index: {lens.refractive_index:.3f}
-Focal Length: {focal_length:.3f} mm
-Created: {lens.created_at}
-Modified: {lens.modified_at}"""
-            
-            self.info_text.config(state='normal')
-            self.info_text.delete(1.0, tk.END)
-            self.info_text.insert(1.0, info)
-            self.info_text.config(state='disabled')
+        """Update the lens information panel when selection changes (no-op, panel removed)"""
+        pass
     
     def select_lens(self):
         """Select a lens and notify parent"""
@@ -348,13 +263,6 @@ Modified: {lens.modified_at}"""
             if self.on_delete_callback:
                 self.on_delete_callback(lens)
                 self.refresh_lens_list()
-                
-                # Clear info panel
-                if self.info_text:
-                    self.info_text.config(state='normal')
-                    self.info_text.delete(1.0, tk.END)
-                    self.info_text.insert(1.0, "Select a lens to view details")
-                    self.info_text.config(state='disabled')
     
     def export_lens(self):
         """Export selected lens via callback"""
