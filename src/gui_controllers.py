@@ -142,6 +142,9 @@ class LensSelectionController:
         # Lens list frame on the right
         list_frame = ttk.LabelFrame(content_frame, text="Available Lenses (Hold Ctrl/Shift to select multiple)", padding="10")
         list_frame.grid(row=0, column=1, sticky="nsew")
+        list_frame.grid_remove()
+        self.list_frame = list_frame
+        
         list_frame.columnconfigure(0, weight=1)
         list_frame.rowconfigure(0, weight=1)
         
@@ -290,7 +293,8 @@ class LensSelectionController:
 
     def open_existing_lens(self):
         """Open an existing lens from storage"""
-        pass
+        if hasattr(self, 'list_frame'):
+            self.list_frame.grid()
 
     def open_existing_assembly(self):
         """Open an existing assembly from storage"""
