@@ -88,27 +88,61 @@ class LensSelectionController:
         """Set up the selection tab UI"""
         # Import constants
         try:
-            from .constants import FONT_FAMILY, PADDING_XLARGE, PADDING_SMALL, FONT_SIZE_LARGE, FONT_SIZE_NORMAL
+            from .constants import FONT_FAMILY, PADDING_XLARGE, PADDING_SMALL, PADDING_MEDIUM, FONT_SIZE_LARGE, FONT_SIZE_NORMAL
         except ImportError:
             try:
-                from constants import FONT_FAMILY, PADDING_XLARGE, PADDING_SMALL, FONT_SIZE_LARGE, FONT_SIZE_NORMAL
+                from constants import FONT_FAMILY, PADDING_XLARGE, PADDING_SMALL, PADDING_MEDIUM, FONT_SIZE_LARGE, FONT_SIZE_NORMAL
             except ImportError:
                 # Fallback values
                 FONT_FAMILY = "Segoe UI"
                 PADDING_XLARGE = 20
                 PADDING_SMALL = 5
+                PADDING_MEDIUM = 10
                 FONT_SIZE_LARGE = 11
                 FONT_SIZE_NORMAL = 10
         
         # Main content frame
         content_frame = ttk.Frame(parent_frame, padding="20")
         content_frame.grid(row=0, column=0, sticky="nsew")
-        content_frame.columnconfigure(0, weight=1)
-        content_frame.rowconfigure(1, weight=1)
+        content_frame.columnconfigure(0, weight=0)
+        content_frame.columnconfigure(1, weight=1)
+        content_frame.rowconfigure(0, weight=1)
         
-        # Create a frame for the lens list and buttons
+        # Button frame on the left
+        button_frame = ttk.Frame(content_frame)
+        button_frame.grid(row=0, column=0, sticky="ns", padx=(0, PADDING_MEDIUM))
+        
+        button_width = 22
+        
+        ttk.Button(button_frame, text="Create New Lens", 
+                   command=self.create_new_lens,
+                   width=button_width).pack(pady=PADDING_MEDIUM)
+        
+        ttk.Button(button_frame, text="Create System", 
+                   command=self.create_new_system,
+                   width=button_width).pack(pady=PADDING_MEDIUM)
+        
+        ttk.Button(button_frame, text="Select / Simulate", 
+                   command=self.select_lens,
+                   width=button_width).pack(pady=PADDING_MEDIUM)
+        
+        self.save_system_btn = ttk.Button(button_frame, text="Save System", 
+                   command=self.save_current_system,
+                   width=button_width, state='disabled')
+        self.save_system_btn.pack(pady=PADDING_MEDIUM)
+        
+        ttk.Button(button_frame, text="Delete", 
+                   command=self.delete_lens,
+                   width=button_width).pack(pady=PADDING_MEDIUM)
+        
+        if self.on_export_callback:
+            ttk.Button(button_frame, text="Export STL", 
+                      command=self.export_lens,
+                      width=button_width).pack(pady=PADDING_MEDIUM)
+        
+        # Lens list frame on the right
         list_frame = ttk.LabelFrame(content_frame, text="Available Lenses (Hold Ctrl/Shift to select multiple)", padding="10")
-        list_frame.grid(row=0, column=0, sticky="nsew")
+        list_frame.grid(row=0, column=1, sticky="nsew")
         list_frame.columnconfigure(0, weight=1)
         list_frame.rowconfigure(0, weight=1)
         
@@ -132,36 +166,6 @@ class LensSelectionController:
         
         # Bind events
         self.listbox.bind('<Double-Button-1>', lambda e: self.select_lens())
-        
-        # Button frame
-        button_frame = ttk.Frame(content_frame)
-        button_frame.grid(row=1, column=0, pady=PADDING_XLARGE)
-        
-        ttk.Button(button_frame, text="Create New Lens", 
-                  command=self.create_new_lens,
-                  width=18).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        
-        ttk.Button(button_frame, text="Create System", 
-                  command=self.create_new_system,
-                  width=18).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        
-        ttk.Button(button_frame, text="Select / Simulate", 
-                  command=self.select_lens,
-                  width=20).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        
-        self.save_system_btn = ttk.Button(button_frame, text="Save System", 
-                  command=self.save_current_system,
-                  width=18, state='disabled')
-        self.save_system_btn.pack(side=tk.LEFT, padx=PADDING_SMALL)
-        
-        ttk.Button(button_frame, text="Delete", 
-                  command=self.delete_lens,
-                  width=15).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        
-        if self.on_export_callback:
-            ttk.Button(button_frame, text="Export STL", 
-                      command=self.export_lens,
-                      width=15).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         # Load initial data
         self.refresh_lens_list()
