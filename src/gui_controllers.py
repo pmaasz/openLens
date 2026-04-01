@@ -104,8 +104,8 @@ class LensSelectionController:
         # Main content frame
         content_frame = ttk.Frame(parent_frame, padding="20")
         content_frame.grid(row=0, column=0, sticky="nsew")
-        content_frame.columnconfigure(0, weight=0)
-        content_frame.columnconfigure(1, weight=1)
+        content_frame.columnconfigure(0, weight=2)
+        content_frame.columnconfigure(1, weight=3)
         content_frame.rowconfigure(0, weight=1)
         
         # Button frame on the left
@@ -116,29 +116,29 @@ class LensSelectionController:
         
         ttk.Button(button_frame, text="Create New Lens", 
                    command=self.create_new_lens,
-                   width=button_width).pack(pady=PADDING_MEDIUM)
+                   width=button_width).pack(pady=PADDING_XLARGE)
         
         ttk.Button(button_frame, text="Create System", 
                    command=self.create_new_system,
-                   width=button_width).pack(pady=PADDING_MEDIUM)
+                   width=button_width).pack(pady=PADDING_XLARGE)
         
         ttk.Button(button_frame, text="Select / Simulate", 
                    command=self.select_lens,
-                   width=button_width).pack(pady=PADDING_MEDIUM)
+                   width=button_width).pack(pady=PADDING_XLARGE)
         
         self.save_system_btn = ttk.Button(button_frame, text="Save System", 
                    command=self.save_current_system,
                    width=button_width, state='disabled')
-        self.save_system_btn.pack(pady=PADDING_MEDIUM)
+        self.save_system_btn.pack(pady=PADDING_XLARGE)
         
         ttk.Button(button_frame, text="Delete", 
                    command=self.delete_lens,
-                   width=button_width).pack(pady=PADDING_MEDIUM)
+                   width=button_width).pack(pady=PADDING_XLARGE)
         
         if self.on_export_callback:
             ttk.Button(button_frame, text="Export STL", 
                       command=self.export_lens,
-                      width=button_width).pack(pady=PADDING_MEDIUM)
+                      width=button_width).pack(pady=PADDING_XLARGE)
         
         # Lens list frame on the right
         list_frame = ttk.LabelFrame(content_frame, text="Available Lenses (Hold Ctrl/Shift to select multiple)", padding="10")
@@ -157,7 +157,8 @@ class LensSelectionController:
                                    selectbackground=self.colors['accent'],
                                    selectforeground=self.colors['fg'],
                                    font=(FONT_FAMILY, FONT_SIZE_LARGE),
-                                   height=15,
+                                   height=8,
+                                   width=30,
                                    borderwidth=1,
                                    relief=tk.SOLID,
                                    selectmode=tk.EXTENDED)
