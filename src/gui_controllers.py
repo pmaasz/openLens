@@ -118,7 +118,7 @@ class LensSelectionController:
                    command=self.create_new_lens,
                    width=button_width).pack(pady=PADDING_XLARGE)
         
-        ttk.Button(button_frame, text="Create new Assembly", 
+        ttk.Button(button_frame, text="Create New Assembly", 
                    command=self.create_new_system,
                    width=button_width).pack(pady=PADDING_XLARGE)
         
