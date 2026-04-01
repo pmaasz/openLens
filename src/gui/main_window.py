@@ -133,10 +133,12 @@ except ImportError:
 
 class LensEditorWindow:
     
-    def __init__(self, root: tk.Tk) -> None:
+    def __init__(self, root: tk.Tk, initial_action: str = None, initial_item: Any = None) -> None:
         self.root = root
         self.root.title("openlens - Optical Lens Editor")
         self.root.geometry("1400x800")
+        self.initial_action = initial_action
+        self.initial_item = initial_item
         
         # Initialize storage
         self.storage_file = "lenses.json"
@@ -187,7 +189,7 @@ class LensEditorWindow:
         
         # Create Lens Selection tab (always enabled)
         self.selection_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.selection_tab, text="Lens Selection")
+        self.notebook.add(self.selection_tab, text="Selection")
         
         # Create Editor tab (disabled until lens selected)
         self.editor_tab = ttk.Frame(self.notebook)
@@ -225,6 +227,13 @@ class LensEditorWindow:
         self.setup_optimization_tab()
         self.setup_export_tab()
         
+        # Hide selection tab (it's now the startup window)
+        self.notebook.tab(0, state='disabled')
+        
+        # Handle initial action from startup window
+        if self.initial_action:
+            self._handle_initial_action(self.initial_action, self.initial_item)
+        
         # Status bar (below tabs)
         status_frame = ttk.Frame(main_frame)
         status_frame.grid(row=1, column=0, sticky="ew", pady=PADDING_SMALL, padx=PADDING_SMALL)
@@ -237,6 +246,31 @@ class LensEditorWindow:
         status_label.pack(fill=tk.X)
         
         self.update_status("Select or create a lens to begin")
+    
+    def _handle_initial_action(self, action: str, item: Any = None) -> None:
+        """Handle the initial action from startup window"""
+        if action == "create_lens":
+            self.on_create_new_lens()
+        elif action == "create_assembly":
+            self.on_create_new_system()
+        elif action == "open_lens":
+            self._open_lens_by_name(item)
+        elif action == "open_assembly":
+            self._open_assembly_by_name(item)
+    
+    def _open_lens_by_name(self, name: str) -> None:
+        """Open a lens by name"""
+        for lens in self.lenses:
+            if lens.name == name:
+                self.on_lens_selected_callback(lens)
+                break
+    
+    def _open_assembly_by_name(self, name: str) -> None:
+        """Open an assembly by name"""
+        for lens in self.lenses:
+            if hasattr(lens, 'elements') and lens.name == name:
+                self.on_lens_selected_callback(lens)
+                break
     
     def setup_selection_tab(self) -> None:
         """Setup the Lens Selection tab using controller"""
