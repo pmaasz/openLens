@@ -106,14 +106,9 @@ class LensSelectionController:
         content_frame.columnconfigure(0, weight=1)
         content_frame.rowconfigure(1, weight=1)
         
-        # Title
-        title_label = ttk.Label(content_frame, text="Lens Library", 
-                               font=(FONT_FAMILY, 16, 'bold'))
-        title_label.grid(row=0, column=0, pady=(0, PADDING_XLARGE))
-        
         # Create a frame for the lens list and buttons
         list_frame = ttk.LabelFrame(content_frame, text="Available Lenses (Hold Ctrl/Shift to select multiple)", padding="10")
-        list_frame.grid(row=1, column=0, sticky="nsew")
+        list_frame.grid(row=0, column=0, sticky="nsew")
         list_frame.columnconfigure(0, weight=1)
         list_frame.rowconfigure(0, weight=1)
         
@@ -140,7 +135,7 @@ class LensSelectionController:
         
         # Button frame
         button_frame = ttk.Frame(content_frame)
-        button_frame.grid(row=2, column=0, pady=PADDING_XLARGE)
+        button_frame.grid(row=1, column=0, pady=PADDING_XLARGE)
         
         ttk.Button(button_frame, text="Create New Lens", 
                   command=self.create_new_lens,
