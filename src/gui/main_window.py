@@ -133,10 +133,12 @@ except ImportError:
 
 class LensEditorWindow:
     
-    def __init__(self, root: tk.Tk) -> None:
+    def __init__(self, root: tk.Tk, initial_action: str = None, initial_item: Any = None) -> None:
         self.root = root
         self.root.title("openlens - Optical Lens Editor")
         self.root.geometry("1400x800")
+        self.initial_action = initial_action
+        self.initial_item = initial_item
         
         # Initialize storage
         self.storage_file = "lenses.json"
@@ -185,10 +187,6 @@ class LensEditorWindow:
         self.notebook.grid(row=0, column=0, sticky="nsew")
         self.notebook.bind('<<NotebookTabChanged>>', self.on_tab_changed)
         
-        # Create Lens Selection tab (always enabled)
-        self.selection_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.selection_tab, text="Lens Selection")
-        
         # Create Editor tab (disabled until lens selected)
         self.editor_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.editor_tab, text="Editor", state='disabled')
@@ -209,21 +207,20 @@ class LensEditorWindow:
         self.export_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.export_tab, text="Export", state='disabled')
         
-        # Configure tabs grid
-        self.selection_tab.columnconfigure(0, weight=1)
-        self.selection_tab.rowconfigure(0, weight=1)
-        
         self.editor_tab.columnconfigure(1, weight=1)
         self.editor_tab.columnconfigure(2, weight=1)
         self.editor_tab.rowconfigure(0, weight=1)
         
         # Setup tab content
-        self.setup_selection_tab()
         self.setup_editor_tab()
         self.setup_simulation_tab()
         self.setup_performance_tab()
         self.setup_optimization_tab()
         self.setup_export_tab()
+        
+        # Handle initial action from startup window
+        if self.initial_action:
+            self._handle_initial_action(self.initial_action, self.initial_item)
         
         # Status bar (below tabs)
         status_frame = ttk.Frame(main_frame)
@@ -238,33 +235,30 @@ class LensEditorWindow:
         
         self.update_status("Select or create a lens to begin")
     
-    def setup_selection_tab(self) -> None:
-        """Setup the Lens Selection tab using controller"""
-        if not CONTROLLERS_AVAILABLE:
-            ttk.Label(self.selection_tab, text="Error: GUI Controllers not available").pack(padx=20, pady=20)
-            return
-
-        try:
-            # We know LensSelectionController is available here because of the check above
-            # but we need to satisfy static analysis
-            if TYPE_CHECKING:
-                assert LensSelectionController is not None
-
-            self.selection_controller = LensSelectionController(
-                parent_window=self,
-                lens_list=self.lenses,
-                colors=self.colors,
-                on_lens_selected=self.on_lens_selected_callback,
-                on_create_new=self.on_create_new_lens,
-                on_create_system=self.on_create_new_system,
-                on_delete=self.on_delete_lens,
-                on_lens_updated=self.on_lens_updated_callback,
-                on_export=None
-            )
-            self.selection_controller.setup_ui(self.selection_tab)
-        except Exception as e:
-            logger.error("Failed to initialize selection controller: %s", e)
-            ttk.Label(self.selection_tab, text=f"Error loading selection tab: {e}").pack(padx=20, pady=20)
+    def _handle_initial_action(self, action: str, item: Any = None) -> None:
+        """Handle the initial action from startup window"""
+        if action == "create_lens":
+            self.on_create_new_lens()
+        elif action == "create_assembly":
+            self.on_create_new_system()
+        elif action == "open_lens":
+            self._open_lens_by_name(item)
+        elif action == "open_assembly":
+            self._open_assembly_by_name(item)
+    
+    def _open_lens_by_name(self, name: str) -> None:
+        """Open a lens by name"""
+        for lens in self.lenses:
+            if lens.name == name:
+                self.on_lens_selected_callback(lens)
+                break
+    
+    def _open_assembly_by_name(self, name: str) -> None:
+        """Open an assembly by name"""
+        for lens in self.lenses:
+            if hasattr(lens, 'elements') and lens.name == name:
+                self.on_lens_selected_callback(lens)
+                break
     
     # Controller callback methods
     def on_lens_selected_callback(self, lens: Any) -> None:
@@ -276,14 +270,14 @@ class LensEditorWindow:
         
         if is_system:
             # Multi-lens system selected
-            self.notebook.tab(1, state='disabled') # Editor
-            self.notebook.tab(2, state='normal')   # Simulation
-            self.notebook.tab(3, state='disabled') # Performance
-            self.notebook.tab(4, state='normal')   # Optimization
-            self.notebook.tab(5, state='disabled') # Export
+            self.notebook.tab(0, state='disabled') # Editor
+            self.notebook.tab(1, state='normal')   # Simulation
+            self.notebook.tab(2, state='disabled') # Performance
+            self.notebook.tab(3, state='normal')   # Optimization
+            self.notebook.tab(4, state='disabled') # Export
             
             # Switch to Simulation tab automatically
-            self.notebook.select(2)
+            self.notebook.select(1)
             
             # Load system into controllers
             if self.simulation_controller:
@@ -296,14 +290,14 @@ class LensEditorWindow:
             
         else:
             # Single lens selected
+            self.notebook.tab(0, state='normal')
             self.notebook.tab(1, state='normal')
             self.notebook.tab(2, state='normal')
             self.notebook.tab(3, state='normal')
-            self.notebook.tab(4, state='normal')   # Optimization
-            self.notebook.tab(5, state='normal')
+            self.notebook.tab(4, state='normal')
             
             # Switch to editor and load lens
-            self.notebook.select(1)
+            self.notebook.select(0)
             
             # Load lens into controllers
             if self.editor_controller:
@@ -331,14 +325,14 @@ class LensEditorWindow:
         self.current_lens = None
         
         # Enable tabs
+        self.notebook.tab(0, state='normal')
         self.notebook.tab(1, state='normal')
         self.notebook.tab(2, state='normal')
         self.notebook.tab(3, state='normal')
-        self.notebook.tab(4, state='normal')   # Optimization
-        self.notebook.tab(5, state='normal')
+        self.notebook.tab(4, state='normal')
         
         # Switch to editor
-        self.notebook.select(1)
+        self.notebook.select(0)
         
         # Clear/Prepare editor
         if self.editor_controller:
@@ -391,11 +385,11 @@ class LensEditorWindow:
         # If current lens was deleted, clear it and disable tabs
         if self.current_lens == lens:
             self.current_lens = None
+            self.notebook.tab(0, state='disabled')
             self.notebook.tab(1, state='disabled')
             self.notebook.tab(2, state='disabled')
             self.notebook.tab(3, state='disabled')
             self.notebook.tab(4, state='disabled')
-            self.notebook.tab(5, state='disabled')
         
         self.update_status(f"Lens '{lens.name}' deleted")
     

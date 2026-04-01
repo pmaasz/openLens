@@ -16,17 +16,23 @@ if __name__ == "__main__":
 
 try:
     from gui.main_window import LensEditorWindow
+    from gui.startup_window import get_startup_action
 except ImportError:
-    # If package structure is different (e.g. running from root with -m src.lens_editor_gui)
     try:
         from src.gui.main_window import LensEditorWindow
+        from src.gui.startup_window import get_startup_action
     except ImportError:
-        print("Error: Could not import LensEditorWindow. Please run from the project root.")
+        print("Error: Could not import modules. Please run from the project root.")
         sys.exit(1)
 
 def main() -> None:
+    action, selected_item = get_startup_action()
+    
+    if action is None:
+        return
+    
     root = tk.Tk()
-    app = LensEditorWindow(root)
+    app = LensEditorWindow(root, initial_action=action, initial_item=selected_item)
     root.mainloop()
 
 if __name__ == "__main__":
