@@ -170,6 +170,33 @@ class LensSelectionController:
         # Bind events
         self.listbox.bind('<Double-Button-1>', lambda e: self.select_lens())
         
+        # Assembly list frame (initially hidden)
+        assembly_frame = ttk.LabelFrame(content_frame, text="Available Assemblies", padding="10")
+        assembly_frame.grid(row=0, column=1, sticky="nsew")
+        assembly_frame.grid_remove()
+        self.assembly_frame = assembly_frame
+        
+        assembly_frame.columnconfigure(0, weight=1)
+        assembly_frame.rowconfigure(0, weight=1)
+        
+        assembly_scrollbar = ttk.Scrollbar(assembly_frame)
+        assembly_scrollbar.grid(row=0, column=1, sticky="ns")
+        
+        self.assembly_listbox = tk.Listbox(assembly_frame, 
+                                   yscrollcommand=assembly_scrollbar.set,
+                                   bg=self.colors['entry_bg'],
+                                   fg=self.colors['fg'],
+                                   selectbackground=self.colors['accent'],
+                                   selectforeground=self.colors['fg'],
+                                   font=(FONT_FAMILY, FONT_SIZE_LARGE),
+                                   height=8,
+                                   width=30,
+                                   borderwidth=1,
+                                   relief=tk.SOLID,
+                                   selectmode=tk.EXTENDED)
+        self.assembly_listbox.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        assembly_scrollbar.config(command=self.assembly_listbox.yview)
+        
         # Load initial data
         self.refresh_lens_list()
     
@@ -294,11 +321,25 @@ class LensSelectionController:
     def open_existing_lens(self):
         """Open an existing lens from storage"""
         if hasattr(self, 'list_frame'):
+            if hasattr(self, 'assembly_frame'):
+                self.assembly_frame.grid_remove()
             self.list_frame.grid()
 
     def open_existing_assembly(self):
         """Open an existing assembly from storage"""
-        pass
+        if hasattr(self, 'assembly_frame'):
+            self.assembly_frame.grid()
+            self.refresh_assembly_list()
+    
+    def refresh_assembly_list(self):
+        """Refresh the assembly listbox with saved optical systems"""
+        if not self.assembly_listbox:
+            return
+        self.assembly_listbox.delete(0, tk.END)
+        for item in self.lens_list:
+            if hasattr(item, 'elements') and hasattr(item, 'air_gaps'):
+                name = item.name
+                self.assembly_listbox.insert(tk.END, name)
 
     def save_current_system(self):
         """Save the currently selected temporary system as a permanent one"""
