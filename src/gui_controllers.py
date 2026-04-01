@@ -122,6 +122,14 @@ class LensSelectionController:
                    command=self.create_new_system,
                    width=button_width).pack(pady=PADDING_XLARGE)
         
+        ttk.Button(button_frame, text="Open Existing Lens", 
+                   command=self.open_existing_lens,
+                   width=button_width).pack(pady=PADDING_XLARGE)
+        
+        ttk.Button(button_frame, text="Open Existing Assembly", 
+                   command=self.open_existing_assembly,
+                   width=button_width).pack(pady=PADDING_XLARGE)
+        
         ttk.Button(button_frame, text="Delete", 
                    command=self.delete_lens,
                    width=button_width).pack(pady=PADDING_XLARGE)
@@ -279,6 +287,14 @@ class LensSelectionController:
         """Create a new optical system and notify parent"""
         if self.on_create_system_callback:
             self.on_create_system_callback()
+
+    def open_existing_lens(self):
+        """Open an existing lens from storage"""
+        pass
+
+    def open_existing_assembly(self):
+        """Open an existing assembly from storage"""
+        pass
 
     def save_current_system(self):
         """Save the currently selected temporary system as a permanent one"""
