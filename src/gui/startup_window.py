@@ -111,8 +111,8 @@ class StartupWindow:
         
         self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
-        # Bind single click to select
-        self.listbox.bind('<<ListboxSelect>>', lambda e: self._on_list_select(list_type))
+        # Bind double-click to select and open
+        self.listbox.bind('<Double-Button-1>', lambda e: self._open_selected(action))
         
         self.list_container.pack(fill=tk.BOTH, expand=True)
         self.current_list_type = list_type
@@ -122,14 +122,11 @@ class StartupWindow:
                              command=lambda: self._open_selected(action))
         open_btn.pack(pady=5)
     
-    def _on_list_select(self, list_type):
+    def _open_selected(self, action):
         selection = self.listbox.curselection()
         if selection:
             idx = selection[0]
             self.selected_item = self.listbox.get(idx)
-    
-    def _open_selected(self, action):
-        if self.selected_item:
             self.selected_action = action
             self.root.destroy()
     
