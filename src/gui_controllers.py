@@ -118,18 +118,9 @@ class LensSelectionController:
                    command=self.create_new_lens,
                    width=button_width).pack(pady=PADDING_XLARGE)
         
-        ttk.Button(button_frame, text="Create System", 
+        ttk.Button(button_frame, text="Create new Assembly", 
                    command=self.create_new_system,
                    width=button_width).pack(pady=PADDING_XLARGE)
-        
-        ttk.Button(button_frame, text="Select / Simulate", 
-                   command=self.select_lens,
-                   width=button_width).pack(pady=PADDING_XLARGE)
-        
-        self.save_system_btn = ttk.Button(button_frame, text="Save System", 
-                   command=self.save_current_system,
-                   width=button_width, state='disabled')
-        self.save_system_btn.pack(pady=PADDING_XLARGE)
         
         ttk.Button(button_frame, text="Delete", 
                    command=self.delete_lens,
