@@ -194,10 +194,13 @@ class LensSelectionController:
             return
         self.listbox.delete(0, tk.END)
         for lens in self.lens_list:
-            # Handle both Lens objects and dicts
+            # Handle both Lens objects, OpticalSystem objects, and dicts
             if isinstance(lens, dict):
                 name = lens.get('name', 'Unknown')
                 lens_type = lens.get('type', 'Unknown')
+            elif hasattr(lens, 'elements') and hasattr(lens, 'air_gaps'):
+                name = lens.name
+                lens_type = 'Optical System'
             else:
                 name = lens.name
                 lens_type = lens.lens_type
