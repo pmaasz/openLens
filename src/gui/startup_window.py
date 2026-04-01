@@ -12,7 +12,15 @@ class StartupWindow:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("OpenLens")
-        self.root.geometry("450x500")
+        
+        # Center window on screen
+        window_width = 450
+        window_height = 500
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
         self.root.resizable(False, False)
         
         self.selected_action = None
