@@ -679,6 +679,8 @@ class LensEditorController:
         
         if lens is None:
             self.clear_fields()
+            self._load_default_values()
+            self.calculate_properties()
             return
         
         # Handle both Lens objects and dicts
@@ -774,6 +776,32 @@ class LensEditorController:
         
         for label in self.result_labels.values():
             label.config(text="N/A")
+    
+    def _load_default_values(self):
+        """Load default values when creating a new lens"""
+        # Set default values to match what's in create_property_fields
+        defaults = {
+            'name': 'New Lens',
+            'radius1': '100.0',
+            'radius2': '-100.0',
+            'thickness': '5.0',
+            'diameter': '50.0',
+        }
+        
+        for key, value in defaults.items():
+            if key in self.entry_fields:
+                self.entry_fields[key].delete(0, tk.END)
+                self.entry_fields[key].insert(0, value)
+        
+        # Set default material
+        if self.material_var:
+            self.material_var.set("BK7")
+        if self.n_display_label:
+            self.n_display_label.config(text="1.5168")
+        
+        # Set default lens type
+        if 'lens_type' in self.entry_fields:
+            self.entry_fields['lens_type'].set("Biconvex")
     
     def on_field_changed(self, event=None):
         """Handle field change event for auto-calculation and autosave"""
