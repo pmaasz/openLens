@@ -3059,18 +3059,29 @@ class ExportController:
         
         # Configure grid
         parent_frame.columnconfigure(0, weight=1)
+        parent_frame.rowconfigure(0, weight=1)
         
-        # Main content frame
-        content_frame = ttk.Frame(parent_frame, padding="10")
-        content_frame.grid(row=0, column=0, sticky="nsew")
+        # Create scrollable canvas
+        canvas = tk.Canvas(parent_frame, bg=self.colors['bg'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(parent_frame, orient="vertical", command=canvas.yview)
+        self.scrollable_frame = ttk.Frame(canvas, padding="10")
+        
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        
+        # Use scrollable_frame as content frame
+        content_frame = self.scrollable_frame
         content_frame.columnconfigure(0, weight=1)
         
-        # Title
-        title_label = ttk.Label(content_frame, text="Professional Export Formats", 
-                                font=(FONT_FAMILY, 14, 'bold'))
-        title_label.grid(row=0, column=0, pady=PADDING_MEDIUM)
-        
-        row = 1
+        row = 0
         
         # JSON Export
         json_frame = ttk.LabelFrame(content_frame, text="JSON Format", padding="15")
