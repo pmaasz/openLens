@@ -82,9 +82,9 @@ class TestGUILensEditor(unittest.TestCase):
         self.assertEqual(controller.entry_fields['radius2'].get(), "-100.0")
         self.assertEqual(controller.entry_fields['thickness'].get(), "5.0")
         self.assertEqual(controller.entry_fields['diameter'].get(), "50.0")
-        self.assertEqual(controller.entry_fields['n'].get(), "1.5168")
-        self.assertEqual(controller.entry_fields['lens_type'].get(), "Biconvex")
         self.assertEqual(controller.material_var.get(), "BK7")
+        self.assertEqual(controller.n_display_label.cget("text"), "1.5168")
+        self.assertEqual(controller.entry_fields['lens_type'].get(), "Biconvex")
     
     def test_tabs_exist(self):
         """Test that all tabs are created"""
