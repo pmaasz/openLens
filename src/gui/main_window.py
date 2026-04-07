@@ -431,6 +431,10 @@ class LensEditorWindow:
         # Load lens into simulation tab
         if self.simulation_controller:
             self.simulation_controller.load_lens(lens)
+        
+        # Load lens into optimization tab
+        if self.optimization_controller:
+            self.optimization_controller.load_lens(lens)
 
     def setup_editor_tab(self) -> None:
         """Setup the Editor tab with lens properties using controller"""
