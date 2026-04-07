@@ -67,15 +67,39 @@ class OptimizationController:
     def setup_ui(self, parent_frame: ttk.Frame):
         """Set up the optimization tab UI"""
         
-        # Main layout: Splitter between Config and Results
-        self.main_paned = ttk.PanedWindow(parent_frame, orient=tk.HORIZONTAL)
-        self.main_paned.pack(fill=tk.BOTH, expand=True)
-
-        left_panel = ttk.Frame(self.main_paned, padding="10")
-        self.main_paned.add(left_panel, weight=1)
+        # Create a container for scrolling
+        self.canvas = tk.Canvas(parent_frame, highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(parent_frame, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.canvas)
         
-        right_panel = ttk.Frame(self.main_paned, padding="10")
-        self.main_paned.add(right_panel, weight=1)
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+        
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Make canvas width follow the window
+        def _on_canvas_configure(event):
+            self.canvas.itemconfig(1, width=event.width)
+        self.canvas.bind("<Configure>", _on_canvas_configure)
+
+        # Main layout: Fixed width columns using grid
+        main_content = ttk.Frame(self.scrollable_frame)
+        main_content.pack(fill=tk.BOTH, expand=True)
+
+        main_content.columnconfigure(0, weight=1)
+        main_content.columnconfigure(1, weight=1)
+        
+        left_panel = ttk.Frame(main_content, padding="10")
+        left_panel.grid(row=0, column=0, sticky="nsew")
+        
+        right_panel = ttk.Frame(main_content, padding="10")
+        right_panel.grid(row=0, column=1, sticky="nsew")
 
         # --- Left Panel: Configuration ---
         
