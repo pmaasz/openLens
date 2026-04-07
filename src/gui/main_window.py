@@ -423,10 +423,14 @@ class LensEditorWindow:
             self.lenses.append(lens)
             self.current_lens = lens
             self.update_status(f"New lens '{lens.name}' created")
-            
+        
         self.save_lenses()
         if self.selection_controller:
             self.selection_controller.refresh_lens_list()
+        
+        # Load lens into simulation tab
+        if self.simulation_controller:
+            self.simulation_controller.load_lens(lens)
 
     def setup_editor_tab(self) -> None:
         """Setup the Editor tab with lens properties using controller"""
