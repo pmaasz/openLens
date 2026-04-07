@@ -401,6 +401,7 @@ class LensEditorController:
         self.auto_update_var = None
         self.material_var = None
         self.material_menu = None
+        self.n_display_label = None
         self._autosave_timer = None
         self._initializing = False
     
@@ -487,7 +488,6 @@ class LensEditorController:
             ("Radius 2 (mm):", "radius2", "-100.0"),
             ("Thickness (mm):", "thickness", "5.0"),
             ("Diameter (mm):", "diameter", "50.0"),
-            ("Refractive Index:", "n", "1.5168"),
         ]
         
         for i, (label_text, key, default) in enumerate(fields):
@@ -516,7 +516,7 @@ class LensEditorController:
         parent.columnconfigure(1, weight=1)
     
     def create_material_selector(self, parent):
-        """Create material selection dropdown"""
+        """Create material selection dropdown with calculated refractive index"""
         try:
             from constants import PADDING_SMALL
         except ImportError:
@@ -524,14 +524,26 @@ class LensEditorController:
         
         ttk.Label(parent, text="Material:").grid(row=0, column=0, sticky=tk.W, pady=PADDING_SMALL)
         
-        # Common optical materials
-        materials = ["BK7", "SF11", "F2", "N-BK7", "Fused Silica", "Custom"]
-        self.material_var = tk.StringVar(value="BK7")
+        # Common optical materials (without n in dropdown - shown separately)
+        materials = [
+            "BK7",
+            "SF11",
+            "F2",
+            "N-BK7",
+            "Fused Silica",
+            "Custom"
+        ]
+        self.material_var = tk.StringVar(value=materials[0])
         
         self.material_menu = ttk.Combobox(parent, textvariable=self.material_var, 
                                           values=materials, width=18, state="readonly")
         self.material_menu.grid(row=0, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
         self.material_menu.bind('<<ComboboxSelected>>', self.on_material_changed)
+        
+        # Add a label to show the current refractive index
+        ttk.Label(parent, text="Refractive Index:").grid(row=1, column=0, sticky=tk.W, pady=PADDING_SMALL)
+        self.n_display_label = ttk.Label(parent, text="1.5168", font=('Arial', 10, 'bold'))
+        self.n_display_label.grid(row=1, column=1, sticky=tk.W, padx=PADDING_SMALL, pady=PADDING_SMALL)
         
         parent.columnconfigure(1, weight=1)
     
@@ -577,21 +589,63 @@ class LensEditorController:
         self.on_field_changed()
     
     def on_material_changed(self, event=None):
-        """Update refractive index when material changes"""
-        material_indices = {
-            "BK7": 1.5168,
-            "SF11": 1.7847,
-            "F2": 1.6200,
-            "N-BK7": 1.5168,
-            "Fused Silica": 1.4585,
-            "Custom": 1.5000
+        """Update refractive index display when material changes"""
+        material = self.material_var.get()
+        
+        # Try to calculate from material database if available
+        calculated_index = self._calculate_refractive_index(material)
+        
+        if calculated_index is not None:
+            self.n_display_label.config(text=f"{calculated_index:.4f}")
+        else:
+            # Fallback to catalog values
+            material_indices = {
+                "BK7": 1.5168,
+                "SF11": 1.7847,
+                "F2": 1.6200,
+                "N-BK7": 1.5168,
+                "Fused Silica": 1.4585,
+                "Custom": 1.5000
+            }
+            if material in material_indices:
+                self.n_display_label.config(text=str(material_indices[material]))
+            else:
+                self.n_display_label.config(text="N/A")
+        
+        self.on_field_changed()
+    
+    def _calculate_refractive_index(self, material: str) -> Optional[float]:
+        """Calculate refractive index from material database using Sellmeier equation."""
+        try:
+            from constants import DEFAULT_WAVELENGTH
+            wavelength = DEFAULT_WAVELENGTH
+        except ImportError:
+            wavelength = 587.6  # Default d-line
+        
+        try:
+            from material_database import get_material_database
+            db = get_material_database()
+            return db.get_refractive_index(material, wavelength, 20.0)
+        except ImportError:
+            pass
+        
+        # Fallback: use catalog values if database not available
+        material_catalog = {
+            "BK7": ("SCHOTT", "N-BK7"),
+            "N-BK7": ("SCHOTT", "N-BK7"),
+            "SF11": ("SCHOTT", "SF11"),
+            "F2": ("SCHOTT", "F2"),
+            "Fused Silica": ("SCHOTT", "Fused Silica"),
         }
         
-        material = self.material_var.get()
-        if material in material_indices:
-            self.entry_fields['n'].delete(0, tk.END)
-            self.entry_fields['n'].insert(0, str(material_indices[material]))
-            self.on_field_changed()
+        if material in material_catalog:
+            try:
+                db = get_material_database()
+                return db.get_refractive_index(material, wavelength, 20.0)
+            except:
+                pass
+        
+        return None
     
     def create_result_fields(self, parent):
         """Create labels for calculated results"""
@@ -669,8 +723,30 @@ class LensEditorController:
         self.entry_fields['diameter'].delete(0, tk.END)
         self.entry_fields['diameter'].insert(0, str(diameter))
         
-        self.entry_fields['n'].delete(0, tk.END)
-        self.entry_fields['n'].insert(0, str(refractive_index))
+        # Update refractive index display based on lens material
+        if self.material_var:
+            # Check if lens has refractive_index and try to match with material
+            if hasattr(lens, 'refractive_index'):
+                # Try to find matching material from selection
+                materials = [
+                    ("BK7", 1.5168),
+                    ("SF11", 1.7847),
+                    ("F2", 1.6200),
+                    ("N-BK7", 1.5168),
+                    ("Fused Silica", 1.4585),
+                    ("Custom", 1.5000),
+                ]
+                matched = False
+                for mat_name, n_value in materials:
+                    if abs(refractive_index - n_value) < 0.001:
+                        self.material_var.set(mat_name)
+                        self.n_display_label.config(text=f"{n_value:.4f}")
+                        matched = True
+                        break
+                if not matched:
+                    # Unknown material - set to custom
+                    self.material_var.set("Custom")
+                    self.n_display_label.config(text=f"{refractive_index:.4f}")
         
         # Fresnel fields
         if 'is_fresnel' in self.entry_fields:
@@ -681,7 +757,7 @@ class LensEditorController:
             self.entry_fields['groove_pitch'].delete(0, tk.END)
             self.entry_fields['groove_pitch'].insert(0, str(groove_pitch))
         
-        # Set material if available
+        # Set material if available (simple name without n)
         if self.material_var:
             self.material_var.set(material)
         
@@ -739,7 +815,16 @@ class LensEditorController:
             r1 = float(self.entry_fields['radius1'].get())
             r2 = float(self.entry_fields['radius2'].get())
             t = float(self.entry_fields['thickness'].get())
-            n = float(self.entry_fields['n'].get())
+            
+            # Get refractive index from display label (calculated from material)
+            if self.n_display_label:
+                n_text = self.n_display_label.cget("text")
+                if n_text and n_text != "N/A":
+                    n = float(n_text)
+                else:
+                    n = 1.5168  # Default fallback
+            else:
+                n = 1.5168  # Default fallback
             
             # Calculate using lensmaker's equation
             power1 = (n - 1) / r1
@@ -818,7 +903,16 @@ class LensEditorController:
             self.current_lens.radius_of_curvature_2 = float(self.entry_fields['radius2'].get())
             self.current_lens.thickness = float(self.entry_fields['thickness'].get())
             self.current_lens.diameter = float(self.entry_fields['diameter'].get())
-            self.current_lens.refractive_index = float(self.entry_fields['n'].get())
+            
+            # Get refractive index from the display label (calculated from material)
+            if self.n_display_label:
+                n_text = self.n_display_label.cget("text")
+                if n_text and n_text != "N/A":
+                    self.current_lens.refractive_index = float(n_text)
+                else:
+                    self.current_lens.refractive_index = 1.5168  # Default fallback
+            else:
+                self.current_lens.refractive_index = 1.5168  # Default fallback
             
             if self.material_var:
                 self.current_lens.material = self.material_var.get()
