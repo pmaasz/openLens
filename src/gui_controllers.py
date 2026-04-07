@@ -3065,12 +3065,7 @@ class ExportController:
         content_frame.grid(row=0, column=0, sticky="nsew")
         content_frame.columnconfigure(0, weight=1)
         
-        # Title
-        title_label = ttk.Label(content_frame, text="Professional Export Formats", 
-                                font=(FONT_FAMILY, 14, 'bold'))
-        title_label.grid(row=0, column=0, pady=PADDING_MEDIUM)
-        
-        row = 1
+        row = 0
         
         # JSON Export
         json_frame = ttk.LabelFrame(content_frame, text="JSON Format", padding="15")
