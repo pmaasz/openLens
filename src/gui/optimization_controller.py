@@ -63,6 +63,7 @@ class OptimizationController:
         self.target_vars: Dict[str, Any] = {}
         self.is_optimizing = False
         self.cancel_optimization = False
+        self.temp_optimized_lens: Optional['OpticalSystem'] = None
 
     def setup_ui(self, parent_frame: ttk.Frame):
         """Set up the optimization tab UI"""
@@ -107,21 +108,9 @@ class OptimizationController:
         self.variables_frame = ttk.LabelFrame(left_panel, text="Optimization Variables", padding="5")
         self.variables_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
-        # Scrollable area for variables
-        canvas = tk.Canvas(self.variables_frame, height=250)
-        scrollbar = ttk.Scrollbar(self.variables_frame, orient="vertical", command=canvas.yview)
-        self.vars_content = ttk.Frame(canvas)
-        
-        self.vars_content.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=self.vars_content, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        # Variables content
+        self.vars_content = ttk.Frame(self.variables_frame)
+        self.vars_content.pack(fill=tk.BOTH, expand=True)
 
         # 2. Targets Section
         self.targets_frame = ttk.LabelFrame(left_panel, text="Optimization Targets", padding="10")
@@ -216,6 +205,9 @@ class OptimizationController:
         
         self.optimize_btn = ttk.Button(actions_frame, text="Run Optimization", command=self.run_optimization)
         self.optimize_btn.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
+
+        self.apply_btn = ttk.Button(actions_frame, text="Apply & Keep", command=self._confirm_apply, state='disabled')
+        self.apply_btn.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
         
         # --- Right Panel: Logs & Results ---
         
@@ -426,6 +418,31 @@ class OptimizationController:
         if not self.current_lens:
             return
             
+        # Validate inputs before starting (Handle TclError for non-numeric input)
+        try:
+            config = {
+                'variables': {k: v.get() for k, v in self.variable_vars.items()},
+                'targets': {
+                    'focal_length_enabled': self.target_vars['focal_length_enabled'].get(),
+                    'focal_length_value': self.target_vars['focal_length_value'].get(),
+                    'spot_size_enabled': self.target_vars['spot_size_enabled'].get(),
+                    'spherical_enabled': self.target_vars['spherical_enabled'].get(),
+                    'coma_enabled': self.target_vars['coma_enabled'].get(),
+                    'astigmatism_enabled': self.target_vars['astigmatism_enabled'].get(),
+                    'min_thickness': self.target_vars['min_thickness'].get(),
+                    'max_thickness': self.target_vars['max_thickness'].get(),
+                    'min_air_gap': self.target_vars['min_air_gap'].get(),
+                    'min_edge_thickness': self.target_vars['min_edge_thickness'].get(),
+                    'maintain_cemented': self.target_vars['maintain_cemented'].get(),
+                    'robust_mode': self.target_vars['robust_mode'].get(),
+                },
+                'algorithm': self.algorithm_var.get() if hasattr(self, 'algorithm_var') else "Local (Simplex)"
+            }
+        except (tk.TclError, ValueError) as e:
+            from tkinter import messagebox
+            messagebox.showerror("Input Error", f"Invalid numeric input in optimization settings.\n\nPlease ensure all targets and constraints are valid numbers.\n\nDetails: {str(e)}")
+            return
+
         self.optimize_btn.config(state='disabled', text="Optimizing...")
         self.log_text.config(state='normal')
         self.log_text.delete(1.0, tk.END)
@@ -435,26 +452,6 @@ class OptimizationController:
         # Reset graph
         self.graph_data = []
         self.graph_canvas.delete("all")
-        
-        # Capture configuration (Main Thread)
-        config = {
-            'variables': {k: v.get() for k, v in self.variable_vars.items()},
-            'targets': {
-                'focal_length_enabled': self.target_vars['focal_length_enabled'].get(),
-                'focal_length_value': self.target_vars['focal_length_value'].get(),
-                'spot_size_enabled': self.target_vars['spot_size_enabled'].get(),
-                'spherical_enabled': self.target_vars['spherical_enabled'].get(),
-                'coma_enabled': self.target_vars['coma_enabled'].get(),
-                'astigmatism_enabled': self.target_vars['astigmatism_enabled'].get(),
-                'min_thickness': self.target_vars['min_thickness'].get(),
-                'max_thickness': self.target_vars['max_thickness'].get(),
-                'min_air_gap': self.target_vars['min_air_gap'].get(),
-                'min_edge_thickness': self.target_vars['min_edge_thickness'].get(),
-                'maintain_cemented': self.target_vars['maintain_cemented'].get(),
-                'robust_mode': self.target_vars['robust_mode'].get(),
-            },
-            'algorithm': self.algorithm_var.get() if hasattr(self, 'algorithm_var') else "Local (Simplex)"
-        }
         
         # Deepcopy lens for thread safety
         try:
@@ -812,14 +809,43 @@ class OptimizationController:
             self._optimization_finished(False)
 
     def _apply_results(self, result: OptimizationResult):
-        """Apply results to the system and notify parent"""
-        
-        # Notify parent to refresh other tabs
-        if self.on_lens_updated_callback:
-            self.on_lens_updated_callback(self.current_lens)
+        """Show results and enable Apply button"""
+        if result.success:
+            self.temp_optimized_lens = result.optimized_system
+            self.apply_btn.config(state='normal')
             
-        self.log("System updated.")
-        self._optimization_finished(True)
+            self.log("Optimization complete. Improvements summary:")
+            
+            # Show parameter changes if available in history
+            if result.variable_history and len(result.variable_history) > 0:
+                final_vars = result.variable_history[-1]
+                initial_vars = result.variable_history[0]
+                
+                self.log("Parameter changes:")
+                for name, final_val in final_vars.items():
+                    init_val = initial_vars.get(name, 0.0)
+                    if abs(final_val - init_val) > 1e-6:
+                        self.log(f"  {name}: {init_val:.4f} -> {final_val:.4f} (diff: {final_val-init_val:+.4f})")
+            
+            self.log("Click 'Apply & Keep' to save these changes to the system.")
+        
+        self._optimization_finished(result.success)
+
+    def _confirm_apply(self):
+        """Finalize and apply the optimization"""
+        if self.temp_optimized_lens:
+            self.current_lens = self.temp_optimized_lens
+            if self.on_lens_updated_callback:
+                self.on_lens_updated_callback(self.current_lens)
+            
+            # Persist to disk if parent window has save functionality
+            if self.parent_window and hasattr(self.parent_window, 'save_lenses'):
+                self.parent_window.save_lenses()
+                self.log("Changes saved to disk.")
+            
+            self.log("Optimized system applied successfully.")
+            self.apply_btn.config(state='disabled')
+            self.temp_optimized_lens = None
 
     def _update_graph_and_log(self, iteration, merit):
         """Update UI from main thread"""
@@ -883,5 +909,10 @@ class OptimizationController:
 
     def _optimization_finished(self, success):
         if self.parent_window:
-            self.parent_window.root.after(0, lambda: self.optimize_btn.config(state='normal', text="Run Optimization"))
+            def update_ui():
+                self.optimize_btn.config(state='normal', text="Run Optimization")
+                if not success:
+                    self.apply_btn.config(state='disabled')
+            
+            self.parent_window.root.after(0, update_ui)
 
