@@ -296,6 +296,9 @@ class LensEditorWindow:
             self.notebook.tab(3, state='normal')
             self.notebook.tab(4, state='normal')
             
+            # Re-enable 3D tab for single lenses
+            self.viz_notebook.tab(1, state='normal')
+            
             # Switch to editor and load lens
             self.notebook.select(0)
             
@@ -331,6 +334,9 @@ class LensEditorWindow:
         self.notebook.tab(3, state='normal')
         self.notebook.tab(4, state='normal')
         
+        # Re-enable 3D tab for single lenses
+        self.viz_notebook.tab(1, state='normal')
+        
         # Switch to editor
         self.notebook.select(0)
         
@@ -359,22 +365,38 @@ class LensEditorWindow:
         # Add to list
         self.lenses.append(system)
         
+        # Enable tabs
+        self.notebook.tab(0, state='normal')
+        self.notebook.tab(1, state='normal')
+        self.notebook.tab(2, state='normal')
+        self.notebook.tab(3, state='normal')
+        self.notebook.tab(4, state='normal')
+        
+        # Switch to editor tab
+        self.notebook.select(0)
+        
+        # Load system into editor to show available lenses
+        if self.editor_controller:
+            self.editor_controller.load_lens(system)
+        
+        # Also load into simulation, optimization tabs
+        if self.simulation_controller:
+            self.simulation_controller.load_lens(system)
+        if self.optimization_controller:
+            self.optimization_controller.load_lens(system)
+        
+        # Update visualization to show the system (force 2D view for assemblies)
+        self.viz_notebook.select(0)  # Switch to 2D tab
+        self.viz_notebook.tab(1, state='disabled')  # Disable 3D tab for assemblies
+        self.on_viz_tab_changed(None)
+        
         # Save and refresh
         self.save_lenses()
         
         if self.selection_controller:
             self.selection_controller.refresh_lens_list()
-            # Select the new system
-            if self.selection_controller.listbox:
-                idx = len(self.lenses) - 1
-                self.selection_controller.listbox.selection_clear(0, tk.END)
-                self.selection_controller.listbox.selection_set(idx)
-                self.selection_controller.listbox.see(idx)
-                
-                # Manually trigger selection update
-                self.selection_controller.select_lens()
         
-        self.update_status(f"New system '{system.name}' created")
+        self.update_status(f"New system '{system.name}' created - Select lenses from the list to add to assembly")
     
     def on_delete_lens(self, lens: 'Lens') -> None:
         """Callback when a lens is deleted"""
@@ -548,6 +570,17 @@ class LensEditorWindow:
         if self.editor_controller and self.editor_controller.current_lens:
             lens = self.editor_controller.current_lens
             mode = self.viz_mode_var.get()
+            
+            # Check if it's an OpticalSystem (assembly)
+            if hasattr(lens, 'elements') and hasattr(lens, 'air_gaps'):
+                # Draw all elements in the assembly
+                try:
+                    self.visualizer.draw_system(lens)
+                except Exception as e:
+                    logger.warning(f"Failed to update visualization: {e}")
+                return
+            
+            # Single lens - use existing logic
             try:
                 if mode == "2D":
                     self.visualizer.draw_lens_2d(
