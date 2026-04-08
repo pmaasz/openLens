@@ -1035,7 +1035,13 @@ class LensEditorController:
         
         ttk.Label(save_frame, text="Assembly Name:").pack(side=tk.LEFT, padx=(0, 5))
         name_var = tk.StringVar(value=system.name)
-        ttk.Entry(save_frame, textvariable=name_var, width=30).pack(side=tk.LEFT, padx=5)
+        name_entry = ttk.Entry(save_frame, textvariable=name_var, width=30)
+        name_entry.pack(side=tk.LEFT, padx=5)
+        
+        # If editing an existing assembly (has a name other than default), disable name editing
+        if system.name and system.name != "New Assembly":
+            name_entry.config(state='disabled')
+            
         ttk.Button(save_frame, text="Save Assembly", command=save_assembly).pack(side=tk.LEFT, padx=5)
         
         # Store for cleanup

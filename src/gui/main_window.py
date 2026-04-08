@@ -354,12 +354,12 @@ class LensEditorWindow:
         # Create new OpticalSystem
         try:
             from ..optical_system import OpticalSystem
-            system = OpticalSystem()
+            system = OpticalSystem(name="New Assembly")
         except ImportError:
              # Try local import
             try:
                 from optical_system import OpticalSystem
-                system = OpticalSystem()
+                system = OpticalSystem(name="New Assembly")
             except ImportError:
                 # Fallback if class not available
                 logger.error("OpticalSystem class not available")
