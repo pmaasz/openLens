@@ -15,6 +15,9 @@ Use this agent when:
 2. **Update Version**: Bump version in `setup.py`
 3. **Run Tests**: Execute `python3 tests/run_all_tests.py`
 4. **Build Executable**: Run PyInstaller with correct paths
+   - Use `--name OpenLens-v{VERSION}-Linux` for the executable name
+   - Use `--paths src` to include the source directory
+   - The .spec file will be created in the project root - move it to `specs/` directory
 5. **Git Operations**: Commit, tag, and push to remote
 6. **Report**: Provide download link and release notes
 
@@ -60,3 +63,5 @@ Agent:
 - Requires virtual environment with PyInstaller installed
 - Builds Linux binary by default (Windows requires separate host)
 - Uses semantic versioning (semver.org)
+- After building, move the .spec file from project root to `specs/` directory
+- The executable will be in the `dist/` directory
