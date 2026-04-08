@@ -27,13 +27,15 @@ class TestGUILensEditor(unittest.TestCase):
         self.root = tk.Tk()
         self.root.withdraw()  # Hide window during tests
         
-        # Create temporary storage file
-        self.temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json')
+        # Create temporary storage file (using .db for SQLite)
+        self.temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.db')
         self.temp_file.close()
         
         # Create editor window with temp storage
         self.editor = LensEditorWindow(self.root)
         self.editor.storage_file = self.temp_file.name
+        # Re-initialize storage with the temp file to ensure we use the test DB
+        self.editor.storage = LensStorage(self.temp_file.name)
         self.editor.lenses = []
     
     def tearDown(self):
@@ -53,8 +55,14 @@ class TestGUILensEditor(unittest.TestCase):
         except:
             pass
         
-        if os.path.exists(self.temp_file.name):
-            os.unlink(self.temp_file.name)
+        # Clean up database and its WAL files
+        for ext in ['', '-shm', '-wal']:
+            path = self.temp_file.name + ext
+            if os.path.exists(path):
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
     
     def test_gui_initialization(self):
         """Test that GUI initializes correctly"""
