@@ -5,7 +5,7 @@ This module centralizes all magic numbers and configuration values
 to improve code maintainability and clarity.
 """
 
-VERSION = "2.2.0"
+VERSION = "0.1.2"
 
 # ==================== Optical Constants ====================
 
