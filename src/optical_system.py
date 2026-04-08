@@ -136,9 +136,11 @@ class OpticalSystem:
                 gap_end = next_global_pos.x
                 
                 gap_thickness = gap_end - gap_start
-                # Ensure non-negative gap
-                if gap_thickness < 0:
+                # Ensure non-negative gap, allowing zero (but not negative)
+                if gap_thickness < -1e-12:
                      gap_thickness = 0
+                elif abs(gap_thickness) < 1e-12:
+                     gap_thickness = 0.0
                 
                 gap = AirGap(thickness=gap_thickness, position=gap_start)
                 new_gaps.append(gap)

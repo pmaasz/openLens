@@ -15,7 +15,10 @@ class DatabaseManager:
         self._initialize_db()
         
     def _get_connection(self):
-        return sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA synchronous=NORMAL')
+        return conn
         
     def _initialize_db(self):
         """Create tables if they don't exist."""
@@ -125,8 +128,24 @@ class DatabaseManager:
             # 3. Save elements
             for i, elem in enumerate(assembly_dict.get('elements', [])):
                 lens_data = elem.get('lens')
-                # Ensure the lens itself is saved
-                self.save_lens(lens_data)
+                # Save the lens metadata
+                cursor.execute('''
+                    INSERT OR REPLACE INTO lenses 
+                    (id, name, radius1, radius2, thickness, material, refractive_index, diameter, created_at, modified_at, metadata)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    lens_data.get('id'),
+                    lens_data.get('name'),
+                    lens_data.get('radius_of_curvature_1', lens_data.get('radius1')),
+                    lens_data.get('radius_of_curvature_2', lens_data.get('radius2')),
+                    lens_data.get('thickness'),
+                    lens_data.get('material'),
+                    lens_data.get('refractive_index'),
+                    lens_data.get('diameter'),
+                    lens_data.get('created_at'),
+                    lens_data.get('modified_at'),
+                    json.dumps({k: v for k, v in lens_data.items() if k not in ['id', 'name', 'radius_of_curvature_1', 'radius_of_curvature_2', 'radius1', 'radius2', 'thickness', 'material', 'refractive_index', 'diameter', 'created_at', 'modified_at']})
+                ))
                 
                 cursor.execute('''
                     INSERT INTO assembly_elements (assembly_id, lens_id, position, order_index)
