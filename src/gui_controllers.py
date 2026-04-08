@@ -432,9 +432,13 @@ class LensEditorController:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
+        # Store references for switching between lens and assembly mode
+        self._scrollable_frame = scrollable_frame
+        
         # Properties frame
         props_frame = ttk.LabelFrame(scrollable_frame, text="Lens Properties", padding=PADDING_MEDIUM)
         props_frame.grid(row=0, column=0, sticky="nsew", padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self._props_frame = props_frame
         
         # Create input fields
         self.create_property_fields(props_frame)
@@ -442,16 +446,19 @@ class LensEditorController:
         # Material selection
         material_frame = ttk.LabelFrame(scrollable_frame, text="Material", padding=PADDING_MEDIUM)
         material_frame.grid(row=1, column=0, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self._material_frame = material_frame
         self.create_material_selector(material_frame)
         
         # Fresnel lens section
         fresnel_frame = ttk.LabelFrame(scrollable_frame, text="Fresnel Properties", padding=PADDING_MEDIUM)
         fresnel_frame.grid(row=2, column=0, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self._fresnel_frame = fresnel_frame
         self.create_fresnel_fields(fresnel_frame)
         
         # Results frame
         results_frame = ttk.LabelFrame(scrollable_frame, text="Calculated Properties", padding=PADDING_MEDIUM)
         results_frame.grid(row=3, column=0, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self._results_frame = results_frame
         
         # Create result labels
         self.create_result_fields(results_frame)
@@ -683,6 +690,11 @@ class LensEditorController:
             self.calculate_properties()
             return
         
+        # Check if it's an OpticalSystem (assembly)
+        if hasattr(lens, 'elements') and hasattr(lens, 'air_gaps'):
+            self._load_assembly_view(lens)
+            return
+        
         # Handle both Lens objects and dicts
         if isinstance(lens, dict):
             name = lens.get('name', 'Unknown')
@@ -802,6 +814,244 @@ class LensEditorController:
         # Set default lens type
         if 'lens_type' in self.entry_fields:
             self.entry_fields['lens_type'].set("Biconvex")
+    
+    def _load_assembly_view(self, system):
+        """Load an OpticalSystem (assembly) into the editor view"""
+        # Clear the regular fields
+        self.clear_fields()
+        
+        # Load available lenses from storage
+        try:
+            from gui.storage import LensStorage
+            storage = LensStorage("lenses.json", lambda x: None)
+            all_lenses = storage.load_lenses()
+            # Filter to only single Lens objects (not OpticalSystem)
+            available_lenses = [l for l in all_lenses if not (hasattr(l, 'elements') and hasattr(l, 'air_gaps'))]
+        except Exception as e:
+            logger.warning(f"Could not load lenses from storage: {e}")
+            available_lenses = []
+        
+        # Get lenses currently in the assembly
+        current_elements = []
+        if hasattr(system, 'elements'):
+            for elem in system.elements:
+                if hasattr(elem, 'lens'):
+                    current_elements.append(elem.lens)
+        
+        self._show_assembly_editor(available_lenses, current_elements, system)
+    
+    def _show_assembly_editor(self, available_lenses, current_elements, system):
+        """Show the assembly editor with lens selection and system builder split view"""
+        # Hide the regular lens editor frames and show assembly editor instead
+        if hasattr(self, '_props_frame') and self._props_frame.winfo_exists():
+            self._props_frame.grid_forget()
+        if hasattr(self, '_material_frame') and self._material_frame.winfo_exists():
+            self._material_frame.grid_forget()
+        if hasattr(self, '_fresnel_frame') and self._fresnel_frame.winfo_exists():
+            self._fresnel_frame.grid_forget()
+        if hasattr(self, '_results_frame') and self._results_frame.winfo_exists():
+            self._results_frame.grid_forget()
+        
+        # Load lenses from both memory (current session) and storage to ensure we have the latest list
+        lenses_to_show = []
+        if self.parent_window and hasattr(self.parent_window, 'lenses'):
+            # Copy the list to avoid modifying the main application state directly
+            lenses_to_show = list(self.parent_window.lenses)
+        
+        try:
+            from gui.storage import LensStorage
+            storage = LensStorage("lenses.json", lambda x: None)
+            storage_lenses = storage.load_lenses()
+            
+            # Merge with in-memory lenses, avoiding duplicates by ID
+            known_ids = {getattr(l, 'id', None) for l in lenses_to_show if getattr(l, 'id', None)}
+            for sl in storage_lenses:
+                sl_id = getattr(sl, 'id', None)
+                if sl_id is not None:
+                    if sl_id not in known_ids:
+                        lenses_to_show.append(sl)
+                        known_ids.add(sl_id)
+                else:
+                    # If it has no ID, just add it by identity
+                    if sl not in lenses_to_show:
+                        lenses_to_show.append(sl)
+        except Exception as e:
+            logger.warning(f"Could not load lenses from storage in assembly editor: {e}")
+            
+        # Filter to only single Lens objects (not OpticalSystem)
+        available_lenses = [l for l in lenses_to_show if not (hasattr(l, 'elements') and hasattr(l, 'air_gaps'))]
+
+        # Store parent frame reference for later restoration
+        self._assembly_parent_frame = self._scrollable_frame
+        
+        # Clear the scrollable frame
+        for widget in self._scrollable_frame.winfo_children():
+            widget.destroy()
+        
+        # Main container for assembly editor
+        main_container = ttk.Frame(self._scrollable_frame)
+        main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Title
+        title_label = ttk.Label(main_container, text=f"Assembly Editor: {system.name}", font=('Arial', 14, 'bold'))
+        title_label.pack(pady=10)
+        
+        # Paned window for split view: Lens Selection on Left, System Builder on Right
+        paned = ttk.PanedWindow(main_container, orient=tk.HORIZONTAL)
+        paned.pack(fill=tk.BOTH, expand=True)
+        
+        # Left side: Lens Selection (Available lenses to add)
+        left_frame = ttk.LabelFrame(paned, text="Lens Selection", padding=10)
+        paned.add(left_frame, weight=1)
+        
+        available_listbox = tk.Listbox(left_frame, height=20)
+        available_listbox.pack(fill=tk.BOTH, expand=True)
+        
+        for lens in available_lenses:
+            available_listbox.insert(tk.END, f"{lens.name} (n={lens.refractive_index:.3f})")
+        
+        # Right side: System Builder (Current assembly elements)
+        right_frame = ttk.LabelFrame(paned, text="System Builder", padding=10)
+        paned.add(right_frame, weight=1)
+        
+        current_listbox = tk.Listbox(right_frame, height=20)
+        current_listbox.pack(fill=tk.BOTH, expand=True)
+        
+        def refresh_current_list():
+            current_listbox.delete(0, tk.END)
+            for i, elem in enumerate(system.elements):
+                name = elem.lens.name
+                gap = 0.0
+                if i > 0 and i-1 < len(system.air_gaps):
+                    gap = system.air_gaps[i-1].thickness
+                
+                if i == 0:
+                    text = f"{i+1}. {name}"
+                else:
+                    text = f"{i+1}. {name} (Gap: {gap:.2f}mm)"
+                current_listbox.insert(tk.END, text)
+
+        refresh_current_list()
+        
+        # Buttons frame (center or bottom)
+        btn_frame = ttk.Frame(main_container)
+        btn_frame.pack(fill=tk.X, pady=10)
+        
+        def add_lens_to_assembly():
+            selection = available_listbox.curselection()
+            if selection:
+                lens_name = available_listbox.get(selection[0]).split(" (n=")[0]
+                for lens in available_lenses:
+                    if lens.name == lens_name:
+                        system.add_lens(lens, air_gap_before=5.0) # Default gap
+                        refresh_current_list()
+                        break
+                if self.on_lens_updated_callback:
+                    self.on_lens_updated_callback(system)
+        
+        def remove_lens_from_assembly():
+            selection = current_listbox.curselection()
+            if selection:
+                idx = selection[0]
+                if system.remove_lens(idx):
+                    refresh_current_list()
+                if self.on_lens_updated_callback:
+                    self.on_lens_updated_callback(system)
+        
+        def move_up():
+            selection = current_listbox.curselection()
+            if selection and selection[0] > 0:
+                idx = selection[0]
+                system.elements[idx], system.elements[idx-1] = system.elements[idx-1], system.elements[idx]
+                system._update_positions()
+                refresh_current_list()
+                current_listbox.selection_set(idx-1)
+                if self.on_lens_updated_callback:
+                    self.on_lens_updated_callback(system)
+        
+        def move_down():
+            selection = current_listbox.curselection()
+            if selection:
+                idx = selection[0]
+                if idx < len(system.elements) - 1:
+                    system.elements[idx], system.elements[idx+1] = system.elements[idx+1], system.elements[idx]
+                    system._update_positions()
+                    refresh_current_list()
+                    current_listbox.selection_set(idx+1)
+                    if self.on_lens_updated_callback:
+                        self.on_lens_updated_callback(system)
+
+        def set_gap():
+            selection = current_listbox.curselection()
+            if selection and selection[0] > 0:
+                idx = selection[0]
+                try:
+                    new_gap = float(gap_var.get())
+                    system.air_gaps[idx-1].thickness = new_gap
+                    system._update_positions()
+                    refresh_current_list()
+                    current_listbox.selection_set(idx)
+                    if self.on_lens_updated_callback:
+                        self.on_lens_updated_callback(system)
+                except ValueError:
+                    pass
+
+        def save_assembly():
+            # Update name from entry if available
+            new_name = name_var.get()
+            if new_name:
+                system.name = new_name
+            
+            # Use the callback to update and save
+            if self.on_lens_updated_callback:
+                self.on_lens_updated_callback(system)
+            
+            # Re-read title label if exists or just refresh the UI
+            try:
+                title_label.config(text=f"Assembly Editor: {system.name}")
+            except:
+                pass
+            
+            # Refresh the listbox
+            refresh_current_list()
+
+        # Air Gap control
+        gap_frame = ttk.Frame(btn_frame)
+        gap_frame.pack(side=tk.RIGHT, padx=5)
+        ttk.Label(gap_frame, text="Gap:").pack(side=tk.LEFT)
+        gap_var = tk.StringVar(value="5.0")
+        ttk.Entry(gap_frame, textvariable=gap_var, width=5).pack(side=tk.LEFT, padx=2)
+        ttk.Button(gap_frame, text="Set", command=set_gap, width=5).pack(side=tk.LEFT)
+        
+        ttk.Button(btn_frame, text="Add ->", command=add_lens_to_assembly).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="<- Remove", command=remove_lens_from_assembly).pack(side=tk.LEFT, padx=5)
+        ttk.Separator(btn_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
+        ttk.Button(btn_frame, text="Move Up", command=move_up).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Move Down", command=move_down).pack(side=tk.LEFT, padx=5)
+        
+        # Save assembly control
+        save_frame = ttk.Frame(main_container)
+        save_frame.pack(fill=tk.X, pady=10)
+        
+        ttk.Label(save_frame, text="Assembly Name:").pack(side=tk.LEFT, padx=(0, 5))
+        name_var = tk.StringVar(value=system.name)
+        name_entry = ttk.Entry(save_frame, textvariable=name_var, width=30)
+        name_entry.pack(side=tk.LEFT, padx=5)
+        
+        # If editing an existing assembly (has a name other than default), disable name editing
+        if system.name and system.name != "New Assembly":
+            name_entry.config(state='disabled')
+            
+        ttk.Button(save_frame, text="Save Assembly", command=save_assembly).pack(side=tk.LEFT, padx=5)
+        
+        # Store for cleanup
+        self._assembly_listboxes = (available_listbox, current_listbox)
+    
+    def _restore_lens_editor(self):
+        """Restore the regular lens editor when switching back from assembly mode"""
+        # This would require storing references to the frames during setup_ui
+        # For now, this is a placeholder - the user would need to reload the lens
+        pass
     
     def on_field_changed(self, event=None):
         """Handle field change event for auto-calculation and autosave"""
@@ -1244,7 +1494,8 @@ class SimulationController:
             if is_system:
                 from ray_tracer import SystemRayTracer
                 self.ray_tracer = SystemRayTracer(lens)
-                self.create_system_builder_ui()
+                # SYSTEM BUILDER REMOVED FROM SIMULATION TAB AS PER REQUIREMENTS
+                # self.create_system_builder_ui()
             else:
                 from ray_tracer import LensRayTracer
                 if lens:

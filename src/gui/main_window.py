@@ -270,23 +270,26 @@ class LensEditorWindow:
         
         if is_system:
             # Multi-lens system selected
-            self.notebook.tab(0, state='disabled') # Editor
+            self.notebook.tab(0, state='normal')   # Editor (Enabled for assemblies now)
             self.notebook.tab(1, state='normal')   # Simulation
             self.notebook.tab(2, state='disabled') # Performance
             self.notebook.tab(3, state='normal')   # Optimization
             self.notebook.tab(4, state='disabled') # Export
             
-            # Switch to Simulation tab automatically
-            self.notebook.select(1)
+            # Switch to Editor tab automatically for assembly configuration
+            self.notebook.select(0)
             
             # Load system into controllers
+            if self.editor_controller:
+                self.editor_controller.load_lens(lens)
+
             if self.simulation_controller:
                 self.simulation_controller.load_lens(lens)
                 
             if self.optimization_controller:
                 self.optimization_controller.load_lens(lens)
                 
-            self.update_status(f"Optical System selected ({len(lens.elements)} elements) - Ready to simulate")
+            self.update_status(f"Optical System selected ({len(lens.elements)} elements) - Use Editor to build system")
             
         else:
             # Single lens selected
@@ -295,6 +298,9 @@ class LensEditorWindow:
             self.notebook.tab(2, state='normal')
             self.notebook.tab(3, state='normal')
             self.notebook.tab(4, state='normal')
+            
+            # Re-enable 3D tab for single lenses
+            self.viz_notebook.tab(1, state='normal')
             
             # Switch to editor and load lens
             self.notebook.select(0)
@@ -331,6 +337,9 @@ class LensEditorWindow:
         self.notebook.tab(3, state='normal')
         self.notebook.tab(4, state='normal')
         
+        # Re-enable 3D tab for single lenses
+        self.viz_notebook.tab(1, state='normal')
+        
         # Switch to editor
         self.notebook.select(0)
         
@@ -345,12 +354,12 @@ class LensEditorWindow:
         # Create new OpticalSystem
         try:
             from ..optical_system import OpticalSystem
-            system = OpticalSystem()
+            system = OpticalSystem(name="New Assembly")
         except ImportError:
              # Try local import
             try:
                 from optical_system import OpticalSystem
-                system = OpticalSystem()
+                system = OpticalSystem(name="New Assembly")
             except ImportError:
                 # Fallback if class not available
                 logger.error("OpticalSystem class not available")
@@ -359,22 +368,38 @@ class LensEditorWindow:
         # Add to list
         self.lenses.append(system)
         
+        # Enable tabs
+        self.notebook.tab(0, state='normal')
+        self.notebook.tab(1, state='normal')
+        self.notebook.tab(2, state='normal')
+        self.notebook.tab(3, state='normal')
+        self.notebook.tab(4, state='normal')
+        
+        # Switch to editor tab
+        self.notebook.select(0)
+        
+        # Load system into editor to show available lenses
+        if self.editor_controller:
+            self.editor_controller.load_lens(system)
+        
+        # Also load into simulation, optimization tabs
+        if self.simulation_controller:
+            self.simulation_controller.load_lens(system)
+        if self.optimization_controller:
+            self.optimization_controller.load_lens(system)
+        
+        # Update visualization to show the system (force 2D view for assemblies)
+        self.viz_notebook.select(0)  # Switch to 2D tab
+        self.viz_notebook.tab(1, state='disabled')  # Disable 3D tab for assemblies
+        self.on_viz_tab_changed(None)
+        
         # Save and refresh
         self.save_lenses()
         
         if self.selection_controller:
             self.selection_controller.refresh_lens_list()
-            # Select the new system
-            if self.selection_controller.listbox:
-                idx = len(self.lenses) - 1
-                self.selection_controller.listbox.selection_clear(0, tk.END)
-                self.selection_controller.listbox.selection_set(idx)
-                self.selection_controller.listbox.see(idx)
-                
-                # Manually trigger selection update
-                self.selection_controller.select_lens()
         
-        self.update_status(f"New system '{system.name}' created")
+        self.update_status(f"New system '{system.name}' created - Select lenses from the list to add to assembly")
     
     def on_delete_lens(self, lens: 'Lens') -> None:
         """Callback when a lens is deleted"""
@@ -477,14 +502,14 @@ class LensEditorWindow:
             ttk.Label(editor_frame, text=f"Error loading editor: {e}").pack(padx=20, pady=20)
 
         # Right panel: Visualization
-        viz_outer_frame = ttk.Frame(self.editor_paned)
-        self.editor_paned.add(viz_outer_frame, weight=3)
+        self.viz_outer_frame = ttk.Frame(self.editor_paned)
+        self.editor_paned.add(self.viz_outer_frame, weight=3)
         
-        viz_outer_frame.columnconfigure(0, weight=1)
-        viz_outer_frame.rowconfigure(1, weight=1)
+        self.viz_outer_frame.columnconfigure(0, weight=1)
+        self.viz_outer_frame.rowconfigure(1, weight=1)
         
         # Header with title
-        viz_header = ttk.Frame(viz_outer_frame)
+        viz_header = ttk.Frame(self.viz_outer_frame)
         viz_header.grid(row=0, column=0, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
         ttk.Label(viz_header, text="Lens Visualization", font=(FONT_FAMILY, FONT_SIZE_LARGE, 'bold')).pack(side=tk.LEFT)
         
@@ -492,7 +517,7 @@ class LensEditorWindow:
         self.viz_mode_var = tk.StringVar(value="3D")
         
         # Create notebook for 2D/3D tabs
-        self.viz_notebook = ttk.Notebook(viz_outer_frame)
+        self.viz_notebook = ttk.Notebook(self.viz_outer_frame)
         self.viz_notebook.grid(row=1, column=0, sticky="nsew", padx=PADDING_SMALL, pady=(0, 5))
         
         # Create frames for 2D and 3D tabs
@@ -548,6 +573,26 @@ class LensEditorWindow:
         if self.editor_controller and self.editor_controller.current_lens:
             lens = self.editor_controller.current_lens
             mode = self.viz_mode_var.get()
+            
+            # Check if it's an OpticalSystem (assembly)
+            if hasattr(lens, 'elements') and hasattr(lens, 'air_gaps'):
+                # Hide visualization for assemblies in Editor Tab as per requirements
+                try:
+                    self.editor_paned.forget(self.editor_paned.panes()[1])
+                except (tk.TclError, IndexError):
+                    pass
+                return
+            else:
+                # Show visualization for single lenses
+                try:
+                    panes = self.editor_paned.panes()
+                    # If only one pane (index 0) is visible, add the second one back
+                    if len(panes) < 2:
+                        self.editor_paned.add(self.viz_outer_frame, weight=3)
+                except (tk.TclError, AttributeError):
+                    pass
+            
+            # Single lens - use existing logic
             try:
                 if mode == "2D":
                     self.visualizer.draw_lens_2d(
