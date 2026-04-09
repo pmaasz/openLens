@@ -510,9 +510,8 @@ class LensEditorController:
                 entry.grid(row=i, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
                 entry.insert(0, default)
                 
-                # Bind auto-calculate (but not for name field)
-                if key != "name":
-                    entry.bind('<KeyRelease>', self.on_field_changed)
+                # Bind auto-calculate (now for all fields including name)
+                entry.bind('<KeyRelease>', self.on_field_changed)
                 
                 self.entry_fields[key] = entry
         
