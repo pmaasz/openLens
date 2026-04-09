@@ -169,6 +169,10 @@ class LensEditorWindow:
         
         self.setup_ui()
         
+        # Bind keyboard shortcuts
+        self.root.bind_all('<Control-s>', self.on_ctrl_s)
+        self.root.bind_all('<Control-S>', self.on_ctrl_s)
+        
         # Re-enable status callback for save operations after initialization
         if self.storage:
             self.storage.status_callback = self.update_status
@@ -722,3 +726,9 @@ class LensEditorWindow:
             if hasattr(self, '_status_clear_timer') and self._status_clear_timer is not None:
                 self.root.after_cancel(self._status_clear_timer)
             self._status_clear_timer = self.root.after(10000, lambda: self.status_var.set("Ready"))
+
+    def on_ctrl_s(self, event: Optional[tk.Event] = None) -> str:
+        """Handle Ctrl+S keyboard shortcut"""
+        if self.editor_controller and self.notebook.tab(self.notebook.select(), "text") == "Editor":
+            self.editor_controller.save_changes(silent=False)
+        return "break"
