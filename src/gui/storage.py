@@ -101,7 +101,7 @@ class LensStorage:
             status_callback: Optional callback for status messages.
         """
         self.storage_file = storage_file
-        self.status_callback = status_callback or (lambda msg: None)
+        self.status_callback = status_callback if status_callback is not None else None
     
     def _update_status(self, message: str) -> None:
         """Update status via callback.
@@ -109,7 +109,8 @@ class LensStorage:
         Args:
             message: Status message to report.
         """
-        self.status_callback(message)
+        if self.status_callback is not None:
+            self.status_callback(message)
     
     def load_lenses(self) -> List[Any]:
         """Load lenses and optical systems from JSON storage file with path validation.
@@ -195,7 +196,7 @@ class LensStorage:
                 # Atomic rename
                 temp_path.replace(file_path)
                 
-                self._update_status(f"Saved {len(items)} item(s)")
+                # Don't show status message - let the caller decide what to display
                 return True
                 
             finally:
