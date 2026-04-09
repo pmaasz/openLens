@@ -1049,48 +1049,39 @@ class LensEditorController:
         pass
     
     def on_field_changed(self, event=None):
-        """Handle field change event for auto-calculation and autosave"""
-        if getattr(self, '_initializing', False):
+        """Handle input field changes by updating results and scheduling autosave"""
+        self.calculate_properties()
+        
+        # Only autosave if we have a current lens that already exists in the list
+        # This prevents spamming the database when creating a new lens
+        if self.current_lens is None:
             return
-
-        # Update lens type classification when radii change
-        if event and event.widget in [self.entry_fields.get('radius1'), self.entry_fields.get('radius2')]:
-            if self.current_lens is not None:
-                try:
-                    r1 = float(self.entry_fields['radius1'].get())
-                    r2 = float(self.entry_fields['radius2'].get())
-                    self.current_lens.radius_of_curvature_1 = r1
-                    self.current_lens.radius_of_curvature_2 = r2
-                    classified_type = self.current_lens.classify_lens_type()
-                    self.entry_fields['lens_type'].config(text=classified_type)
-                except (ValueError, tk.TclError):
-                    pass
-
-        if self.auto_update_var and self.auto_update_var.get():
-            self.calculate_properties()
+            
+        # Check if the current lens exists in the parent window's lens list
+        # We check both by identity and by ID if available
+        is_existing = False
+        if hasattr(self, 'parent_window') and self.parent_window and hasattr(self.parent_window, 'lenses'):
+            for existing in self.parent_window.lenses:
+                if existing is self.current_lens:
+                    is_existing = True
+                    break
+                if hasattr(existing, 'id') and hasattr(self.current_lens, 'id') and existing.id == self.current_lens.id:
+                    is_existing = True
+                    break
         
-        self.start_autosave_timer()
-
-    def start_autosave_timer(self):
-        """Start or reset the autosave timer (2 seconds)"""
-        # Cancel existing timer if any
-        if self._autosave_timer and self.entry_fields:
-            try:
-                # Use any widget to cancel the timer
-                widget = next(iter(self.entry_fields.values()))
-                if isinstance(widget, (tk.Widget, ttk.Widget)):
-                    widget.after_cancel(self._autosave_timer)
-            except (tk.TclError, ValueError, StopIteration):
-                pass
-            self._autosave_timer = None
+        if not is_existing:
+            return
+            
+        # Cancel any existing timer
+        if self._autosave_timer is not None:
+            # We use any widget to cancel the timer
+            widget = next(iter(self.entry_fields.values()))
+            widget.after_cancel(self._autosave_timer)
         
-        # Start new timer
-        if self.entry_fields:
-            try:
-                widget = next(iter(self.entry_fields.values()))
-                if isinstance(widget, (tk.Widget, ttk.Widget)):
-                    # Save silently after delay
-                    self._autosave_timer = widget.after(2000, lambda: self.save_changes(silent=True))
+        # Schedule new timer (2 seconds delay)
+        widget = next(iter(self.entry_fields.values()))
+        self._autosave_timer = widget.after(2000, lambda: self.save_changes(silent=True))
+
             except (StopIteration, tk.TclError):
                 pass
     
