@@ -1244,6 +1244,8 @@ class LensEditorController:
                 self.on_lens_updated_callback(self.current_lens)
             
             if not silent:
+                if self.parent_window:
+                    self.parent_window.update_status(f"Lens '{self.current_lens.name}' saved successfully")
                 logger.debug("Lens updated successfully")
             
         except ValueError as e:
