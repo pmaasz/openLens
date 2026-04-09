@@ -119,7 +119,7 @@ MM_TO_MICRONS = 1000.0
 # ==================== File I/O Constants ====================
 
 # Default filenames
-DEFAULT_LENSES_FILE = "lenses.json"
+DEFAULT_DB_FILE = "openlens.db"
 DEFAULT_BACKUP_SUFFIX = ".backup"
 
 # JSON formatting

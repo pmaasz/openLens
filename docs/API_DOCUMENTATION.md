@@ -83,10 +83,9 @@ calc = AberrationsCalculator(lens)
 aberrations = calc.calculate_all_aberrations()
 print(f"Spherical aberration: {aberrations['spherical']:.4f}")
 
-# Save lens to file
-manager = LensManager()
-manager.add_lens(lens)
-manager.save_to_file("my_lenses.json")
+# Save lens to persistent database
+from gui.storage import save_lenses
+save_lenses([lens], "openlens.db")
 ```
 
 ---
@@ -204,70 +203,37 @@ lens.update_refractive_index(wavelength=632.8, temperature=25.0)
 
 ---
 
-#### Class: `LensManager`
+#### Persistence Functions
+
+**Module:** `gui.storage`
+
+Provides functions to load and save collections of lenses and optical systems to SQLite.
+
+##### `load_lenses(storage_file="openlens.db")`
+
+Load all items from a database file.
 
 ```python
-class LensManager:
-    def __init__(self, filename="lenses.json")
+from gui.storage import load_lenses
+items = load_lenses("my_designs.db")
 ```
 
-Manages a collection of lenses with persistence.
+**Returns:** `list` of `Lens` and `OpticalSystem` objects.
 
-**Methods:**
+##### `save_lenses(items, storage_file="openlens.db")`
 
-##### `add_lens(lens)`
-
-Add a lens to the collection.
+Save a collection of items to a database file.
 
 ```python
-manager.add_lens(lens)
+from gui.storage import save_lenses
+save_lenses([lens1, system1], "my_designs.db")
 ```
 
-##### `get_lens(lens_id)`
+**Parameters:**
+- `items` (list): Collection of objects to persist.
+- `storage_file` (str): Database file path.
 
-Retrieve a lens by ID.
-
-```python
-lens = manager.get_lens("20260206123456789012")
-```
-
-**Returns:** `Lens` or `None`
-
-##### `delete_lens(lens_id)`
-
-Remove a lens from collection.
-
-```python
-success = manager.delete_lens(lens_id)
-```
-
-**Returns:** `bool` - Success status
-
-##### `list_all_lenses()`
-
-Get all lenses in collection.
-
-```python
-lenses = manager.list_all_lenses()
-```
-
-**Returns:** `list[Lens]`
-
-##### `save_to_file(filename=None)`
-
-Persist lenses to JSON file.
-
-```python
-manager.save_to_file("my_lenses.json")
-```
-
-##### `load_from_file(filename=None)`
-
-Load lenses from JSON file.
-
-```python
-manager.load_from_file("my_lenses.json")
-```
+**Returns:** `bool` - Success status.
 
 ---
 
@@ -846,9 +812,10 @@ from lens_editor import Lens, LensManager
 from aberrations import analyze_lens_quality
 import json
 
-# Create a series of lenses with varying parameters
-manager = LensManager("lens_family.json")
+# Batch process a family of lenses
+from gui.storage import save_lenses, load_lenses
 
+lenses = []
 for r1 in range(40, 120, 20):
     lens = Lens(
         name=f"Biconvex_R{r1}",
@@ -858,11 +825,16 @@ for r1 in range(40, 120, 20):
         diameter=25.0,
         material="BK7"
     )
-    manager.add_lens(lens)
+    lenses.append(lens)
 
-# Analyze all lenses
+# Save to persistent storage
+save_lenses(lenses, "lens_family.db")
+
+# Load and analyze all lenses
+items = load_lenses("lens_family.db")
 results = []
-for lens in manager.list_all_lenses():
+for lens in items:
+    if not hasattr(lens, 'calculate_focal_length'): continue
     quality = analyze_lens_quality(lens)
     results.append({
         'name': lens.name,

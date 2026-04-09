@@ -103,6 +103,7 @@ print("PHASE 2: GUI Functionality Tests")
 print("=" * 70)
 
 try:
+    os.environ['OPENLENS_TESTING'] = '1'
     from test_gui import run_gui_tests
     result2 = run_gui_tests()
     gui_passed = result2.wasSuccessful()

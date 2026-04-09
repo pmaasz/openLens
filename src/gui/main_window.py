@@ -460,6 +460,22 @@ class LensEditorWindow:
             if not getattr(self, '_loading_lens', False):
                 self.update_status(f"New lens '{lens.name}' created")
         
+        # If a single lens was updated, refresh all assemblies that might use it
+        if not (hasattr(lens, 'elements') and hasattr(lens, 'air_gaps')):
+            lens_lookup = {l.id: l for l in self.lenses if not (hasattr(l, 'elements') and hasattr(l, 'air_gaps'))}
+            for item in self.lenses:
+                if hasattr(item, 'elements') and hasattr(item, 'refresh_references'):
+                    item.refresh_references(lens_lookup)
+            
+            # If current lens is an assembly using this lens, reload it in simulation
+            if self.current_lens and hasattr(self.current_lens, 'elements'):
+                if any(getattr(elem, 'lens_id', None) == getattr(lens, 'id', None) for elem in self.current_lens.elements):
+                    if self.simulation_controller:
+                        self.simulation_controller.load_lens(self.current_lens)
+                        # Only auto-run if in simulation tab
+                        if self.notebook.index(self.notebook.select()) == 2:
+                            self.simulation_controller.run_simulation()
+
         self.save_lenses()
         if self.selection_controller:
             self.selection_controller.refresh_lens_list()

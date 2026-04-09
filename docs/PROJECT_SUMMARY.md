@@ -20,8 +20,9 @@ openlens is a complete desktop application for designing and analyzing single gl
   - Complete Lens class with optical calculations
   - LensManager for persistence and data management
   - Command-line interactive menu system
-  - JSON-based storage
-  - Full CRUD operations (Create, Read, Update, Delete)
+- SQLite-based storage
+- Full CRUD operations (Create, Read, Update, Delete)
+
 
 ### 2. GUI Lens Editor (`lens_editor_gui.py`)
 - **Lines of Code:** ~380
@@ -114,7 +115,7 @@ openLens/
 ├── verify_setup.py         (3.4 KB) - Setup verification script
 ├── README.md               (25 KB) - Comprehensive documentation
 ├── TESTING.md              (4.0 KB) - Testing documentation
-└── lenses.json             (auto-generated) - Data storage
+└── openlens.db             (SQLite) - Data storage
 ```
 
 **Total:** 8 files, ~95 KB of code and documentation

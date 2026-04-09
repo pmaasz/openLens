@@ -137,7 +137,7 @@ The script will:
 - ✅ All core lens calculations (focal length, optical power)
 - ✅ Lens creation, editing, and management
 - ✅ GUI interface
-- ✅ Data persistence (JSON)
+- ✅ Data persistence (SQLite)
 - ✅ Ray tracing (if numpy/matplotlib installed)
 - ✅ Aberrations calculations
 - ❌ 3D visualization (requires matplotlib + numpy)
@@ -289,36 +289,18 @@ P = 1000/f  (in diopters, D)
 
 ## Data Storage
 
-### File Format
+### Database Format
 
-Lenses are stored in `lenses.json` in JSON format:
+Lenses and optical systems are stored in `openlens.db` using SQLite for robust, relational data management. This ensures data integrity and supports complex relationships between lenses and assemblies.
 
-```json
-[
-  {
-    "id": "20260202123456789012",
-    "name": "My Biconvex Lens",
-    "radius_of_curvature_1": 100.0,
-    "radius_of_curvature_2": -100.0,
-    "thickness": 5.0,
-    "diameter": 50.0,
-    "refractive_index": 1.5168,
-    "type": "Biconvex",
-    "material": "BK7",
-    "created_at": "2026-02-02T12:00:00.123456",
-    "modified_at": "2026-02-02T12:30:00.654321"
-  }
-]
-```
+### Exporting and Sharing
 
-### Backup and Export
+While the main database is SQLite, you can still export individual lenses to JSON format for sharing via the **Export** tab in the application.
 
-To backup your lens library:
+To backup your entire lens library, simply copy the database file:
 ```bash
-cp lenses.json lenses_backup_$(date +%Y%m%d).json
+cp openlens.db openlens_backup_$(date +%Y%m%d).db
 ```
-
-To share lenses with others, simply copy the `lenses.json` file.
 
 ---
 
@@ -389,7 +371,7 @@ openLens/
 │   ├── test_lens_editor.py  # Core tests
 │   ├── test_gui.py          # GUI tests
 │   └── test_visualization.py # Visualization tests
-├── lenses.json              # Data storage (auto-created)
+├── openlens.db              # Data storage (SQLite)
 ├── verify_setup.py          # Setup verification script
 ├── README.md                # This file
 ├── docs/                    # Documentation
@@ -443,7 +425,7 @@ sudo pacman -S tk
 
 **Solution:**
 - Check write permissions in the directory
-- Ensure `lenses.json` is not open in another program
+- Ensure `openlens.db` is not locked by another process
 - Check disk space
 
 ### Issue: 3D visualization not working
