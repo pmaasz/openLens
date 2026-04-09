@@ -818,7 +818,7 @@ class LensEditorController:
         # Load available lenses from storage
         try:
             from gui.storage import LensStorage
-            storage = LensStorage("lenses.json", lambda x: None)
+            storage = LensStorage("openlens.db", lambda x: None)
             all_lenses = storage.load_lenses()
             # Filter to only single Lens objects (not OpticalSystem)
             available_lenses = [l for l in all_lenses if not (hasattr(l, 'elements') and hasattr(l, 'air_gaps'))]
@@ -855,7 +855,7 @@ class LensEditorController:
         
         try:
             from gui.storage import LensStorage
-            storage = LensStorage("lenses.json", lambda x: None)
+            storage = LensStorage("openlens.db", lambda x: None)
             storage_lenses = storage.load_lenses()
             
             # Merge with in-memory lenses, avoiding duplicates by ID
@@ -1167,6 +1167,10 @@ class LensEditorController:
     
     def save_changes(self, silent: bool = False):
         """Save changes to the current lens"""
+        # Ensure UI widgets are still valid
+        if not self.entry_fields:
+            return
+
         # If no lens selected, create a new one once and keep it
         if self.current_lens is None:
             try:
@@ -1174,8 +1178,11 @@ class LensEditorController:
                 # Create a new lens with default values which will be overwritten below
                 self.current_lens = Lens()
                 # Ensure we have a default name if not in fields
-                if 'name' in self.entry_fields and not self.entry_fields['name'].get():
-                    self.entry_fields['name'].insert(0, "Autosaved Lens")
+                try:
+                    if 'name' in self.entry_fields and not self.entry_fields['name'].get():
+                        self.entry_fields['name'].insert(0, "Autosaved Lens")
+                except tk.TclError:
+                    return # Widgets likely destroyed
                 logger.info(f"Created new lens object {self.current_lens.id} for saving")
             except ImportError:
                 if not silent:
@@ -1187,8 +1194,12 @@ class LensEditorController:
                 return
         
         try:
-            # Validate and update lens
-            new_name = self.entry_fields['name'].get()
+            # Check if widgets are valid before accessing
+            try:
+                # Validate and update lens
+                new_name = self.entry_fields['name'].get()
+            except tk.TclError:
+                return # Widgets likely destroyed
             if new_name:
                 self.current_lens.name = new_name
             
