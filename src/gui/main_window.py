@@ -174,7 +174,7 @@ class LensEditorWindow:
             self.storage.status_callback = self.update_status
         
     def save_lenses(self) -> bool:
-        """Save all lenses to JSON storage file"""
+        """Save all lenses to SQLite database"""
         return self.storage.save_lenses(self.lenses)
     
     def setup_ui(self) -> None:

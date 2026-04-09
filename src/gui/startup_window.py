@@ -75,7 +75,7 @@ class StartupWindow:
     
     def _show_lens_list(self):
         from gui.storage import LensStorage
-        storage = LensStorage("lenses.json", lambda x: None)
+        storage = LensStorage("openlens.db", lambda x: None)
         lenses = storage.load_lenses()
         
         # Filter to only Lens objects (not OpticalSystem)
@@ -85,7 +85,7 @@ class StartupWindow:
     
     def _show_assembly_list(self):
         from gui.storage import LensStorage
-        storage = LensStorage("lenses.json", lambda x: None)
+        storage = LensStorage("openlens.db", lambda x: None)
         lenses = storage.load_lenses()
         
         # Filter to only OpticalSystem objects
