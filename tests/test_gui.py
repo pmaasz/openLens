@@ -16,6 +16,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 from lens import Lens
 from lens_editor_gui import LensEditorWindow
+from gui.storage import LensStorage
 
 
 class TestGUILensEditor(unittest.TestCase):
@@ -71,7 +72,7 @@ class TestGUILensEditor(unittest.TestCase):
         self.assertIn('radius2', controller.entry_fields)
         self.assertIn('thickness', controller.entry_fields)
         self.assertIn('diameter', controller.entry_fields)
-        self.assertIn('n', controller.entry_fields)
+        self.assertTrue(hasattr(controller, 'n_display_label'))
         self.assertIn('lens_type', controller.entry_fields)
         self.assertIsNotNone(controller.material_var)
     
@@ -121,7 +122,7 @@ class TestGUILensEditor(unittest.TestCase):
         self.assertEqual(controller.entry_fields['radius2'].get(), "-125.0")
         self.assertEqual(controller.entry_fields['thickness'].get(), "6.0")
         self.assertEqual(controller.entry_fields['diameter'].get(), "40.0")
-        self.assertEqual(controller.entry_fields['n'].get(), "1.52")
+        self.assertEqual(controller.n_display_label.cget("text"), "1.5200")
         self.assertEqual(controller.entry_fields['lens_type'].get(), "Plano-Convex")
         self.assertEqual(controller.material_var.get(), "Crown Glass")
     
@@ -157,8 +158,9 @@ class TestGUILensEditor(unittest.TestCase):
         controller.entry_fields['thickness'].insert(0, "5.0")
         controller.entry_fields['diameter'].delete(0, tk.END)
         controller.entry_fields['diameter'].insert(0, "25.0")
-        controller.entry_fields['n'].delete(0, tk.END)
-        controller.entry_fields['n'].insert(0, "1.5")
+        
+        # Set refractive index through display label as it's readonly now
+        controller.n_display_label.config(text="1.5000")
         
         initial_count = len(self.editor.lenses)
         
@@ -356,8 +358,11 @@ class TestGUIDataPersistence(unittest.TestCase):
     def test_save_and_load_through_gui(self):
         """Test saving and loading lenses through GUI"""
         # Create editor and add lenses
+        # Use a unique DB file for this test
+        test_db = self.temp_file.name + ".db"
         editor1 = LensEditorWindow(self.root)
-        editor1.storage_file = self.temp_file.name
+        editor1.storage_file = test_db
+        editor1.storage = LensStorage(test_db)
         
         lens1 = Lens(name="Saved Lens 1", material="BK7")
         lens2 = Lens(name="Saved Lens 2", material="Crown Glass")
@@ -368,7 +373,8 @@ class TestGUIDataPersistence(unittest.TestCase):
         root2 = tk.Tk()
         root2.withdraw()
         editor2 = LensEditorWindow(root2)
-        editor2.storage_file = self.temp_file.name
+        editor2.storage_file = test_db
+        editor2.storage = LensStorage(test_db)
         editor2.lenses = editor2.storage.load_lenses()
         
         self.assertEqual(len(editor2.lenses), 2)
@@ -376,6 +382,8 @@ class TestGUIDataPersistence(unittest.TestCase):
         self.assertEqual(editor2.lenses[1].name, "Saved Lens 2")
         
         root2.destroy()
+        if os.path.exists(test_db):
+            os.unlink(test_db)
 
 
 class TestGUIValidation(unittest.TestCase):

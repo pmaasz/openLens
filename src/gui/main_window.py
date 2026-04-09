@@ -140,14 +140,20 @@ class LensEditorWindow:
         self.initial_action = initial_action
         self.initial_item = initial_item
         
-        # Initialize status_var early (before any status updates)
+        # Initialize storage
+        self.storage_file = "openlens.db"
+        self.storage = LensStorage(self.storage_file, self.update_status)
+        self.lenses: List[Any] = self.storage.load_lenses()
+        
+        self.current_lens: Optional[Any] = None
+        self.visualizer: Optional['LensVisualizer'] = None
+        self.selected_lens_id: Optional[str] = None
+        self._loading_lens: bool = False
+        self._autosave_timer: Optional[str] = None
+        
+        # Initialize status_var early
         self.status_var = tk.StringVar(value="Welcome to openlens")
         self._status_clear_timer: Optional[Any] = None
-        
-        # Initialize storage WITHOUT status callback to avoid autosave messages during initialization
-        self.storage_file = "lenses.json"
-        self.storage = LensStorage(self.storage_file, None)  # No status callback during init
-        self.lenses: List[Any] = self.storage.load_lenses()
         
         # Initialize controllers (None until UI setup)
         self.selection_controller: Optional['LensSelectionController'] = None
@@ -447,7 +453,8 @@ class LensEditorWindow:
         if not found:
             self.lenses.append(lens)
             self.current_lens = lens
-            self.update_status(f"New lens '{lens.name}' created")
+            if not getattr(self, '_loading_lens', False):
+                self.update_status(f"New lens '{lens.name}' created")
         
         self.save_lenses()
         if self.selection_controller:
