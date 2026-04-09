@@ -22,9 +22,21 @@ ENV/
 .DS_Store
 Thumbs.db
 
+# User data
+.user/
+*.user
+.local/
+openlens.db.bak
+*.bak
+*.db-shm
+*.db-wal
+
 # Application data
 lenses.json
+*.json.bak
 *.json.backup
+openlens.db
+*.db
 docs/codereviews
 IMPLEMENTATION_PLAN.md
 data/
