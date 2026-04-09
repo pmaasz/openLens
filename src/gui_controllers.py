@@ -1009,6 +1009,10 @@ class LensEditorController:
             
             # Refresh the listbox
             refresh_current_list()
+            
+            # Show success message
+            if self.parent_window:
+                self.parent_window.update_status(f"Assembly '{system.name}' saved successfully")
 
         # Air Gap control
         gap_frame = ttk.Frame(btn_frame)
