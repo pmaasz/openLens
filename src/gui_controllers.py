@@ -1190,7 +1190,8 @@ class LensEditorController:
                 self.current_lens.name = new_name
             
             if 'lens_type' in self.entry_fields:
-                self.current_lens.lens_type = self.entry_fields['lens_type'].get()
+                # lens_type field is a Label, so use cget('text')
+                self.current_lens.lens_type = self.entry_fields['lens_type'].cget('text')
             
             # Read radii first, then classify the lens type from them
             self.current_lens.radius_of_curvature_1 = float(self.entry_fields['radius1'].get())
