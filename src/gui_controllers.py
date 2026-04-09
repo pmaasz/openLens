@@ -1050,6 +1050,10 @@ class LensEditorController:
     
     def on_field_changed(self, event=None):
         """Handle input field changes by updating results and scheduling autosave"""
+        # Result labels must exist before we can update them
+        if not hasattr(self, 'result_labels') or not self.result_labels:
+            return
+            
         self.calculate_properties()
         
         # Only autosave if we have a current lens that already exists in the list
@@ -1073,7 +1077,7 @@ class LensEditorController:
             return
             
         # Cancel any existing timer
-        if self._autosave_timer is not None:
+        if hasattr(self, '_autosave_timer') and self._autosave_timer is not None:
             # We use any widget to cancel the timer
             widget = next(iter(self.entry_fields.values()))
             widget.after_cancel(self._autosave_timer)
@@ -1081,9 +1085,6 @@ class LensEditorController:
         # Schedule new timer (2 seconds delay)
         widget = next(iter(self.entry_fields.values()))
         self._autosave_timer = widget.after(2000, lambda: self.save_changes(silent=True))
-
-            except (StopIteration, tk.TclError):
-                pass
     
     def calculate_properties(self):
         """Calculate optical properties from current field values"""
