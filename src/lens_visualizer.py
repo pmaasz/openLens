@@ -289,8 +289,9 @@ class LensVisualizer:
         # Adaptive resolution
         edge_res = max(20, min(30, int(40 - diameter / 10)))
         
-        # Draw front surface (R1)
-        if abs(r1) < 10000:
+        # Draw front surface (R1) - treat R=0 as flat
+        r1_is_flat = r1 == 0 or abs(r1) > 10000
+        if not r1_is_flat:
             points = self.calculate_surface_points(r1, diameter, is_front=True)
             if points:
                 x1, y1, z1, mask1 = points
@@ -316,8 +317,9 @@ class LensVisualizer:
                                edgecolor=self.COLORS_3D['text'], linewidth=0.15,
                                antialiased=True, shade=True)
         
-        # Draw back surface (R2)
-        if abs(r2) < 10000:
+        # Draw back surface (R2) - treat R=0 as flat
+        r2_is_flat = r2 == 0 or abs(r2) > 10000
+        if not r2_is_flat:
             points = self.calculate_surface_points(r2, diameter, is_front=False)
             if points:
                 x2, y2, z2, mask2 = points
@@ -347,8 +349,9 @@ class LensVisualizer:
         # Note: Recalculating edge points here to account for Z-offset
         # (This duplicates some logic from draw_lens but avoids passing complex z_edge arrays)
         
-        # Front edge Z
-        if abs(r1) < 10000:
+        # Front edge Z - treat R=0 as flat
+        r1_is_flat = r1 == 0 or abs(r1) > 10000
+        if not r1_is_flat:
             r1_abs = abs(r1)
             h_edge = diameter / 2
             if h_edge < r1_abs:
@@ -360,8 +363,9 @@ class LensVisualizer:
             z_front_edge = 0
         z_front_edge += z_offset
             
-        # Back edge Z
-        if abs(r2) < 10000:
+        # Back edge Z - treat R=0 as flat
+        r2_is_flat = r2 == 0 or abs(r2) > 10000
+        if not r2_is_flat:
             r2_abs = abs(r2)
             h_edge = diameter / 2
             if h_edge < r2_abs:
@@ -499,8 +503,9 @@ class LensVisualizer:
         y_max = diameter / 2
         y = np.linspace(-y_max, y_max, 200)
         
-        # Front surface (R1)
-        if abs(r1) < 10000:
+        # Front surface (R1) - treat R=0 as flat
+        r1_is_flat = r1 == 0 or abs(r1) > 10000
+        if not r1_is_flat:
             # Calculate sag for front surface
             r1_abs = abs(r1)
             valid_mask = y**2 <= r1_abs**2
@@ -515,8 +520,9 @@ class LensVisualizer:
             y_valid = y
             x1 = np.zeros_like(y_valid)
         
-        # Back surface (R2)
-        if abs(r2) < 10000:
+        # Back surface (R2) - treat R=0 as flat
+        r2_is_flat = r2 == 0 or abs(r2) > 10000
+        if not r2_is_flat:
             r2_abs = abs(r2)
             valid_mask2 = y**2 <= r2_abs**2
             y_valid2 = y[valid_mask2]
