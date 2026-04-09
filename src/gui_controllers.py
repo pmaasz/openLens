@@ -1084,7 +1084,15 @@ class LensEditorController:
         
         # Schedule new timer (2 seconds delay)
         widget = next(iter(self.entry_fields.values()))
-        self._autosave_timer = widget.after(2000, lambda: self.save_changes(silent=True))
+        # Log to debug console to confirm timer is being set
+        logger.debug(f"Scheduling autosave for lens {self.current_lens.id} in 2000ms")
+        self._autosave_timer = widget.after(2000, lambda: self._trigger_autosave())
+
+    def _trigger_autosave(self):
+        """Trigger a silent save and clear the timer reference"""
+        logger.info(f"Executing autosave for lens {self.current_lens.id}")
+        self.save_changes(silent=True)
+        self._autosave_timer = None
     
     def calculate_properties(self):
         """Calculate optical properties from current field values"""
