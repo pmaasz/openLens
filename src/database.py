@@ -162,34 +162,28 @@ class DatabaseManager:
             conn.commit()
 
     def load_all(self) -> List[Dict[str, Any]]:
-        """Load all lenses and assemblies."""
+        """Load all standalone lenses and assemblies."""
         results = []
         
         with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
-            # 1. Get all IDs of lenses that are part of assemblies
-            cursor.execute('SELECT DISTINCT lens_id FROM assembly_elements')
-            lenses_in_assemblies = {row['lens_id'] for row in cursor.fetchall()}
-            
-            # 2. Load standalone lenses (lenses that are NOT part of any assembly)
-            # This is to match the behavior of lenses.json where top-level items are returned.
+            # 1. Load all lenses first (including those in assemblies)
             cursor.execute('SELECT * FROM lenses')
             for row in cursor.fetchall():
-                if row['id'] not in lenses_in_assemblies:
-                    lens = dict(row)
-                    lens['radius_of_curvature_1'] = lens['radius1']
-                    lens['radius_of_curvature_2'] = lens['radius2']
-                    del lens['radius1']
-                    del lens['radius2']
-                    if lens['metadata']:
-                        meta = json.loads(lens['metadata'])
-                        lens.update(meta)
-                    del lens['metadata']
-                    results.append(lens)
+                lens = dict(row)
+                lens['radius_of_curvature_1'] = lens['radius1']
+                lens['radius_of_curvature_2'] = lens['radius2']
+                del lens['radius1']
+                del lens['radius2']
+                if lens['metadata']:
+                    meta = json.loads(lens['metadata'])
+                    lens.update(meta)
+                del lens['metadata']
+                results.append(lens)
                 
-            # 3. Load all assemblies
+            # 2. Load all assemblies
             cursor.execute('SELECT * FROM assemblies')
             for row in cursor.fetchall():
                 assembly = dict(row)
