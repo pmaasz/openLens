@@ -1313,6 +1313,10 @@ class LensEditorController:
                 if self.parent_window:
                     self.parent_window.update_status(f"Lens '{self.current_lens.name}' saved successfully")
                 logger.debug("Lens updated successfully")
+            else:
+                if self.parent_window:
+                    self.parent_window.update_status(f"Lens '{self.current_lens.name}' automatically saved", auto_clear=True)
+                logger.debug("Lens automatically saved")
             
         except ValueError as e:
             if not silent:
