@@ -57,8 +57,8 @@ openlens is a modular optical design system consisting of:
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
-│  │     Lens     │  │ LensManager  │  │   Material   │         │
-│  │    Class     │  │   (Storage)  │  │   Database   │         │
+│  │     Lens     │  │   Database   │  │   Material   │         │
+│  │    Class     │  │   (SQLite)   │  │   Database   │         │
 │  └──────────────┘  └──────────────┘  └──────────────┘         │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -91,7 +91,7 @@ openlens is a modular optical design system consisting of:
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Data Persistence                           │
 ├─────────────────────────────────────────────────────────────────┤
-│         lenses.json  │  Configuration Files  │  Exports         │
+│         openlens.db  │  Configuration Files  │  Exports         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -340,7 +340,7 @@ openLens/
 │   ├── TESTING.md
 │   └── CONTRIBUTING.md
 │
-└── lenses.json                    # Data storage
+└── openlens.db                    # Data storage (SQLite)
 ```
 
 ---
@@ -522,8 +522,8 @@ Geometry  Config      Initial Rays  Snell's   Ray Paths    3D Plot
 - **Auto-update Mode**: Real-time calculation updates
 
 ### 5. **Repository Pattern**
-- **LensManager**: Abstracts data storage (JSON)
-- **Future**: Could support SQL, cloud storage
+- **Database**: Abstracts data storage (SQLite)
+- **Future**: Could support cloud storage, multi-user DB
 
 ### 6. **Calculator Pattern**
 - **Aberrations**: Encapsulated calculation logic

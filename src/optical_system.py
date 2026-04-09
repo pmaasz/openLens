@@ -30,10 +30,21 @@ class LensElement:
     """A lens element in an optical system"""
     lens: Lens
     position: float = 0.0  # Position along optical axis (mm)
-    
+    lens_id: Optional[str] = None # Reference to lens ID for database persistence
+
     def __post_init__(self) -> None:
-        """Calculate element thickness"""
+        """Calculate element thickness and ensure ID is set"""
         self.thickness = self.lens.thickness
+        if self.lens_id is None and hasattr(self.lens, 'id'):
+            self.lens_id = self.lens.id
+
+    def refresh(self, lens_lookup: Optional[dict] = None) -> None:
+        """Update the lens reference if it exists in the lookup table"""
+        if lens_lookup and self.lens_id in lens_lookup:
+            self.lens = lens_lookup[self.lens_id]
+            self.thickness = self.lens.thickness
+        else:
+            self.thickness = self.lens.thickness
 
 
 @dataclass
@@ -102,6 +113,12 @@ class OpticalSystem:
             return True
             
         return False
+
+    def refresh_references(self, lens_lookup: dict) -> None:
+        """Update all lens elements with the latest lens references from the lookup table"""
+        for element in self.elements:
+            element.refresh(lens_lookup)
+        self._update_positions()
 
     def _rebuild_from_tree(self):
         """Rebuild legacy flat lists from hierarchical tree."""
@@ -425,6 +442,7 @@ class OpticalSystem:
             'elements': [
                 {
                     'lens': elem.lens.to_dict(),
+                    'lens_id': elem.lens_id or (elem.id if hasattr(elem, 'id') else None),
                     'position': elem.position
                 }
                 for elem in self.elements
@@ -439,7 +457,7 @@ class OpticalSystem:
         }
     
     @classmethod
-    def from_dict(cls, data: dict):
+    def from_dict(cls, data: dict, lens_lookup: Optional[dict] = None):
         """Import system from dictionary"""
         system = cls(name=data.get('name', 'Optical System'))
         system.id = data.get('id', system.id)
@@ -450,7 +468,12 @@ class OpticalSystem:
         gaps_data = data.get('air_gaps', [])
         
         for i, elem_data in enumerate(elements_data):
-            lens = Lens.from_dict(elem_data['lens'])
+            lens_id = elem_data.get('lens_id')
+            if lens_lookup and lens_id in lens_lookup:
+                lens = lens_lookup[lens_id]
+            else:
+                lens = Lens.from_dict(elem_data['lens'])
+                
             # Gap logic: 
             # If adding the first lens (i=0), gap_before is 0.
             # If adding subsequent lenses (i>0), gap_before is the gap stored at index i-1.
@@ -461,18 +484,6 @@ class OpticalSystem:
             system.add_lens(lens, air_gap_before=air_gap)
         
         return system
-    
-    def save(self, filename: str):
-        """Save system to JSON file"""
-        with open(filename, 'w') as f:
-            json.dump(self.to_dict(), f, indent=2)
-    
-    @classmethod
-    def load(cls, filename: str):
-        """Load system from JSON file"""
-        with open(filename, 'r') as f:
-            data = json.load(f)
-        return cls.from_dict(data)
 
 
 class AchromaticDoubletDesigner:

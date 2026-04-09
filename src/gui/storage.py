@@ -104,10 +104,6 @@ class LensStorage:
             storage_file: Path to the database file.
             status_callback: Optional callback for status messages.
         """
-        # Maintain compatibility: if called with lenses.json, change to .db
-        if storage_file.endswith(".json"):
-            storage_file = storage_file.replace(".json", ".db")
-            
         self.storage_file = storage_file
         self.status_callback = status_callback or (lambda msg: None)
         
@@ -140,16 +136,28 @@ class LensStorage:
             # Load from DB
             data = self.db.load_all()
             
-            # Load lenses and systems
+            # 1. Load all lenses first and create a lookup
+            lens_lookup = {}
             items = []
-            for i, item_data in enumerate(data):
-                try:
-                    if item_data.get('type') == 'OpticalSystem':
-                        items.append(OpticalSystem.from_dict(item_data))
-                    else:
-                        items.append(Lens.from_dict(item_data))
-                except Exception as e:
-                    logger.warning("Failed to load item %d: %s", i, e)
+            
+            # Pass 1: Create Lens objects
+            for item_data in data:
+                if item_data.get('type') != 'OpticalSystem':
+                    try:
+                        lens = Lens.from_dict(item_data)
+                        lens_lookup[lens.id] = lens
+                        items.append(lens)
+                    except Exception as e:
+                        logger.warning("Failed to load lens: %s", e)
+            
+            # Pass 2: Create OpticalSystem objects using the lookup
+            for item_data in data:
+                if item_data.get('type') == 'OpticalSystem':
+                    try:
+                        system = OpticalSystem.from_dict(item_data, lens_lookup=lens_lookup)
+                        items.append(system)
+                    except Exception as e:
+                        logger.warning("Failed to load assembly: %s", e)
             
             return items
             

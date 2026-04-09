@@ -162,34 +162,31 @@ class DatabaseManager:
             conn.commit()
 
     def load_all(self) -> List[Dict[str, Any]]:
-        """Load all lenses and assemblies."""
+        """Load all standalone lenses and assemblies."""
         results = []
+        lenses_lookup = {}
         
         with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
-            # 1. Get all IDs of lenses that are part of assemblies
-            cursor.execute('SELECT DISTINCT lens_id FROM assembly_elements')
-            lenses_in_assemblies = {row['lens_id'] for row in cursor.fetchall()}
-            
-            # 2. Load standalone lenses (lenses that are NOT part of any assembly)
-            # This is to match the behavior of lenses.json where top-level items are returned.
+            # 1. Load all lenses first (including those in assemblies)
             cursor.execute('SELECT * FROM lenses')
             for row in cursor.fetchall():
-                if row['id'] not in lenses_in_assemblies:
-                    lens = dict(row)
-                    lens['radius_of_curvature_1'] = lens['radius1']
-                    lens['radius_of_curvature_2'] = lens['radius2']
-                    del lens['radius1']
-                    del lens['radius2']
-                    if lens['metadata']:
-                        meta = json.loads(lens['metadata'])
-                        lens.update(meta)
-                    del lens['metadata']
-                    results.append(lens)
+                lens = dict(row)
+                lens['type'] = 'Lens' # Explicitly mark as Lens
+                lens['radius_of_curvature_1'] = lens['radius1']
+                lens['radius_of_curvature_2'] = lens['radius2']
+                del lens['radius1']
+                del lens['radius2']
+                if lens['metadata']:
+                    meta = json.loads(lens['metadata'])
+                    lens.update(meta)
+                del lens['metadata']
+                results.append(lens)
+                lenses_lookup[lens['id']] = lens
                 
-            # 3. Load all assemblies
+            # 2. Load all assemblies
             cursor.execute('SELECT * FROM assemblies')
             for row in cursor.fetchall():
                 assembly = dict(row)
@@ -204,7 +201,7 @@ class DatabaseManager:
                 
                 # Load elements
                 cursor.execute('''
-                    SELECT ae.position, l.* 
+                    SELECT ae.position, ae.lens_id, l.* 
                     FROM assembly_elements ae
                     JOIN lenses l ON ae.lens_id = l.id
                     WHERE ae.assembly_id = ?
@@ -214,22 +211,30 @@ class DatabaseManager:
                 elements = []
                 for e_row in cursor.fetchall():
                     e_dict = dict(e_row)
-                    lens_data = {
-                        'id': e_dict['id'],
-                        'name': e_dict['name'],
-                        'radius_of_curvature_1': e_dict['radius1'],
-                        'radius_of_curvature_2': e_dict['radius2'],
-                        'thickness': e_dict['thickness'],
-                        'material': e_dict['material'],
-                        'refractive_index': e_dict['refractive_index'],
-                        'diameter': e_dict['diameter'],
-                        'created_at': e_dict['created_at'],
-                        'modified_at': e_dict['modified_at']
-                    }
-                    if e_dict['metadata']:
-                        lens_data.update(json.loads(e_dict['metadata']))
+                    lens_id = e_dict['lens_id']
+                    
+                    # Use the lens from lookup if possible to ensure identity
+                    if lens_id in lenses_lookup:
+                        lens_data = lenses_lookup[lens_id]
+                    else:
+                        lens_data = {
+                            'id': e_dict['id'],
+                            'name': e_dict['name'],
+                            'radius_of_curvature_1': e_dict['radius1'],
+                            'radius_of_curvature_2': e_dict['radius2'],
+                            'thickness': e_dict['thickness'],
+                            'material': e_dict['material'],
+                            'refractive_index': e_dict['refractive_index'],
+                            'diameter': e_dict['diameter'],
+                            'created_at': e_dict['created_at'],
+                            'modified_at': e_dict['modified_at']
+                        }
+                        if e_dict['metadata']:
+                            lens_data.update(json.loads(e_dict['metadata']))
+                    
                     elements.append({
                         'lens': lens_data,
+                        'lens_id': lens_id,
                         'position': e_dict['position']
                     })
 
