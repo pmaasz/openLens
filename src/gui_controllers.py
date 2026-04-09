@@ -1235,11 +1235,7 @@ class LensEditorController:
                 self.on_lens_updated_callback(self.current_lens)
             
             if not silent:
-                try:
-                    from tkinter import messagebox
-                    CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", "Lens updated successfully")
-                except Exception as e:
-                    logger.debug(f"Failed to show success dialog: {e}")
+                logger.debug("Lens updated successfully")
             
         except ValueError as e:
             if not silent:
@@ -1973,18 +1969,20 @@ class PerformanceController:
     - Export performance reports
     """
     
-    def __init__(self, colors: dict, aberrations_available: bool = True):
+    def __init__(self, colors: dict, aberrations_available: bool = True, parent_window: Optional[Any] = None):
         """
         Initialize the performance controller.
         
         Args:
             colors: Color scheme dictionary
             aberrations_available: Whether aberrations module is available
+            parent_window: Reference to parent window for auto-clear functionality
         """
         self.colors = colors
         self.aberrations_available = aberrations_available
         self.current_lens = None
         self.metrics_text = None
+        self.parent_window = parent_window
         
         # Parameter variables
         self.entrance_pupil_var = None
@@ -3380,7 +3378,7 @@ class PerformanceController:
             if filename:
                 with open(filename, 'w') as f:
                     f.write(content)
-                CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", f"Report exported to {filename}")
+                self._update_status(f"✓ Successfully exported report to: {filename}")
         except Exception as e:
             try:
                 from tkinter import messagebox
@@ -3525,12 +3523,29 @@ class ExportController:
         if hasattr(self, 'status_text'):
             self._update_status(f"Lens '{lens.name}' loaded. Ready to export.")
     
-    def _update_status(self, message):
+    def _update_status(self, message, auto_clear=True):
         """Update status text widget"""
         if hasattr(self, 'status_text'):
             self.status_text.config(state='normal')
             self.status_text.delete(1.0, tk.END)
             self.status_text.insert(1.0, message)
+            self.status_text.config(state='disabled')
+            
+            if auto_clear:
+                root = None
+                if hasattr(self, 'parent_window') and self.parent_window and hasattr(self.parent_window, 'root'):
+                    root = self.parent_window.root
+                elif hasattr(self, 'window') and self.window and hasattr(self.window, 'root'):
+                    root = self.window.root
+                
+                if root:
+                    root.after(10000, self._clear_status)
+    
+    def _clear_status(self):
+        """Clear status text widget after delay"""
+        if hasattr(self, 'status_text'):
+            self.status_text.config(state='normal')
+            self.status_text.delete(1.0, tk.END)
             self.status_text.config(state='disabled')
     
     def export_json(self):
@@ -3550,7 +3565,6 @@ class ExportController:
             try:
                 with open(filename, 'w') as f:
                     json.dump(self.current_lens.to_dict(), f, indent=2)
-                CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", f"Lens exported to {filename}")
                 self._update_status(f"✓ Successfully exported to: {filename}")
             except Exception as e:
                 CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Export Error", f"Failed to export: {e}")
@@ -3579,7 +3593,6 @@ class ExportController:
         if filename:
             try:
                 export_lens_stl(self.current_lens, filename)
-                CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", f"3D model exported to {filename}")
                 self._update_status(f"✓ Successfully exported STL to: {filename}")
             except Exception as e:
                 CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Export Error", f"Failed to export: {e}")
@@ -3623,7 +3636,6 @@ class ExportController:
                 exporter = StepExporter(self.current_lens)
                 exporter.export(filename)
                 
-                CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", f"STEP model exported to {filename}")
                 self._update_status(f"✓ Successfully exported STEP to: {filename}")
             except Exception as e:
                 CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Export Error", f"Failed to export: {e}")
@@ -3683,7 +3695,6 @@ class ExportController:
                 generator.generate_svg(filename)
                 
                 root = self.window.root if hasattr(self, "window") and hasattr(self.window, "root") else None
-                CopyableMessageBox.showinfo(root, "Success", f"Drawing exported to {filename}")
                 self._update_status(f"✓ Successfully exported ISO drawing to: {filename}")
             except Exception as e:
                 root = self.window.root if hasattr(self, "window") and hasattr(self.window, "root") else None
@@ -3729,7 +3740,6 @@ class ExportController:
             try:
                 with open(filename, 'w') as f:
                     f.write(report)
-                CopyableMessageBox.showinfo(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Success", f"Report exported to {filename}")
                 self._update_status(f"✓ Successfully exported report to: {filename}")
             except Exception as e:
                 CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Export Error", f"Failed to export: {e}")

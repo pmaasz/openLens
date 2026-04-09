@@ -140,19 +140,14 @@ class LensEditorWindow:
         self.initial_action = initial_action
         self.initial_item = initial_item
         
-        # Initialize storage
-        self.storage_file = "lenses.json"
-        self.storage = LensStorage(self.storage_file, self.update_status)
-        self.lenses: List[Any] = self.storage.load_lenses()
-        
-        self.current_lens: Optional[Any] = None
-        self.visualizer: Optional['LensVisualizer'] = None
-        self.selected_lens_id: Optional[str] = None
-        self._loading_lens: bool = False
-        self._autosave_timer: Optional[str] = None
-        
-        # Initialize status_var early
+        # Initialize status_var early (before any status updates)
         self.status_var = tk.StringVar(value="Welcome to openlens")
+        self._status_clear_timer: Optional[Any] = None
+        
+        # Initialize storage WITHOUT status callback to avoid autosave messages during initialization
+        self.storage_file = "lenses.json"
+        self.storage = LensStorage(self.storage_file, None)  # No status callback during init
+        self.lenses: List[Any] = self.storage.load_lenses()
         
         # Initialize controllers (None until UI setup)
         self.selection_controller: Optional['LensSelectionController'] = None
@@ -167,6 +162,10 @@ class LensEditorWindow:
         self.theme_manager = setup_dark_mode(self.root, self.colors)
         
         self.setup_ui()
+        
+        # Re-enable status callback for save operations after initialization
+        if self.storage:
+            self.storage.status_callback = self.update_status
         
     def save_lenses(self) -> bool:
         """Save all lenses to JSON storage file"""
@@ -233,7 +232,8 @@ class LensEditorWindow:
                                  padding=(5, 3))
         status_label.pack(fill=tk.X)
         
-        self.update_status("Select or create a lens to begin")
+        # Note: Don't call update_status here - it will trigger auto-clear
+        # The status_var is already set above
     
     def _handle_initial_action(self, action: str, item: Any = None) -> None:
         """Handle the initial action from startup window"""
@@ -658,7 +658,8 @@ class LensEditorWindow:
 
                 self.performance_controller = PerformanceController(
                     colors=self.colors,
-                    aberrations_available=ABERRATIONS_AVAILABLE
+                    aberrations_available=ABERRATIONS_AVAILABLE,
+                    parent_window=self
                 )
                 self.performance_controller.setup_ui(self.performance_tab)
                 
@@ -706,6 +707,11 @@ class LensEditorWindow:
                 logger.warning("Failed to initialize ExportController: %s", e)
                 self.export_controller = None
 
-    def update_status(self, message: str) -> None:
+    def update_status(self, message: str, auto_clear: bool = True) -> None:
         self.status_var.set(message)
         self.root.update_idletasks()
+        
+        if auto_clear:
+            if hasattr(self, '_status_clear_timer') and self._status_clear_timer is not None:
+                self.root.after_cancel(self._status_clear_timer)
+            self._status_clear_timer = self.root.after(10000, lambda: self.status_var.set("Ready"))
