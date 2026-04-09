@@ -157,11 +157,12 @@ class LensStorage:
             logger.error("Failed to load lenses from database: %s", e)
             return []
     
-    def save_lenses(self, items: List[Any]) -> bool:
+    def save_lenses(self, items: List[Any], show_status: bool = True) -> bool:
         """Save all lenses and optical systems to SQLite database.
         
         Args:
             items: List of Lens/OpticalSystem objects to save.
+            show_status: Whether to show a status message on success.
         
         Returns:
             True if save was successful, False otherwise.
@@ -184,7 +185,8 @@ class LensStorage:
             # adding/updating. Deleting is handled separately? 
             # Let's check how deletion is handled in main_window.py.
             
-            self._update_status(f"Saved {len(items)} item(s) to database")
+            if show_status:
+                self._update_status(f"Saved {len(items)} item(s) to database")
             return True
             
         except Exception as e:

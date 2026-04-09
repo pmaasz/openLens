@@ -173,9 +173,9 @@ class LensEditorWindow:
         if self.storage:
             self.storage.status_callback = self.update_status
         
-    def save_lenses(self) -> bool:
+    def save_lenses(self, show_status: bool = False) -> bool:
         """Save all lenses to SQLite database"""
-        return self.storage.save_lenses(self.lenses)
+        return self.storage.save_lenses(self.lenses, show_status=show_status)
     
     def setup_ui(self) -> None:
         # Main container
