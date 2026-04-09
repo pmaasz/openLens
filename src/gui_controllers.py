@@ -501,13 +501,10 @@ class LensEditorController:
             ttk.Label(parent, text=label_text).grid(row=i, column=0, sticky=tk.W, pady=PADDING_SMALL)
             
             if key == "lens_type":
-                # Dropdown for lens type (read-only, derived from radii)
-                lens_types = ["Biconvex", "Biconcave", "Plano-Convex", "Plano-Concave", 
-                             "Meniscus Convex", "Meniscus Concave"]
-                combo = ttk.Combobox(parent, values=lens_types, width=18, state="disabled")
-                combo.set(default)
-                combo.grid(row=i, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
-                self.entry_fields[key] = combo
+                # Read-only field showing lens type classification
+                type_label = ttk.Label(parent, text=default, font=('Arial', 10, 'bold'), anchor='w')
+                type_label.grid(row=i, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
+                self.entry_fields[key] = type_label
             else:
                 entry = ttk.Entry(parent, width=20)
                 entry.grid(row=i, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
@@ -722,7 +719,7 @@ class LensEditorController:
         self.entry_fields['name'].insert(0, name)
         
         if 'lens_type' in self.entry_fields:
-            self.entry_fields['lens_type'].set(lens_type)
+            self.entry_fields['lens_type'].config(text=lens_type)
         
         self.entry_fields['radius1'].delete(0, tk.END)
         self.entry_fields['radius1'].insert(0, str(radius1))
@@ -812,7 +809,7 @@ class LensEditorController:
         
         # Set default lens type
         if 'lens_type' in self.entry_fields:
-            self.entry_fields['lens_type'].set("Biconvex")
+            self.entry_fields['lens_type'].config(text="Biconvex")
     
     def _load_assembly_view(self, system):
         """Load an OpticalSystem (assembly) into the editor view"""
@@ -1056,6 +1053,19 @@ class LensEditorController:
         """Handle field change event for auto-calculation and autosave"""
         if getattr(self, '_initializing', False):
             return
+
+        # Update lens type classification when radii change
+        if event and event.widget in [self.entry_fields.get('radius1'), self.entry_fields.get('radius2')]:
+            if self.current_lens is not None:
+                try:
+                    r1 = float(self.entry_fields['radius1'].get())
+                    r2 = float(self.entry_fields['radius2'].get())
+                    self.current_lens.radius_of_curvature_1 = r1
+                    self.current_lens.radius_of_curvature_2 = r2
+                    classified_type = self.current_lens.classify_lens_type()
+                    self.entry_fields['lens_type'].config(text=classified_type)
+                except (ValueError, tk.TclError):
+                    pass
 
         if self.auto_update_var and self.auto_update_var.get():
             self.calculate_properties()
