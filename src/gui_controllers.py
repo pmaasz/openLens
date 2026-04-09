@@ -1164,13 +1164,16 @@ class LensEditorController:
     
     def save_changes(self, silent: bool = False):
         """Save changes to the current lens"""
-        # If no lens selected, create a new one
+        # If no lens selected, create a new one once and keep it
         if self.current_lens is None:
             try:
                 from lens import Lens
                 # Create a new lens with default values which will be overwritten below
                 self.current_lens = Lens()
-                logger.info("Created new lens object for saving")
+                # Ensure we have a default name if not in fields
+                if 'name' in self.entry_fields and not self.entry_fields['name'].get():
+                    self.entry_fields['name'].insert(0, "Autosaved Lens")
+                logger.info(f"Created new lens object {self.current_lens.id} for saving")
             except ImportError:
                 if not silent:
                     try:
@@ -1182,7 +1185,13 @@ class LensEditorController:
         
         try:
             # Validate and update lens
-            self.current_lens.name = self.entry_fields['name'].get()
+            new_name = self.entry_fields['name'].get()
+            if new_name:
+                self.current_lens.name = new_name
+            
+            if 'lens_type' in self.entry_fields:
+                # lens_type field is a Label, so use cget('text')
+                self.current_lens.lens_type = self.entry_fields['lens_type'].cget('text')
             
             # Read radii first, then classify the lens type from them
             self.current_lens.radius_of_curvature_1 = float(self.entry_fields['radius1'].get())
@@ -1235,6 +1244,8 @@ class LensEditorController:
                 self.on_lens_updated_callback(self.current_lens)
             
             if not silent:
+                if self.parent_window:
+                    self.parent_window.update_status(f"Lens '{self.current_lens.name}' saved successfully")
                 logger.debug("Lens updated successfully")
             
         except ValueError as e:
