@@ -501,13 +501,12 @@ class LensEditorController:
             ttk.Label(parent, text=label_text).grid(row=i, column=0, sticky=tk.W, pady=PADDING_SMALL)
             
             if key == "lens_type":
-                # Dropdown for lens type
+                # Dropdown for lens type (read-only, derived from radii)
                 lens_types = ["Biconvex", "Biconcave", "Plano-Convex", "Plano-Concave", 
                              "Meniscus Convex", "Meniscus Concave"]
-                combo = ttk.Combobox(parent, values=lens_types, width=18, state="readonly")
+                combo = ttk.Combobox(parent, values=lens_types, width=18, state="disabled")
                 combo.set(default)
                 combo.grid(row=i, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
-                combo.bind('<<ComboboxSelected>>', self.on_field_changed)
                 self.entry_fields[key] = combo
             else:
                 entry = ttk.Entry(parent, width=20)
@@ -1174,11 +1173,15 @@ class LensEditorController:
         try:
             # Validate and update lens
             self.current_lens.name = self.entry_fields['name'].get()
-            if 'lens_type' in self.entry_fields:
-                self.current_lens.lens_type = self.entry_fields['lens_type'].get()
             
+            # Read radii first, then classify the lens type from them
             self.current_lens.radius_of_curvature_1 = float(self.entry_fields['radius1'].get())
             self.current_lens.radius_of_curvature_2 = float(self.entry_fields['radius2'].get())
+            
+            # Classify lens type based on the radii
+            if 'lens_type' in self.entry_fields:
+                classified_type = self.current_lens.classify_lens_type()
+                self.current_lens.lens_type = classified_type
             self.current_lens.thickness = float(self.entry_fields['thickness'].get())
             self.current_lens.diameter = float(self.entry_fields['diameter'].get())
             

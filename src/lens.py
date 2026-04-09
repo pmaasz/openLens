@@ -98,6 +98,13 @@ class Lens:
             
         self.lens_type = lens_type
         
+        # Only update radii if using default values and lens_type differs from default
+        # This preserves custom radii while allowing lens_type to set defaults when appropriate
+        if (radius_of_curvature_1 == DEFAULT_RADIUS_1 and 
+            radius_of_curvature_2 == DEFAULT_RADIUS_2 and
+            lens_type != "Biconvex"):
+            self._update_radii_for_type()
+        
         # Fresnel properties
         self.is_fresnel = is_fresnel
         self.groove_pitch = groove_pitch
@@ -175,14 +182,18 @@ class Lens:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Lens':
         """Create lens from dictionary representation."""
+        r1 = data.get("radius_of_curvature_1", DEFAULT_RADIUS_1)
+        r2 = data.get("radius_of_curvature_2", DEFAULT_RADIUS_2)
+        lens_type = data.get("type", "Biconvex")
+        
         lens = cls(
             name=data.get("name", "Untitled"),
-            radius_of_curvature_1=data.get("radius_of_curvature_1", DEFAULT_RADIUS_1),
-            radius_of_curvature_2=data.get("radius_of_curvature_2", DEFAULT_RADIUS_2),
+            radius_of_curvature_1=r1,
+            radius_of_curvature_2=r2,
             thickness=data.get("thickness", DEFAULT_THICKNESS),
             diameter=data.get("diameter", DEFAULT_DIAMETER),
             refractive_index=data.get("refractive_index", REFRACTIVE_INDEX_BK7),
-            lens_type=data.get("type", "Biconvex"),
+            lens_type=lens_type,
             material=data.get("material", "BK7"),
             wavelength=data.get("wavelength", 587.6),
             temperature=data.get("temperature", 20.0),
@@ -193,6 +204,11 @@ class Lens:
             model_nd=data.get("model_nd", 1.5168),
             model_vd=data.get("model_vd", 64.17)
         )
+        
+        # Only update radii if they match defaults and lens_type is different
+        if (r1 == DEFAULT_RADIUS_1 and r2 == DEFAULT_RADIUS_2 and lens_type != "Biconvex"):
+            lens._update_radii_for_type()
+        
         lens.id = data.get("id", lens.id)
         lens.created_at = data.get("created_at", lens.created_at)
         lens.modified_at = data.get("modified_at", lens.modified_at)
@@ -221,6 +237,70 @@ class Lens:
             return 1 / power
         except ZeroDivisionError:
             return None
+    
+    def _update_radii_for_type(self) -> None:
+        """Update radii based on the current lens_type."""
+        diameter = self.diameter
+        if diameter <= 0:
+            diameter = DEFAULT_DIAMETER
+        
+        half_aperture = diameter / 2
+        
+        lens_type = self.lens_type
+        
+        if lens_type == "Biconvex":
+            self.radius_of_curvature_1 = 100.0
+            self.radius_of_curvature_2 = -100.0
+        elif lens_type == "Biconcave":
+            self.radius_of_curvature_1 = -100.0
+            self.radius_of_curvature_2 = 100.0
+        elif lens_type == "Plano-Convex":
+            self.radius_of_curvature_1 = 100.0
+            self.radius_of_curvature_2 = float('inf')
+        elif lens_type == "Plano-Concave":
+            self.radius_of_curvature_1 = float('inf')
+            self.radius_of_curvature_2 = 100.0
+        elif lens_type == "Meniscus Convex":
+            self.radius_of_curvature_1 = 80.0
+            self.radius_of_curvature_2 = -120.0
+        elif lens_type == "Meniscus Concave":
+            self.radius_of_curvature_1 = -120.0
+            self.radius_of_curvature_2 = 80.0
+        else:
+            pass
+    
+    def set_lens_type(self, lens_type: str) -> None:
+        """Set lens type and update radii accordingly."""
+        self.lens_type = lens_type
+        self._update_radii_for_type()
+        self.modified_at = datetime.now().isoformat()
+    
+    def classify_lens_type(self) -> str:
+        """Classify lens type based on current radii values."""
+        r1 = self.radius_of_curvature_1
+        r2 = self.radius_of_curvature_2
+        
+        # Handle flat surfaces (radius = 0 or infinity)
+        r1_flat = r1 == 0 or abs(r1) > 1e10 if r1 else True
+        r2_flat = r2 == 0 or abs(r2) > 1e10 if r2 else True
+        
+        # Determine type based on radii
+        if r1_flat and r2_flat:
+            return "Unknown"
+        elif r1_flat:
+            return "Plano-Concave" if r2 > 0 else "Plano-Convex"
+        elif r2_flat:
+            return "Plano-Convex" if r1 > 0 else "Plano-Concave"
+        elif r1 > 0 and r2 > 0:
+            return "Biconcave"
+        elif r1 < 0 and r2 < 0:
+            return "Biconvex"
+        elif r1 > 0 and r2 < 0:
+            return "Meniscus Convex" if abs(r1) != abs(r2) else "Biconvex"
+        elif r1 < 0 and r2 > 0:
+            return "Meniscus Concave" if abs(r1) != abs(r2) else "Biconcave"
+        else:
+            return "Unknown"
     
     def calculate_optical_power(self) -> Optional[float]:
         """
