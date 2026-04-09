@@ -72,36 +72,49 @@ else:
                 """Fallback validation function."""
                 return Path(path)
 
+    # Import DatabaseManager (Runtime)
+    try:
+        from ..database import DatabaseManager
+    except ImportError:
+        try:
+            from database import DatabaseManager
+        except ImportError:
+            logger.warning("Could not import DatabaseManager")
+            DatabaseManager = None
+
 
 class LensStorage:
-    """Handles lens data persistence to JSON files.
+    """Handles lens data persistence to SQLite database.
     
-    This class provides methods to load and save lens data with proper
-    validation and error handling.
+    This class provides methods to load and save lens data using DatabaseManager.
     
     Args:
-        storage_file: Path to the JSON storage file.
+        storage_file: Path to the database file (defaults to openlens.db).
         status_callback: Optional callback function to report status messages.
-    
-    Example:
-        >>> storage = LensStorage("lenses.json")
-        >>> lenses = storage.load_lenses()
-        >>> storage.save_lenses(lenses)
     """
     
     def __init__(
         self,
-        storage_file: str = "lenses.json",
+        storage_file: str = "openlens.db",
         status_callback: Optional[Callable[[str], None]] = None
     ) -> None:
         """Initialize the storage handler.
         
         Args:
-            storage_file: Path to the JSON storage file.
+            storage_file: Path to the database file.
             status_callback: Optional callback for status messages.
         """
+        # Maintain compatibility: if called with lenses.json, change to .db
+        if storage_file.endswith(".json"):
+            storage_file = storage_file.replace(".json", ".db")
+            
         self.storage_file = storage_file
-        self.status_callback = status_callback if status_callback is not None else None
+        self.status_callback = status_callback or (lambda msg: None)
+        
+        if DatabaseManager:
+            self.db = DatabaseManager(self.storage_file)
+        else:
+            self.db = None
     
     def _update_status(self, message: str) -> None:
         """Update status via callback.
@@ -113,28 +126,19 @@ class LensStorage:
             self.status_callback(message)
     
     def load_lenses(self) -> List[Any]:
-        """Load lenses and optical systems from JSON storage file with path validation.
+        """Load lenses and optical systems from SQLite database.
         
         Returns:
-            List of Lens and OpticalSystem objects loaded from the file.
-            Returns empty list if file doesn't exist or contains invalid data.
+            List of Lens and OpticalSystem objects loaded from the database.
+            Returns empty list if database is unavailable or contains invalid data.
         """
+        if not self.db:
+            logger.error("DatabaseManager not available")
+            return []
+
         try:
-            # Validate file path
-            file_path = validate_file_path(
-                self.storage_file,
-                must_exist=True,
-                create_parent=False
-            )
-            
-            # Read and parse JSON
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            # Validate JSON structure
-            if not isinstance(data, list):
-                logger.warning("Storage file contains invalid data structure")
-                return []
+            # Load from DB
+            data = self.db.load_all()
             
             # Load lenses and systems
             items = []
@@ -149,18 +153,12 @@ class LensStorage:
             
             return items
             
-        except ValidationError:
-            # File doesn't exist - return empty list
-            return []
-        except json.JSONDecodeError as e:
-            logger.error("Invalid JSON in storage file: %s", e)
-            return []
         except Exception as e:
-            logger.error("Failed to load lenses: %s", e)
+            logger.error("Failed to load lenses from database: %s", e)
             return []
     
     def save_lenses(self, items: List[Any]) -> bool:
-        """Save all lenses and optical systems to JSON storage file.
+        """Save all lenses and optical systems to SQLite database.
         
         Args:
             items: List of Lens/OpticalSystem objects to save.
@@ -168,61 +166,38 @@ class LensStorage:
         Returns:
             True if save was successful, False otherwise.
         """
+        if not self.db:
+            logger.error("DatabaseManager not available")
+            return False
+
         try:
-            # Validate and prepare file path
-            file_path = validate_json_file_path(
-                self.storage_file,
-                must_exist=False
-            )
+            # Serialize and save items to DB
+            for item in items:
+                item_dict = item.to_dict()
+                if isinstance(item, OpticalSystem) or item_dict.get('type') == 'OpticalSystem':
+                    self.db.save_assembly(item_dict)
+                else:
+                    self.db.save_lens(item_dict)
             
-            # Ensure parent directory exists and is writable
-            parent_dir = file_path.parent
-            if not parent_dir.exists():
-                parent_dir.mkdir(parents=True, exist_ok=True)
+            # We might want to implement a sync mechanism if we need to remove items 
+            # that are no longer in the list. But the current UI usually manages 
+            # adding/updating. Deleting is handled separately? 
+            # Let's check how deletion is handled in main_window.py.
             
-            if not os.access(parent_dir, os.W_OK):
-                self._update_status(f"Error: Directory is not writable: {parent_dir}")
-                return False
+            self._update_status(f"Saved {len(items)} item(s) to database")
+            return True
             
-            # Serialize items to JSON
-            data = [item.to_dict() for item in items]
-            
-            # Write to file with atomic operation (write to temp, then rename)
-            temp_path = file_path.with_suffix('.tmp')
-            try:
-                with open(temp_path, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
-                
-                # Atomic rename
-                temp_path.replace(file_path)
-                
-                # Don't show status message - let the caller decide what to display
-                return True
-                
-            finally:
-                # Clean up temp file if it still exists
-                if temp_path.exists():
-                    temp_path.unlink()
-            
-        except ValidationError as e:
-            self._update_status(f"Error: Invalid file path: {e}")
-            return False
-        except PermissionError as e:
-            self._update_status(f"Error: Permission denied: {e}")
-            return False
-        except OSError as e:
-            self._update_status(f"Error: OS error when saving: {e}")
-            return False
         except Exception as e:
             self._update_status(f"Error: Failed to save lenses: {e}")
+            logger.error("Failed to save lenses: %s", e)
             return False
 
 
-def load_lenses(storage_file: str = "lenses.json") -> List[Any]:
-    """Convenience function to load lenses and systems from a file.
+def load_lenses(storage_file: str = "openlens.db") -> List[Any]:
+    """Convenience function to load lenses and systems from a database.
     
     Args:
-        storage_file: Path to the JSON storage file.
+        storage_file: Path to the database file.
     
     Returns:
         List of Lens/OpticalSystem objects.
@@ -233,14 +208,14 @@ def load_lenses(storage_file: str = "lenses.json") -> List[Any]:
 
 def save_lenses(
     items: List[Any],
-    storage_file: str = "lenses.json",
+    storage_file: str = "openlens.db",
     status_callback: Optional[Callable[[str], None]] = None
 ) -> bool:
-    """Convenience function to save lenses and systems to a file.
+    """Convenience function to save lenses and systems to a database.
     
     Args:
         items: List of Lens/OpticalSystem objects to save.
-        storage_file: Path to the JSON storage file.
+        storage_file: Path to the database file.
         status_callback: Optional callback for status messages.
     
     Returns:
@@ -248,3 +223,4 @@ def save_lenses(
     """
     storage = LensStorage(storage_file, status_callback)
     return storage.save_lenses(items)
+

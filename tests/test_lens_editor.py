@@ -169,7 +169,11 @@ class TestLensManager(unittest.TestCase):
     def test_manager_initialization(self):
         """Test LensManager initialization"""
         self.assertIsNotNone(self.manager)
-        self.assertEqual(self.manager.storage_file, self.storage_file)
+        # Handle the automatic conversion of .json to .db in the new LensManager
+        expected_storage = self.storage_file
+        if expected_storage.endswith('.json'):
+            expected_storage = expected_storage.replace('.json', '.db')
+        self.assertEqual(self.manager.storage_file, expected_storage)
         self.assertIsInstance(self.manager.lenses, list)
     
     def test_save_and_load_lenses(self):

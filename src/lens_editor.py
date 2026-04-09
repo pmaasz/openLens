@@ -71,133 +71,64 @@ except (ImportError, ValueError):
             return data
 
 
+try:
+    from .gui.storage import load_lenses, save_lenses
+    STORAGE_AVAILABLE = True
+except (ImportError, ValueError):
+    try:
+        from gui.storage import load_lenses, save_lenses
+        STORAGE_AVAILABLE = True
+    except ImportError:
+        STORAGE_AVAILABLE = False
+
+
 class LensManager:
     """
-    Manages a collection of optical lenses with persistence to JSON.
+    Manages a collection of optical lenses with persistence to SQLite.
     
     Attributes:
-        storage_file: Path to JSON file for lens storage
+        storage_file: Path to SQLite file for lens storage
         lenses: List of Lens objects
     """
     
-    def __init__(self, storage_file: str = "lenses.json") -> None:
-        try:
-            self.storage_file = str(validate_json_file_path(
-                storage_file, 
-                must_exist=False
-            ))
-        except (ValidationError, Exception) as e:
-            logger.warning("Invalid storage file path '%s': %s", storage_file, e)
-            logger.info("Using default: lenses.json")
-            self.storage_file = "lenses.json"
-        
+    def __init__(self, storage_file: str = "openlens.db") -> None:
+        if storage_file.endswith(".json"):
+            storage_file = storage_file.replace(".json", ".db")
+            
+        self.storage_file = storage_file
         self.lenses = self.load_lenses()
     
     def load_lenses(self) -> List[Lens]:
         """
-        Load lenses from JSON storage file with path and schema validation.
+        Load lenses from storage.
         
         Returns:
-            List of Lens objects (empty if file doesn't exist or error occurs)
+            List of Lens objects (empty if error occurs)
         """
-        try:
-            # Validate file path
-            file_path = validate_file_path(
-                self.storage_file,
-                must_exist=True,
-                create_parent=False
-            )
-            
-            # Read and parse JSON
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            # Validate JSON schema
+        if STORAGE_AVAILABLE:
             try:
-                validated_data = validate_lenses_json_schema(data)
-            except ValidationError as e:
-                logger.error("Invalid JSON schema in storage file: %s", e)
+                # Filter out OpticalSystem objects for the simple LensManager
+                all_items = load_lenses(self.storage_file)
+                return [item for item in all_items if isinstance(item, Lens)]
+            except Exception as e:
+                logger.error("Error loading lenses via storage: %s", e)
                 return []
-            
-            # Load lenses from validated data
-            lenses = []
-            for i, lens_data in enumerate(validated_data):
-                try:
-                    # Additional validation happens in from_dict via Lens.__init__
-                    lenses.append(Lens.from_dict(lens_data))
-                except Exception as e:
-                    logger.warning("Failed to load lens %d: %s", i, e)
-            
-            return lenses
-            
-        except ValidationError as e:
-            # File doesn't exist or path invalid - return empty list
-            return []
-        except json.JSONDecodeError as e:
-            logger.error("Invalid JSON in storage file: %s", e)
-            return []
-        except Exception as e:
-            logger.error("Error loading lenses: %s", e)
-            return []
+        return []
     
     def save_lenses(self) -> bool:
         """
-        Save all lenses to JSON storage file with path validation.
-        
-        Serializes all lenses in the collection to JSON format with indentation.
-        Validates file path and handles errors gracefully.
+        Save all lenses to storage.
         
         Returns:
             bool: True if save successful, False otherwise
         """
-        try:
-            # Validate and prepare file path
-            file_path = validate_json_file_path(
-                self.storage_file,
-                must_exist=False
-            )
-            
-            # Ensure parent directory exists and is writable
-            parent_dir = file_path.parent
-            if not parent_dir.exists():
-                parent_dir.mkdir(parents=True, exist_ok=True)
-            
-            if not os.access(parent_dir, os.W_OK):
-                logger.error("Directory is not writable: %s", parent_dir)
-                return False
-            
-            # Serialize lenses to JSON
-            data = [lens.to_dict() for lens in self.lenses]
-            
-            # Write to file with atomic operation (write to temp, then rename)
-            temp_path = file_path.with_suffix('.tmp')
+        if STORAGE_AVAILABLE:
             try:
-                with open(temp_path, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
-                
-                # Atomic rename
-                temp_path.replace(file_path)
-                
-                logger.info("Saved %d lens(es) to %s", len(self.lenses), file_path)
-                return True
-                
-            finally:
-                # Clean up temp file if it still exists
-                if temp_path.exists():
-                    temp_path.unlink()
-            
-        except ValidationError as e:
-            logger.error("Invalid file path: %s", e)
-            return False
-        except PermissionError as e:
-            logger.error("Permission denied when writing to %s: %s", self.storage_file, e)
-            return False
-        except OSError as e:
-            logger.error("OS error when saving lenses: %s", e)
-            return False
-        except Exception as e:
-            logger.error("Error saving lenses: %s", e)
-            return False
+                return save_lenses(self.lenses, self.storage_file)
+            except Exception as e:
+                logger.error("Error saving lenses via storage: %s", e)
+                return False
+        return False
     
     def create_lens(self) -> Optional[Lens]:
         """
