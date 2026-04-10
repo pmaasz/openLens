@@ -122,13 +122,14 @@ class TestLens(unittest.TestCase):
         self.assertGreater(focal_length, 0)
     
     def test_focal_length_with_zero_radius(self):
-        """Test focal length returns None when radius is zero"""
+        """Test focal length returns valid value when radius is 0 (converted to infinity)"""
         lens = Lens(
             radius_of_curvature_1=0.0,
             radius_of_curvature_2=-100.0
         )
         focal_length = lens.calculate_focal_length()
-        self.assertIsNone(focal_length)
+        self.assertIsNotNone(focal_length)
+        self.assertGreater(focal_length, 0)
     
     def test_focal_length_with_no_power(self):
         """Test focal length returns None when lens has no optical power"""

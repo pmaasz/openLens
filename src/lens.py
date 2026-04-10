@@ -117,6 +117,28 @@ class Lens:
         if self.is_fresnel and self.num_grooves is None:
             self.calculate_num_grooves()
     
+    @property
+    def radius_of_curvature_1(self) -> float:
+        return self._radius_of_curvature_1
+    
+    @radius_of_curvature_1.setter
+    def radius_of_curvature_1(self, value: float) -> None:
+        if value == 0:
+            self._radius_of_curvature_1 = float('inf')
+        else:
+            self._radius_of_curvature_1 = value
+    
+    @property
+    def radius_of_curvature_2(self) -> float:
+        return self._radius_of_curvature_2
+    
+    @radius_of_curvature_2.setter
+    def radius_of_curvature_2(self, value: float) -> None:
+        if value == 0:
+            self._radius_of_curvature_2 = float('inf')
+        else:
+            self._radius_of_curvature_2 = value
+    
     def update_refractive_index(self, 
                                  wavelength: Optional[float] = None,
                                  temperature: Optional[float] = None) -> None:
