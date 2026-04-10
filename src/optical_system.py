@@ -104,13 +104,36 @@ class OpticalSystem:
         if not 0 <= index < len(self.elements):
             return False
             
-        # Remove corresponding node from root children
-        # Note: This assumes simple flat hierarchy where children map 1:1 to elements
-        # If we have nested assemblies, this logic needs to be more robust
-        if index < len(self.root.children):
-            self.root.children.pop(index)
-            self._rebuild_from_tree()
-            return True
+        # Find all element nodes in the tree
+        flat_nodes = self.root.get_flat_list()
+        element_nodes = []
+        for node, _ in flat_nodes:
+            if getattr(node, 'is_element', False):
+                element_nodes.append(node)
+        
+        if 0 <= index < len(element_nodes):
+            node_to_remove = element_nodes[index]
+            # Find the parent of this node and remove it
+            # In a flat hierarchy, it's self.root
+            if node_to_remove in self.root.children:
+                self.root.children.remove(node_to_remove)
+                self._rebuild_from_tree()
+                return True
+            else:
+                # Search deeper if nested (though currently flat by add_lens)
+                def find_and_remove(parent, target):
+                    if target in parent.children:
+                        parent.children.remove(target)
+                        return True
+                    for child in parent.children:
+                        if not getattr(child, 'is_element', False):
+                            if find_and_remove(child, target):
+                                return True
+                    return False
+                
+                if find_and_remove(self.root, node_to_remove):
+                    self._rebuild_from_tree()
+                    return True
             
         return False
 
