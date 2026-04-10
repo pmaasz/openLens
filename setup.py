@@ -14,7 +14,7 @@ def read_file(filename):
 
 setup(
     name='openlens',
-    version='0.1.3',
+    version='0.2.0',
     description='An interactive optical lens design and simulation tool with ISO 10110 export',
     long_description=read_file('README.md'),
     long_description_content_type='text/markdown',
