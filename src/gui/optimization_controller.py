@@ -839,11 +839,23 @@ class OptimizationController:
                 self.on_lens_updated_callback(self.current_lens)
             
             # Persist to disk if parent window has save functionality
-            if self.parent_window and hasattr(self.parent_window, 'save_lenses'):
-                self.parent_window.save_lenses()
-                self.log("Changes saved to disk.")
+            if self.parent_window:
+                if hasattr(self.parent_window, 'save_lenses'):
+                    self.parent_window.save_lenses()
+                
+                # If we are in the Simulation tab, trigger a rerun to show the new design
+                try:
+                    selected_tab_idx = self.parent_window.notebook.index(self.parent_window.notebook.select())
+                    # Simulation tab is index 1 or 2 depending on the notebook structure
+                    # From main_window.py: 
+                    # 0: Editor, 1: Simulation, 2: Performance, 3: Optimization, 4: Export
+                    if selected_tab_idx == 1 and self.parent_window.simulation_controller:
+                         self.parent_window.simulation_controller.run_simulation()
+                except (tk.TclError, AttributeError):
+                    pass
+                
+                self.log("Changes saved and applied to system.")
             
-            self.log("Optimized system applied successfully.")
             self.apply_btn.config(state='disabled')
             self.temp_optimized_lens = None
 

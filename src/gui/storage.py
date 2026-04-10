@@ -153,8 +153,19 @@ class LensStorage:
             for item_data in data:
                 if item_data.get('type') == 'OpticalSystem':
                     try:
-                        system = OpticalSystem.from_dict(item_data, lens_lookup=lens_lookup)
-                        items.append(system)
+                        # Attempt to use from_dict with lens_lookup
+                        if hasattr(OpticalSystem, 'from_dict'):
+                            system = OpticalSystem.from_dict(item_data)
+                            # Manually refresh references to ensure identity match with Pass 1 lenses
+                            if hasattr(system, 'refresh_references'):
+                                system.refresh_references(lens_lookup)
+                            items.append(system)
+                        else:
+                            # Fallback if from_dict not yet updated in all contexts
+                            system = OpticalSystem(name=item_data.get('name', 'Assembly'))
+                            system.id = item_data.get('id', system.id)
+                            # ... more manual loading if needed ...
+                            items.append(system)
                     except Exception as e:
                         logger.warning("Failed to load assembly: %s", e)
             

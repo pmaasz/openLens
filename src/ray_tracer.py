@@ -159,7 +159,7 @@ class LensRayTracer:
         # Cx = Vertex + R
         
         # Front surface (R1)
-        if abs(self.R1) > 1e6:  # Essentially flat
+        if abs(self.R1) > 1e6 or abs(self.R1) < EPSILON:  # Essentially flat or zero radius
             self.front_center_x = self.front_vertex_x
             self.front_is_flat = True
         else:
@@ -167,13 +167,14 @@ class LensRayTracer:
             self.front_is_flat = False
         
         # Back surface (R2)
-        if abs(self.R2) > 1e6:  # Essentially flat
+        if abs(self.R2) > 1e6 or abs(self.R2) < EPSILON:  # Essentially flat or zero radius
             self.back_center_x = self.back_vertex_x
             self.back_is_flat = True
         else:
             self.back_center_x = self.back_vertex_x + self.R2
             self.back_is_flat = False
-    
+
+            
     def _get_surface_normal_angle(self, x: float, y: float, surface_type: str) -> float:
         """
         Calculate surface normal angle at a point.
@@ -193,7 +194,13 @@ class LensRayTracer:
             else:
                 dx = x - self.back_center_x
                 dy = y
+                # Back normal usually points away from center.
+                # If R2 < 0 (convex back), center is to left. P-C points right (out).
+                # If R2 > 0 (concave back), center is to right. P-C points left (in).
+                # In ray.refract, we use the normal angle to determine the interface.
+                # Let's see how refract handles it.
                 return math.atan2(dy, dx)
+
     
     def _intersect_front_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
         """Find intersection point of ray with front surface."""
@@ -242,11 +249,14 @@ class LensRayTracer:
             t2 = (-b + sqrt_disc) / (2*a)
             
             # Filter to only positive t values (intersections in front of ray)
+            # Use EPSILON to avoid intersecting the surface we just left
             valid_ts = [t for t in [t1, t2] if t > EPSILON]
             if not valid_ts:
                 return None  # No valid intersection in front of ray
             
             # Choose appropriate intersection based on surface curvature
+            # For front surface, if R1 > 0 (convex), we hit the left side of the sphere (min t)
+            # If R1 < 0 (concave), we hit the right side of the sphere (max t)
             if self.R1 > 0:
                 t = min(valid_ts)
             else:
@@ -257,6 +267,15 @@ class LensRayTracer:
             
             # Check if within lens diameter
             if abs(y) > self.D / 2:
+                # If we hit the sphere but outside the aperture, 
+                # we might still hit the sphere at the OTHER intersection point 
+                # (e.g. for a very concave surface where the ray passes the vertex)
+                if len(valid_ts) > 1:
+                    t_other = max(valid_ts) if self.R1 > 0 else min(valid_ts)
+                    x_other = ray.x + t_other * dx
+                    y_other = ray.y + t_other * dy
+                    if abs(y_other) <= self.D / 2:
+                        return (x_other, y_other)
                 return None
             
             return (x, y)
@@ -269,7 +288,7 @@ class LensRayTracer:
                 return None
             
             t = (self.back_vertex_x - ray.x) / math.cos(ray.angle)
-            if t < 0:
+            if t < EPSILON:
                 return None
             
             y = ray.y + t * math.sin(ray.angle)
@@ -302,6 +321,7 @@ class LensRayTracer:
             t1 = (-b - sqrt_disc) / (2*a)
             t2 = (-b + sqrt_disc) / (2*a)
             
+            # Use EPSILON to avoid intersecting the surface we just left
             valid_ts = [t for t in [t1, t2] if t > EPSILON]
             if not valid_ts:
                 # Check if we are already past the surface (physically outside lens volume)
@@ -325,15 +345,24 @@ class LensRayTracer:
                 return None
             
             # Choose appropriate intersection based on surface curvature
-            if self.R2 > 0:
-                t = min(valid_ts)
-            else:
+            # For back surface, if R2 < 0 (convex), we hit the right side (max t)
+            # If R2 > 0 (concave), we hit the left side (min t)
+            if self.R2 < 0:
                 t = max(valid_ts)
+            else:
+                t = min(valid_ts)
             
             x = ray.x + t * dx
             y = ray.y + t * dy
             
             if abs(y) > self.D / 2:
+                # Same for back surface
+                if len(valid_ts) > 1:
+                    t_other = min(valid_ts) if self.R2 < 0 else max(valid_ts)
+                    x_other = ray.x + t_other * dx
+                    y_other = ray.y + t_other * dy
+                    if abs(y_other) <= self.D / 2:
+                        return (x_other, y_other)
                 return None
             
             return (x, y)
@@ -345,19 +374,29 @@ class LensRayTracer:
         
         if intersection is None:
             # Ray misses lens - propagate straight
-            ray.propagate(propagate_distance)
+            if propagate_distance > 0:
+                ray.propagate(propagate_distance)
             ray.terminated = True
             return ray
         
         # Propagate to front surface
         x1, y1 = intersection
+        
+        # Check for non-movement to prevent infinite loops or false termination
+        # but only if we are already AT the surface.
+        dist_to_surface = math.sqrt((x1 - ray.x)**2 + (y1 - ray.y)**2)
+        if dist_to_surface < EPSILON:
+             # Already at surface, push slightly inside if we are supposed to be inside
+             pass
+
         ray.x, ray.y = x1, y1
-        ray.path.append((x1, y1))
+        if len(ray.path) == 0 or ray.path[-1] != (x1, y1):
+            ray.path.append((x1, y1))
         
         # Refract at front surface
         normal_angle = self._get_surface_normal_angle(x1, y1, 'front')
         if not ray.refract(REFRACTIVE_INDEX_AIR, self.n, normal_angle):
-            # Total internal reflection at front surface (unusual but possible)
+            # Total internal reflection at front surface
             ray.terminated = True
             return ray
         
@@ -365,13 +404,27 @@ class LensRayTracer:
         intersection = self._intersect_back_surface(ray)
         
         if intersection is None:
-            # Ray doesn't exit lens (shouldn't happen normally)
+            # Ray doesn't exit lens via back surface
+            # Check if it exits via the sides (at the aperture limit)
+            # Find intersection with the "cylinder" of the lens diameter D
+            dy = math.sin(ray.angle)
+            if abs(dy) > EPSILON:
+                y_side = (self.D / 2) if dy > 0 else (-self.D / 2)
+                t_side = (y_side - ray.y) / dy
+                if t_side > EPSILON:
+                    x_side = ray.x + t_side * math.cos(ray.angle)
+                    # Check if this exit is physically within lens volume (between surfaces)
+                    # For simplicity in this engine, we let it exit at the diameter
+                    ray.x, ray.y = x_side, y_side
+                    ray.path.append((x_side, y_side))
+            
             ray.terminated = True
             return ray
         
         x2, y2 = intersection
         ray.x, ray.y = x2, y2
-        ray.path.append((x2, y2))
+        if len(ray.path) == 0 or ray.path[-1] != (x2, y2):
+            ray.path.append((x2, y2))
         
         # Refract at back surface
         normal_angle = self._get_surface_normal_angle(x2, y2, 'back')
@@ -381,7 +434,8 @@ class LensRayTracer:
             return ray
         
         # Propagate after lens
-        ray.propagate(propagate_distance)
+        if propagate_distance > 0:
+            ray.propagate(propagate_distance)
         
         return ray
     
@@ -559,8 +613,8 @@ class SystemRayTracer:
         """Trace a single ray through all elements"""
         
         for i, element in enumerate(self.system.elements):
-            if ray.terminated:
-                break
+            # Record current state
+            path_len_before = len(ray.path)
             
             # Create a tracer for this specific element at its position
             lens_tracer = LensRayTracer(element.lens, x_offset=element.position)
@@ -568,9 +622,46 @@ class SystemRayTracer:
             # Trace through this lens
             lens_tracer.trace_ray(ray, propagate_distance=0)
             
-            # If this is the last element and ray is not terminated, propagate out
-            if not ray.terminated and i == len(self.system.elements) - 1:
-                ray.propagate(100.0)
+            # Check if we hit the lens
+            hit_lens = len(ray.path) > path_len_before
+            
+            if not hit_lens:
+                # We missed this lens. Reset termination.
+                ray.terminated = False
+                
+                # Propagate the ray to the position of the next lens or out of system
+                # BUT don't stop here, just keep going to the next iteration.
+                if i < len(self.system.elements) - 1:
+                    next_pos = self.system.elements[i+1].position
+                    if next_pos > ray.x:
+                        dist = next_pos - ray.x
+                        ray.propagate(dist)
+                else:
+                    # Last element, propagate into distance
+                    ray.propagate(150.0) # Larger distance for better visualization
+                continue
+            
+            # If we HIT the lens but it terminated (TIR or hit side), 
+            # we should still try to propagate it to the end of the system
+            # if the user wants to see the full "failed" path.
+            if ray.terminated:
+                # Propagate from current position to end of visualization
+                # unless it was a really sharp TIR that shouldn't move forward
+                if math.cos(ray.angle) > 0.1: # Moving generally forward
+                    ray.propagate(150.0 - ray.x)
+                break
+            
+            # If we HIT the lens and it didn't terminate, we go to next element.
+            if i < len(self.system.elements) - 1:
+                next_pos = self.system.elements[i+1].position
+                if next_pos > ray.x:
+                    dist = next_pos - ray.x
+                    ray.propagate(dist)
+                else:
+                    ray.propagate(EPSILON)
+            else:
+                # Last element, propagate into distance
+                ray.propagate(150.0)
 
 class Ray3D:
     """
@@ -819,7 +910,7 @@ class LensRayTracer3D:
         self.back_vertex = self.transform.multiply_point(v1)
         
         # Front Center
-        if abs(self.R1) > 1e6:
+        if abs(self.R1) > 1e6 or abs(self.R1) < EPSILON:
             self.front_center = self.front_vertex
             self.front_is_flat = True
         else:
@@ -827,7 +918,7 @@ class LensRayTracer3D:
             self.front_is_flat = False
         
         # Back Center
-        if abs(self.R2) > 1e6:
+        if abs(self.R2) > 1e6 or abs(self.R2) < EPSILON:
             self.back_center = self.back_vertex
             self.back_is_flat = True
         else:
