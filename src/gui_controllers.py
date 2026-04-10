@@ -964,7 +964,14 @@ class LensEditorController:
                     
                     # Refresh simulation if available
                     if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
-                        self.parent_window.simulation_controller.run_simulation()
+                        try:
+                            self.parent_window.simulation_controller.run_simulation()
+                        except Exception as e:
+                            logger.error(f"Failed to refresh simulation after removal: {e}")
+                    
+                    # Trigger visual update in main window if needed
+                    if hasattr(self, 'parent_window') and hasattr(self.parent_window, 'update_visualization'):
+                        self.parent_window.update_visualization()
                         
                 if self.on_lens_updated_callback:
                     self.on_lens_updated_callback(system)
