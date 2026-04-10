@@ -339,14 +339,49 @@ class STLExporter:
                 f.write(struct.pack('<fff', p3[0], p3[1], p3[2]))
                 f.write(struct.pack('<H', 0))
 
-def export_lens_stl(lens: Any, filename: str, resolution: int = 50) -> int:
-    """Wrapper for Lens object"""
+def export_lens_stl(item: Any, filename: str, resolution: int = 50) -> int:
+    """Wrapper for Lens or OpticalSystem object"""
     exporter = STLExporter()
+    
+    # Check if it's an OpticalSystem
+    if hasattr(item, 'elements') and hasattr(item, 'air_gaps'):
+        # Export entire assembly
+        exporter.triangles = []
+        for element in item.elements:
+            lens = element.lens
+            pos = element.position
+            
+            # Generate lens triangles
+            # 1. Front Surface
+            profile1 = exporter.calculate_surface_profile(lens.radius_of_curvature_1, lens.diameter, is_front=True, resolution=resolution)
+            if profile1:
+                exporter.triangles.extend(exporter.generate_surface_triangles(profile1, pos, num_segments=resolution*2))
+                last_z_front = profile1[-1][1] + pos
+            else:
+                exporter.triangles.extend(exporter.generate_flat_surface(lens.diameter, pos, num_segments=resolution*2, is_front=True))
+                last_z_front = pos
+                
+            # 2. Back Surface
+            profile2 = exporter.calculate_surface_profile(lens.radius_of_curvature_2, lens.diameter, is_front=False, resolution=resolution)
+            if profile2:
+                exporter.triangles.extend(exporter.generate_surface_triangles(profile2, pos + lens.thickness, num_segments=resolution*2))
+                last_z_back = profile2[-1][1] + pos + lens.thickness
+            else:
+                exporter.triangles.extend(exporter.generate_flat_surface(lens.diameter, pos + lens.thickness, num_segments=resolution*2, is_front=False))
+                last_z_back = pos + lens.thickness
+                
+            # 3. Edge
+            exporter.triangles.extend(exporter.generate_edge_triangles(lens.diameter, last_z_front, last_z_back, num_segments=resolution*2))
+            
+        exporter.write_binary_stl(filename)
+        return len(exporter.triangles)
+    
+    # Single lens
     return exporter.export_lens_to_stl(
-        lens.radius_of_curvature_1,
-        lens.radius_of_curvature_2,
-        lens.thickness,
-        lens.diameter,
+        item.radius_of_curvature_1,
+        item.radius_of_curvature_2,
+        item.thickness,
+        item.diameter,
         filename,
         resolution
     )

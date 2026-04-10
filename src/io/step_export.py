@@ -102,16 +102,25 @@ class StepExporter:
         shape_ids = []
         
         # Export each lens
-        if hasattr(self.system, 'elements'):
+        if hasattr(self.system, 'elements') and hasattr(self.system, 'air_gaps'):
             for elem in self.system.elements:
                 solid_id = self._export_lens_solid(elem.lens, elem.position)
                 if solid_id:
                     shape_ids.append(solid_id)
-        else:
+        elif hasattr(self.system, 'radius_of_curvature_1'):
             # Single lens
             solid_id = self._export_lens_solid(self.system, 0.0)
             if solid_id:
                 shape_ids.append(solid_id)
+        else:
+            # Fallback for dict or other objects
+            try:
+                # Try to use it as a single lens if it has necessary attributes
+                solid_id = self._export_lens_solid(self.system, 0.0)
+                if solid_id:
+                    shape_ids.append(solid_id)
+            except (AttributeError, KeyError):
+                pass
                 
         # Create Root Product Definition if needed
         # For simplicity, we just leave the geometric entities in the file.
