@@ -390,7 +390,8 @@ class LensRayTracer:
              pass
 
         ray.x, ray.y = x1, y1
-        ray.path.append((x1, y1))
+        if len(ray.path) == 0 or ray.path[-1] != (x1, y1):
+            ray.path.append((x1, y1))
         
         # Refract at front surface
         normal_angle = self._get_surface_normal_angle(x1, y1, 'front')
@@ -403,13 +404,27 @@ class LensRayTracer:
         intersection = self._intersect_back_surface(ray)
         
         if intersection is None:
-            # Ray doesn't exit lens
+            # Ray doesn't exit lens via back surface
+            # Check if it exits via the sides (at the aperture limit)
+            # Find intersection with the "cylinder" of the lens diameter D
+            dy = math.sin(ray.angle)
+            if abs(dy) > EPSILON:
+                y_side = (self.D / 2) if dy > 0 else (-self.D / 2)
+                t_side = (y_side - ray.y) / dy
+                if t_side > EPSILON:
+                    x_side = ray.x + t_side * math.cos(ray.angle)
+                    # Check if this exit is physically within lens volume (between surfaces)
+                    # For simplicity in this engine, we let it exit at the diameter
+                    ray.x, ray.y = x_side, y_side
+                    ray.path.append((x_side, y_side))
+            
             ray.terminated = True
             return ray
         
         x2, y2 = intersection
         ray.x, ray.y = x2, y2
-        ray.path.append((x2, y2))
+        if len(ray.path) == 0 or ray.path[-1] != (x2, y2):
+            ray.path.append((x2, y2))
         
         # Refract at back surface
         normal_angle = self._get_surface_normal_angle(x2, y2, 'back')
@@ -611,23 +626,42 @@ class SystemRayTracer:
             hit_lens = len(ray.path) > path_len_before
             
             if not hit_lens:
-                # We missed this lens. Reset termination and continue to next lens.
+                # We missed this lens. Reset termination.
                 ray.terminated = False
-                # If we are not at the end, propagate a bit? 
-                # Actually, just let the next lens find an intersection.
+                
+                # Propagate the ray to the position of the next lens or out of system
+                # BUT don't stop here, just keep going to the next iteration.
+                if i < len(self.system.elements) - 1:
+                    next_pos = self.system.elements[i+1].position
+                    if next_pos > ray.x:
+                        dist = next_pos - ray.x
+                        ray.propagate(dist)
+                else:
+                    # Last element, propagate into distance
+                    ray.propagate(150.0) # Larger distance for better visualization
                 continue
             
-            # If we HIT the lens but it terminated (TIR), we STOP.
+            # If we HIT the lens but it terminated (TIR or hit side), 
+            # we should still try to propagate it to the end of the system
+            # if the user wants to see the full "failed" path.
             if ray.terminated:
+                # Propagate from current position to end of visualization
+                # unless it was a really sharp TIR that shouldn't move forward
+                if math.cos(ray.angle) > 0.1: # Moving generally forward
+                    ray.propagate(150.0 - ray.x)
                 break
             
             # If we HIT the lens and it didn't terminate, we go to next element.
             if i < len(self.system.elements) - 1:
-                # Move ray slightly into air to avoid re-intersecting the exit surface
-                ray.propagate(EPSILON)
+                next_pos = self.system.elements[i+1].position
+                if next_pos > ray.x:
+                    dist = next_pos - ray.x
+                    ray.propagate(dist)
+                else:
+                    ray.propagate(EPSILON)
             else:
                 # Last element, propagate into distance
-                ray.propagate(100.0)
+                ray.propagate(150.0)
 
 class Ray3D:
     """

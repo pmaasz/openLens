@@ -27,41 +27,51 @@ def run_diagnostic():
         refractive_index=1.62
     )
     
-    # Second element
+    # Second element (smaller diameter)
     lens2 = Lens(
-        name="Nikon 50mm Element 2",
+        name="Small Pupil Element",
         radius_of_curvature_1=30.0,
         radius_of_curvature_2=-30.0,
         thickness=5.0,
-        diameter=40.0,
-        refractive_index=1.62
+        diameter=20.0, # Smaller aperture!
+        refractive_index=1.5
     )
     
-    system = OpticalSystem("Nikon Test")
-    system.add_lens(lens1, air_gap_before=0)
-    system.add_lens(lens2, air_gap_before=10.0)
+    # Third element (at x=40)
+    lens3 = Lens(
+        name="Rear Element",
+        radius_of_curvature_1=50.0,
+        radius_of_curvature_2=-50.0,
+        thickness=5.0,
+        diameter=40.0,
+        refractive_index=1.5
+    )
+    
+    system = OpticalSystem("Aperture Test")
+    system.add_lens(lens1, air_gap_before=0)     # x=0, d=40
+    system.add_lens(lens2, air_gap_before=10.0)  # x=15, d=20 (smaller)
+    system.add_lens(lens3, air_gap_before=20.0)  # x=40, d=40 (larger)
     
     # Trace through system
     tracer = SystemRayTracer(system)
     
     print(f"Tracing through system: {system.name}")
+    print("Goal: Rays should NOT terminate if they miss the small lens2.")
     
-    num_rays = 5
+    num_rays = 7
     rays = tracer.trace_parallel_rays(num_rays=num_rays)
     
     for r_idx, ray in enumerate(rays):
-        print(f"\nRay {r_idx} path ({len(ray.path)} points):")
+        print(f"\nRay {r_idx} starting height: {ray.path[0][1]:.2f}")
+        print(f"Path points: {len(ray.path)}")
         for i, (x, y) in enumerate(ray.path):
             print(f"  Point {i}: x={x:.2f}, y={y:.2f}")
         
-        if ray.terminated:
-             print(f"Ray {r_idx} TERMINATED")
-        
-        # Success if it reached past second lens
-        if len(ray.path) >= 6:
-            print(f"Ray {r_idx} SUCCESS")
+        # Check if ray continued until the end (x > 45)
+        if ray.path[-1][0] > 100:
+            print(f"Ray {r_idx} SUCCESS: Propagated through system.")
         else:
-            print(f"Ray {r_idx} FAILURE")
+            print(f"Ray {r_idx} FAILURE: Stopped at x={ray.path[-1][0]:.2f}")
 
 if __name__ == "__main__":
     run_diagnostic()
