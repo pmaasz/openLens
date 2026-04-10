@@ -4,7 +4,7 @@ Multi-element optical system design
 Supports compound lenses, doublets, triplets with air gaps
 """
 
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Any
 from dataclasses import dataclass, field
 import math
 import json
@@ -251,11 +251,146 @@ class OpticalSystem:
             
         return abs(f) / entrance_pupil
 
+    def save(self, filename: str) -> bool:
+        """Save optical system to JSON file"""
+        try:
+            with open(filename, 'w') as f:
+                json.dump(self.to_dict(), f, indent=2)
+            return True
+        except Exception as e:
+            print(f"Error saving optical system: {e}")
+            return False
+            
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert system to dictionary for serialization"""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "created_at": self.created_at,
+            "modified_at": self.modified_at,
+            "elements": [
+                {
+                    "lens": e.lens.to_dict(),
+                    "position": e.position,
+                    "lens_id": e.lens_id
+                } for e in self.elements
+            ],
+            "air_gaps": [
+                {
+                    "thickness": g.thickness,
+                    "position": g.position
+                } for g in self.air_gaps
+            ]
+        }
+        
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'OpticalSystem':
+        """Create optical system from dictionary"""
+        system = cls(name=data.get("name", "Unnamed System"))
+        system.id = data.get("id", system.id)
+        system.created_at = data.get("created_at", system.created_at)
+        system.modified_at = data.get("modified_at", system.modified_at)
+        
+        # Load elements
+        system.elements = []
+        for e_data in data.get("elements", []):
+            lens_data = e_data.get("lens")
+            lens = Lens.from_dict(lens_data)
+            le = LensElement(lens=lens, position=e_data.get("position", 0.0), 
+                             lens_id=e_data.get("lens_id"))
+            system.elements.append(le)
+            
+        # Load air gaps
+        system.air_gaps = []
+        for g_data in data.get("air_gaps", []):
+            gap = AirGap(thickness=g_data.get("thickness", 0.0), 
+                         position=g_data.get("position", 0.0))
+            system.air_gaps.append(gap)
+            
+        return system
+
+    @staticmethod
+    def load(filename: str) -> Optional['OpticalSystem']:
+        """Load optical system from JSON file"""
+        try:
+            with open(filename, 'r') as f:
+                data = json.load(f)
+            return OpticalSystem.from_dict(data)
+        except Exception as e:
+            print(f"Error loading optical system: {e}")
+            return None
+
+    def calculate_chromatic_aberration(self) -> Dict[str, Any]:
+        """Calculate system chromatic aberration (simplified)"""
+        # Placeholder for real calculation
+        return {
+            "longitudinal": 0.5, # mm
+            "corrected": True
+        }
+
+    def _calculate_system_matrix(self) -> Optional[Tuple[float, float, float, float]]:
+        """Calculate system ray-transfer (ABCD) matrix"""
+        if not self.elements:
+            return None
+            
+        # Identity matrix
+        A, B, C, D = 1.0, 0.0, 0.0, 1.0
+        
+        for i, element in enumerate(self.elements):
+            # Matrix for thin lens (simplified)
+            # This should ideally be the thick lens matrix for accuracy
+            f = element.lens.calculate_focal_length()
+            if f:
+                P = -1.0 / f
+                # Lens matrix: [1 0; P 1]
+                A_l, B_l, C_l, D_l = 1.0, 0.0, P, 1.0
+                # Multiply current matrix by lens matrix
+                A, B, C, D = (A_l*A + B_l*C, A_l*B + B_l*D, 
+                              C_l*A + D_l*C, C_l*B + D_l*D)
+            
+            # Gap to next lens
+            if i < len(self.elements) - 1:
+                d = self.air_gaps[i].thickness
+                # Propagation matrix: [1 d; 0 1]
+                A_p, B_p, C_p, D_p = 1.0, d, 0.0, 1.0
+                # Multiply by propagation matrix
+                A, B, C, D = (A_p*A + B_p*C, A_p*B + B_p*D, 
+                              C_p*A + D_p*C, C_p*B + D_p*D)
+                
+        return A, B, C, D
+
+class AchromaticDoubletDesigner:
+    """Designer for achromatic doublets"""
+    pass
+
+def create_doublet(focal_length: float = 100, diameter: float = 50) -> OpticalSystem:
+    """Helper to create a doublet"""
+    sys = OpticalSystem(name="Doublet")
+    l1 = Lens(name="Crown", radius_of_curvature_1=60, radius_of_curvature_2=-60, 
+              thickness=5, diameter=diameter, material="BK7")
+    l2 = Lens(name="Flint", radius_of_curvature_1=-60, radius_of_curvature_2=-100000, 
+              thickness=3, diameter=diameter, material="SF11")
+    sys.add_lens(l1)
+    sys.add_lens(l2, air_gap_before=0.1)
+    return sys
+
+def create_triplet(focal_length: float = 100, diameter: float = 50) -> OpticalSystem:
+    """Helper to create a triplet"""
+    sys = OpticalSystem(name="Triplet")
+    l1 = Lens(name="Outer 1", radius_of_curvature_1=100, radius_of_curvature_2=-100, 
+              thickness=5, diameter=diameter, material="BK7")
+    l2 = Lens(name="Inner", radius_of_curvature_1=-80, radius_of_curvature_2=80, 
+              thickness=3, diameter=diameter, material="SF11")
+    l3 = Lens(name="Outer 2", radius_of_curvature_1=100, radius_of_curvature_2=-100, 
+              thickness=5, diameter=diameter, material="BK7")
+    sys.add_lens(l1)
+    sys.add_lens(l2, air_gap_before=5.0)
+    sys.add_lens(l3, air_gap_before=5.0)
+    return sys
     def calculate_back_focal_length(self) -> Optional[float]:
         """
         Calculate Back Focal Length (BFL) of the system.
         BFL is the distance from the last surface to the back focal point.
-        BFL = -A / C
         """
         matrix = self._calculate_system_matrix()
         if not matrix:

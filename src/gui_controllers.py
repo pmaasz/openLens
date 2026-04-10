@@ -946,6 +946,11 @@ class LensEditorController:
                     if lens.name == lens_name:
                         system.add_lens(lens, air_gap_before=5.0) # Default gap
                         refresh_current_list()
+                        
+                        # Refresh simulation if available
+                        if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
+                            self.parent_window.simulation_controller.run_simulation()
+                            
                         break
                 if self.on_lens_updated_callback:
                     self.on_lens_updated_callback(system)
@@ -956,6 +961,11 @@ class LensEditorController:
                 idx = selection[0]
                 if system.remove_lens(idx):
                     refresh_current_list()
+                    
+                    # Refresh simulation if available
+                    if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
+                        self.parent_window.simulation_controller.run_simulation()
+                        
                 if self.on_lens_updated_callback:
                     self.on_lens_updated_callback(system)
         
@@ -967,6 +977,11 @@ class LensEditorController:
                 system._update_positions()
                 refresh_current_list()
                 current_listbox.selection_set(idx-1)
+                
+                # Refresh simulation if available
+                if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
+                    self.parent_window.simulation_controller.run_simulation()
+                    
                 if self.on_lens_updated_callback:
                     self.on_lens_updated_callback(system)
         
@@ -979,6 +994,11 @@ class LensEditorController:
                     system._update_positions()
                     refresh_current_list()
                     current_listbox.selection_set(idx+1)
+                    
+                    # Refresh simulation if available
+                    if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
+                        self.parent_window.simulation_controller.run_simulation()
+                        
                     if self.on_lens_updated_callback:
                         self.on_lens_updated_callback(system)
 
@@ -992,6 +1012,11 @@ class LensEditorController:
                     system._update_positions()
                     refresh_current_list()
                     current_listbox.selection_set(idx)
+                    
+                    # Also refresh simulation if in Simulation tab
+                    if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
+                        self.parent_window.simulation_controller.run_simulation()
+                        
                     if self.on_lens_updated_callback:
                         self.on_lens_updated_callback(system)
                 except ValueError:
@@ -1477,6 +1502,14 @@ class SimulationController:
         
         ttk.Button(btn_frame, text="Run Simulation", 
                   command=self.run_simulation).pack(side=tk.LEFT, padx=PADDING_SMALL)
+        
+        # Ghost analysis mode toggle
+        self.ghost_mode_var = tk.BooleanVar(value=False)
+        self.ghost_check = ttk.Checkbutton(btn_frame, text="Ghost Analysis", 
+                                         variable=self.ghost_mode_var,
+                                         command=self.run_simulation)
+        self.ghost_check.pack(side=tk.LEFT, padx=PADDING_SMALL)
+        
         ttk.Button(btn_frame, text="Clear Simulation", 
                   command=self.clear_simulation).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
@@ -1837,7 +1870,12 @@ class SimulationController:
             num_rays = int(self.num_rays_var.get())
             ray_angle = float(self.ray_angle_var.get())
             
-            # Trace rays
+            # Check for Ghost Analysis mode
+            if hasattr(self, 'ghost_mode_var') and self.ghost_mode_var.get():
+                self.run_ghost_analysis()
+                return
+            
+            # Trace rays (standard)
             rays = self.ray_tracer.trace_parallel_rays(num_rays=num_rays, angle=ray_angle)
             self.draw_rays(rays)
             
@@ -1853,88 +1891,199 @@ class SimulationController:
                 CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Simulation Error", f"Error during simulation: {e}")
             except Exception as dialog_error:
                 logger.error(f"Simulation failed: {e}, dialog error: {dialog_error}")
-    
-    def draw_rays(self, rays):
-        """Draw ray paths on canvas"""
+
+    def draw_rays(self, rays: List[Any]):
+        """Plot the ray paths onto the simulation axis.
+        
+        Args:
+            rays: List of ray objects, each having a 'path' attribute containing Vector3 points.
+        """
         if not self.sim_ax or not self.sim_canvas:
             return
-        
-        # Clear previous rays
+            
+        # Clear previous simulation state but keep geometry
         self.sim_ax.clear()
         
-        # Import constants
-        try:
-            from constants import COLOR_BG_DARK, COLOR_BG_LIGHT, COLOR_FG, FONT_SIZE_NORMAL
-        except ImportError:
-            COLOR_BG_DARK, COLOR_BG_LIGHT, COLOR_FG = '#2b2b2b', '#3f3f3f', '#e0e0e0'
-            FONT_SIZE_NORMAL = 10
-        
-        # Calculate bounds based on system
-        is_system = hasattr(self.current_lens, 'elements')
-        if is_system:
-            total_length = self.current_lens.get_total_length()
-            x_max = total_length + 50
-            x_min = -50
-            name = self.current_lens.name
-            # Find max diameter for Y-axis scaling
-            max_diameter = max(elem.lens.diameter for elem in self.current_lens.elements)
-        else:
-            x_max = 150
-            x_min = -100
-            name = self.current_lens.name
-            max_diameter = self.current_lens.diameter
-
-        # Set Y limits based on lens diameter (with some margin)
-        y_margin = max_diameter * 0.3
-        y_max = max_diameter / 2 + y_margin
-        y_min = -y_max
-
-        # Redraw axes
-        self.sim_ax.set_xlim(x_min, x_max)
-        self.sim_ax.set_ylim(y_min, y_max)
-        self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
-        self.sim_ax.set_xlabel('Position (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
-        self.sim_ax.set_ylabel('Height (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
-        self.sim_ax.set_title(f'Ray Tracing - {name}', 
-                            fontsize=12, color=COLOR_FG)
-        self.sim_ax.grid(True, alpha=0.2, color=COLOR_BG_LIGHT)
-        self.sim_ax.set_aspect('equal')
-        self.sim_ax.tick_params(colors=COLOR_FG, labelsize=9)
-        for spine in self.sim_ax.spines.values():
-            spine.set_color(COLOR_BG_LIGHT)
-        
-        # Draw lens surfaces
-        if is_system:
+        # Redraw the lens/system geometry
+        if hasattr(self.current_lens, 'elements'):
             self._draw_system()
         else:
             self._draw_lens()
-        
-        # Draw rays
+            
+        # Plot each ray path
         for ray in rays:
             if hasattr(ray, 'path') and ray.path:
-                # Extract x and y coordinates from path list of tuples
-                x_coords = [p[0] for p in ray.path]
-                y_coords = [p[1] for p in ray.path]
-                self.sim_ax.plot(x_coords, y_coords, 'b-', alpha=0.6, linewidth=1)
-            elif isinstance(ray, dict) and 'segments' in ray:
-                # Handle legacy dictionary format if present
-                for segment in ray['segments']:
-                    x_coords = [segment['start'][0], segment['end'][0]]
-                    y_coords = [segment['start'][1], segment['end'][1]]
-                    self.sim_ax.plot(x_coords, y_coords, 'b-', alpha=0.6, linewidth=1)
+                x_coords = [p.x for p in ray.path]
+                y_coords = [p.y for p in ray.path]
+                
+                # Use a consistent style for rays (thin red lines)
+                self.sim_ax.plot(x_coords, y_coords, color='red', linewidth=0.8, alpha=0.6)
         
-        # Redraw canvas
+        # Reset title and labels after clearing
+        try:
+            from constants import COLOR_FG, FONT_SIZE_NORMAL
+        except ImportError:
+            COLOR_FG = '#e0e0e0'
+            FONT_SIZE_NORMAL = 10
+            
+        self.sim_ax.set_xlabel('Position (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
+        self.sim_ax.set_ylabel('Height (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
+        self.sim_ax.set_title(f'Ray Tracing Simulation - {getattr(self.current_lens, "name", "Unknown")}', 
+                            fontsize=12, color=COLOR_FG)
+        
+        self.sim_canvas.draw()
+
+    def run_ghost_analysis(self):
+        """Run and visualize ghost reflection analysis"""
+        if not hasattr(self.current_lens, 'elements'):
+            # Ghost analysis for single lens
+            from analysis.ghost import GhostAnalyzer
+            from optical_system import OpticalSystem
+            # Wrap single lens in system for analyzer
+            temp_sys = OpticalSystem(name="Ghost Analysis Temp")
+            temp_sys.add_lens(self.current_lens)
+            analyzer = GhostAnalyzer(temp_sys)
+        else:
+            from analysis.ghost import GhostAnalyzer
+            analyzer = GhostAnalyzer(self.current_lens)
+            
+        try:
+            # Trace ghosts (fewer rays per path to avoid clutter)
+            ghost_paths = analyzer.trace_ghosts(num_rays=3)
+            self.draw_ghosts(ghost_paths)
+        except Exception as e:
+            logger.error(f"Ghost analysis failed: {e}")
+            if self.parent_window:
+                self.parent_window.update_status(f"Ghost analysis failed: {e}")
+
+    def draw_ghosts(self, ghost_paths):
+        """Visualize ghost paths"""
+        if not self.sim_ax or not self.sim_canvas:
+            return
+            
+        # Clear previous rays but keep lenses
+        self.sim_ax.clear()
+        
+        # Draw system/lens first
+        is_system = hasattr(self.current_lens, 'elements')
+        if is_system:
+            self._draw_system()
+            name = self.current_lens.name
+        else:
+            self._draw_lens()
+            name = self.current_lens.name
+            
+        # Draw ghost rays with different colors
+        colors = ['red', 'orange', 'yellow', 'magenta', 'cyan', 'green']
+        
+        for i, path in enumerate(ghost_paths):
+            color = colors[i % len(colors)]
+            label = f"Ghost {path.reflection_1_index}-{path.reflection_2_index}"
+            
+            for j, ray in enumerate(path.rays):
+                if hasattr(ray, 'path') and ray.path:
+                    # Ray3D path is Vector3 list
+                    x_coords = [p.x for p in ray.path]
+                    y_coords = [p.y for p in ray.path]
+                    
+                    # Only label the first ray of the path
+                    plt_label = label if j == 0 else None
+                    self.sim_ax.plot(x_coords, y_coords, color=color, 
+                                   alpha=0.4, linewidth=0.8, label=plt_label)
+        
+        # Add legend if ghosts found
+        if ghost_paths:
+            self.sim_ax.legend(fontsize=8, loc='upper right', framealpha=0.5)
+            
+        self.sim_ax.set_title(f"Ghost Reflection Analysis - {name} (2nd Order)")
         self.sim_canvas.draw()
     
     def _draw_system(self):
-        """Draw all lenses in the system"""
-        if not self.current_lens:
+        """Draw all lenses in the optical system"""
+        if not self.sim_ax or not self.current_lens:
             return
             
-        for element in self.current_lens.elements:
-            self._draw_single_lens_element(element.lens, element.position)
+        for i, element in enumerate(self.current_lens.elements):
+            # Use improved drawing method
+            self._draw_single_lens_element(element.lens, element.position, label=f"L{i+1}")
 
-    def _draw_single_lens_element(self, lens, offset):
+    def _draw_single_lens_element(self, lens, offset, label=None):
+        """Helper to draw a single lens at an offset with improved profile"""
+        import numpy as np
+        import math
+        
+        r1 = lens.radius_of_curvature_1
+        r2 = lens.radius_of_curvature_2
+        thickness = lens.thickness
+        diameter = lens.diameter
+        
+        y_max = diameter / 2.0
+        num_points = 100
+        y_values = np.linspace(-y_max, y_max, num_points)
+        
+        # Front surface (R1)
+        if abs(r1) >= 10000 or abs(r1) < 1e-10:
+            x1 = np.full_like(y_values, offset)
+        else:
+            r1_abs = abs(r1)
+            # Sag calculation
+            # x = R - sign(R)*sqrt(R^2 - y^2)
+            # Ensure we don't sqrt negative values
+            mask = y_values**2 <= r1_abs**2
+            y_active = y_values[mask]
+            x1_rel = r1 - np.sign(r1) * np.sqrt(r1_abs**2 - y_active**2)
+            x1 = offset + x1_rel
+            y1_vals = y_active
+        
+        if abs(r1) >= 10000 or abs(r1) < 1e-10:
+            y1_vals = y_values
+
+        # Back surface (R2)
+        offset_back = offset + thickness
+        if abs(r2) >= 10000 or abs(r2) < 1e-10:
+            x2 = np.full_like(y_values, offset_back)
+            y2_vals = y_values
+        else:
+            r2_abs = abs(r2)
+            mask2 = y_values**2 <= r2_abs**2
+            y_active2 = y_values[mask2]
+            x2_rel = r2 - np.sign(r2) * np.sqrt(r2_abs**2 - y_active2**2)
+            x2 = offset_back + x2_rel
+            y2_vals = y_active2
+            
+        # Draw filled lens
+        poly_x = np.concatenate([x1, x2[::-1]])
+        poly_y = np.concatenate([y1_vals, y2_vals[::-1]])
+        self.sim_ax.fill(poly_x, poly_y, facecolor='#e6f3ff', edgecolor='lightblue', alpha=0.4)
+        
+        # Draw surfaces
+        self.sim_ax.plot(x1, y1_vals, color='lightblue', linewidth=2, alpha=0.8)
+        self.sim_ax.plot(x2, y2_vals, color='lightblue', linewidth=2, alpha=0.8)
+        
+        # Draw edges
+        self.sim_ax.plot([x1[0], x2[-1]], [y1_vals[0], y2_vals[-1]], color='lightblue', linewidth=2, alpha=0.8)
+        self.sim_ax.plot([x1[-1], x2[0]], [y1_vals[-1], y2_vals[0]], color='lightblue', linewidth=2, alpha=0.8)
+
+        if label:
+            self.sim_ax.text(offset + thickness/2, y_max + 2, label, 
+                           color='white', ha='center', fontsize=9)
+
+    def _draw_lens(self):
+        """Draw single lens profile"""
+        if not self.sim_ax or not self.current_lens:
+            return
+        self._draw_single_lens_element(self.current_lens, 0.0)
+
+    def _draw_system(self):
+        """Draw all lenses in the optical system"""
+        if not self.sim_ax or not self.current_lens:
+            return
+            
+        for i, element in enumerate(self.current_lens.elements):
+            # Use improved drawing method
+            self._draw_single_lens_element(element.lens, element.position, label=f"L{i+1}")
+
+    def _draw_single_lens_element(self, lens, offset, label=None):
         """Helper to draw a single lens at an offset"""
         import math
         
@@ -3796,27 +3945,52 @@ class ExportController:
             CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Lens", "Please select a lens first")
             return
         
+        is_system = hasattr(self.current_lens, 'elements')
+        
         # Generate report
         report = f"TECHNICAL REPORT: {self.current_lens.name}\n"
         report += "=" * 80 + "\n\n"
-        report += "LENS SPECIFICATIONS\n"
-        report += "-" * 80 + "\n"
-        report += f"Type: {self.current_lens.lens_type}\n"
-        report += f"Material: {self.current_lens.material}\n"
-        report += f"Diameter: {self.current_lens.diameter} mm\n"
-        report += f"Thickness: {self.current_lens.thickness} mm\n"
-        report += f"Radius 1: {self.current_lens.radius_of_curvature_1} mm\n"
-        report += f"Radius 2: {self.current_lens.radius_of_curvature_2} mm\n"
-        report += f"Refractive Index: {self.current_lens.refractive_index}\n\n"
+        
+        if not is_system:
+            report += "LENS SPECIFICATIONS\n"
+            report += "-" * 80 + "\n"
+            report += f"Type: {self.current_lens.lens_type}\n"
+            report += f"Material: {self.current_lens.material}\n"
+            report += f"Diameter: {self.current_lens.diameter} mm\n"
+            report += f"Thickness: {self.current_lens.thickness} mm\n"
+            report += f"Radius 1: {self.current_lens.radius_of_curvature_1} mm\n"
+            report += f"Radius 2: {self.current_lens.radius_of_curvature_2} mm\n"
+            report += f"Refractive Index: {self.current_lens.refractive_index}\n\n"
+        else:
+            report += "SYSTEM SPECIFICATIONS\n"
+            report += "-" * 80 + "\n"
+            report += f"Elements: {len(self.current_lens.elements)}\n"
+            report += f"Total Length: {self.current_lens.get_total_length():.2f} mm\n\n"
+            
+            report += "ELEMENT DATA\n"
+            report += f"{'#':<3} {'Lens Name':<20} {'Position':<10} {'Thickness':<10} {'Material':<10}\n"
+            report += "-" * 80 + "\n"
+            for i, elem in enumerate(self.current_lens.elements):
+                report += f"{i+1:<3} {elem.lens.name:<20} {elem.position:<10.2f} {elem.lens.thickness:<10.2f} {elem.lens.material:<10}\n"
+            report += "\n"
         
         report += "CALCULATED PROPERTIES\n"
         report += "-" * 80 + "\n"
         try:
-            fl = self.current_lens.calculate_focal_length()
+            if not is_system:
+                fl = self.current_lens.calculate_focal_length()
+            else:
+                fl = self.current_lens.get_system_focal_length()
+                fnum = self.current_lens.get_system_f_number()
+                bfl = getattr(self.current_lens, 'calculate_back_focal_length', lambda: None)()
+                
+                report += f"System F-Number: {fnum:.2f}\n" if fnum else "System F-Number: N/A\n"
+                report += f"Back Focal Length: {bfl:.2f} mm\n" if bfl else "Back Focal Length: N/A\n"
+                
             report += f"Focal Length: {fl:.2f} mm\n" if fl else "Focal Length: N/A\n"
         except (ValueError, ZeroDivisionError, AttributeError) as e:
-            logger.debug(f"Failed to calculate focal length: {e}")
-            report += "Focal Length: Error\n"
+            logger.debug(f"Failed to calculate properties: {e}")
+            report += "Optical Properties: Error\n"
         
         from tkinter import filedialog
         filename = filedialog.asksaveasfilename(
