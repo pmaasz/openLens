@@ -38,6 +38,26 @@ COLORS: Dict[str, str] = {
     'entry_bg': '#2b2b2b',     # Keep for compatibility
 }
 
+# Light mode color scheme
+LIGHT_COLORS: Dict[str, str] = {
+    'bg': '#ffffff',           # Main window background
+    'fg': '#1e1e1e',           # Main text
+    'bg_dark': '#f5f5f5',      # Darker sections
+    'bg_light': '#ffffff',     # Lighter sections
+    'accent': '#0078d4',       # Accent color (blue)
+    'accent_hover': '#106ebe', # Accent hover
+    'border': '#d0d0d0',       # Border color
+    'input_bg': '#ffffff',    # Input field background
+    'button_bg': '#f0f0f0',   # Button background
+    'button_hover': '#e0e0e0', # Button hover
+    'success': '#107c10',      # Success green
+    'warning': '#ffb900',      # Warning orange
+    'error': '#e81123',        # Error red
+    'text_dim': '#666666',     # Dimmed text
+    'selected': '#e5e5e5',     # Selected item
+    'entry_bg': '#ffffff',     # Keep for compatibility
+}
+
 
 class ThemeManager:
     """Manages the application theme and dark mode styling.
@@ -230,4 +250,23 @@ def setup_dark_mode(root: tk.Tk, colors: Optional[Dict[str, str]] = None) -> The
     """
     theme = ThemeManager(root, colors)
     theme.setup_dark_mode()
+    return theme
+
+
+def setup_light_mode(root: tk.Tk, colors: Optional[Dict[str, str]] = None) -> ThemeManager:
+    """Convenience function to set up light mode on a root window.
+    
+    Args:
+        root: The root Tk window.
+        colors: Optional custom color dictionary.
+    
+    Returns:
+        The ThemeManager instance for further customization.
+    
+    Example:
+        >>> root = tk.Tk()
+        >>> theme = setup_light_mode(root)
+    """
+    theme = ThemeManager(root, colors or LIGHT_COLORS)
+    theme.setup_dark_mode()  # Reuse the same styling logic
     return theme
