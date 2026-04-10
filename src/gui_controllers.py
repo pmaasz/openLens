@@ -1896,7 +1896,7 @@ class SimulationController:
         """Plot the ray paths onto the simulation axis.
         
         Args:
-            rays: List of ray objects, each having a 'path' attribute containing Vector3 points.
+            rays: List of ray objects, each having a 'path' attribute containing points.
         """
         if not self.sim_ax or not self.sim_canvas:
             return
@@ -1913,8 +1913,23 @@ class SimulationController:
         # Plot each ray path
         for ray in rays:
             if hasattr(ray, 'path') and ray.path:
-                x_coords = [p.x for p in ray.path]
-                y_coords = [p.y for p in ray.path]
+                # Handle both Ray (2D path list of tuples/lists) and Ray3D (path list of Vector3)
+                if isinstance(ray.path[0], (list, tuple)):
+                    # Ray 2D: [(x0, y0), (x1, y1), ...]
+                    x_coords = [p[0] for p in ray.path]
+                    y_coords = [p[1] for p in ray.path]
+                else:
+                    # Ray 3D: [Vector3, Vector3, ...]
+                    try:
+                        x_coords = [p.x for p in ray.path]
+                        y_coords = [p.y for p in ray.path]
+                    except AttributeError:
+                        # Fallback for any other point objects with index access
+                        try:
+                            x_coords = [p[0] for p in ray.path]
+                            y_coords = [p[1] for p in ray.path]
+                        except:
+                            continue
                 
                 # Use a consistent style for rays (thin red lines)
                 self.sim_ax.plot(x_coords, y_coords, color='red', linewidth=0.8, alpha=0.6)
