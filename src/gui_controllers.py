@@ -2521,13 +2521,16 @@ class PerformanceController:
 
         # Prepare System
         system = None
-        if isinstance(self.current_lens, OpticalSystem):
+        # Check if it's already an OpticalSystem (has elements and air_gaps attributes)
+        if hasattr(self.current_lens, 'elements') and hasattr(self.current_lens, 'air_gaps'):
+            system = self.current_lens
+        elif isinstance(self.current_lens, OpticalSystem):
             system = self.current_lens
         else:
             # Wrap in system
             system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
             system.add_lens(self.current_lens)
-            
+        
         # Create Window
         window = tk.Toplevel()
         window.title(f"Spot Diagram - {system.name}")
@@ -2699,12 +2702,14 @@ class PerformanceController:
 
         # Prepare System
         system = None
-        if isinstance(self.current_lens, OpticalSystem):
+        if hasattr(self.current_lens, 'elements') and hasattr(self.current_lens, 'air_gaps'):
+            system = self.current_lens
+        elif isinstance(self.current_lens, OpticalSystem):
             system = self.current_lens
         else:
             system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
             system.add_lens(self.current_lens)
-            
+        
         # Create Window
         window = tk.Toplevel()
         window.title(f"Ray Fan - {system.name}")
@@ -2820,12 +2825,14 @@ class PerformanceController:
 
         # Prepare System
         system = None
-        if isinstance(self.current_lens, OpticalSystem):
+        if hasattr(self.current_lens, 'elements') and hasattr(self.current_lens, 'air_gaps'):
+            system = self.current_lens
+        elif isinstance(self.current_lens, OpticalSystem):
             system = self.current_lens
         else:
             system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
             system.add_lens(self.current_lens)
-            
+        
         # Create Window
         window = tk.Toplevel()
         window.title(f"Field Curvature & Distortion - {system.name}")
@@ -2924,13 +2931,16 @@ class PerformanceController:
 
         # Prepare System
         system = None
-        if isinstance(self.current_lens, OpticalSystem):
+        # Check if it's already an OpticalSystem (has elements and air_gaps attributes)
+        if hasattr(self.current_lens, 'elements') and hasattr(self.current_lens, 'air_gaps'):
+            system = self.current_lens
+        elif isinstance(self.current_lens, OpticalSystem):
             system = self.current_lens
         else:
             # Wrap in system
             system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
             system.add_lens(self.current_lens)
-            
+        
         # Create Window
         window = tk.Toplevel()
         window.title(f"Ghost Analysis - {system.name}")
@@ -3037,12 +3047,14 @@ class PerformanceController:
 
         # Prepare System
         system = None
-        if isinstance(self.current_lens, OpticalSystem):
+        if hasattr(self.current_lens, 'elements') and hasattr(self.current_lens, 'air_gaps'):
+            system = self.current_lens
+        elif isinstance(self.current_lens, OpticalSystem):
             system = self.current_lens
         else:
             system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
             system.add_lens(self.current_lens)
-            
+        
         # Create Window
         window = tk.Toplevel()
         window.title(f"PSF Analysis - {system.name}")
@@ -3154,12 +3166,14 @@ class PerformanceController:
 
         # Prepare System
         system = None
-        if isinstance(self.current_lens, OpticalSystem):
+        if hasattr(self.current_lens, 'elements') and hasattr(self.current_lens, 'air_gaps'):
+            system = self.current_lens
+        elif isinstance(self.current_lens, OpticalSystem):
             system = self.current_lens
         else:
             system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
             system.add_lens(self.current_lens)
-            
+        
         # Create Window
         window = tk.Toplevel()
         window.title(f"MTF Analysis - {system.name}")
@@ -3273,12 +3287,14 @@ class PerformanceController:
 
         # Prepare System
         system = None
-        if isinstance(self.current_lens, OpticalSystem):
+        if hasattr(self.current_lens, 'elements') and hasattr(self.current_lens, 'air_gaps'):
+            system = self.current_lens
+        elif isinstance(self.current_lens, OpticalSystem):
             system = self.current_lens
         else:
             system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
             system.add_lens(self.current_lens)
-            
+        
         # Create Window
         window = tk.Toplevel()
         window.title(f"Wavefront Map - {system.name}")
@@ -3381,12 +3397,14 @@ class PerformanceController:
 
         # Prepare System
         system = None
-        if isinstance(self.current_lens, OpticalSystem):
+        if hasattr(self.current_lens, 'elements') and hasattr(self.current_lens, 'air_gaps'):
+            system = self.current_lens
+        elif isinstance(self.current_lens, OpticalSystem):
             system = self.current_lens
         else:
             system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
             system.add_lens(self.current_lens)
-            
+        
         # Create Window
         window = tk.Toplevel()
         window.title(f"Image Simulation - {system.name}")
@@ -4082,13 +4100,15 @@ class ExportController:
 
         # Prepare system
         system = None
-        if isinstance(self.current_lens, OpticalSystem):
+        if hasattr(self.current_lens, 'elements') and hasattr(self.current_lens, 'air_gaps'):
+            system = self.current_lens
+        elif isinstance(self.current_lens, OpticalSystem):
             system = self.current_lens
         else:
             # Wrap single lens in OpticalSystem
             system = OpticalSystem(name=getattr(self.current_lens, 'name', 'Lens System'))
             system.add_lens(self.current_lens)
-            
+        
         from tkinter import filedialog
         filename = filedialog.asksaveasfilename(
             defaultextension=".svg",
