@@ -374,19 +374,28 @@ class LensRayTracer:
         
         if intersection is None:
             # Ray misses lens - propagate straight
-            ray.propagate(propagate_distance)
+            if propagate_distance > 0:
+                ray.propagate(propagate_distance)
             ray.terminated = True
             return ray
         
         # Propagate to front surface
         x1, y1 = intersection
+        
+        # Check for non-movement to prevent infinite loops or false termination
+        # but only if we are already AT the surface.
+        dist_to_surface = math.sqrt((x1 - ray.x)**2 + (y1 - ray.y)**2)
+        if dist_to_surface < EPSILON:
+             # Already at surface, push slightly inside if we are supposed to be inside
+             pass
+
         ray.x, ray.y = x1, y1
         ray.path.append((x1, y1))
         
         # Refract at front surface
         normal_angle = self._get_surface_normal_angle(x1, y1, 'front')
         if not ray.refract(REFRACTIVE_INDEX_AIR, self.n, normal_angle):
-            # Total internal reflection at front surface (unusual but possible)
+            # Total internal reflection at front surface
             ray.terminated = True
             return ray
         
@@ -394,7 +403,7 @@ class LensRayTracer:
         intersection = self._intersect_back_surface(ray)
         
         if intersection is None:
-            # Ray doesn't exit lens (shouldn't happen normally)
+            # Ray doesn't exit lens
             ray.terminated = True
             return ray
         
@@ -410,7 +419,8 @@ class LensRayTracer:
             return ray
         
         # Propagate after lens
-        ray.propagate(propagate_distance)
+        if propagate_distance > 0:
+            ray.propagate(propagate_distance)
         
         return ray
     
@@ -588,29 +598,36 @@ class SystemRayTracer:
         """Trace a single ray through all elements"""
         
         for i, element in enumerate(self.system.elements):
-            if ray.terminated:
-                break
+            # Record current state
+            path_len_before = len(ray.path)
             
             # Create a tracer for this specific element at its position
             lens_tracer = LensRayTracer(element.lens, x_offset=element.position)
             
             # Trace through this lens
-            # Propagate distance 0 initially to just get through the glass
             lens_tracer.trace_ray(ray, propagate_distance=0)
             
-            # If ray is not terminated, propagate to the next element or out of system
-            if not ray.terminated:
-                if i < len(self.system.elements) - 1:
-                    next_pos = self.system.elements[i+1].position
-                    # Ensure ray is moving forward
-                    if next_pos > ray.x:
-                        # Propagate slightly past the current point to avoid self-intersection
-                        # then the next LensRayTracer will find the next intersection.
-                        # We MUST NOT propagate to a fixed distance like next_pos - 1.0.
-                        ray.propagate(EPSILON)
-                else:
-                    # Last element, propagate into the distance
-                    ray.propagate(100.0)
+            # Check if we hit the lens
+            hit_lens = len(ray.path) > path_len_before
+            
+            if not hit_lens:
+                # We missed this lens. Reset termination and continue to next lens.
+                ray.terminated = False
+                # If we are not at the end, propagate a bit? 
+                # Actually, just let the next lens find an intersection.
+                continue
+            
+            # If we HIT the lens but it terminated (TIR), we STOP.
+            if ray.terminated:
+                break
+            
+            # If we HIT the lens and it didn't terminate, we go to next element.
+            if i < len(self.system.elements) - 1:
+                # Move ray slightly into air to avoid re-intersecting the exit surface
+                ray.propagate(EPSILON)
+            else:
+                # Last element, propagate into distance
+                ray.propagate(100.0)
 
 class Ray3D:
     """
