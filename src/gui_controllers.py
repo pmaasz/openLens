@@ -3528,12 +3528,13 @@ class PerformanceController:
                     calc = AberrationsCalculator(self.current_lens)
                     
                     # Calculate aberrations
-                    spherical = calc.spherical_aberration(entrance_pupil_radius=entrance_pupil/2)
-                    coma = calc.coma(field_angle=5.0)  # 5 degree field
-                    chromatic = calc.chromatic_aberration()
-                    distortion = calc.distortion(field_height=sensor_size/2)
-                    field_curv = calc.field_curvature()
-                    astigmatism = calc.astigmatism(field_angle=5.0)
+                    results = calc.calculate_all_aberrations(field_angle=5.0)
+                    spherical = results.get('spherical_aberration', 0.0)
+                    coma = results.get('coma', 0.0)
+                    chromatic = results.get('chromatic_aberration', 0.0)
+                    distortion = results.get('distortion', 0.0)
+                    field_curv = results.get('field_curvature', 0.0)
+                    astigmatism = results.get('astigmatism', 0.0)
                     
                     # Quality analysis
                     quality = analyze_lens_quality(self.current_lens)

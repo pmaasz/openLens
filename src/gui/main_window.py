@@ -92,9 +92,11 @@ try:
         PerformanceController,
         ExportController
     )
-    # Import OptimizationController from its dedicated module (sibling)
+        # Import OptimizationController from its dedicated module (sibling)
     from .optimization_controller import OptimizationController
+    from .tolerancing_controller import TolerancingController
     CONTROLLERS_AVAILABLE = True
+
 except ImportError:
     try:
         from gui_controllers import (
@@ -107,9 +109,11 @@ except ImportError:
         # Try importing from local gui/optimization_controller.py
         try:
             from gui.optimization_controller import OptimizationController
+            from gui.tolerancing_controller import TolerancingController
         except ImportError:
              # If running from src/ directly or finding module locally
             from optimization_controller import OptimizationController
+            from tolerancing_controller import TolerancingController
 
         CONTROLLERS_AVAILABLE = True
     except ImportError:
@@ -162,6 +166,7 @@ class LensEditorWindow:
         self.performance_controller: Optional['PerformanceController'] = None
         self.optimization_controller: Optional['OptimizationController'] = None
         self.export_controller: Optional['ExportController'] = None
+        self.tolerancing_controller: Optional['TolerancingController'] = None
         
         # Configure dark mode
         self.colors = COLORS
@@ -211,6 +216,10 @@ class LensEditorWindow:
         # Create Optimization tab (disabled until lens selected)
         self.optimization_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.optimization_tab, text="Optimization", state='disabled')
+
+        # Create Tolerancing tab (disabled until lens selected)
+        self.tolerancing_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.tolerancing_tab, text="Tolerancing", state='disabled')
         
         # Create Export tab (disabled until lens selected)
         self.export_tab = ttk.Frame(self.notebook)
@@ -225,6 +234,7 @@ class LensEditorWindow:
         self.setup_simulation_tab()
         self.setup_performance_tab()
         self.setup_optimization_tab()
+        self.setup_tolerancing_tab()
         self.setup_export_tab()
         
         # Handle initial action from startup window
@@ -284,7 +294,8 @@ class LensEditorWindow:
             self.notebook.tab(1, state='normal')   # Simulation
             self.notebook.tab(2, state='disabled') # Performance
             self.notebook.tab(3, state='normal')   # Optimization
-            self.notebook.tab(4, state='normal')   # Export (Enabled for assemblies)
+            self.notebook.tab(4, state='normal')   # Tolerancing
+            self.notebook.tab(5, state='normal')   # Export (Enabled for assemblies)
             
             # Switch to Editor tab automatically for assembly configuration
             self.notebook.select(0)
@@ -298,6 +309,9 @@ class LensEditorWindow:
                 
             if self.optimization_controller:
                 self.optimization_controller.load_lens(lens)
+
+            if self.tolerancing_controller:
+                self.tolerancing_controller.load_lens(lens)
                 
             if self.export_controller:
                 self.export_controller.load_lens(lens)
@@ -311,6 +325,7 @@ class LensEditorWindow:
             self.notebook.tab(2, state='normal')
             self.notebook.tab(3, state='normal')
             self.notebook.tab(4, state='normal')
+            self.notebook.tab(5, state='normal')
             
             # Re-enable 3D tab for single lenses
             self.viz_notebook.tab(1, state='normal')
@@ -331,6 +346,9 @@ class LensEditorWindow:
             if self.optimization_controller:
                 self.optimization_controller.load_lens(lens)
             
+            if self.tolerancing_controller:
+                self.tolerancing_controller.load_lens(lens)
+            
             if self.export_controller:
                 self.export_controller.load_lens(lens)
             
@@ -349,6 +367,7 @@ class LensEditorWindow:
         self.notebook.tab(2, state='normal')
         self.notebook.tab(3, state='normal')
         self.notebook.tab(4, state='normal')
+        self.notebook.tab(5, state='normal')
         
         # Re-enable 3D tab for single lenses
         self.viz_notebook.tab(1, state='normal')
@@ -387,6 +406,7 @@ class LensEditorWindow:
         self.notebook.tab(2, state='normal')
         self.notebook.tab(3, state='normal')
         self.notebook.tab(4, state='normal')
+        self.notebook.tab(5, state='normal')
         
         # Switch to editor tab
         self.notebook.select(0)
@@ -400,6 +420,8 @@ class LensEditorWindow:
             self.simulation_controller.load_lens(system)
         if self.optimization_controller:
             self.optimization_controller.load_lens(system)
+        if self.tolerancing_controller:
+            self.tolerancing_controller.load_lens(system)
         
         # Update visualization to show the system (force 2D view for assemblies)
         self.viz_notebook.select(0)  # Switch to 2D tab
@@ -428,6 +450,7 @@ class LensEditorWindow:
             self.notebook.tab(2, state='disabled')
             self.notebook.tab(3, state='disabled')
             self.notebook.tab(4, state='disabled')
+            self.notebook.tab(5, state='disabled')
         
         self.update_status(f"Lens '{lens.name}' deleted")
     
@@ -491,7 +514,12 @@ class LensEditorWindow:
         if self.optimization_controller:
             self.optimization_controller.load_lens(lens)
 
+        # Load lens into tolerancing tab
+        if self.tolerancing_controller:
+            self.tolerancing_controller.load_lens(lens)
+    
     def setup_editor_tab(self) -> None:
+
         """Setup the Editor tab with lens properties using controller"""
         if not CONTROLLERS_AVAILABLE:
             ttk.Label(self.editor_tab, text="Error: GUI Controllers not available").pack(padx=20, pady=20)
@@ -722,6 +750,24 @@ class LensEditorWindow:
         except Exception as e:
             logger.error("OptimizationController failed to load: %s", e)
             ttk.Label(self.optimization_tab, text=f"Error loading optimization tab: {e}").pack(padx=20, pady=20)
+
+    def setup_tolerancing_tab(self) -> None:
+        """Setup the Tolerancing tab"""
+        try:
+            if CONTROLLERS_AVAILABLE:
+                self.tolerancing_controller = TolerancingController(
+                    colors=self.colors
+                )
+                self.tolerancing_controller.parent_window = self
+                self.tolerancing_controller.setup_ui(self.tolerancing_tab)
+                
+                logger.debug("TolerancingController integrated successfully")
+            else:
+                 ttk.Label(self.tolerancing_tab, text="Tolerancing Controller not available").pack(padx=20, pady=20)
+            
+        except Exception as e:
+            logger.error("TolerancingController failed to load: %s", e)
+            ttk.Label(self.tolerancing_tab, text=f"Error loading tolerancing tab: {e}").pack(padx=20, pady=20)
 
     def setup_export_tab(self) -> None:
         """Setup the Export Enhancements tab"""
