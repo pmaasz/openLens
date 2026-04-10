@@ -3638,9 +3638,15 @@ class PerformanceController:
                         result += f"  Back Focal Length: {bfl:.3f} mm\n"
                     else:
                         result += "  Back Focal Length: Undefined\n"
-                        
-                    f_number = abs(f_system) / entrance_pupil if entrance_pupil > 0 else 0
-                    result += f"  F-Number (approx): {f_number:.2f}\n"
+                    
+                    # Use get_f_number if available, otherwise calculate manually
+                    f_number = self.current_lens.get_f_number()
+                    if f_number is not None:
+                        result += f"  F-Number: {f_number:.2f}\n"
+                    else:
+                        f_number_calc = abs(f_system) / entrance_pupil if entrance_pupil > 0 else 0
+                        result += f"  F-Number (approx): {f_number_calc:.2f}\n"
+                    
                     result += f"  Optical Power: {1000/f_system:.2f} D\n"
                 else:
                     result += "  Effective Focal Length: Undefined (Afocal)\n"

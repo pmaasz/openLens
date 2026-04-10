@@ -381,6 +381,38 @@ class OpticalSystem:
                               C_p*A + D_p*C, C_p*B + D_p*D)
                 
         return A, B, C, D
+    
+    def calculate_back_focal_length(self) -> Optional[float]:
+        """Calculate Back Focal Length (BFL) of the system."""
+        matrix = self._calculate_system_matrix()
+        if not matrix:
+            return None
+        A, B, C, D = matrix
+        if abs(C) < 1e-10:
+            return None
+        return -A / C
+    
+    def get_numerical_aperture(self) -> float:
+        """Calculate system numerical aperture (based on first lens)"""
+        if not self.elements:
+            return 0.0
+        first_lens = self.elements[0].lens
+        f = first_lens.calculate_focal_length()
+        if f is None or f == 0:
+            return 0.0
+        return first_lens.diameter / (2 * abs(f))
+    
+    def get_f_number(self) -> Optional[float]:
+        """Calculate system f-number"""
+        f = self.get_system_focal_length()
+        if f is None:
+            return None
+        if not self.elements:
+            return None
+        entrance_pupil = self.elements[0].lens.diameter
+        if entrance_pupil <= 0:
+            return None
+        return abs(f) / entrance_pupil
 
 class AchromaticDoubletDesigner:
     """Designer for achromatic doublets"""
@@ -410,6 +442,7 @@ def create_triplet(focal_length: float = 100, diameter: float = 50) -> OpticalSy
     sys.add_lens(l2, air_gap_before=5.0)
     sys.add_lens(l3, air_gap_before=5.0)
     return sys
+
     def calculate_back_focal_length(self) -> Optional[float]:
         """
         Calculate Back Focal Length (BFL) of the system.
@@ -446,88 +479,38 @@ def create_triplet(focal_length: float = 100, diameter: float = 50) -> OpticalSy
             lens = element.lens
             n_lens = lens.refractive_index
             
-            # --- Surface 1 ---
+            # Refraction at first surface (air to lens)
             R1 = lens.radius_of_curvature_1
-            # Power of surface 1: (n' - n) / R
-            # If R is infinite (0 curvature), power is 0
-            if abs(R1) < 1e-9: # Avoid division by zero, treat as very strong or handle specifically?
-                 # Actually usually R=inf means planar. But here R is radius. 
-                 # If R is very small, power is huge. 
-                 # If input R is 0? Lens data usually stores infinite radius as... high number? 
-                 # Or maybe 0 means planar in some conventions? 
-                 # In this project, let's assume R!=0. Planar is typically R=inf.
-                 # But float('inf') might be used.
-                 # Let's check Lens validation. Lensmaker checks abs(R)<EPSILON -> None.
-                 # So we assume R is not 0.
-                 pass
+            if R1 != 0:
+                # Surface power: (n2 - n1) / R
+                P1 = (n_lens - n_current) / R1
+                # Refraction matrix: [1 0; P 1]
+                A_s, B_s, C_s, D_s = 1.0, 0.0, P1, 1.0
+                A, B, C, D = (A_s*A + B_s*C, A_s*B + B_s*D, 
+                            C_s*A + D_s*C, C_s*B + D_s*D)
             
-            # Refraction at surface 1 (n_current -> n_lens)
-            # u' = (n/n')u - y(n'-n)/(n'R)
-            # Matrix: [[1, 0], [-(n'-n)/(n'R), n/n']]
+            # Propagation through lens thickness
+            d = lens.thickness / n_lens  # Effective thickness
+            A_p, B_p, C_p, D_p = 1.0, d, 0.0, 1.0
+            A, B, C, D = (A_p*A + B_p*C, A_p*B + B_p*D, 
+                          C_p*A + D_p*C, C_p*B + D_p*D)
             
-            power1 = (n_lens - n_current) / R1 if abs(R1) > 1e-9 else 0.0
-            
-            m1_A = 1.0
-            m1_B = 0.0
-            m1_C = -power1 / n_lens
-            m1_D = n_current / n_lens
-            
-            # Multiply: M_new = M_surf1 * M_old
-            # [m1_A m1_B] [A B]   [m1_A*A + m1_B*C   m1_A*B + m1_B*D]
-            # [m1_C m1_D] [C D] = [m1_C*A + m1_D*C   m1_C*B + m1_D*D]
-            
-            new_A = m1_A * A + m1_B * C
-            new_B = m1_A * B + m1_B * D
-            new_C = m1_C * A + m1_D * C
-            new_D = m1_C * B + m1_D * D
-            
-            A, B, C, D = new_A, new_B, new_C, new_D
-            
-            # --- Thickness ---
-            t = lens.thickness
-            # Translation in medium n_lens
-            # Matrix: [[1, t], [0, 1]]
-            
-            # M_new = M_trans * M_old
-            # [1 t] [A B]   [A + t*C   B + t*D]
-            # [0 1] [C D]   [C         D      ]
-            
-            A = A + t * C
-            B = B + t * D
-            # C, D unchanged
-            
-            # --- Surface 2 ---
+            # Refraction at second surface (lens to air)
             R2 = lens.radius_of_curvature_2
-            # Refraction at surface 2 (n_lens -> air (or next gap))
-            # Usually we assume air between lenses.
-            n_next = 1.0 
+            if R2 != 0:
+                P2 = (1.0 - n_lens) / R2
+                A_s, B_s, C_s, D_s = 1.0, 0.0, P2, 1.0
+                A, B, C, D = (A_s*A + B_s*C, A_s*B + B_s*D, 
+                            C_s*A + D_s*C, C_s*B + D_s*D)
             
-            power2 = (n_next - n_lens) / R2 if abs(R2) > 1e-9 else 0.0
-            
-            m2_A = 1.0
-            m2_B = 0.0
-            m2_C = -power2 / n_next
-            m2_D = n_lens / n_next
-            
-            new_A = m2_A * A + m2_B * C
-            new_B = m2_A * B + m2_B * D
-            new_C = m2_C * A + m2_D * C
-            new_D = m2_C * B + m2_D * D
-            
-            A, B, C, D = new_A, new_B, new_C, new_D
-            
-            # Current index is now air
             n_current = 1.0
             
-            # --- Air Gap to next lens ---
+            # Air gap propagation
             if i < len(self.air_gaps):
-                gap = self.air_gaps[i].thickness
-                # Translation in air
-                # Matrix: [[1, gap], [0, 1]]
-                
-                A = A + gap * C
-                B = B + gap * D
-                # C, D unchanged
+                d = self.air_gaps[i].thickness
+                A_p, B_p, C_p, D_p = 1.0, d, 0.0, 1.0
+                A, B, C, D = (A_p*A + B_p*C, A_p*B + B_p*D, 
+                              C_p*A + D_p*C, C_p*B + D_p*D)
         
         return A, B, C, D
     
