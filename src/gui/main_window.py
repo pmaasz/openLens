@@ -48,7 +48,7 @@ except ImportError:
     PADDING_XLARGE = 20
 
 # Import theme and storage
-from .theme import ThemeManager, COLORS, setup_dark_mode
+from .theme import ThemeManager, COLORS, LIGHT_COLORS, setup_dark_mode, setup_light_mode
 from .storage import LensStorage
 from .taskbar import TaskbarMenu
 
@@ -329,13 +329,16 @@ class LensEditorWindow:
         edit_menu.add_command(label="Undo", accelerator="Ctrl+Z")
         edit_menu.add_command(label="Redo", accelerator="Ctrl+Y")
         
-        # View menu
-        view_menu = tk.Menu(menubar, tearoff=0, bg=self.colors.get('bg', '#252526'),
-                           fg=self.colors.get('fg', '#e0e0e0'))
-        menubar.add_cascade(label="View", menu=view_menu)
-        view_menu.add_command(label="Editor Tab", command=lambda: self.notebook.select(0))
-        view_menu.add_command(label="Simulation Tab", command=lambda: self.notebook.select(1))
-        view_menu.add_command(label="Performance Tab", command=lambda: self.notebook.select(2))
+        # Preferences menu
+        prefs_menu = tk.Menu(menubar, tearoff=0, bg=self.colors.get('bg', '#252526'),
+                            fg=self.colors.get('fg', '#e0e0e0'))
+        menubar.add_cascade(label="Preferences", menu=prefs_menu)
+        
+        # Theme toggle - preserve existing variable if it exists
+        if not hasattr(self, '_dark_mode_var'):
+            self._dark_mode_var = tk.BooleanVar(value=True)
+        prefs_menu.add_checkbutton(label="Dark Mode", variable=self._dark_mode_var,
+                                   command=self._toggle_theme)
         
         # Lens menu - shows all available lenses and assemblies
         self._lens_menu = tk.Menu(menubar, tearoff=0, bg=self.colors.get('bg', '#252526'),
@@ -353,6 +356,22 @@ class LensEditorWindow:
         """Handle menu save action."""
         self.save_lenses(show_status=True)
         self.update_status("Saved")
+
+    def _toggle_theme(self) -> None:
+        """Toggle between dark and light mode."""
+        if self._dark_mode_var.get():
+            # Switch to dark mode
+            self.colors = COLORS.copy()
+            self.theme_manager = setup_dark_mode(self.root, self.colors)
+            self.update_status("Dark mode enabled")
+        else:
+            # Switch to light mode
+            self.colors = LIGHT_COLORS.copy()
+            self.theme_manager = setup_light_mode(self.root, self.colors)
+            self.update_status("Light mode enabled")
+        
+        # Recreate menu bar with new colors
+        self._create_menu_bar()
 
     def _menu_export_json(self) -> None:
         """Handle Export JSON from menu."""
