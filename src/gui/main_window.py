@@ -284,7 +284,7 @@ class LensEditorWindow:
             self.notebook.tab(1, state='normal')   # Simulation
             self.notebook.tab(2, state='disabled') # Performance
             self.notebook.tab(3, state='normal')   # Optimization
-            self.notebook.tab(4, state='disabled') # Export
+            self.notebook.tab(4, state='normal')   # Export (Enabled for assemblies)
             
             # Switch to Editor tab automatically for assembly configuration
             self.notebook.select(0)
@@ -298,6 +298,9 @@ class LensEditorWindow:
                 
             if self.optimization_controller:
                 self.optimization_controller.load_lens(lens)
+                
+            if self.export_controller:
+                self.export_controller.load_lens(lens)
                 
             self.update_status(f"Optical System selected ({len(lens.elements)} elements) - Use Editor to build system")
             

@@ -4,7 +4,6 @@ OpenLens GUI Storage Module
 Provides lens data persistence functionality for the GUI.
 """
 
-import json
 import logging
 import os
 from pathlib import Path

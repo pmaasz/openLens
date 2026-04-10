@@ -3652,9 +3652,9 @@ class ExportController:
                 self._update_status(f"✗ Export failed: {e}")
     
     def export_stl(self):
-        """Export lens to STL file"""
+        """Export current item (lens or assembly) to STL file"""
         if self.current_lens is None:
-            CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Lens", "Please select a lens first")
+            CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Item Selected", "Please select a lens or assembly first")
             return
         
         try:
@@ -3665,24 +3665,28 @@ class ExportController:
             return
         
         from tkinter import filedialog
+        title = "Export Lens to STL"
+        if hasattr(self.current_lens, 'elements'):
+            title = "Export Assembly to STL"
+            
         filename = filedialog.asksaveasfilename(
             defaultextension=".stl",
             filetypes=[("STL files", "*.stl"), ("All files", "*.*")],
-            title="Export Lens to STL"
+            title=title
         )
         
         if filename:
             try:
                 export_lens_stl(self.current_lens, filename)
-                self._update_status(f"✓ Successfully exported STL to: {filename}")
+                self._update_status(f"✓ Successfully exported to: {filename}")
             except Exception as e:
                 CopyableMessageBox.showerror(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "Export Error", f"Failed to export: {e}")
                 self._update_status(f"✗ STL export failed: {e}")
 
     def export_step(self):
-        """Export lens to STEP file"""
+        """Export current item (lens or assembly) to STEP file"""
         if self.current_lens is None:
-            CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Lens", "Please select a lens first")
+            CopyableMessageBox.showwarning(self.parent_window.root if hasattr(self, "parent_window") and self.parent_window else None, "No Item Selected", "Please select a lens or assembly first")
             return
         
         try:
@@ -3706,10 +3710,14 @@ class ExportController:
             return
         
         from tkinter import filedialog
+        title = "Export Lens to STEP"
+        if hasattr(self.current_lens, 'elements'):
+            title = "Export Assembly to STEP"
+            
         filename = filedialog.asksaveasfilename(
             defaultextension=".step",
             filetypes=[("STEP files", "*.step"), ("All files", "*.*")],
-            title="Export Lens to STEP"
+            title=title
         )
         
         if filename:
