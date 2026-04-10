@@ -915,8 +915,23 @@ class LensEditorController:
         right_frame = ttk.LabelFrame(paned, text="System Builder", padding=10)
         paned.add(right_frame, weight=1)
         
-        current_listbox = tk.Listbox(right_frame, height=20)
+        current_listbox = tk.Listbox(right_frame, height=20, selectmode=tk.SINGLE)
         current_listbox.pack(fill=tk.BOTH, expand=True)
+        
+        # Add right-click context menu for removing lenses
+        def on_right_click(event):
+            # Ensure the listbox is focused and selection is captured
+            current_listbox.focus_set()
+            current_listbox.update()
+            selection = current_listbox.curselection()
+            
+            menu = tk.Menu(current_listbox, tearoff=0)
+            menu.add_command(label="Remove Lens", command=self._do_remove_lens)
+            menu.add_command(label="Move Up", command=self._do_move_up)
+            menu.add_command(label="Move Down", command=self._do_move_down)
+            menu.post(event.x_root, event.y_root)
+        
+        current_listbox.bind('<Button-3>', on_right_click)
         
         def refresh_current_list():
             current_listbox.delete(0, tk.END)
@@ -956,25 +971,46 @@ class LensEditorController:
                     self.on_lens_updated_callback(system)
         
         def remove_lens_from_assembly():
-            selection = current_listbox.curselection()
-            if selection:
-                idx = selection[0]
-                if system.remove_lens(idx):
-                    refresh_current_list()
-                    
-                    # Refresh simulation if available
-                    if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
-                        try:
-                            self.parent_window.simulation_controller.run_simulation()
-                        except Exception as e:
-                            logger.error(f"Failed to refresh simulation after removal: {e}")
-                    
-                    # Trigger visual update in main window if needed
-                    if hasattr(self, 'parent_window') and hasattr(self.parent_window, 'update_visualization'):
-                        self.parent_window.update_visualization()
+            try:
+                selection = current_listbox.curselection()
+                if not selection:
+                    # Try to restore selection - sometimes it gets lost when button is clicked
+                    if current_listbox.size() > 0:
+                        current_listbox.selection_set(0)
+                        selection = current_listbox.curselection()
                         
+                if not selection:
+                    logger.info("No lens selected for removal")
+                    if self.parent_window and hasattr(self.parent_window, 'update_status'):
+                        self.parent_window.update_status("No lens selected")
+                    return
+                idx = selection[0]
+                logger.info(f"Removing lens at index {idx}")
+                system.remove_lens(idx)
+                refresh_current_list()
+                current_listbox.update()
+                
+                # Refresh simulation if available
+                if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
+                    try:
+                        self.parent_window.simulation_controller.run_simulation()
+                    except Exception as e:
+                        logger.error(f"Failed to refresh simulation after removal: {e}")
+                
+                # Trigger visual update in main window if needed
+                if hasattr(self, 'parent_window') and hasattr(self.parent_window, 'update_visualization'):
+                    self.parent_window.update_visualization()
+                    
                 if self.on_lens_updated_callback:
                     self.on_lens_updated_callback(system)
+            except Exception as e:
+                logger.error(f"Error removing lens from assembly: {e}", exc_info=True)
+        
+        # Store the function reference as instance variable to prevent garbage collection
+        self._remove_lens_from_assembly = remove_lens_from_assembly
+        
+        # Bind keyboard shortcut for Remove
+        current_listbox.bind('<Delete>', lambda e: self._remove_lens_from_assembly())
         
         def move_up():
             selection = current_listbox.curselection()
@@ -1008,7 +1044,7 @@ class LensEditorController:
                         
                     if self.on_lens_updated_callback:
                         self.on_lens_updated_callback(system)
-
+        
         def set_gap():
             selection = current_listbox.curselection()
             if selection and selection[0] > 0:
@@ -1030,41 +1066,37 @@ class LensEditorController:
                     pass
 
         def save_assembly():
-            # Update name from entry if available
             new_name = name_var.get()
             if new_name:
                 system.name = new_name
             
-            # Use the callback to update and save
             if self.on_lens_updated_callback:
                 self.on_lens_updated_callback(system)
             
-            # Re-read title label if exists or just refresh the UI
             try:
                 title_label.config(text=f"Assembly Editor: {system.name}")
             except:
                 pass
             
-            # Refresh the listbox
             refresh_current_list()
             
-            # Show success message
             if self.parent_window:
                 self.parent_window.update_status(f"Assembly '{system.name}' saved successfully")
-
-        # Air Gap control
-        gap_frame = ttk.Frame(btn_frame)
-        gap_frame.pack(side=tk.RIGHT, padx=5)
-        ttk.Label(gap_frame, text="Gap:").pack(side=tk.LEFT)
-        gap_var = tk.StringVar(value="5.0")
-        ttk.Entry(gap_frame, textvariable=gap_var, width=5).pack(side=tk.LEFT, padx=2)
-        ttk.Button(gap_frame, text="Set", command=set_gap, width=5).pack(side=tk.LEFT)
+        
+        # Store the system reference for use in instance method
+        self._current_assembly_system = system
+        self._current_assembly_refresh = refresh_current_list
+        self._current_assembly_listbox = current_listbox
+        
+        # Store all functions as instance variables
+        self._move_up_fn = move_up
+        self._move_down_fn = move_down
         
         ttk.Button(btn_frame, text="Add ->", command=add_lens_to_assembly).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="<- Remove", command=remove_lens_from_assembly).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="<- Remove", command=self._do_remove_lens).pack(side=tk.LEFT, padx=5)
         ttk.Separator(btn_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
-        ttk.Button(btn_frame, text="Move Up", command=move_up).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Move Down", command=move_down).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Move Up", command=self._do_move_up).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Move Down", command=self._do_move_down).pack(side=tk.LEFT, padx=5)
         
         # Save assembly control
         save_frame = ttk.Frame(main_container)
@@ -1089,6 +1121,114 @@ class LensEditorController:
         # This would require storing references to the frames during setup_ui
         # For now, this is a placeholder - the user would need to reload the lens
         pass
+    
+    def _do_remove_lens(self):
+        """Instance method to handle Remove button click from assembly editor"""
+        if not hasattr(self, '_current_assembly_system'):
+            return
+            
+        system = self._current_assembly_system
+        
+        if not hasattr(self, '_current_assembly_listbox'):
+            return
+            
+        current_lb = self._current_assembly_listbox
+        selection = current_lb.curselection()
+        
+        if not selection:
+            current_lb.selection_set(0)
+            selection = current_lb.curselection()
+            
+        if not selection:
+            if self.parent_window and hasattr(self.parent_window, 'update_status'):
+                self.parent_window.update_status("No lens selected")
+            return
+            
+        idx = selection[0]
+        system.remove_lens(idx)
+        
+        if hasattr(self, '_current_assembly_refresh'):
+            self._current_assembly_refresh()
+        
+        if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
+            try:
+                self.parent_window.simulation_controller.run_simulation()
+            except Exception as e:
+                logger.error(f"Failed to refresh simulation: {e}")
+        
+        if hasattr(self, 'parent_window') and hasattr(self.parent_window, 'update_visualization'):
+            self.parent_window.update_visualization()
+            
+        if self.on_lens_updated_callback:
+            self.on_lens_updated_callback(system)
+    
+    def _do_move_up(self):
+        """Instance method to handle Move Up button click from assembly editor"""
+        if not hasattr(self, '_current_assembly_system'):
+            return
+            
+        system = self._current_assembly_system
+        
+        if not hasattr(self, '_current_assembly_listbox'):
+            return
+            
+        current_lb = self._current_assembly_listbox
+        selection = current_lb.curselection()
+        
+        if not selection or selection[0] == 0:
+            return
+            
+        idx = selection[0]
+        system.elements[idx], system.elements[idx-1] = system.elements[idx-1], system.elements[idx]
+        system._update_positions()
+        
+        if hasattr(self, '_current_assembly_refresh'):
+            self._current_assembly_refresh()
+            
+        current_lb.selection_set(idx-1)
+        
+        if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
+            try:
+                self.parent_window.simulation_controller.run_simulation()
+            except Exception as e:
+                logger.error(f"Failed to refresh simulation: {e}")
+        
+        if self.on_lens_updated_callback:
+            self.on_lens_updated_callback(system)
+    
+    def _do_move_down(self):
+        """Instance method to handle Move Down button click from assembly editor"""
+        if not hasattr(self, '_current_assembly_system'):
+            return
+            
+        system = self._current_assembly_system
+        
+        if not hasattr(self, '_current_assembly_listbox'):
+            return
+            
+        current_lb = self._current_assembly_listbox
+        selection = current_lb.curselection()
+        
+        if not selection or selection[0] >= len(system.elements) - 1:
+            return
+            
+        idx = selection[0]
+        system.elements[idx], system.elements[idx+1] = system.elements[idx+1], system.elements[idx]
+        system._update_positions()
+        
+        if hasattr(self, '_current_assembly_refresh'):
+            self._current_assembly_refresh()
+            
+        current_lb.selection_set(idx+1)
+        
+        if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
+            try:
+                self.parent_window.simulation_controller.run_simulation()
+            except Exception as e:
+                logger.error(f"Failed to refresh simulation: {e}")
+        
+        if self.on_lens_updated_callback:
+            self.on_lens_updated_callback(system)
     
     def on_field_changed(self, event=None):
         """Handle input field changes by updating results and scheduling autosave"""
