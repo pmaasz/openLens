@@ -173,6 +173,16 @@ class LensEditorWindow:
         self.colors = COLORS
         self.theme_manager = setup_dark_mode(self.root, self.colors)
         
+        # Initialize export controller (for menu-based exports)
+        if CONTROLLERS_AVAILABLE:
+            try:
+                if TYPE_CHECKING:
+                    assert ExportController is not None
+                self.export_controller = ExportController(self, self.colors)
+            except Exception as e:
+                logger.warning("Failed to initialize ExportController: %s", e)
+                self.export_controller = None
+        
         self.setup_ui()
         
         # Bind keyboard shortcuts
@@ -227,10 +237,6 @@ class LensEditorWindow:
         self.tolerancing_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.tolerancing_tab, text="Tolerancing", state='disabled')
         
-        # Create Export tab (disabled until lens selected)
-        self.export_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.export_tab, text="Export", state='disabled')
-        
         self.editor_tab.columnconfigure(1, weight=1)
         self.editor_tab.columnconfigure(2, weight=1)
         self.editor_tab.rowconfigure(0, weight=1)
@@ -241,7 +247,6 @@ class LensEditorWindow:
         self.setup_performance_tab()
         self.setup_optimization_tab()
         self.setup_tolerancing_tab()
-        self.setup_export_tab()
 
         # Setup taskbar-style menu for quick lens switching
         self._setup_taskbar_menu()
@@ -301,6 +306,18 @@ class LensEditorWindow:
         file_menu.add_command(label="New Lens", command=self.on_create_new_lens)
         file_menu.add_command(label="New Assembly", command=self.on_create_new_system)
         file_menu.add_separator()
+        
+        # Export submenu
+        export_menu = tk.Menu(file_menu, tearoff=0, bg=self.colors.get('bg', '#252526'),
+                              fg=self.colors.get('fg', '#e0e0e0'))
+        file_menu.add_cascade(label="Export", menu=export_menu)
+        export_menu.add_command(label="Export JSON", command=self._menu_export_json)
+        export_menu.add_command(label="Export STL", command=self._menu_export_stl)
+        export_menu.add_command(label="Export STEP", command=self._menu_export_step)
+        export_menu.add_command(label="Export ISO 10110 Drawing", command=self._menu_export_iso)
+        export_menu.add_command(label="Generate Technical Report", command=self._menu_export_report)
+        
+        file_menu.add_separator()
         file_menu.add_command(label="Save", accelerator="Ctrl+S", command=self._menu_save)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.root.quit)
@@ -336,6 +353,46 @@ class LensEditorWindow:
         """Handle menu save action."""
         self.save_lenses(show_status=True)
         self.update_status("Saved")
+
+    def _menu_export_json(self) -> None:
+        """Handle Export JSON from menu."""
+        if self.export_controller and self.current_lens:
+            self.export_controller.load_lens(self.current_lens)
+            self.export_controller.export_json()
+        else:
+            self.update_status("No lens selected for export")
+
+    def _menu_export_stl(self) -> None:
+        """Handle Export STL from menu."""
+        if self.export_controller and self.current_lens:
+            self.export_controller.load_lens(self.current_lens)
+            self.export_controller.export_stl()
+        else:
+            self.update_status("No lens selected for export")
+
+    def _menu_export_step(self) -> None:
+        """Handle Export STEP from menu."""
+        if self.export_controller and self.current_lens:
+            self.export_controller.load_lens(self.current_lens)
+            self.export_controller.export_step()
+        else:
+            self.update_status("No lens selected for export")
+
+    def _menu_export_iso(self) -> None:
+        """Handle Export ISO 10110 from menu."""
+        if self.export_controller and self.current_lens:
+            self.export_controller.load_lens(self.current_lens)
+            self.export_controller.export_iso10110()
+        else:
+            self.update_status("No lens selected for export")
+
+    def _menu_export_report(self) -> None:
+        """Handle Generate Report from menu."""
+        if self.export_controller and self.current_lens:
+            self.export_controller.load_lens(self.current_lens)
+            self.export_controller.export_report()
+        else:
+            self.update_status("No lens selected for export")
 
     def _update_lens_menu(self) -> None:
         """Update the Lens menu with current lenses and assemblies."""
@@ -424,7 +481,6 @@ class LensEditorWindow:
             self.notebook.tab(2, state='normal')  # Performance (now enabled for assemblies)
             self.notebook.tab(3, state='normal')  # Optimization
             self.notebook.tab(4, state='normal')  # Tolerancing
-            self.notebook.tab(5, state='normal')  # Export (Enabled for assemblies)
             
             # Switch to Editor tab automatically for assembly configuration
             self.notebook.select(0)
@@ -457,7 +513,6 @@ class LensEditorWindow:
             self.notebook.tab(2, state='normal')
             self.notebook.tab(3, state='normal')
             self.notebook.tab(4, state='normal')
-            self.notebook.tab(5, state='normal')
             
             # Re-enable 3D tab for single lenses
             self.viz_notebook.tab(1, state='normal')
@@ -499,7 +554,6 @@ class LensEditorWindow:
         self.notebook.tab(2, state='normal')
         self.notebook.tab(3, state='normal')
         self.notebook.tab(4, state='normal')
-        self.notebook.tab(5, state='normal')
         
         # Re-enable 3D tab for single lenses
         self.viz_notebook.tab(1, state='normal')
@@ -582,7 +636,6 @@ class LensEditorWindow:
             self.notebook.tab(2, state='disabled')
             self.notebook.tab(3, state='disabled')
             self.notebook.tab(4, state='disabled')
-            self.notebook.tab(5, state='disabled')
         
         self.update_status(f"Lens '{lens.name}' deleted")
     
@@ -908,20 +961,6 @@ class LensEditorWindow:
         except Exception as e:
             logger.error("TolerancingController failed to load: %s", e)
             ttk.Label(self.tolerancing_tab, text=f"Error loading tolerancing tab: {e}").pack(padx=20, pady=20)
-
-    def setup_export_tab(self) -> None:
-        """Setup the Export Enhancements tab"""
-        if CONTROLLERS_AVAILABLE:
-            try:
-                if TYPE_CHECKING:
-                    assert ExportController is not None
-
-                self.export_controller = ExportController(self, self.colors)
-                self.export_controller.setup_ui(self.export_tab)
-                return
-            except Exception as e:
-                logger.warning("Failed to initialize ExportController: %s", e)
-                self.export_controller = None
 
     def update_status(self, message: str, auto_clear: bool = True) -> None:
         self.status_var.set(message)
