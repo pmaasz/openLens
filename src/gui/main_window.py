@@ -50,6 +50,7 @@ except ImportError:
 # Import theme and storage
 from .theme import ThemeManager, COLORS, setup_dark_mode
 from .storage import LensStorage
+from .taskbar import TaskbarMenu
 
 # Try to import visualization (optional dependency)
 try:
@@ -177,6 +178,8 @@ class LensEditorWindow:
         # Bind keyboard shortcuts
         self.root.bind_all('<Control-s>', self.on_ctrl_s)
         self.root.bind_all('<Control-S>', self.on_ctrl_s)
+        self.root.bind_all('<Control-l>', self._on_ctrl_l)
+        self.root.bind_all('<Control-L>', self._on_ctrl_l)
         
         # Re-enable status callback for save operations after initialization
         if self.storage:
@@ -187,12 +190,15 @@ class LensEditorWindow:
         return self.storage.save_lenses(self.lenses, show_status=show_status)
     
     def setup_ui(self) -> None:
+        # Create menu bar first
+        self._create_menu_bar()
+        
         # Main container
         main_frame = ttk.Frame(self.root, padding="10")
-        main_frame.grid(row=0, column=0, sticky="nsew")
+        main_frame.grid(row=1, column=0, sticky="nsew")
         
         self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
+        self.root.rowconfigure(1, weight=1)
         main_frame.columnconfigure(0, weight=1)
         main_frame.rowconfigure(0, weight=1)
         
@@ -236,6 +242,9 @@ class LensEditorWindow:
         self.setup_optimization_tab()
         self.setup_tolerancing_tab()
         self.setup_export_tab()
+
+        # Setup taskbar-style menu for quick lens switching
+        self._setup_taskbar_menu()
         
         # Handle initial action from startup window
         if self.initial_action:
@@ -277,6 +286,126 @@ class LensEditorWindow:
         """Open an assembly by name"""
         for lens in self.lenses:
             if hasattr(lens, 'elements') and lens.name == name:
+                self.on_lens_selected_callback(lens)
+                break
+
+    def _create_menu_bar(self) -> None:
+        """Create the application menu bar with File, Edit, View, Lens menus."""
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+        
+        # File menu
+        file_menu = tk.Menu(menubar, tearoff=0, bg=self.colors.get('bg', '#252526'),
+                           fg=self.colors.get('fg', '#e0e0e0'))
+        menubar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="New Lens", command=self.on_create_new_lens)
+        file_menu.add_command(label="New Assembly", command=self.on_create_new_system)
+        file_menu.add_separator()
+        file_menu.add_command(label="Save", accelerator="Ctrl+S", command=self._menu_save)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.root.quit)
+        
+        # Edit menu
+        edit_menu = tk.Menu(menubar, tearoff=0, bg=self.colors.get('bg', '#252526'),
+                           fg=self.colors.get('fg', '#e0e0e0'))
+        menubar.add_cascade(label="Edit", menu=edit_menu)
+        edit_menu.add_command(label="Undo", accelerator="Ctrl+Z")
+        edit_menu.add_command(label="Redo", accelerator="Ctrl+Y")
+        
+        # View menu
+        view_menu = tk.Menu(menubar, tearoff=0, bg=self.colors.get('bg', '#252526'),
+                           fg=self.colors.get('fg', '#e0e0e0'))
+        menubar.add_cascade(label="View", menu=view_menu)
+        view_menu.add_command(label="Editor Tab", command=lambda: self.notebook.select(0))
+        view_menu.add_command(label="Simulation Tab", command=lambda: self.notebook.select(1))
+        view_menu.add_command(label="Performance Tab", command=lambda: self.notebook.select(2))
+        
+        # Lens menu - shows all available lenses and assemblies
+        self._lens_menu = tk.Menu(menubar, tearoff=0, bg=self.colors.get('bg', '#252526'),
+                                  fg=self.colors.get('fg', '#e0e0e0'))
+        menubar.add_cascade(label="Lens", menu=self._lens_menu)
+        self._update_lens_menu()
+        
+        # Help menu
+        help_menu = tk.Menu(menubar, tearoff=0, bg=self.colors.get('bg', '#252526'),
+                           fg=self.colors.get('fg', '#e0e0e0'))
+        menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="About")
+
+    def _menu_save(self) -> None:
+        """Handle menu save action."""
+        self.save_lenses(show_status=True)
+        self.update_status("Saved")
+
+    def _update_lens_menu(self) -> None:
+        """Update the Lens menu with current lenses and assemblies."""
+        if not hasattr(self, '_lens_menu'):
+            return
+            
+        self._lens_menu.delete(0, tk.END)
+        
+        lenses = [l for l in self.lenses 
+                  if not (hasattr(l, 'elements') and hasattr(l, 'air_gaps'))]
+        assemblies = [l for l in self.lenses 
+                     if hasattr(l, 'elements') and hasattr(l, 'air_gaps')]
+        
+        if lenses:
+            self._lens_menu.add_command(label="--- Lenses ---", state='disabled')
+            for lens in lenses:
+                self._lens_menu.add_command(
+                    label=f"  {lens.name}",
+                    command=lambda n=lens.name: self._open_lens_by_name(n)
+                )
+        
+        if assemblies:
+            if lenses:
+                self._lens_menu.add_separator()
+            self._lens_menu.add_command(label="--- Assemblies ---", state='disabled')
+            for assembly in assemblies:
+                self._lens_menu.add_command(
+                    label=f"  {assembly.name}",
+                    command=lambda n=assembly.name: self._open_assembly_by_name(n)
+                )
+        
+        if not lenses and not assemblies:
+            self._lens_menu.add_command(label="(No lenses)", state='disabled')
+        
+        self._lens_menu.add_separator()
+        self._lens_menu.add_command(label="Refresh", command=self._update_lens_menu)
+    
+    def _setup_taskbar_menu(self) -> None:
+        """Setup taskbar-style menu for quick lens switching."""
+        self.taskbar_menu = TaskbarMenu(self.root, self.colors)
+        self.taskbar_menu.create_menu(self.root)
+        
+        # Update menu with current lenses
+        self._refresh_taskbar_menu()
+
+    def _refresh_taskbar_menu(self) -> None:
+        """Refresh the taskbar menu with current lenses and assemblies."""
+        # Separate lenses and assemblies
+        lenses = [l for l in self.lenses 
+                  if not (hasattr(l, 'elements') and hasattr(l, 'air_gaps'))]
+        assemblies = [l for l in self.lenses 
+                     if hasattr(l, 'elements') and hasattr(l, 'air_gaps')]
+        
+        self.taskbar_menu.update_items(
+            lenses, assemblies,
+            on_select_lens=self._on_taskbar_select_lens,
+            on_select_assembly=self._on_taskbar_select_assembly
+        )
+
+    def _on_taskbar_select_lens(self, name: str) -> None:
+        """Handle lens selection from taskbar menu."""
+        for lens in self.lenses:
+            if lens.name == name:
+                self.on_lens_selected_callback(lens)
+                break
+
+    def _on_taskbar_select_assembly(self, name: str) -> None:
+        """Handle assembly selection from taskbar menu."""
+        for lens in self.lenses:
+            if hasattr(lens, 'elements') and hasattr(lens, 'air_gaps') and lens.name == name:
                 self.on_lens_selected_callback(lens)
                 break
     
@@ -508,6 +637,14 @@ class LensEditorWindow:
         self.save_lenses()
         if self.selection_controller:
             self.selection_controller.refresh_lens_list()
+        
+        # Refresh taskbar menu to reflect new/changed lenses
+        if hasattr(self, 'taskbar_menu'):
+            self._refresh_taskbar_menu()
+        
+        # Also refresh the menu bar's Lens menu
+        if hasattr(self, '_lens_menu'):
+            self._update_lens_menu()
         
         # Load lens into simulation tab
         if self.simulation_controller:
@@ -799,4 +936,17 @@ class LensEditorWindow:
         """Handle Ctrl+S keyboard shortcut"""
         if self.editor_controller and self.notebook.tab(self.notebook.select(), "text") == "Editor":
             self.editor_controller.save_changes(silent=False)
+        return "break"
+
+    def _on_ctrl_l(self, event: Optional[tk.Event] = None) -> str:
+        """Handle Ctrl+L keyboard shortcut - show lens quick-switch menu"""
+        if hasattr(self, 'taskbar_menu') and self.taskbar_menu.menu:
+            self._refresh_taskbar_menu()
+            try:
+                self.taskbar_menu.menu.tk_popup(
+                    self.root.winfo_x() + self.root.winfo_width() // 2,
+                    self.root.winfo_y() + 100
+                )
+            finally:
+                self.taskbar_menu.menu.grab_release()
         return "break"
