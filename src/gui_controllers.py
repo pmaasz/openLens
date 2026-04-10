@@ -1315,20 +1315,18 @@ class LensEditorController:
     def calculate_properties(self):
         """Calculate optical properties from current field values"""
         try:
-            # Get values from fields
-            r1 = float(self.entry_fields['radius1'].get())
-            r2 = float(self.entry_fields['radius2'].get())
-            t = float(self.entry_fields['thickness'].get())
-            
-            # Get refractive index from display label (calculated from material)
-            if self.n_display_label:
-                n_text = self.n_display_label.cget("text")
-                if n_text and n_text != "N/A":
-                    n = float(n_text)
-                else:
-                    n = 1.5168  # Default fallback
+            # Get values from lens object (which handles 0->infinity conversion)
+            if self.current_lens:
+                r1 = self.current_lens.radius_of_curvature_1
+                r2 = self.current_lens.radius_of_curvature_2
+                t = self.current_lens.thickness
+                n = self.current_lens.refractive_index
             else:
-                n = 1.5168  # Default fallback
+                # Fallback to field values (will fail on 0, but that's expected)
+                r1 = float(self.entry_fields['radius1'].get())
+                r2 = float(self.entry_fields['radius2'].get())
+                t = float(self.entry_fields['thickness'].get())
+                n = 1.5168
             
             # Calculate using lensmaker's equation
             power1 = (n - 1) / r1
