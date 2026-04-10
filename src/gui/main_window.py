@@ -292,10 +292,10 @@ class LensEditorWindow:
             # Multi-lens system selected
             self.notebook.tab(0, state='normal')   # Editor (Enabled for assemblies now)
             self.notebook.tab(1, state='normal')   # Simulation
-            self.notebook.tab(2, state='disabled') # Performance
-            self.notebook.tab(3, state='normal')   # Optimization
-            self.notebook.tab(4, state='normal')   # Tolerancing
-            self.notebook.tab(5, state='normal')   # Export (Enabled for assemblies)
+            self.notebook.tab(2, state='normal')  # Performance (now enabled for assemblies)
+            self.notebook.tab(3, state='normal')  # Optimization
+            self.notebook.tab(4, state='normal')  # Tolerancing
+            self.notebook.tab(5, state='normal')  # Export (Enabled for assemblies)
             
             # Switch to Editor tab automatically for assembly configuration
             self.notebook.select(0)
@@ -306,6 +306,9 @@ class LensEditorWindow:
 
             if self.simulation_controller:
                 self.simulation_controller.load_lens(lens)
+                
+            if self.performance_controller:
+                self.performance_controller.load_lens(lens)
                 
             if self.optimization_controller:
                 self.optimization_controller.load_lens(lens)
