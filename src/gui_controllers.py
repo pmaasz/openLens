@@ -923,6 +923,42 @@ class LensEditorController:
         current_listbox = tk.Listbox(middle_frame, height=20, selectmode=tk.SINGLE)
         current_listbox.pack(fill=tk.BOTH, expand=True)
         
+        drag_data = {"idx": None, "y_start": None}
+        
+        def on_drag_start(event):
+            drag_data["idx"] = current_listbox.nearest(event.y)
+            drag_data["y_start"] = event.y
+        
+        def on_drag_motion(event):
+            if drag_data["idx"] is None:
+                return
+            idx = current_listbox.nearest(event.y)
+            if idx != drag_data["idx"] and 0 <= idx < current_listbox.size():
+                current_listbox.selection_clear(0, tk.END)
+                current_listbox.selection_set(idx)
+        
+        def on_drag_drop(event):
+            if drag_data["idx"] is None:
+                return
+            src_idx = drag_data["idx"]
+            dst_idx = current_listbox.nearest(event.y)
+            if dst_idx < 0 or dst_idx >= current_listbox.size():
+                dst_idx = current_listbox.size() - 1
+            if src_idx != dst_idx:
+                system.elements[src_idx], system.elements[dst_idx] = system.elements[dst_idx], system.elements[src_idx]
+                system._update_positions()
+                refresh_current_list()
+                current_listbox.selection_set(dst_idx)
+                self._draw_system_2d_view()
+                if self.on_lens_updated_callback:
+                    self.on_lens_updated_callback(system)
+            drag_data["idx"] = None
+            drag_data["y_start"] = None
+        
+        current_listbox.bind('<Button-1>', on_drag_start)
+        current_listbox.bind('<B1-Motion>', on_drag_motion)
+        current_listbox.bind('<ButtonRelease-1>', on_drag_drop)
+        
         # Right: 2D Visualization
         right_frame = ttk.LabelFrame(top_paned, text="2D System View", padding=10)
         top_paned.add(right_frame, weight=1)
