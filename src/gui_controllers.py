@@ -907,13 +907,13 @@ class LensEditorController:
         if system.name and system.name != "New Assembly":
             name_entry.config(state='disabled')
         
-        # Paned window for split view: Lens Selection on Left, System Builder on Right
-        paned = ttk.PanedWindow(main_container, orient=tk.HORIZONTAL)
-        paned.pack(fill=tk.BOTH, expand=True)
+        # Three-column layout: Lens Selection | System Builder | 2D View
+        top_paned = ttk.PanedWindow(main_container, orient=tk.HORIZONTAL)
+        top_paned.pack(fill=tk.BOTH, expand=True)
         
-        # Left side: Lens Selection (Available lenses to add)
-        left_frame = ttk.LabelFrame(paned, text="Lens Selection", padding=10)
-        paned.add(left_frame, weight=1)
+        # Left: Lens Selection (Available lenses to add)
+        left_frame = ttk.LabelFrame(top_paned, text="Lens Selection", padding=10)
+        top_paned.add(left_frame, weight=1)
         
         available_listbox = tk.Listbox(left_frame, height=20)
         available_listbox.pack(fill=tk.BOTH, expand=True)
@@ -921,12 +921,19 @@ class LensEditorController:
         for lens in available_lenses:
             available_listbox.insert(tk.END, f"{lens.name} (n={lens.refractive_index:.3f})")
         
-        # Right side: System Builder (Current assembly elements)
-        right_frame = ttk.LabelFrame(paned, text="System Builder", padding=10)
-        paned.add(right_frame, weight=1)
+        # Middle: System Builder (Current assembly elements)
+        middle_frame = ttk.LabelFrame(top_paned, text="System Builder", padding=10)
+        top_paned.add(middle_frame, weight=1)
         
-        current_listbox = tk.Listbox(right_frame, height=20, selectmode=tk.SINGLE)
+        current_listbox = tk.Listbox(middle_frame, height=20, selectmode=tk.SINGLE)
         current_listbox.pack(fill=tk.BOTH, expand=True)
+        
+        # Right: 2D Visualization
+        right_frame = ttk.LabelFrame(top_paned, text="2D System View", padding=10)
+        top_paned.add(right_frame, weight=1)
+        
+        self._system_viz_canvas = tk.Canvas(right_frame, bg='white', height=200, width=200)
+        self._system_viz_canvas.pack(fill=tk.BOTH, expand=True)
         
         # Add right-click context menu for removing lenses
         def on_right_click(event):
@@ -971,6 +978,7 @@ class LensEditorController:
                     if lens.name == lens_name:
                         system.add_lens(lens, air_gap_before=5.0) # Default gap
                         refresh_current_list()
+                        self._draw_system_2d_view()
                         
                         # Refresh simulation if available
                         if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
@@ -999,6 +1007,7 @@ class LensEditorController:
                 system.remove_lens(idx)
                 refresh_current_list()
                 current_listbox.update()
+                self._draw_system_2d_view()
                 
                 # Refresh simulation if available
                 if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
@@ -1030,6 +1039,7 @@ class LensEditorController:
                 system._update_positions()
                 refresh_current_list()
                 current_listbox.selection_set(idx-1)
+                self._draw_system_2d_view()
                 
                 # Refresh simulation if available
                 if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
@@ -1047,6 +1057,7 @@ class LensEditorController:
                     system._update_positions()
                     refresh_current_list()
                     current_listbox.selection_set(idx+1)
+                    self._draw_system_2d_view()
                     
                     # Refresh simulation if available
                     if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
@@ -1065,6 +1076,7 @@ class LensEditorController:
                     system._update_positions()
                     refresh_current_list()
                     current_listbox.selection_set(idx)
+                    self._draw_system_2d_view()
                     
                     # Also refresh simulation if in Simulation tab
                     if self.parent_window and hasattr(self.parent_window, 'simulation_controller'):
@@ -1120,6 +1132,133 @@ class LensEditorController:
         
         # Store for cleanup
         self._assembly_listboxes = (available_listbox, current_listbox)
+        
+        self._system_canvas = self._system_viz_canvas
+        
+        self._draw_system_2d_view()
+    
+    def _draw_system_2d_view(self):
+        """Draw the optical system in 2D view"""
+        if not hasattr(self, '_current_assembly_system'):
+            return
+        
+        system = self._current_assembly_system
+        canvas = getattr(self, '_system_canvas', None)
+        if canvas is None:
+            return
+        
+        canvas.delete("all")
+        
+        if not system.elements:
+            canvas.create_text(100, 100, text="No lenses in system", fill="gray")
+            return
+        
+        canvas_width = canvas.winfo_width()
+        canvas_height = canvas.winfo_height()
+        
+        if canvas_width < 100 or canvas_height < 100:
+            canvas_width = 300
+            canvas_height = 200
+        
+        total_thickness = sum(element.lens.thickness for element in system.elements)
+        for i in range(len(system.elements) - 1):
+            total_thickness += system.air_gaps[i].thickness
+        
+        margin = 40
+        available_width = canvas_width - 2 * margin
+        if total_thickness > 0:
+            scale = available_width / total_thickness
+        else:
+            scale = 1.5
+        
+        max_diameter = max(element.lens.diameter for element in system.elements)
+        y_scale = (canvas_height - 60) / max_diameter
+        scale = min(scale, y_scale)
+        scale = max(scale, 0.3)
+        
+        offset_x = margin
+        offset_y = canvas_height / 2
+        
+        for i, element in enumerate(system.elements):
+            lens = element.lens
+            
+            self._draw_lens_2d_on_canvas(canvas, lens, 0, offset_x, offset_y, scale)
+            
+            offset_x += lens.thickness * scale
+            
+            if i < len(system.air_gaps):
+                gap = system.air_gaps[i].thickness
+                offset_x += gap * scale
+    
+    def _draw_lens_2d_on_canvas(self, canvas, lens, z_offset, base_x, base_y, scale):
+        """Draw a single lens on canvas"""
+        import math
+        
+        r1 = lens.radius_of_curvature_1
+        r2 = lens.radius_of_curvature_2
+        thickness = lens.thickness
+        diameter = lens.diameter
+        
+        y_max = diameter / 2.0 * scale
+        num_points = 40
+        
+        front_x = base_x + z_offset * scale
+        back_x = front_x + thickness * scale
+        
+        y_values = [y_max - 2 * y_max * i / (num_points - 1) for i in range(num_points)]
+        
+        surface1_points = []
+        surface2_points = []
+        
+        if abs(r1) >= 10000 or abs(r1) < 1e-10:
+            surface1_points = [(front_x, base_y - y) for y in y_values]
+        else:
+            r1_abs = abs(r1) * scale
+            for y in y_values:
+                if y * y <= r1_abs * r1_abs + 0.001:
+                    if r1 > 0:
+                        x_val = front_x - r1_abs + math.sqrt(max(0, r1_abs**2 - y**2))
+                    else:
+                        x_val = front_x + r1_abs - math.sqrt(max(0, r1_abs**2 - y**2))
+                    surface1_points.append((x_val, base_y - y))
+        
+        if abs(r2) >= 10000 or abs(r2) < 1e-10:
+            surface2_points = [(back_x, base_y - y) for y in y_values]
+        else:
+            r2_abs = abs(r2) * scale
+            for y in y_values:
+                if y * y <= r2_abs * r2_abs + 0.001:
+                    if r2 > 0:
+                        x_val = back_x + r2_abs - math.sqrt(max(0, r2_abs**2 - y**2))
+                    else:
+                        x_val = back_x - r2_abs + math.sqrt(max(0, r2_abs**2 - y**2))
+                    surface2_points.append((x_val, base_y - y))
+        
+        if surface1_points:
+            points = []
+            for x, y in surface1_points:
+                points.extend([x, y])
+            canvas.create_line(points, fill='blue', width=2)
+        
+        if surface2_points:
+            points = []
+            for x, y in surface2_points:
+                points.extend([x, y])
+            canvas.create_line(points, fill='blue', width=2)
+        
+        if surface1_points and surface2_points:
+            top1 = surface1_points[0]
+            top2 = surface2_points[0]
+            bottom1 = surface1_points[-1]
+            bottom2 = surface2_points[-1]
+            canvas.create_line(top1[0], top1[1], top2[0], top2[1], fill='blue', width=2)
+            canvas.create_line(bottom1[0], bottom1[1], bottom2[0], bottom2[1], fill='blue', width=2)
+            
+            canvas.create_polygon(
+                [p for pair in surface1_points for p in pair] + 
+                [p for pair in reversed(surface2_points) for p in pair],
+                outline='blue', fill='lightblue', width=1
+            )
     
     def _restore_lens_editor(self):
         """Restore the regular lens editor when switching back from assembly mode"""
