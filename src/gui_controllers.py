@@ -1097,6 +1097,13 @@ class LensEditorController:
         ttk.Separator(btn_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
         ttk.Button(btn_frame, text="Move Up", command=self._do_move_up).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Move Down", command=self._do_move_down).pack(side=tk.LEFT, padx=5)
+        ttk.Separator(btn_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
+        
+        gap_var = tk.StringVar(value="5.0")
+        ttk.Label(btn_frame, text="Gap (mm):").pack(side=tk.LEFT, padx=(5, 0))
+        gap_entry = ttk.Entry(btn_frame, textvariable=gap_var, width=8)
+        gap_entry.pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_frame, text="Set Gap", command=set_gap).pack(side=tk.LEFT, padx=5)
         
         # Save assembly control
         save_frame = ttk.Frame(main_container)
