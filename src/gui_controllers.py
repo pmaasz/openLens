@@ -893,9 +893,19 @@ class LensEditorController:
         main_container = ttk.Frame(self._scrollable_frame)
         main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Title
-        title_label = ttk.Label(main_container, text=f"Assembly Editor: {system.name}", font=('Arial', 14, 'bold'))
-        title_label.pack(pady=10)
+        # Assembly name variable (defined early for use in save_assembly function)
+        name_var = tk.StringVar(value=system.name)
+        
+        # Save assembly control
+        save_frame = ttk.Frame(main_container)
+        save_frame.pack(fill=tk.X, pady=10)
+        
+        ttk.Label(save_frame, text="Assembly Name:").pack(side=tk.LEFT, padx=(0, 5))
+        name_entry = ttk.Entry(save_frame, textvariable=name_var, width=30)
+        name_entry.pack(side=tk.LEFT, padx=5)
+        
+        if system.name and system.name != "New Assembly":
+            name_entry.config(state='disabled')
         
         # Paned window for split view: Lens Selection on Left, System Builder on Right
         paned = ttk.PanedWindow(main_container, orient=tk.HORIZONTAL)
@@ -1083,6 +1093,9 @@ class LensEditorController:
             if self.parent_window:
                 self.parent_window.update_status(f"Assembly '{system.name}' saved successfully")
         
+        # Add Save Assembly button after function is defined
+        ttk.Button(save_frame, text="Save Assembly", command=save_assembly).pack(side=tk.LEFT, padx=5)
+        
         # Store the system reference for use in instance method
         self._current_assembly_system = system
         self._current_assembly_refresh = refresh_current_list
@@ -1104,21 +1117,6 @@ class LensEditorController:
         gap_entry = ttk.Entry(btn_frame, textvariable=gap_var, width=8)
         gap_entry.pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_frame, text="Set Gap", command=set_gap).pack(side=tk.LEFT, padx=5)
-        
-        # Save assembly control
-        save_frame = ttk.Frame(main_container)
-        save_frame.pack(fill=tk.X, pady=10)
-        
-        ttk.Label(save_frame, text="Assembly Name:").pack(side=tk.LEFT, padx=(0, 5))
-        name_var = tk.StringVar(value=system.name)
-        name_entry = ttk.Entry(save_frame, textvariable=name_var, width=30)
-        name_entry.pack(side=tk.LEFT, padx=5)
-        
-        # If editing an existing assembly (has a name other than default), disable name editing
-        if system.name and system.name != "New Assembly":
-            name_entry.config(state='disabled')
-            
-        ttk.Button(save_frame, text="Save Assembly", command=save_assembly).pack(side=tk.LEFT, padx=5)
         
         # Store for cleanup
         self._assembly_listboxes = (available_listbox, current_listbox)

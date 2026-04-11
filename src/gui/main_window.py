@@ -751,7 +751,6 @@ class LensEditorWindow:
         # Fixed header
         header_frame = ttk.Frame(left_container, padding="5")
         header_frame.grid(row=0, column=0, sticky="ew")
-        ttk.Label(header_frame, text="Optical Lens Properties", font=(FONT_FAMILY, FONT_SIZE_TITLE, 'bold')).pack(anchor=tk.W)
         
         # Editor content area
         editor_frame = ttk.Frame(left_container)
