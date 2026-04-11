@@ -436,19 +436,19 @@ class LensEditorController:
         # Store references for switching between lens and assembly mode
         self._scrollable_frame = scrollable_frame
         
+        # Material selection
+        material_frame = ttk.LabelFrame(scrollable_frame, text="Material", padding=PADDING_MEDIUM)
+        material_frame.grid(row=0, column=0, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
+        self._material_frame = material_frame
+        self.create_material_selector(material_frame)
+        
         # Properties frame
         props_frame = ttk.LabelFrame(scrollable_frame, text="Lens Properties", padding=PADDING_MEDIUM)
-        props_frame.grid(row=0, column=0, sticky="nsew", padx=PADDING_SMALL, pady=PADDING_SMALL)
+        props_frame.grid(row=1, column=0, sticky="nsew", padx=PADDING_SMALL, pady=PADDING_SMALL)
         self._props_frame = props_frame
         
         # Create input fields
         self.create_property_fields(props_frame)
-        
-        # Material selection
-        material_frame = ttk.LabelFrame(scrollable_frame, text="Material", padding=PADDING_MEDIUM)
-        material_frame.grid(row=1, column=0, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
-        self._material_frame = material_frame
-        self.create_material_selector(material_frame)
         
         # Fresnel lens section
         fresnel_frame = ttk.LabelFrame(scrollable_frame, text="Fresnel Properties", padding=PADDING_MEDIUM)
@@ -472,8 +472,6 @@ class LensEditorController:
                   command=self.calculate_properties, width=15).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(button_frame, text="Save Changes", 
                   command=self.save_changes, width=15).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        ttk.Button(button_frame, text="Reset", 
-                  command=self.reset_fields, width=15).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         # Auto-update checkbox
         self.auto_update_var = tk.BooleanVar(value=True)
