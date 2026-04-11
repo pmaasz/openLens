@@ -902,9 +902,6 @@ class LensEditorController:
         name_entry = ttk.Entry(save_frame, textvariable=name_var, width=30)
         name_entry.pack(side=tk.LEFT, padx=5)
         
-        if system.name and system.name != "New Assembly":
-            name_entry.config(state='disabled')
-        
         # Three-column layout: Lens Selection | System Builder | 2D View
         top_paned = ttk.PanedWindow(main_container, orient=tk.HORIZONTAL)
         top_paned.pack(fill=tk.BOTH, expand=True)
