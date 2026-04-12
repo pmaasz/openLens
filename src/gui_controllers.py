@@ -470,8 +470,6 @@ class LensEditorController:
         
         ttk.Button(button_frame, text="Calculate", 
                   command=self.calculate_properties, width=15).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        ttk.Button(button_frame, text="Save Changes", 
-                  command=self.save_changes, width=15).pack(side=tk.LEFT, padx=PADDING_SMALL)
         
         # Auto-update checkbox
         self.auto_update_var = tk.BooleanVar(value=True)
@@ -567,17 +565,23 @@ class LensEditorController:
                                        command=self.on_fresnel_toggle)
         fresnel_check.grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=PADDING_SMALL)
         
+        # Fresnel fields container (initially hidden)
+        self._fresnel_container = ttk.Frame(parent)
+        self._fresnel_container.grid(row=1, column=0, columnspan=2, sticky="ew")
+        
         # Groove pitch
-        ttk.Label(parent, text="Groove Pitch (mm):").grid(row=1, column=0, sticky=tk.W, pady=PADDING_SMALL)
-        self.entry_fields['groove_pitch'] = ttk.Entry(parent, width=20)
-        self.entry_fields['groove_pitch'].grid(row=1, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
+        ttk.Label(self._fresnel_container, text="Groove Pitch (mm):").grid(row=0, column=0, sticky=tk.W, pady=PADDING_SMALL)
+        self.entry_fields['groove_pitch'] = ttk.Entry(self._fresnel_container, width=20)
+        self.entry_fields['groove_pitch'].grid(row=0, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
         self.entry_fields['groove_pitch'].insert(0, "0.5")
         self.entry_fields['groove_pitch'].bind('<KeyRelease>', self.on_field_changed)
         
         # Number of grooves (readonly)
-        ttk.Label(parent, text="Number of Grooves:").grid(row=2, column=0, sticky=tk.W, pady=PADDING_SMALL)
-        self.entry_fields['num_grooves'] = ttk.Entry(parent, width=20, state='readonly')
-        self.entry_fields['num_grooves'].grid(row=2, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
+        ttk.Label(self._fresnel_container, text="Number of Grooves:").grid(row=1, column=0, sticky=tk.W, pady=PADDING_SMALL)
+        self.entry_fields['num_grooves'] = ttk.Entry(self._fresnel_container, width=20, state='readonly')
+        self.entry_fields['num_grooves'].grid(row=1, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
+        
+        self._fresnel_container.columnconfigure(1, weight=1)
         
         parent.columnconfigure(1, weight=1)
         
@@ -587,10 +591,14 @@ class LensEditorController:
     def on_fresnel_toggle(self):
         """Handle Fresnel checkbox toggle"""
         is_fresnel = self.entry_fields['is_fresnel'].get()
-        state = 'normal' if is_fresnel else 'disabled'
         
-        if 'groove_pitch' in self.entry_fields:
-            self.entry_fields['groove_pitch'].config(state=state)
+        if hasattr(self, '_fresnel_container'):
+            if is_fresnel:
+                self._fresnel_container.grid()
+                state = 'normal'
+            else:
+                self._fresnel_container.grid_remove()
+                state = 'disabled'
         
         self.on_field_changed()
     
@@ -1410,8 +1418,27 @@ class LensEditorController:
         # Result labels must exist before we can update them
         if not hasattr(self, 'result_labels') or not self.result_labels:
             return
-            
+        
+        # Check if current field values are valid before calculating
+        try:
+            r1_val = self.entry_fields['radius1'].get().strip()
+            r2_val = self.entry_fields['radius2'].get().strip()
+            t_val = self.entry_fields['thickness'].get().strip()
+            if r1_val and r2_val and t_val:
+                float(r1_val)
+                float(r2_val)
+                float(t_val)
+        except ValueError:
+            return
+        
         self.calculate_properties()
+        
+        # Update visualization immediately
+        if hasattr(self, 'parent_window') and hasattr(self.parent_window, 'visualizer'):
+            try:
+                self.parent_window.update_visualization()
+            except Exception:
+                pass
         
         # Update status to show pending changes
         if hasattr(self, 'save_status_var'):

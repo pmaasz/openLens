@@ -661,6 +661,7 @@ class LensEditorWindow:
     def on_lens_updated_callback(self, lens: Optional['Lens'] = None) -> None:
         """Callback when lens data is updated"""
         if not lens:
+            self.update_visualization()
             self.save_lenses()
             if self.selection_controller:
                 self.selection_controller.refresh_lens_list()
@@ -780,7 +781,6 @@ class LensEditorWindow:
         # Header with title
         viz_header = ttk.Frame(self.viz_outer_frame)
         viz_header.grid(row=0, column=0, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
-        ttk.Label(viz_header, text="Lens Visualization", font=(FONT_FAMILY, FONT_SIZE_LARGE, 'bold')).pack(side=tk.LEFT)
         
         # Visualization mode toggle using tabs
         self.viz_mode_var = tk.StringVar(value="3D")
@@ -808,7 +808,7 @@ class LensEditorWindow:
                 if TYPE_CHECKING:
                     assert LensVisualizer is not None
                 
-                self.visualizer = LensVisualizer(self.viz_3d_frame, width=6, height=6)
+                self.visualizer = LensVisualizer(self.viz_3d_frame, width=5, height=5)
             except Exception as e:
                 ttk.Label(self.viz_3d_frame, text=f"Visualization error: {e}", 
                          wraplength=300).pack(pady=PADDING_XLARGE)
@@ -818,6 +818,45 @@ class LensEditorWindow:
             ttk.Label(self.viz_3d_frame, text=msg, justify=tk.CENTER, 
                       font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(pady=PADDING_SMALL)
             self.visualizer = None
+    
+    def update_visualization(self) -> None:
+        """Update the visualization panel with current lens data"""
+        if not hasattr(self, 'visualizer') or not self.visualizer:
+            return
+        if not self.editor_controller:
+            return
+        if not self.editor_controller.current_lens:
+            return
+            
+        lens = self.editor_controller.current_lens
+        mode = self.viz_mode_var.get() if hasattr(self, 'viz_mode_var') else "2D"
+        
+        try:
+            if hasattr(lens, 'elements') and hasattr(lens, 'air_gaps'):
+                return
+            try:
+                panes = self.editor_paned.panes()
+                if len(panes) < 2:
+                    self.editor_paned.add(self.viz_outer_frame, weight=3)
+            except (tk.TclError, AttributeError):
+                pass
+            
+            if mode == "2D":
+                self.visualizer.draw_lens_2d(
+                    lens.radius_of_curvature_1, 
+                    lens.radius_of_curvature_2, 
+                    lens.thickness, 
+                    lens.diameter
+                )
+            else:
+                self.visualizer.draw_lens(
+                    lens.radius_of_curvature_1, 
+                    lens.radius_of_curvature_2, 
+                    lens.thickness, 
+                    lens.diameter
+                )
+        except Exception as e:
+            logger.warning(f"Failed to update visualization: {e}")
     
     def on_viz_tab_changed(self, event: Optional[tk.Event]) -> None:
         """Handle visualization tab change between 2D and 3D"""
