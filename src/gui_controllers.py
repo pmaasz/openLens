@@ -1410,8 +1410,27 @@ class LensEditorController:
         # Result labels must exist before we can update them
         if not hasattr(self, 'result_labels') or not self.result_labels:
             return
-            
+        
+        # Check if current field values are valid before calculating
+        try:
+            r1_val = self.entry_fields['radius1'].get().strip()
+            r2_val = self.entry_fields['radius2'].get().strip()
+            t_val = self.entry_fields['thickness'].get().strip()
+            if r1_val and r2_val and t_val:
+                float(r1_val)
+                float(r2_val)
+                float(t_val)
+        except ValueError:
+            return
+        
         self.calculate_properties()
+        
+        # Update visualization immediately
+        if hasattr(self, 'parent_window') and hasattr(self.parent_window, 'visualizer'):
+            try:
+                self.parent_window.update_visualization()
+            except Exception:
+                pass
         
         # Update status to show pending changes
         if hasattr(self, 'save_status_var'):

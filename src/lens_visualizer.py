@@ -73,19 +73,21 @@ class LensVisualizer:
     
     def reparent_canvas(self, new_parent_frame):
         """Move the canvas to a new parent frame"""
-        # Unpack from current parent
-        self.canvas_widget.pack_forget()
+        try:
+            self.canvas_widget.pack_forget()
+        except:
+            pass
         
-        # Destroy old canvas widget
-        self.canvas_widget.destroy()
+        try:
+            self.canvas_widget.destroy()
+        except:
+            pass
         
-        # Create new canvas widget with new parent
         self.canvas = FigureCanvasTkAgg(self.figure, new_parent_frame)
         self.canvas_widget = self.canvas.get_tk_widget()
         self.canvas_widget.pack(fill='both', expand=True)
         
-        # Redraw
-        self.canvas.draw()
+        self.canvas.draw_idle()
     
     def configure_dark_mode(self):
         """Configure dark mode styling for the 3D plot"""
@@ -169,8 +171,6 @@ class LensVisualizer:
         self.ax_coords.set_xlabel('X (mm)', color=self.COLORS_3D['text'], fontsize=9)
         self.ax_coords.set_ylabel('Y (mm)', color=self.COLORS_3D['text'], fontsize=9)
         self.ax_coords.set_zlabel('Z (mm)', color=self.COLORS_3D['text'], fontsize=9)
-        self.ax_coords.set_title('Lens 3D Cross-Section', color=self.COLORS_3D['text'],
-                                 fontsize=11, pad=10)
         
     def calculate_surface_points(self, radius, diameter, is_front=True):
         """Calculate points for a spherical surface with optimized resolution"""
@@ -497,7 +497,7 @@ class LensVisualizer:
         self.ax.xaxis.label.set_color(self.COLORS_3D['text'])
         self.ax.yaxis.label.set_color(self.COLORS_3D['text'])
         self.ax.title.set_color(self.COLORS_3D['text'])
-        self.ax.grid(True, color=self.COLORS_3D['grid'], linestyle='--', linewidth=0.5, alpha=0.3)
+        self.ax.grid(True, color=self.COLORS_3D['grid'], linestyle='-', linewidth=1, alpha=0.5)
         
         # Calculate lens profile
         y_max = diameter / 2
@@ -552,26 +552,24 @@ class LensVisualizer:
         # Draw optical axis
         x_min = min(x1.min() if len(x1) > 0 else 0, x2.min() if len(x2) > 0 else thickness)
         x_max = max(x1.max() if len(x1) > 0 else 0, x2.max() if len(x2) > 0 else thickness)
-        margin = (x_max - x_min) * 0.2
+        margin = x_max  # Equal to lens thickness for empty space
         self.ax.axhline(0, color=self.COLORS_3D['axis'], linestyle='--', linewidth=1.5, 
                        alpha=0.7, label='Optical Axis')
         
         # Labels and styling
-        self.ax.set_xlabel('Z (mm)', color=self.COLORS_3D['text'], fontsize=10)
-        self.ax.set_ylabel('Y (mm)', color=self.COLORS_3D['text'], fontsize=10)
-        self.ax.set_title('Lens 2D Cross-Section', color=self.COLORS_3D['text'], 
-                         fontsize=11, pad=10)
-        self.ax.set_aspect('equal')
+        self.ax.set_xlabel('Thickness (mm)', color=self.COLORS_3D['text'], fontsize=10)
+        self.ax.set_ylabel('Diameter (mm)', color=self.COLORS_3D['text'], fontsize=10)
         
-        # Set limits with margin
-        self.ax.set_xlim(x_min - margin, x_max + margin)
+        # Add surface labels
+        x_start = x1[0] if len(x1) > 0 else 0
+        x_end = x2[-1] if len(x2) > 0 else thickness
+        self.ax.annotate('Radius 1', xy=(x_start, y_max*0.8), fontsize=9, color=self.COLORS_3D['surface_front'])
+        self.ax.annotate('Radius 2', xy=(x_end, y_max*0.8), fontsize=9, color=self.COLORS_3D['surface_back'])
         
-        # Ensure ylim values are not identical (prevents matplotlib warning)
-        if y_max > 0:
-            self.ax.set_ylim(-y_max * 1.2, y_max * 1.2)
-        else:
-            # Fallback to small default range if y_max is 0
-            self.ax.set_ylim(-1, 1)
+        # Set axis limits to show more empty space
+        max_dim = max(thickness, y_max) * 2
+        self.ax.set_xlim(-max_dim, max_dim)
+        self.ax.set_ylim(-max_dim, max_dim)
         
         # Legend
         legend = self.ax.legend(loc='upper right', fontsize=8, framealpha=0.9)
@@ -590,6 +588,4 @@ class LensVisualizer:
         self.ax.set_xlabel('X (mm)', color=self.COLORS_3D['text'], fontsize=9)
         self.ax.set_ylabel('Y (mm)', color=self.COLORS_3D['text'], fontsize=9)
         self.ax.set_zlabel('Z (mm)', color=self.COLORS_3D['text'], fontsize=9)
-        self.ax.set_title('Lens 3D Cross-Section', color=self.COLORS_3D['text'],
-                         fontsize=11, pad=10)
         self.canvas.draw_idle()
