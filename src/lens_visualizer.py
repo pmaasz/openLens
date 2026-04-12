@@ -42,8 +42,8 @@ class LensVisualizer:
         self.ax_coords = self.figure.add_subplot(111, projection='3d', 
                                                   facecolor=self.COLORS_3D['bg'],
                                                   computed_zorder=False)
-        self.ax_coords.view_init(elev=20, azim=45)  # Fixed view angle
-        self.ax_coords.disable_mouse_rotation()  # Prevent rotation
+        self.ax_coords.view_init(elev=20, azim=45)
+        self.ax_coords.mouse_init()
         
         # Rotatable lens geometry (foreground)
         self.ax_lens = self.figure.add_subplot(111, projection='3d',
@@ -53,8 +53,9 @@ class LensVisualizer:
         self.ax_lens.patch.set_alpha(0)  # Transparent patch
         self.ax_lens.view_init(elev=20, azim=45)  # Start with same view
         
-        # Hide axes on lens subplot (only show geometry)
-        self.ax_lens.set_axis_off()
+        # Show axes for zoom/pan interaction
+        self.ax_lens.set_axis_on()
+        self.ax_lens.mouse_init()
         
         # Keep reference to main axis for compatibility (use lens axis)
         self.ax = self.ax_lens
@@ -231,7 +232,7 @@ class LensVisualizer:
                                                       facecolor=self.COLORS_3D['bg'],
                                                       computed_zorder=False)
             self.ax_coords.view_init(elev=20, azim=45)
-            self.ax_coords.disable_mouse_rotation()
+            self.ax_coords.mouse_init()
             
             self.ax_lens = self.figure.add_subplot(111, projection='3d',
                                                     facecolor='none',
@@ -406,7 +407,7 @@ class LensVisualizer:
              self.figure.clear()
              self.ax_coords = self.figure.add_subplot(111, projection='3d', facecolor=self.COLORS_3D['bg'], computed_zorder=False)
              self.ax_coords.view_init(elev=20, azim=45)
-             self.ax_coords.disable_mouse_rotation()
+             self.ax_coords.mouse_init()
              self.ax_lens = self.figure.add_subplot(111, projection='3d', facecolor='none', computed_zorder=False)
              self.ax_lens.set_position(self.ax_coords.get_position())
              self.ax_lens.patch.set_alpha(0)
