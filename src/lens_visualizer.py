@@ -16,7 +16,12 @@ from mpl_toolkits.mplot3d import Axes3D
 class LensVisualizer:
     """Creates 3D visualization of lens geometry with dark mode support"""
     
-    # Dark mode colors for visualization
+    def __init__(self, parent_frame, width=6, height=5):
+        """Initialize the 3D visualization canvas with dark mode"""
+        self._radius_change_callback = None
+        self._current_lens_params = {}
+        
+        # Optimize figure settings
     COLORS_3D = {
         'bg': '#1e1e1e',
         'surface_front': '#4fc3f7',   # Light blue
@@ -67,6 +72,142 @@ class LensVisualizer:
         # Enable blitting for faster updates
         self.canvas.draw()
         self.background = self.canvas.copy_from_bbox(self.ax.bbox)
+        
+        # Mouse drag interaction
+        self._drag_active = False
+        self._drag_surface = None
+        self._drag_start_y = None
+        self._drag_start_radius = None
+        self._highlight_line = None
+        self.canvas.mpl_connect('button_press_event', self._on_click)
+        self.canvas.mpl_connect('button_release_event', self._on_release)
+        self.canvas.mpl_connect('motion_notify_event', self._on_motion)
+        self.canvas.mpl_connect('motion_notify_event', self._on_hover)
+    
+    def set_radius_change_callback(self, callback):
+        """Set callback for radius changes (callback(radius1, radius2))"""
+        self._radius_change_callback = callback
+    
+    def _on_click(self, event):
+        """Handle mouse click on canvas"""
+        if event.inaxes != self.ax:
+            return
+        if not hasattr(self, '_current_lens_params'):
+            return
+        
+        r1 = self._current_lens_params.get('r1', 0)
+        r2 = self._current_lens_params.get('r2', 0)
+        thickness = self._current_lens_params.get('thickness', 5)
+        diameter = self._current_lens_params.get('diameter', 50)
+        
+        x_lim = self.ax.get_xlim()
+        y_lim = self.ax.get_ylim()
+        x_click = event.xdata
+        y_click = event.ydata
+        
+        x_front = 0
+        x_back = thickness
+        
+        tol = diameter / 4
+        
+        if abs(x_click - x_front) < tol and abs(y_click) < diameter / 2:
+            self._drag_active = True
+            self._drag_surface = 'r1'
+            self._drag_start_y = y_click
+            self._drag_start_radius = r1
+        elif abs(x_click - x_back) < tol and abs(y_click) < diameter / 2:
+            self._drag_active = True
+            self._drag_surface = 'r2'
+            self._drag_start_y = y_click
+            self._drag_start_radius = r2
+        else:
+            self._drag_active = False
+        self._update_highlight(None)
+    
+    def _on_hover(self, event):
+        """Show cursor feedback when hovering over draggable surfaces"""
+        if event.inaxes != self.ax or not hasattr(self, '_current_lens_params'):
+            self._update_highlight(None)
+            return
+        
+        thickness = self._current_lens_params.get('thickness', 5)
+        diameter = self._current_lens_params.get('diameter', 50)
+        x_click = event.xdata
+        y_click = event.ydata
+        
+        x_front = 0
+        x_back = thickness
+        tol = diameter / 3
+        
+        if abs(x_click - x_front) < tol and abs(y_click) < diameter / 2:
+            self._update_highlight('r1')
+            self.canvas.widget.set_cursor(1)  # pointer
+        elif abs(x_click - x_back) < tol and abs(y_click) < diameter / 2:
+            self._update_highlight('r2')
+            self.canvas.widget.set_cursor(1)
+        else:
+            self._update_highlight(None)
+            self.canvas.widget.set_cursor(0)  # default
+    
+    def _update_highlight(self, surface):
+        """Update visual highlight of draggable surface"""
+        if hasattr(self, '_highlight_line'):
+            try:
+                self._highlight_line.remove()
+            except:
+                pass
+        
+        if not surface or not hasattr(self, '_current_lens_params'):
+            self._highlight_line = None
+            return
+        
+        thickness = self._current_lens_params.get('thickness', 5)
+        diameter = self._current_lens_params.get('diameter', 50)
+        
+        x = 0 if surface == 'r1' else thickness
+        self._highlight_line = self.ax.axvline(x, color='yellow', linewidth=3, alpha=0.7, zorder=10)
+    
+    def _on_motion(self, event):
+        """Handle mouse drag"""
+        if not self._drag_active or event.inaxes != self.ax:
+            return
+        
+        r1 = self._current_lens_params.get('r1', 100)
+        r2 = self._current_lens_params.get('r2', -100)
+        diameter = self._current_lens_params.get('diameter', 50)
+        
+        dy = event.ydata - self._drag_start_y
+        
+        # Scale factor - full diameter drag = 200mm radius change
+        scale = diameter * 4
+        
+        if self._drag_surface == 'r1':
+            new_r = r1 + dy * scale
+            if abs(new_r) < 1:
+                new_r = 1 if new_r > 0 else -1
+            new_r = max(-500, min(500, new_r))
+            self._current_lens_params['r1'] = new_r
+        else:
+            new_r = r2 - dy * scale
+            if abs(new_r) < 1:
+                new_r = 1 if new_r > 0 else -1
+            new_r = max(-500, min(500, new_r))
+            self._current_lens_params['r2'] = new_r
+        
+        if self._radius_change_callback:
+            self._radius_change_callback(
+                self._current_lens_params.get('r1', 100),
+                self._current_lens_params.get('r2', -100)
+            )
+    
+    def _on_release(self, event):
+        """Handle mouse release"""
+        if self._drag_active and self._radius_change_callback:
+            self._radius_change_callback(
+                self._current_lens_params.get('r1', 100),
+                self._current_lens_params.get('r2', -100)
+            )
+        self._drag_active = False
     
     def _fix_axis_labels(self, event):
         """No longer needed - coordinate axes are separate and fixed"""
@@ -446,6 +587,9 @@ class LensVisualizer:
     
     def draw_lens_2d(self, r1, r2, thickness, diameter):
         """Draw the lens in 2D side view (cross-section)"""
+        # Store current params for drag interaction
+        self._current_lens_params = {'r1': r1, 'r2': r2, 'thickness': thickness, 'diameter': diameter}
+        
         # Validate inputs
         if diameter <= 0:
             try:

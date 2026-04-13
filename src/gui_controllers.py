@@ -503,18 +503,31 @@ class LensEditorController:
             ttk.Label(parent, text=label_text).grid(row=i, column=0, sticky=tk.W, pady=PADDING_SMALL)
             
             if key == "lens_type":
-                # Read-only field showing lens type classification
                 type_label = ttk.Label(parent, text=default, font=('Arial', 10, 'bold'), anchor='w')
                 type_label.grid(row=i, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
                 self.entry_fields[key] = type_label
+            elif key in ('radius1', 'radius2'):
+                container = ttk.Frame(parent)
+                container.grid(row=i, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
+                
+                entry = ttk.Entry(container, width=12)
+                entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                entry.insert(0, default)
+                entry.bind('<KeyRelease>', self._on_entry_changed)
+                
+                scale = ttk.Scale(container, from_=-500, to_=500, orient=tk.HORIZONTAL)
+                scale.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                scale.bind('<Motion>', lambda e, k=key, s=scale: self._on_scale_drag(e, k, s))
+                scale.bind('<ButtonRelease-1>', lambda e, k=key: self._on_scale_release(e, k))
+                
+                self.entry_fields[key] = entry
+                self.entry_fields[f'{key}_scale'] = scale
+                self._slider_dragging = False
             else:
                 entry = ttk.Entry(parent, width=20)
                 entry.grid(row=i, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
                 entry.insert(0, default)
-                
-                # Bind auto-calculate (now for all fields including name)
                 entry.bind('<KeyRelease>', self.on_field_changed)
-                
                 self.entry_fields[key] = entry
         
         parent.columnconfigure(1, weight=1)
@@ -1412,6 +1425,43 @@ class LensEditorController:
         
         if self.on_lens_updated_callback:
             self.on_lens_updated_callback(system)
+    
+    def _on_entry_changed(self, event):
+        """Handle entry changes - sync slider value"""
+        if hasattr(self, 'entry_fields') and hasattr(self, '_slider_dragging'):
+            if self._slider_dragging:
+                return
+            entry = event.widget
+            key = None
+            for k in ('radius1', 'radius2'):
+                if self.entry_fields.get(k) is entry:
+                    key = k
+                    break
+            if key and f'{key}_scale' in self.entry_fields:
+                try:
+                    val = float(entry.get())
+                    self.entry_fields[f'{key}_scale'].set(val)
+                except ValueError:
+                    pass
+        self.on_field_changed(event)
+    
+    def _on_scale_drag(self, event, key, scale):
+        """Handle slider dragging - update entry without triggering recalc"""
+        if hasattr(self, '_slider_dragging'):
+            self._slider_dragging = True
+            try:
+                val = scale.get()
+                entry = self.entry_fields.get(key)
+                if entry:
+                    entry.delete(0, tk.END)
+                    entry.insert(0, f"{val:.1f}")
+            except (ValueError, tk.TclError):
+                pass
+            self._slider_dragging = False
+    
+    def _on_scale_release(self, event, key):
+        """Handle slider release - trigger recalculation"""
+        self.on_field_changed()
     
     def on_field_changed(self, event=None):
         """Handle input field changes by updating results and scheduling autosave"""

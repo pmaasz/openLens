@@ -809,6 +809,7 @@ class LensEditorWindow:
                     assert LensVisualizer is not None
                 
                 self.visualizer = LensVisualizer(self.viz_3d_frame, width=5, height=5)
+                self.visualizer.set_radius_change_callback(self._on_radius_drag_change)
             except Exception as e:
                 ttk.Label(self.viz_3d_frame, text=f"Visualization error: {e}", 
                          wraplength=300).pack(pady=PADDING_XLARGE)
@@ -818,6 +819,21 @@ class LensEditorWindow:
             ttk.Label(self.viz_3d_frame, text=msg, justify=tk.CENTER, 
                       font=(FONT_FAMILY, FONT_SIZE_NORMAL)).pack(pady=PADDING_SMALL)
             self.visualizer = None
+    
+    def _on_radius_drag_change(self, r1, r2):
+        """Handle radius change from visualizer drag"""
+        if not self.editor_controller:
+            return
+        if not hasattr(self.editor_controller, 'entry_fields'):
+            return
+        
+        fields = self.editor_controller.entry_fields
+        if 'radius1' in fields and 'radius2' in fields:
+            fields['radius1'].delete(0, tk.END)
+            fields['radius1'].insert(0, f"{r1:.1f}")
+            fields['radius2'].delete(0, tk.END)
+            fields['radius2'].insert(0, f"{r2:.1f}")
+            self.editor_controller.on_field_changed()
     
     def update_visualization(self) -> None:
         """Update the visualization panel with current lens data"""
