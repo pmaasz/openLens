@@ -2406,7 +2406,9 @@ class StartupDialog(QDialog):
         # Always center on first show
         if not self._centered:
             self._centered = True
-            self._recenter()
+            # Single shot timer to allow window decorations and layout to settle
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(50, self._recenter)
 
     def _recenter(self):
         """Truly center the window on the current screen"""
@@ -2417,19 +2419,23 @@ class StartupDialog(QDialog):
             screen = QGuiApplication.primaryScreen()
             
         if screen:
-            geom = screen.availableGeometry()
-            # Calculate center using fixed 650x650 size
-            # IMPORTANT: use availableGeometry to account for taskbars/docks
-            x = geom.x() + (geom.width() - 650) // 2
-            y = geom.y() + (geom.height() - 650) // 2
+            # Use availableGeometry to account for taskbars/docks
+            screen_geom = screen.availableGeometry()
             
-            # Use setGeometry to force both position and size in one call
-            # This is more robust against OS/WM interference
-            self.setGeometry(x, y, 650, 650)
+            # Use frameGeometry to account for window borders (title bar, etc.)
+            frame_geom = self.frameGeometry()
             
-            # Ensure the window is moved and resized
-            self.move(x, y)
-            self.setFixedSize(650, 650)
+            # Move frame center to screen center
+            screen_center = screen_geom.center()
+            frame_geom.moveCenter(screen_center)
+            
+            # Move the window top-left to match the calculated frame top-left
+            self.move(frame_geom.topLeft())
+            
+            # Final verification: ensure we didn't drift off screen
+            # If after move it's still weird, we force it one more time
+            if abs(self.geometry().center().x() - screen_center.x()) > 50:
+                 self.move(frame_geom.topLeft())
     
     def _setup_ui(self):
         from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, QLabel, QGroupBox, QWidget, QSizePolicy
