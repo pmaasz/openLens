@@ -2009,11 +2009,13 @@ class _3DVisualizationWidget(QWidget):
         Y = V * np.sin(U)
         
         if abs(r1) > 0.1:
-            Z = np.sqrt(max(0, r1**2 - X**2 - Y**2))
+            val = r1**2 - X**2 - Y**2
+            Z = np.sqrt(np.maximum(0, val))
             self._ax.plot_surface(X, Y, Z, alpha=0.6, color='cyan')
         
         if abs(r2) > 0.1:
-            Z2 = thickness - np.sqrt(max(0, r2**2 - X**2 - Y**2))
+            val2 = r2**2 - X**2 - Y**2
+            Z2 = thickness - np.sqrt(np.maximum(0, val2))
             self._ax.plot_surface(X, Y, Z2, alpha=0.6, color='magenta')
         
         self._ax.set_xlabel('X', color='#aaa')
@@ -2447,11 +2449,8 @@ class StartupDialog(QDialog):
         lens_group = QGroupBox("Available Lenses")
         lens_layout = QVBoxLayout(lens_group)
         
-        # Buttons frame for lenses - at bottom like Tkinter version
+        # Buttons frame for lenses
         lens_btn_layout = QHBoxLayout()
-        lens_btn_layout.setSpacing(2)
-        
-        # Import (+) button - left side
         import_lens_btn = QPushButton("+")
         import_lens_btn.setFixedWidth(25)
         import_lens_btn.setStyleSheet("QPushButton { font-weight: bold; }")
@@ -2459,7 +2458,6 @@ class StartupDialog(QDialog):
         import_lens_btn.clicked.connect(lambda: self._import_item("lens"))
         lens_btn_layout.addWidget(import_lens_btn)
         
-        # Delete (-) button - next to import
         delete_lens_btn = QPushButton("-")
         delete_lens_btn.setFixedWidth(25)
         delete_lens_btn.setStyleSheet("QPushButton { font-weight: bold; }")
@@ -2467,33 +2465,16 @@ class StartupDialog(QDialog):
         delete_lens_btn.clicked.connect(lambda: self._delete_item("lens"))
         lens_btn_layout.addWidget(delete_lens_btn)
         
-        # Spacer
-        spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        lens_btn_layout.addWidget(spacer)
-        
-        # Open button - right side
-        open_lens_btn = QPushButton("Open Selected")
-        open_lens_btn.clicked.connect(lambda: self._select_item("lens"))
-        lens_btn_layout.addWidget(open_lens_btn)
-        
-        # Add button row at bottom of lens group
         lens_layout.addLayout(lens_btn_layout)
-        
         self._lens_list = QListWidget()
         self._lens_list.itemDoubleClicked.connect(lambda: self._select_item("lens"))
         lens_layout.addWidget(self._lens_list)
         layout.addWidget(lens_group)
         
-        # Show list of existing assemblies  
         asm_group = QGroupBox("Available Assemblies")
         asm_layout = QVBoxLayout(asm_group)
         
-        # Buttons frame for assemblies - at bottom like Tkinter
         asm_btn_layout = QHBoxLayout()
-        asm_btn_layout.setSpacing(2)
-        
-        # Import (+) button - left side
         import_asm_btn = QPushButton("+")
         import_asm_btn.setFixedWidth(25)
         import_asm_btn.setStyleSheet("QPushButton { font-weight: bold; }")
@@ -2501,7 +2482,6 @@ class StartupDialog(QDialog):
         import_asm_btn.clicked.connect(lambda: self._import_item("assembly"))
         asm_btn_layout.addWidget(import_asm_btn)
         
-        # Delete (-) button - next to import
         delete_asm_btn = QPushButton("-")
         delete_asm_btn.setFixedWidth(25)
         delete_asm_btn.setStyleSheet("QPushButton { font-weight: bold; }")
@@ -2509,17 +2489,6 @@ class StartupDialog(QDialog):
         delete_asm_btn.clicked.connect(lambda: self._delete_item("assembly"))
         asm_btn_layout.addWidget(delete_asm_btn)
         
-        # Spacer
-        spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        asm_btn_layout.addWidget(spacer)
-        
-        # Open button - right side
-        open_asm_btn = QPushButton("Open Selected")
-        open_asm_btn.clicked.connect(lambda: self._select_item("assembly"))
-        asm_btn_layout.addWidget(open_asm_btn)
-        
-        # Add button row at bottom of assembly group
         asm_layout.addLayout(asm_btn_layout)
         
         self._asm_list = QListWidget()
@@ -2539,12 +2508,38 @@ class StartupDialog(QDialog):
             empty.setStyleSheet("color: #888;")
             lens_layout.addWidget(empty)
         
-        layout.addStretch()
+        open_btn = QPushButton("Open Selected")
+        open_btn.setMinimumWidth(120)
+        open_btn.clicked.connect(self._open_selected)
+        layout.addWidget(open_btn, alignment=Qt.AlignCenter)
         
-        close_btn = QPushButton("Cancel")
-        close_btn.setMinimumWidth(100)
-        close_btn.clicked.connect(self.reject)
-        layout.addWidget(close_btn, alignment=Qt.AlignCenter)
+        layout.addStretch()
+    
+    def _open_selected(self):
+        """Open selected lens or assembly from either list"""
+        # Check lens list first
+        lens_row = self._lens_list.currentRow()
+        if lens_row >= 0:
+            for item in self._all_items:
+                if not (hasattr(item, 'elements') and hasattr(item, 'air_gaps')):
+                    lens_row -= 1
+                    if lens_row < 0:
+                        self._selected_action = "open_lens"
+                        self._selected_data = item
+                        self.accept()
+                        return
+        
+        # Check assembly list
+        asm_row = self._asm_list.currentRow()
+        if asm_row >= 0:
+            for item in self._all_items:
+                if hasattr(item, 'elements') and hasattr(item, 'air_gaps'):
+                    asm_row -= 1
+                    if asm_row < 0:
+                        self._selected_action = "open_assembly"
+                        self._selected_data = item
+                        self.accept()
+                        return
     
     def _select_item(self, list_type):
         """Select an item from the list"""
