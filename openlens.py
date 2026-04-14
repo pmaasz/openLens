@@ -2403,38 +2403,39 @@ class StartupDialog(QDialog):
     def showEvent(self, event):
         """Center on screen when dialog is shown"""
         super().showEvent(event)
-        # Re-center immediately and then again after a short delay
-        # to ensure it stays centered regardless of window manager timing
-        self._recenter()
+        # Use QTimer with 0 delay (next event loop iteration) to ensure 
+        # the window manager has finished initial placement.
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(150, self._recenter)
+        QTimer.singleShot(0, self._recenter)
+        # Follow up with 200ms delay for more stubborn window managers
+        QTimer.singleShot(200, self._recenter)
 
     def _recenter(self):
-        """Truly center the window on the screen where the cursor is."""
+        """Truly center the window on the current screen."""
         from PySide6.QtGui import QGuiApplication, QCursor
         
-        # 1. Identify current screen (cursor-based is most reliable)
+        # 1. Identify active screen (where the mouse is)
         screen = QGuiApplication.screenAt(QCursor.pos())
         if not screen:
             screen = QGuiApplication.primaryScreen()
         
         if screen:
-            # 2. Get the *available* screen geometry (excludes taskbars, docks, etc.)
-            geom = screen.availableGeometry()
+            # 2. Get the screen's center point
+            # Using geometry() center is often more reliable than availableGeometry() 
+            # for initial placement in many desktop environments.
+            screen_center = screen.geometry().center()
             
-            # 3. Calculate top-left point manually (650x650 is fixed size)
-            x = geom.x() + (geom.width() - 650) // 2
-            y = geom.y() + (geom.height() - 650) // 2
+            # 3. Use frameGeometry to account for window borders/title bar
+            # This ensures the visual center of the entire window (including decorations)
+            # is at the screen center.
+            frame_geom = self.frameGeometry()
+            frame_geom.moveCenter(screen_center)
             
-            # 4. Use move() and follow up with setGeometry for stubborn managers
-            # We move it multiple times to ensure the WM respects the position
-            self.move(x, y)
-            self.setGeometry(x, y, 650, 650)
+            # 4. Move the window to the calculated top-left of the frame
+            self.move(frame_geom.topLeft())
+            
+            # 5. Lock in the fixed size
             self.setFixedSize(650, 650)
-            
-            # 5. On some Linux/GNOME environments, using move() before show() 
-            # is ignored. By doing it twice (immediately and via timer), 
-            # we catch both cases.
     
     def _setup_ui(self):
         from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, QLabel, QGroupBox, QWidget, QSizePolicy
