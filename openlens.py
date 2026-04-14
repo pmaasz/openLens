@@ -2411,9 +2411,10 @@ class StartupDialog(QDialog):
         screen = QGuiApplication.primaryScreen()
         if screen:
             geom = screen.availableGeometry()
-            x = geom.x() + (geom.width() - self.width()) // 2
-            y = geom.y() + (geom.height() - self.height()) // 2
-            self.move(x, y)
+            # Calculate coordinates to truly center the window on the available screen area
+            x = geom.x() + (geom.width() - 650) // 2
+            y = geom.y() + (geom.height() - 650) // 2
+            self.setGeometry(x, y, 650, 650)
     
     def _setup_ui(self):
         from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, QLabel, QGroupBox, QWidget, QSizePolicy
@@ -2512,47 +2513,41 @@ class StartupDialog(QDialog):
         list_widget.itemDoubleClicked.connect(lambda: self._open_selected_from_list(list_widget, items_to_show, action))
         group_layout.addWidget(list_widget)
         
-        # Import/Delete buttons
+        self.list_layout.addWidget(group)
+        
+        # Import/Delete buttons outside the group box
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         
-        import_btn = QPushButton("+")
-        import_btn.setFixedWidth(30)
-        import_btn.setStyleSheet("""
+        button_style = """
             QPushButton {
                 background-color: #3d3d3d;
                 color: #ffffff;
                 font-weight: bold;
-                font-size: 18px;
-                border: 1px solid #555555;
+                font-size: 20px;
+                border: 2px solid #555555;
+                border-radius: 4px;
+                padding: 0px;
+                min-width: 40px;
+                min-height: 40px;
             }
             QPushButton:hover {
                 background-color: #4d4d4d;
+                border-color: #0078d4;
             }
-        """)
+        """
+        
+        import_btn = QPushButton("+")
+        import_btn.setStyleSheet(button_style)
         import_btn.clicked.connect(lambda: self._import_item(list_type))
         btn_row.addWidget(import_btn)
         
         delete_btn = QPushButton("-")
-        delete_btn.setFixedWidth(30)
-        delete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3d3d3d;
-                color: #ffffff;
-                font-weight: bold;
-                font-size: 18px;
-                border: 1px solid #555555;
-            }
-            QPushButton:hover {
-                background-color: #4d4d4d;
-            }
-        """)
+        delete_btn.setStyleSheet(button_style)
         delete_btn.clicked.connect(lambda: self._delete_item_from_list(list_widget, items_to_show, list_type))
         btn_row.addWidget(delete_btn)
         
-        group_layout.addLayout(btn_row)
-        
-        self.list_layout.addWidget(group)
+        self.list_layout.addLayout(btn_row)
         
         open_btn = QPushButton("Open Selected")
         open_btn.setFixedWidth(150)
@@ -2563,11 +2558,10 @@ class StartupDialog(QDialog):
         from PySide6.QtGui import QGuiApplication
         screen = QGuiApplication.primaryScreen()
         if screen:
-            size = self.size()
-            screen_size = screen.geometry()
-            x = (screen_size.width() - size.width()) // 2
-            y = (screen_size.height() - size.height()) // 2
-            self.move(x, y)
+            geom = screen.availableGeometry()
+            x = geom.x() + (geom.width() - 650) // 2
+            y = geom.y() + (geom.height() - 650) // 2
+            self.setGeometry(x, y, 650, 650)
 
     def _open_selected_from_list(self, list_widget, items, action):
         row = list_widget.currentRow()
