@@ -2403,11 +2403,12 @@ class StartupDialog(QDialog):
     def showEvent(self, event):
         """Center on screen when dialog is shown"""
         super().showEvent(event)
-        # Use a timer to ensure the window is mapped and window manager 
-        # has finished its initial placement before we override it.
+        # We need a longer delay and multiple attempts for GNOME/Ubuntu
+        # which often ignores position requests during the mapping phase.
         from PySide6.QtCore import QTimer
-        # 100ms is a safe delay for most Linux/X11 window managers
-        QTimer.singleShot(100, self._recenter)
+        QTimer.singleShot(50, self._recenter)
+        QTimer.singleShot(250, self._recenter)
+        QTimer.singleShot(500, self._recenter)
 
     def _recenter(self):
         """Truly center the window on the active screen."""
@@ -2420,21 +2421,21 @@ class StartupDialog(QDialog):
         
         if screen:
             # 2. Use the full screen geometry (ignoring taskbars for true center)
-            # This matches how the successful Tkinter version calculates its offset
             screen_geom = screen.geometry()
             
             # 3. Calculate top-left x,y using exactly the same logic as Tkinter
-            # x = monitor_offset + (monitor_width - window_width) // 2
             x = screen_geom.x() + (screen_geom.width() - 650) // 2
-            # y = monitor_offset + (monitor_height - window_height) // 2
             y = screen_geom.y() + (screen_geom.height() - 650) // 2
             
-            # 4. Set geometry and move, ensuring fixed size is respected
-            # setGeometry(x, y, w, h) is the most authoritative way to place a window in Qt
-            self.setGeometry(x, y, 650, 650)
-            self.setFixedSize(650, 650)
-            # Re-confirm move in case setGeometry was partially ignored
+            # 4. Use move() and setFixedSize. 
+            # On Linux, setGeometry can sometimes be ignored if it conflicts 
+            # with the window manager's decorations calculation.
             self.move(x, y)
+            self.setFixedSize(650, 650)
+            
+            # Additional check to force the position if it's still wrong
+            if self.pos().x() != x or self.pos().y() != y:
+                self.move(x, y)
     
     def _setup_ui(self):
         from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, QLabel, QGroupBox, QWidget, QSizePolicy
