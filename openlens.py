@@ -2518,11 +2518,13 @@ class StartupDialog(QDialog):
         
         import_btn = QPushButton("+")
         import_btn.setFixedWidth(30)
+        import_btn.setStyleSheet("background-color: #2d2d2d; color: #e0e0e0; font-weight: bold; font-size: 16px;")
         import_btn.clicked.connect(lambda: self._import_item(list_type))
         btn_row.addWidget(import_btn)
         
         delete_btn = QPushButton("-")
         delete_btn.setFixedWidth(30)
+        delete_btn.setStyleSheet("background-color: #2d2d2d; color: #e0e0e0; font-weight: bold; font-size: 16px;")
         delete_btn.clicked.connect(lambda: self._delete_item_from_list(list_widget, items_to_show, list_type))
         btn_row.addWidget(delete_btn)
         
