@@ -2403,10 +2403,10 @@ class StartupDialog(QDialog):
     def showEvent(self, event):
         """Center on screen when dialog is shown"""
         super().showEvent(event)
-        if self._centered:
-            return
-        self._centered = True
-        self._recenter()
+        # Always center on first show
+        if not self._centered:
+            self._centered = True
+            self._recenter()
 
     def _recenter(self):
         """Truly center the window on the current screen"""
@@ -2419,10 +2419,17 @@ class StartupDialog(QDialog):
         if screen:
             geom = screen.availableGeometry()
             # Calculate center using fixed 650x650 size
+            # IMPORTANT: use availableGeometry to account for taskbars/docks
             x = geom.x() + (geom.width() - 650) // 2
             y = geom.y() + (geom.height() - 650) // 2
-            # Use move() after ensuring size is fixed in __init__
+            
+            # Use setGeometry to force both position and size in one call
+            # This is more robust against OS/WM interference
+            self.setGeometry(x, y, 650, 650)
+            
+            # Ensure the window is moved and resized
             self.move(x, y)
+            self.setFixedSize(650, 650)
     
     def _setup_ui(self):
         from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, QLabel, QGroupBox, QWidget, QSizePolicy
