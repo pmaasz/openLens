@@ -2406,15 +2406,23 @@ class StartupDialog(QDialog):
         if self._centered:
             return
         self._centered = True
-        
+        self._recenter()
+
+    def _recenter(self):
+        """Truly center the window on the current screen"""
         from PySide6.QtGui import QGuiApplication
-        screen = QGuiApplication.primaryScreen()
+        # Use the screen where the cursor is or primary screen
+        screen = QGuiApplication.screenAt(self.cursor().pos())
+        if not screen:
+            screen = QGuiApplication.primaryScreen()
+            
         if screen:
             geom = screen.availableGeometry()
-            # Calculate coordinates to truly center the window on the available screen area
+            # Calculate center using fixed 650x650 size
             x = geom.x() + (geom.width() - 650) // 2
             y = geom.y() + (geom.height() - 650) // 2
-            self.setGeometry(x, y, 650, 650)
+            # Use move() after ensuring size is fixed in __init__
+            self.move(x, y)
     
     def _setup_ui(self):
         from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, QLabel, QGroupBox, QWidget, QSizePolicy
@@ -2499,9 +2507,11 @@ class StartupDialog(QDialog):
             
         group = QGroupBox(title)
         group_layout = QVBoxLayout(group)
+        group_layout.setContentsMargins(10, 20, 10, 10) # Add top margin for title
         
         list_widget = QListWidget()
         list_widget.setFixedHeight(200)
+        list_widget.setStyleSheet("border: none; background: transparent;") # Remove inner border
         
         items_to_show = []
         for item in self._all_items:
@@ -2555,13 +2565,7 @@ class StartupDialog(QDialog):
         self.list_layout.addWidget(open_btn, alignment=Qt.AlignCenter)
         
         # Recenter window as size might have changed
-        from PySide6.QtGui import QGuiApplication
-        screen = QGuiApplication.primaryScreen()
-        if screen:
-            geom = screen.availableGeometry()
-            x = geom.x() + (geom.width() - 650) // 2
-            y = geom.y() + (geom.height() - 650) // 2
-            self.setGeometry(x, y, 650, 650)
+        self._recenter()
 
     def _open_selected_from_list(self, list_widget, items, action):
         row = list_widget.currentRow()
