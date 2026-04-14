@@ -2406,13 +2406,13 @@ class StartupDialog(QDialog):
         if self._centered:
             return
         self._centered = True
+        
         from PySide6.QtGui import QGuiApplication
         screen = QGuiApplication.primaryScreen()
         if screen:
-            size = self.size()
-            screen_size = screen.geometry()
-            x = (screen_size.width() - size.width()) // 2
-            y = (screen_size.height() - size.height()) // 2
+            geom = screen.availableGeometry()
+            x = geom.x() + (geom.width() - self.width()) // 2
+            y = geom.y() + (geom.height() - self.height()) // 2
             self.move(x, y)
     
     def _setup_ui(self):
@@ -2518,13 +2518,35 @@ class StartupDialog(QDialog):
         
         import_btn = QPushButton("+")
         import_btn.setFixedWidth(30)
-        import_btn.setStyleSheet("background-color: #2d2d2d; color: #e0e0e0; font-weight: bold; font-size: 16px;")
+        import_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3d3d3d;
+                color: #ffffff;
+                font-weight: bold;
+                font-size: 18px;
+                border: 1px solid #555555;
+            }
+            QPushButton:hover {
+                background-color: #4d4d4d;
+            }
+        """)
         import_btn.clicked.connect(lambda: self._import_item(list_type))
         btn_row.addWidget(import_btn)
         
         delete_btn = QPushButton("-")
         delete_btn.setFixedWidth(30)
-        delete_btn.setStyleSheet("background-color: #2d2d2d; color: #e0e0e0; font-weight: bold; font-size: 16px;")
+        delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3d3d3d;
+                color: #ffffff;
+                font-weight: bold;
+                font-size: 18px;
+                border: 1px solid #555555;
+            }
+            QPushButton:hover {
+                background-color: #4d4d4d;
+            }
+        """)
         delete_btn.clicked.connect(lambda: self._delete_item_from_list(list_widget, items_to_show, list_type))
         btn_row.addWidget(delete_btn)
         
