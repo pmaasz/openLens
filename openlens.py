@@ -2403,10 +2403,11 @@ class StartupDialog(QDialog):
     def showEvent(self, event):
         """Center on screen when dialog is shown"""
         super().showEvent(event)
-        # Re-center on first show and every time it becomes visible
+        # Re-center immediately and then again after a short delay
+        # to ensure it stays centered regardless of window manager timing
+        self._recenter()
         from PySide6.QtCore import QTimer
-        # Small delay to ensure the window is mapped and window manager respects the position
-        QTimer.singleShot(100, self._recenter)
+        QTimer.singleShot(150, self._recenter)
 
     def _recenter(self):
         """Truly center the window on the screen where the cursor is."""
@@ -2422,17 +2423,18 @@ class StartupDialog(QDialog):
             geom = screen.availableGeometry()
             
             # 3. Calculate top-left point manually (650x650 is fixed size)
-            # x = monitor_offset + (monitor_width - window_width) / 2
             x = geom.x() + (geom.width() - 650) // 2
-            # y = monitor_offset + (monitor_height - window_height) / 2
             y = geom.y() + (geom.height() - 650) // 2
             
             # 4. Use move() and follow up with setGeometry for stubborn managers
+            # We move it multiple times to ensure the WM respects the position
             self.move(x, y)
             self.setGeometry(x, y, 650, 650)
-            
-            # Ensure fixed size is maintained after geometry change
             self.setFixedSize(650, 650)
+            
+            # 5. On some Linux/GNOME environments, using move() before show() 
+            # is ignored. By doing it twice (immediately and via timer), 
+            # we catch both cases.
     
     def _setup_ui(self):
         from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, QLabel, QGroupBox, QWidget, QSizePolicy
