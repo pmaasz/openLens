@@ -2392,15 +2392,20 @@ class StartupDialog(QDialog):
         super().__init__()
         self.setWindowTitle("OpenLens")
         self.setModal(True)
-        self.resize(500, 500)
+        self.setFixedSize(650, 650)
         
         self._selected_action = None
         self._selected_data = None
+        self._centered = False
         
         self._setup_ui()
-        self._center_on_screen()
     
-    def _center_on_screen(self):
+    def showEvent(self, event):
+        """Center on screen when dialog is shown"""
+        super().showEvent(event)
+        if self._centered:
+            return
+        self._centered = True
         from PySide6.QtGui import QGuiApplication
         screen = QGuiApplication.primaryScreen()
         if screen:
@@ -2425,17 +2430,35 @@ class StartupDialog(QDialog):
         
         layout.addWidget(QLabel(""))
         
+        button_width = 250
+        
         new_lens_btn = QPushButton("Create New Lens")
-        new_lens_btn.setMinimumWidth(200)
+        new_lens_btn.setFixedWidth(button_width)
         new_lens_btn.clicked.connect(self._create_new_lens)
-        layout.addWidget(new_lens_btn)
+        layout.addWidget(new_lens_btn, alignment=Qt.AlignCenter)
         
         new_assembly_btn = QPushButton("Create New Assembly")
-        new_assembly_btn.setMinimumWidth(200)
+        new_assembly_btn.setFixedWidth(button_width)
         new_assembly_btn.clicked.connect(self._create_new_assembly)
-        layout.addWidget(new_assembly_btn)
+        layout.addWidget(new_assembly_btn, alignment=Qt.AlignCenter)
+        
+        open_lens_btn = QPushButton("Open Existing Lens")
+        open_lens_btn.setFixedWidth(button_width)
+        open_lens_btn.clicked.connect(self._show_lens_list)
+        layout.addWidget(open_lens_btn, alignment=Qt.AlignCenter)
+        
+        open_asm_btn = QPushButton("Open Existing Assembly")
+        open_asm_btn.setFixedWidth(button_width)
+        open_asm_btn.clicked.connect(self._show_assembly_list)
+        layout.addWidget(open_asm_btn, alignment=Qt.AlignCenter)
         
         layout.addWidget(QLabel(""))
+        
+        # Container for dynamic lists
+        self.list_container = QWidget()
+        self.list_layout = QVBoxLayout(self.list_container)
+        self.list_layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.list_container)
         
         # Load existing items from database
         from src.gui.storage import LensStorage
@@ -2444,130 +2467,140 @@ class StartupDialog(QDialog):
             self._all_items = storage.load_lenses()
         except:
             self._all_items = []
+            
+        layout.addStretch()
+
+    def _show_lens_list(self):
+        self._show_list("lens")
+
+    def _show_assembly_list(self):
+        self._show_list("assembly")
+
+    def _show_list(self, list_type):
+        from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, QLabel, QGroupBox, QWidget
+        from PySide6.QtCore import Qt
         
-        # Show list of existing lenses
-        lens_group = QGroupBox("Available Lenses")
-        lens_layout = QVBoxLayout(lens_group)
+        # Clear previous list
+        while self.list_layout.count():
+            item = self.list_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                # For layouts, we need a recursive or more careful cleanup
+                pass
         
-        # Buttons frame for lenses
-        lens_btn_layout = QHBoxLayout()
-        import_lens_btn = QPushButton("+")
-        import_lens_btn.setFixedWidth(25)
-        import_lens_btn.setStyleSheet("QPushButton { font-weight: bold; }")
-        import_lens_btn.setToolTip("Import lens from file")
-        import_lens_btn.clicked.connect(lambda: self._import_item("lens"))
-        lens_btn_layout.addWidget(import_lens_btn)
+        if list_type == "lens":
+            title = "Available Lenses"
+            action = "open_lens"
+        else:
+            title = "Available Assemblies"
+            action = "open_assembly"
+            
+        group = QGroupBox(title)
+        group_layout = QVBoxLayout(group)
         
-        delete_lens_btn = QPushButton("-")
-        delete_lens_btn.setFixedWidth(25)
-        delete_lens_btn.setStyleSheet("QPushButton { font-weight: bold; }")
-        delete_lens_btn.setToolTip("Delete selected lens")
-        delete_lens_btn.clicked.connect(lambda: self._delete_item("lens"))
-        lens_btn_layout.addWidget(delete_lens_btn)
+        list_widget = QListWidget()
+        list_widget.setFixedHeight(200)
         
-        lens_layout.addLayout(lens_btn_layout)
-        self._lens_list = QListWidget()
-        self._lens_list.itemDoubleClicked.connect(lambda: self._select_item("lens"))
-        lens_layout.addWidget(self._lens_list)
-        layout.addWidget(lens_group)
-        
-        asm_group = QGroupBox("Available Assemblies")
-        asm_layout = QVBoxLayout(asm_group)
-        
-        asm_btn_layout = QHBoxLayout()
-        import_asm_btn = QPushButton("+")
-        import_asm_btn.setFixedWidth(25)
-        import_asm_btn.setStyleSheet("QPushButton { font-weight: bold; }")
-        import_asm_btn.setToolTip("Import assembly from file")
-        import_asm_btn.clicked.connect(lambda: self._import_item("assembly"))
-        asm_btn_layout.addWidget(import_asm_btn)
-        
-        delete_asm_btn = QPushButton("-")
-        delete_asm_btn.setFixedWidth(25)
-        delete_asm_btn.setStyleSheet("QPushButton { font-weight: bold; }")
-        delete_asm_btn.setToolTip("Delete selected assembly")
-        delete_asm_btn.clicked.connect(lambda: self._delete_item("assembly"))
-        asm_btn_layout.addWidget(delete_asm_btn)
-        
-        asm_layout.addLayout(asm_btn_layout)
-        
-        self._asm_list = QListWidget()
-        self._asm_list.itemDoubleClicked.connect(lambda: self._select_item("assembly"))
-        asm_layout.addWidget(self._asm_list)
-        layout.addWidget(asm_group)
-        
-        # Populate lists
+        items_to_show = []
         for item in self._all_items:
-            if hasattr(item, 'elements') and hasattr(item, 'air_gaps'):
-                self._asm_list.addItem(item.name)
-            else:
-                self._lens_list.addItem(item.name)
+            is_asm = hasattr(item, 'elements') and hasattr(item, 'air_gaps')
+            if (list_type == "lens" and not is_asm) or (list_type == "assembly" and is_asm):
+                list_widget.addItem(item.name)
+                items_to_show.append(item)
+                
+        list_widget.itemDoubleClicked.connect(lambda: self._open_selected_from_list(list_widget, items_to_show, action))
+        group_layout.addWidget(list_widget)
         
-        if not self._all_items:
-            empty = QLabel("No existing items. Create a new lens or assembly.")
-            empty.setStyleSheet("color: #888;")
-            lens_layout.addWidget(empty)
+        # Import/Delete buttons
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        
+        import_btn = QPushButton("+")
+        import_btn.setFixedWidth(30)
+        import_btn.clicked.connect(lambda: self._import_item(list_type))
+        btn_row.addWidget(import_btn)
+        
+        delete_btn = QPushButton("-")
+        delete_btn.setFixedWidth(30)
+        delete_btn.clicked.connect(lambda: self._delete_item_from_list(list_widget, items_to_show, list_type))
+        btn_row.addWidget(delete_btn)
+        
+        group_layout.addLayout(btn_row)
+        
+        self.list_layout.addWidget(group)
         
         open_btn = QPushButton("Open Selected")
-        open_btn.setMinimumWidth(120)
-        open_btn.clicked.connect(self._open_selected)
-        layout.addWidget(open_btn, alignment=Qt.AlignCenter)
+        open_btn.setFixedWidth(150)
+        open_btn.clicked.connect(lambda: self._open_selected_from_list(list_widget, items_to_show, action))
+        self.list_layout.addWidget(open_btn, alignment=Qt.AlignCenter)
         
-        layout.addStretch()
-    
-    def _open_selected(self):
-        """Open selected lens or assembly from either list"""
-        # Check lens list first
-        lens_row = self._lens_list.currentRow()
-        if lens_row >= 0:
-            for item in self._all_items:
-                if not (hasattr(item, 'elements') and hasattr(item, 'air_gaps')):
-                    lens_row -= 1
-                    if lens_row < 0:
-                        self._selected_action = "open_lens"
-                        self._selected_data = item
-                        self.accept()
-                        return
+        # Recenter window as size might have changed
+        from PySide6.QtGui import QGuiApplication
+        screen = QGuiApplication.primaryScreen()
+        if screen:
+            size = self.size()
+            screen_size = screen.geometry()
+            x = (screen_size.width() - size.width()) // 2
+            y = (screen_size.height() - size.height()) // 2
+            self.move(x, y)
+
+    def _open_selected_from_list(self, list_widget, items, action):
+        row = list_widget.currentRow()
+        if row >= 0:
+            self._selected_action = action
+            self._selected_data = items[row]
+            self.accept()
+
+    def _delete_item_from_list(self, list_widget, items, list_type):
+        row = list_widget.currentRow()
+        if row < 0:
+            return
+            
+        item_to_delete = items[row]
         
-        # Check assembly list
-        asm_row = self._asm_list.currentRow()
-        if asm_row >= 0:
-            for item in self._all_items:
-                if hasattr(item, 'elements') and hasattr(item, 'air_gaps'):
-                    asm_row -= 1
-                    if asm_row < 0:
-                        self._selected_action = "open_assembly"
-                        self._selected_data = item
-                        self.accept()
-                        return
-    
-    def _select_item(self, list_type):
-        """Select an item from the list"""
-        if list_type == "lens":
-            row = self._lens_list.currentRow()
-            if row >= 0:
-                for item in self._all_items:
-                    if not (hasattr(item, 'elements') and hasattr(item, 'air_gaps')):
-                        row -= 1
-                        if row < 0:
-                            self._selected_action = "open_lens"
-                            self._selected_data = item
-                            self.accept()
-                            return
-        else:
-            row = self._asm_list.currentRow()
-            if row >= 0:
-                for item in self._all_items:
-                    if hasattr(item, 'elements') and hasattr(item, 'air_gaps'):
-                        row -= 1
-                        if row < 0:
-                            self._selected_action = "open_assembly"
-                            self._selected_data = item
-                            self.accept()
-                            return
+        from PySide6.QtWidgets import QMessageBox
+        import sqlite3
+        
+        reply = QMessageBox.question(
+            self, "Confirm Delete",
+            f"Delete '{item_to_delete.name}'?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply != QMessageBox.Yes:
+            return
+            
+        try:
+            conn = sqlite3.connect("openlens.db")
+            cursor = conn.cursor()
+            
+            if list_type == "lens":
+                cursor.execute("DELETE FROM lenses WHERE id = ?", (item_to_delete.id,))
+            else:
+                cursor.execute("DELETE FROM assemblies WHERE id = ?", (item_to_delete.id,))
+                cursor.execute("DELETE FROM assembly_elements WHERE assembly_id = ?", (item_to_delete.id,))
+                cursor.execute("DELETE FROM assembly_air_gaps WHERE assembly_id = ?", (item_to_delete.id,))
+            
+            conn.commit()
+            conn.close()
+            
+            # Reload and refresh
+            from src.gui.storage import LensStorage
+            storage = LensStorage("openlens.db", lambda x: None)
+            self._all_items = storage.load_lenses()
+            self._show_list(list_type)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Delete Error", f"Failed to delete: {e}")
     
     def _create_new_lens(self):
         self._selected_action = "create_lens"
+        self._selected_data = None
+        self.accept()
+    
+    def _create_new_assembly(self):
+        self._selected_action = "create_assembly"
         self._selected_data = None
         self.accept()
     
@@ -2606,114 +2639,17 @@ class StartupDialog(QDialog):
             # Reload lists
             self._all_items = storage.load_lenses()
             
-            # Refresh display
-            self._lens_list.clear()
-            self._asm_list.clear()
-            for item in self._all_items:
-                if hasattr(item, 'elements') and hasattr(item, 'air_gaps'):
-                    self._asm_list.addItem(item.name)
-                else:
-                    self._lens_list.addItem(item.name)
+            # Refresh current list view if any
+            self._show_list(item_type)
             
             QMessageBox.information(self, "Import Complete", f"Imported: {item.name}")
             
         except Exception as e:
             QMessageBox.critical(self, "Import Error", f"Failed to import: {e}")
     
-    def _delete_item(self, item_type):
-        """Delete lens or assembly from database"""
-        from PySide6.QtWidgets import QMessageBox
-        import sqlite3
-        
-        if item_type == "lens":
-            row = self._lens_list.currentRow()
-            if row < 0:
-                QMessageBox.warning(self, "Select First", "Select an item to delete")
-                return
-            
-            # Find the lens
-            idx = 0
-            delete_item = None
-            for item in self._all_items:
-                if not (hasattr(item, 'elements') and hasattr(item, 'air_gaps')):
-                    if idx == row:
-                        delete_item = item
-                        break
-                    idx += 1
-        else:
-            row = self._asm_list.currentRow()
-            if row < 0:
-                QMessageBox.warning(self, "Select First", "Select an item to delete")
-                return
-            
-            idx = 0
-            delete_item = None
-            for item in self._all_items:
-                if hasattr(item, 'elements') and hasattr(item, 'air_gaps'):
-                    if idx == row:
-                        delete_item = item
-                        break
-                    idx += 1
-        
-        if not delete_item:
-            return
-        
-        reply = QMessageBox.question(
-            self, "Confirm Delete",
-            f"Delete '{delete_item.name}'?",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        
-        if reply != QMessageBox.Yes:
-            return
-        
-        try:
-            conn = sqlite3.connect("openlens.db")
-            cursor = conn.cursor()
-            
-            if item_type == "lens":
-                cursor.execute("DELETE FROM lenses WHERE id = ?", (delete_item.id,))
-            else:
-                cursor.execute("DELETE FROM assemblies WHERE id = ?", (delete_item.id,))
-                cursor.execute("DELETE FROM assembly_elements WHERE assembly_id = ?", (delete_item.id,))
-                cursor.execute("DELETE FROM assembly_air_gaps WHERE assembly_id = ?", (delete_item.id,))
-            
-            conn.commit()
-            conn.close()
-            
-            # Reload lists
-            from src.gui.storage import LensStorage
-            storage = LensStorage("openlens.db", lambda x: None)
-            self._all_items = storage.load_lenses()
-            
-            self._lens_list.clear()
-            self._asm_list.clear()
-            for item in self._all_items:
-                if hasattr(item, 'elements') and hasattr(item, 'air_gaps'):
-                    self._asm_list.addItem(item.name)
-                else:
-                    self._lens_list.addItem(item.name)
-            
-            QMessageBox.information(self, "Deleted", f"Deleted: {delete_item.name}")
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Delete Error", f"Failed to delete: {e}")
-    
-    def _create_new_assembly(self):
-        self._selected_action = "create_assembly"
-        self._selected_data = None
-        self.accept()
-    
-    def _open_lens(self):
-        # Switch to lens list and let user select
-        self._lens_list.setFocus()
-    
-    def _open_assembly(self):
-        # Switch to assembly list and let user select
-        self._asm_list.setFocus()
-    
     def get_result(self):
         return self._selected_action, self._selected_data
+
 
 
 class PerformanceVisualizationWidget(QWidget):

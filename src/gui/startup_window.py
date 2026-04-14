@@ -16,6 +16,7 @@ class StartupWindow:
         self.root.title("OpenLens")
         
         # Center window on screen
+        self.root.withdraw()
         window_width = 650
         window_height = 650
         screen_width = self.root.winfo_screenwidth()
@@ -24,6 +25,7 @@ class StartupWindow:
         y = (screen_height - window_height) // 2
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
         self.root.resizable(True, True)
+        self.root.deiconify()
         
         self.selected_action = None
         self.selected_item = None
