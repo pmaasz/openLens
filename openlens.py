@@ -1908,10 +1908,44 @@ class _2DVisualizationWidget(QWidget):
         scale = min(w, h) / max_dim * 0.85
         cx, cy = w/2, h/2
         
+        # Draw grid
+        grid_color = QColor("#333333")
+        painter.setPen(QPen(grid_color, 1))
+        grid_spacing = 5 * scale  # 5mm grid
+        grid_x = 0
+        while grid_x < w:
+            painter.drawLine(grid_x, 0, grid_x, h)
+            grid_x += grid_spacing
+        grid_y = 0
+        while grid_y < h:
+            painter.drawLine(0, grid_y, w, grid_y)
+            grid_y += grid_spacing
+        
         # Draw axis
         painter.setPen(QPen(self._axis_color, 1))
         painter.drawLine(0, cy, w, cy)
         painter.drawLine(cx, 0, cx, h)
+        
+        # Draw axis measurements (in mm)
+        font = painter.font()
+        font.setPointSize(8)
+        painter.setFont(font)
+        text_color = QColor("#888888")
+        painter.setPen(QPen(text_color, 1))
+        
+        # X-axis measurements at bottom
+        y_axis = h - 15
+        unit = 10  # Show every 10mm
+        x_unit = unit * scale
+        for x in range(0, w, int(x_unit)):
+            mm = int(x / scale)
+            painter.drawText(x - 8, y_axis, f"{mm}")
+        
+        # Y-axis measurements at left
+        x_label = 5
+        for y in range(0, h, int(x_unit)):
+            mm = int((h - y) / scale)
+            painter.drawText(x_label, y + 3, f"{mm}")
         
         # Draw radius 1 surface (blue)
         r1_abs = abs(r1) * scale
