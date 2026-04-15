@@ -1875,6 +1875,7 @@ class _2DVisualizationWidget(QWidget):
         self._r1_color = QColor(0, 150, 255, 180)    # Blue for radius 1
         self._r2_color = QColor(0, 200, 100, 180)  # Green for radius 2
         self._fill_color = QColor(150, 200, 230, 80)   # Light blue fill
+        self._edge_color = QColor(150, 150, 150, 200)   # Grey for lens edge
         self._text_color = QColor("#e0e0e0")
         self._axis_color = QColor("#666666")
     
@@ -1982,6 +1983,43 @@ class _2DVisualizationWidget(QWidget):
                         path2.lineTo(x, cy+y)
             painter.setPen(QPen(self._r2_color, 3))
             painter.drawPath(path2)
+        
+        # Draw lens edge (connecting curved surfaces at top/bottom)
+        y1 = cy - diameter/2 * scale
+        y2 = cy + diameter/2 * scale
+        
+        # Draw lens edge (connecting curved surfaces at top/bottom of diameter)
+        y_top = cy - diameter/2 * scale  # Top of lens
+        y_bot = cy + diameter/2 * scale   # Bottom of lens
+        half_d = diameter/2 * scale
+        
+        # Calculate X at R1 surface at top
+        if r1_abs > 0:
+            x1_top = cx + (r1_abs - (r1_abs**2 - half_d**2)**0.5) if r1 > 0 else cx - (r1_abs - (r1_abs**2 - half_d**2)**0.5)
+        else:
+            x1_top = cx  # Flat surface
+        
+        # Calculate X at R1 surface at bottom
+        if r1_abs > 0:
+            x1_bot = cx + (r1_abs - (r1_abs**2 - half_d**2)**0.5) if r1 > 0 else cx - (r1_abs - (r1_abs**2 - half_d**2)**0.5)
+        else:
+            x1_bot = cx
+        
+        # Calculate X at R2 surface at top
+        if r2_abs > 0:
+            x2_top = cx + thickness*scale + (r2_abs - (r2_abs**2 - half_d**2)**0.5) if r2 > 0 else cx + thickness*scale - (r2_abs - (r2_abs**2 - half_d**2)**0.5)
+        else:
+            x2_top = cx + thickness*scale
+        
+        # Calculate X at R2 surface at bottom
+        if r2_abs > 0:
+            x2_bot = cx + thickness*scale + (r2_abs - (r2_abs**2 - half_d**2)**0.5) if r2 > 0 else cx + thickness*scale - (r2_abs - (r2_abs**2 - half_d**2)**0.5)
+        else:
+            x2_bot = cx + thickness*scale
+        
+        painter.setPen(QPen(self._edge_color, 3))
+        painter.drawLine(x1_top, y_top, x2_top, y_top)  # Top edge
+        painter.drawLine(x1_bot, y_bot, x2_bot, y_bot)  # Bottom edge
         
         # Fill lens area
         path_fill = QPainterPath()
