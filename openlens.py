@@ -35,7 +35,7 @@ class OpenLensWindow(QMainWindow):
         self._theme = 'dark'
         
         self.setWindowTitle("OpenLens - Optical Lens Design")
-        self.setMinimumSize(1400, 900)
+        self.setMinimumSize(1000, 700)
         
         # Initialize database
         self._db_path = "openlens.db"
@@ -1411,7 +1411,7 @@ Ctrl+6         Tolerancing
     
     def _on_reset_window(self):
         """Reset window to default size and position"""
-        self.resize(1400, 900)
+        self.resize(1000, 700)
         self.move(50, 50)
         self._update_status("Window reset")
     
