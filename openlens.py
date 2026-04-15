@@ -2087,10 +2087,35 @@ class _3DVisualizationWidget(QWidget):
             layout.setContentsMargins(0, 0, 0, 0)
             layout.addWidget(self._canvas)
             
-            self._ax = self._figure.add_subplot(111, projection='3d', facecolor='#1e1e1e')
-            self._ax.set_facecolor('#1e1e1e')
-            self._ax.view_init(elev=20, azim=45)
-            self._ax.mouse_init(rotate_btn=1, zoom_btn=3)
+            self._figure.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
+            
+            # Fixed coordinate system (background)
+            self._ax_coords = self._figure.add_subplot(111, projection='3d', facecolor='#1e1e1e', computed_zorder=False)
+            self._ax_coords.view_init(elev=20, azim=45)
+            self._ax_coords.mouse_init()
+            
+            # Rotatable lens geometry (foreground)
+            self._ax_lens = self._figure.add_subplot(111, projection='3d', facecolor='none', computed_zorder=False)
+            self._ax_lens.set_position(self._ax_coords.get_position())
+            self._ax_lens.patch.set_alpha(0)
+            self._ax_lens.view_init(elev=20, azim=45)
+            self._ax_lens.set_axis_off()
+            self._ax_lens.mouse_init()
+            
+            # Use lens axis for main reference
+            self._ax = self._ax_lens
+            
+            # Configure coordinate appearance
+            self._ax_coords.set_xlabel('X (mm)', color='#666')
+            self._ax_coords.set_ylabel('Y (mm)', color='#666')
+            self._ax_coords.set_zlabel('Z (mm)', color='#666')
+            self._ax_coords.tick_params(colors='#555', labelsize=8)
+            self._ax_coords.xaxis.pane.set_facecolor('#1e1e1e')
+            self._ax_coords.yaxis.pane.set_facecolor('#1e1e1e')
+            self._ax_coords.zaxis.pane.set_facecolor('#1e1e1e')
+            self._ax_coords.xaxis.pane.set_alpha(0.9)
+            self._ax_coords.yaxis.pane.set_alpha(0.9)
+            self._ax_coords.zaxis.pane.set_alpha(0.9)
             
         except ImportError:
             from PySide6.QtWidgets import QLabel
@@ -2103,10 +2128,19 @@ class _3DVisualizationWidget(QWidget):
         if not lens or not self._ax or not self._figure:
             return
         
-        self._ax.clear()
-        self._ax.set_facecolor('#1e1e1e')
-        self._ax.view_init(elev=20, azim=45)
-        self._ax.mouse_init(rotate_btn=1, zoom_btn=3)
+        # Clear only lens axis
+        if hasattr(self, '_ax_lens'):
+            self._ax_lens.clear()
+            self._ax_lens.set_axis_off()
+            
+            # Keep coordinate system fixed (don't clear/recreate it)
+            # Just set limits from current lens
+            thickness, diameter = lens.thickness, lens.diameter
+            max_dim = max(diameter, thickness) * 0.7
+            if hasattr(self, '_ax_coords'):
+                self._ax_coords.set_xlim([-max_dim, max_dim])
+                self._ax_coords.set_ylim([-max_dim, max_dim])
+                self._ax_coords.set_zlim([-max_dim/2, thickness + max_dim/2])
         
         r1, r2 = lens.radius_of_curvature_1, lens.radius_of_curvature_2
         thickness, diameter = lens.thickness, lens.diameter
@@ -2175,18 +2209,12 @@ class _3DVisualizationWidget(QWidget):
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color='green', rstride=2, cstride=2)
         
-        # Set axis limits
+        # Set axis limits on lens axis only
         padding = max(diameter, thickness) * 0.3
         limit = max(diameter, thickness) / 2 + padding
         self._ax.set_xlim([-limit, limit])
         self._ax.set_ylim([-limit, limit])
         self._ax.set_zlim([min(z1_center, z2_center) - padding, max(z1_center, z2_center) + padding])
-        
-        # Labels
-        self._ax.set_xlabel('X (mm)', color='#888')
-        self._ax.set_ylabel('Y (mm)', color='#888')
-        self._ax.set_zlabel('Z (mm)', color='#888')
-        self._ax.tick_params(colors='#666')
         
         self._ax.view_init(elev=20, azim=45)
         
