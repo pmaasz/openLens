@@ -1632,17 +1632,24 @@ class LensEditorWidget(QWidget):
         self._fresnel_check.stateChanged.connect(self._on_fresnel_changed)
         fresnel_layout.addRow("Fresnel:", self._fresnel_check)
         
+        self._groove_pitch_label = QLabel("Groove Pitch:")
+        self._groove_pitch_label.setStyleSheet("color: #aaa;")
         self._groove_pitch_input = QDoubleSpinBox()
         self._groove_pitch_input.setRange(0.01, 10)
         self._groove_pitch_input.setValue(0.5)
         self._groove_pitch_input.setSuffix(" mm")
-        fresnel_layout.addRow("Groove Pitch:", self._groove_pitch_input)
+        self._groove_pitch_input.hide()
+        self._groove_pitch_label.hide()
+        fresnel_layout.addRow(self._groove_pitch_label, self._groove_pitch_input)
         
-        self._num_grooves_label = QLabel("0")
-        fresnel_layout.addRow("Number of Grooves:", self._num_grooves_label)
+        self._num_grooves_label = QLabel("Number of Grooves:")
+        self._num_grooves_label.setStyleSheet("color: #aaa;")
+        self._num_grooves_value = QLabel("0")
+        self._num_grooves_value.hide()
+        self._num_grooves_label.hide()
+        fresnel_layout.addRow(self._num_grooves_label, self._num_grooves_value)
         
         self._fresnel_group = fresnel_box
-        self._on_fresnel_changed(0)  # Initialize hidden state
         layout.addWidget(fresnel_box)
         
         # Calculated
@@ -1709,12 +1716,16 @@ class LensEditorWidget(QWidget):
         """Handle Fresnel checkbox change"""
         enabled = state == 2  # Qt.Checked
         
-        # Hide/show the input fields inside the group
+        # Hide/show the input fields and their labels
         if enabled:
             self._groove_pitch_input.show()
+            self._groove_pitch_label.show()
+            self._num_grooves_value.show()
             self._num_grooves_label.show()
         else:
             self._groove_pitch_input.hide()
+            self._groove_pitch_label.hide()
+            self._num_grooves_value.hide()
             self._num_grooves_label.hide()
         
         if enabled and self._lens:
@@ -1722,7 +1733,7 @@ class LensEditorWidget(QWidget):
             self._update_groove_count()
         elif self._lens:
             self._lens.is_fresnel = False
-            self._num_grooves_label.setText("0")
+            self._num_grooves_value.setText("0")
     
     def _update_groove_count(self):
         """Calculate number of grooves"""
@@ -1732,7 +1743,7 @@ class LensEditorWidget(QWidget):
         diameter = self._lens.diameter
         if pitch > 0:
             grooves = int(diameter / (2 * pitch))
-            self._num_grooves_label.setText(str(grooves))
+            self._num_grooves_value.setText(str(grooves))
     
     def _update_calculated(self):
         """Update calculated properties"""
