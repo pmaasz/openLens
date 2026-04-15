@@ -1525,16 +1525,24 @@ class LensEditorWidget(QWidget):
         self._setup_ui()
     
     def _setup_ui(self):
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+        from PySide6.QtWidgets import QScrollArea
         
-        # Left: Properties panel
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Left: Properties panel (scrollable)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; }")
+        
         props_panel = self._create_properties_panel()
-        layout.addWidget(props_panel, 1)
+        scroll.setWidget(props_panel)
+        
+        main_layout.addWidget(scroll, 1)
         
         # Right: Visualization
         self._viz_widget = LensVisualizationWidget()
-        layout.addWidget(self._viz_widget, 2)
+        main_layout.addWidget(self._viz_widget, 2)
     
     def _create_properties_panel(self):
         """Create the properties panel"""
@@ -1609,17 +1617,18 @@ class LensEditorWidget(QWidget):
         self._n_input.setRange(1.0, 3.0)
         self._n_input.setValue(1.5168)
         self._n_input.setDecimals(4)
-        self._n_input.valueChanged.connect(self._on_property_changed)
+        self._n_input.setReadOnly(True)
+        self._n_input.setStyleSheet("QSpinBox: { background: #2d2d2d; color: #888; }")
         mat_layout.addRow("Refractive Index:", self._n_input)
         
         layout.addWidget(mat_group)
         
-        # Fresnel properties
-        self._fresnel_group = QGroupBox("Fresnel Properties")
-        fresnel_layout = QFormLayout(self._fresnel_group)
+        # Fresnel lens
+        fresnel_box = QGroupBox("Fresnel Lens")
+        fresnel_layout = QFormLayout(fresnel_box)
         
         self._fresnel_check = QCheckBox()
-        self._fresnel_check.setText("Enable Fresnel Lens")
+        self._fresnel_check.setText("Enable")
         self._fresnel_check.stateChanged.connect(self._on_fresnel_changed)
         fresnel_layout.addRow("Fresnel:", self._fresnel_check)
         
@@ -1627,13 +1636,14 @@ class LensEditorWidget(QWidget):
         self._groove_pitch_input.setRange(0.01, 10)
         self._groove_pitch_input.setValue(0.5)
         self._groove_pitch_input.setSuffix(" mm")
-        self._groove_pitch_input.setEnabled(False)
         fresnel_layout.addRow("Groove Pitch:", self._groove_pitch_input)
         
         self._num_grooves_label = QLabel("0")
         fresnel_layout.addRow("Number of Grooves:", self._num_grooves_label)
         
-        layout.addWidget(self._fresnel_group)
+        self._fresnel_group = fresnel_box
+        self._on_fresnel_changed(0)  # Initialize hidden state
+        layout.addWidget(fresnel_box)
         
         # Calculated
         calc_group = QGroupBox("Calculated Properties")
@@ -1644,6 +1654,12 @@ class LensEditorWidget(QWidget):
         
         self._power_label = QLabel("--")
         calc_layout.addRow("Power:", self._power_label)
+        
+        self._bfl_label = QLabel("--")
+        calc_layout.addRow("Back Focal Length:", self._bfl_label)
+        
+        self._ffl_label = QLabel("--")
+        calc_layout.addRow("Front Focal Length:", self._ffl_label)
         
         layout.addWidget(calc_group)
         
@@ -1683,11 +1699,24 @@ class LensEditorWidget(QWidget):
             "Custom": 1.5
         }
         self._n_input.setValue(material_indices.get(material, 1.5))
+        if self._lens:
+            self._lens.refractive_index = self._n_input.value()
+            self._update_calculated()
+            if self._viz_widget:
+                self._viz_widget.update_lens(self._lens)
     
     def _on_fresnel_changed(self, state):
         """Handle Fresnel checkbox change"""
         enabled = state == 2  # Qt.Checked
-        self._groove_pitch_input.setEnabled(enabled)
+        
+        # Hide/show the input fields inside the group
+        if enabled:
+            self._groove_pitch_input.show()
+            self._num_grooves_label.show()
+        else:
+            self._groove_pitch_input.hide()
+            self._num_grooves_label.hide()
+        
         if enabled and self._lens:
             self._lens.is_fresnel = True
             self._update_groove_count()
@@ -1736,9 +1765,19 @@ class LensEditorWidget(QWidget):
             f = 1.0 / total_power
             self._focal_label.setText(f"{f:.2f} mm")
             self._power_label.setText(f"{1000/f:.2f} D")
+            
+            # Back focal length: BFL = f * (1 - d * power2 / n)
+            bfl = f * (1 - t * power2 / n) if n != 0 else f
+            self._bfl_label.setText(f"{bfl:.2f} mm")
+            
+            # Front focal length: FFL = f * (1 - d * power1 / n)
+            ffl = f * (1 - t * power1 / n) if n != 0 else f
+            self._ffl_label.setText(f"{ffl:.2f} mm")
         else:
             self._focal_label.setText("∞")
             self._power_label.setText("0 D")
+            self._bfl_label.setText("∞")
+            self._ffl_label.setText("∞")
     
     def load_lens(self, lens):
         """Load a lens into the editor"""
