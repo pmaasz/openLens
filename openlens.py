@@ -1872,7 +1872,9 @@ class _2DVisualizationWidget(QWidget):
         
         from PySide6.QtGui import QColor
         self._bg_color = QColor("#1e1e1e")
-        self._lens_color = QColor(0, 120, 212, 150)
+        self._r1_color = QColor(0, 150, 255, 180)    # Blue for radius 1
+        self._r2_color = QColor(0, 200, 100, 180)  # Green for radius 2
+        self._fill_color = QColor(150, 200, 230, 80)   # Light blue fill
         self._text_color = QColor("#e0e0e0")
         self._axis_color = QColor("#666666")
     
@@ -1886,6 +1888,7 @@ class _2DVisualizationWidget(QWidget):
     
     def paintEvent(self, event):
         from PySide6.QtGui import QPainter, QPen, QColor, QPainterPath, QBrush
+        from PySide6.QtCore import Qt
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
@@ -1900,32 +1903,90 @@ class _2DVisualizationWidget(QWidget):
         thickness = self._lens.thickness
         diameter = self._lens.diameter
         
-        max_dim = max(thickness * 3, diameter, 200) * 1.5
-        scale = min(w, h) / max_dim / 2
-        cx, cy = w/2 - thickness*scale/2, h/2
+        # Larger scale for bigger lens
+        max_dim = max(thickness * 2, diameter, 100)
+        scale = min(w, h) / max_dim * 0.85
+        cx, cy = w/2, h/2
         
+        # Draw axis
         painter.setPen(QPen(self._axis_color, 1))
         painter.drawLine(0, cy, w, cy)
+        painter.drawLine(cx, 0, cx, h)
         
-        path = QPainterPath()
+        # Draw radius 1 surface (blue)
         r1_abs = abs(r1) * scale
+        if r1_abs > 0:
+            path1 = QPainterPath()
+            for i in range(51):
+                y = -diameter/2*scale + diameter*scale*i/50
+                if abs(y) <= r1_abs:
+                    if r1 > 0:
+                        x = cx + (r1_abs - (r1_abs**2 - y**2)**0.5)
+                    else:
+                        x = cx - (r1_abs - (r1_abs**2 - y**2)**0.5)
+                    if i == 0:
+                        path1.moveTo(x, cy+y)
+                    else:
+                        path1.lineTo(x, cy+y)
+            painter.setPen(QPen(self._r1_color, 3))
+            painter.drawPath(path1)
+        
+        # Draw radius 2 surface (green)
+        r2_abs = abs(r2) * scale
+        if r2_abs > 0:
+            path2 = QPainterPath()
+            for i in range(51):
+                y = diameter/2*scale - diameter*scale*i/50
+                if abs(y) <= r2_abs:
+                    if r2 > 0:
+                        x = cx + thickness*scale + (r2_abs - (r2_abs**2 - y**2)**0.5)
+                    else:
+                        x = cx + thickness*scale - (r2_abs - (r2_abs**2 - y**2)**0.5)
+                    if i == 0:
+                        path2.moveTo(x, cy+y)
+                    else:
+                        path2.lineTo(x, cy+y)
+            painter.setPen(QPen(self._r2_color, 3))
+            painter.drawPath(path2)
+        
+        # Fill lens area
+        path_fill = QPainterPath()
         for i in range(51):
             y = -diameter/2*scale + diameter*scale*i/50
-            if abs(y) <= r1_abs and r1_abs > 0:
-                x = cx + (r1_abs - (r1_abs**2 - y**2)**0.5) if r1 > 0 else cx - (r1_abs - (r1_abs**2 - y**2)**0.5)
-                path.moveTo(x, cy+y) if i == 0 else path.lineTo(x, cy+y)
+            if r1_abs > 0 and abs(y) <= r1_abs:
+                if r1 > 0:
+                    x1 = cx + (r1_abs - (r1_abs**2 - y**2)**0.5)
+                else:
+                    x1 = cx - (r1_abs - (r1_abs**2 - y**2)**0.5)
+            else:
+                x1 = cx
+            if r2_abs > 0 and abs(y) <= r2_abs:
+                if r2 > 0:
+                    x2 = cx + thickness*scale + (r2_abs - (r2_abs**2 - y**2)**0.5)
+                else:
+                    x2 = cx + thickness*scale - (r2_abs - (r2_abs**2 - y**2)**0.5)
+            else:
+                x2 = cx + thickness*scale
+            if i == 0:
+                path_fill.moveTo(x1, cy+y)
+            else:
+                path_fill.lineTo(x1, cy+y)
         
-        r2_abs = abs(r2) * scale
         for i in range(51):
             y = diameter/2*scale - diameter*scale*i/50
-            if abs(y) <= r2_abs and r2_abs > 0:
-                x = cx + thickness*scale + (r2_abs - (r2_abs**2 - y**2)**0.5) if r2 > 0 else cx + thickness*scale - (r2_abs - (r2_abs**2 - y**2)**0.5)
-                path.lineTo(x, cy+y)
+            if r2_abs > 0 and abs(y) <= r2_abs:
+                if r2 > 0:
+                    x2 = cx + thickness*scale + (r2_abs - (r2_abs**2 - y**2)**0.5)
+                else:
+                    x2 = cx + thickness*scale - (r2_abs - (r2_abs**2 - y**2)**0.5)
+            else:
+                x2 = cx + thickness*scale
+            path_fill.lineTo(x2, cy+y)
         
-        path.closeSubpath()
-        painter.setPen(QPen(self._lens_color, 2))
-        painter.setBrush(QBrush(self._lens_color))
-        painter.drawPath(path)
+        path_fill.closeSubpath()
+        painter.setPen(QPen(self._fill_color, 1))
+        painter.setBrush(QBrush(self._fill_color))
+        painter.drawPath(path_fill)
 
 
 class _3DVisualizationWidget(QWidget):
