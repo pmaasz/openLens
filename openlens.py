@@ -139,14 +139,10 @@ class OpenLensWindow(QMainWindow):
         content_layout = QHBoxLayout(content)
         content_layout.setContentsMargins(5, 5, 5, 5)
         
-        # Left: Lens list (sidebar)
-        self._lens_list = []  # Will be QListWidget
-        
         # Right: Editor with visualization
         self._editor_widget = None  # Will be LensEditorWidget
         
-        content_layout.addWidget(self._create_sidebar(), 1)
-        content_layout.addWidget(self._create_editor_area(), 3)
+        content_layout.addWidget(self._create_editor_area())
         
         main_layout.addWidget(content, 1)
         
@@ -164,52 +160,6 @@ class OpenLensWindow(QMainWindow):
         self.setStatusBar(self._status_bar)
         
         self._update_status("Welcome to OpenLens")
-    
-    def _create_sidebar(self):
-        """Create lens list sidebar"""
-        from PySide6.QtWidgets import QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget, QLabel, QFrame
-        
-        sidebar = QFrame()
-        sidebar.setFrameShape(QFrame.StyledPanel)
-        layout = QVBoxLayout(sidebar)
-        
-        title = QLabel("Lenses")
-        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #e0e0e0;")
-        layout.addWidget(title)
-        
-        self._lens_list_widget = QListWidget()
-        self._lens_list_widget.setStyleSheet("""
-            QListWidget {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-                border: 1px solid #3f3f3f;
-            }
-            QListWidget::item:selected {
-                background-color: #0078d4;
-            }
-        """)
-        self._lens_list_widget.currentRowChanged.connect(self._on_lens_selected)
-        layout.addWidget(self._lens_list_widget)
-        
-        # Mode toggle (Lens/Assembly)
-        btn_layout = QHBoxLayout()
-        new_lens_btn = QPushButton("New Lens")
-        new_lens_btn.clicked.connect(self._on_new_lens)
-        new_lens_btn.setStyleSheet("QPushButton { padding: 3px; }")
-        
-        new_asm_btn = QPushButton("New Assembly")
-        new_asm_btn.clicked.connect(self._on_new_assembly)
-        new_asm_btn.setStyleSheet("QPushButton { padding: 3px; }")
-        
-        delete_btn = QPushButton("Delete")
-        delete_btn.clicked.connect(self._on_delete_lens)
-        
-        btn_layout.addWidget(new_lens_btn)
-        btn_layout.addWidget(new_asm_btn)
-        btn_layout.addWidget(delete_btn)
-        layout.addLayout(btn_layout)
-        
-        return sidebar
     
     def _create_editor_area(self):
         """Create the main editor area with tabs"""
@@ -937,32 +887,12 @@ class OpenLensWindow(QMainWindow):
             self._update_status(f"Selected: {item.name}")
     
     def _update_lens_list(self):
-        """Update the lens list widget with lenses and assemblies"""
-        self._lens_list_widget.clear()
-        for lens in self._lenses:
-            self._lens_list_widget.addItem(lens.name)
-        for assembly in self._assemblies:
-            self._lens_list_widget.addItem(f"[{assembly.name}]")
+        """Update internal lens list (list widget removed)"""
+        pass
     
     def _on_lens_selected(self, row):
-        """Handle lens/assembly selection from list"""
-        if row >= 0:
-            # Check if row is in lenses or assemblies list
-            if row < len(self._lenses):
-                self._current_lens = self._lenses[row]
-                self._current_assembly = None
-                self._show_assembly_editor(False)
-                self._lens_editor.load_lens(self._current_lens)
-                self._update_all_tabs()
-                self._update_status(f"Selected lens: {self._current_lens.name}")
-            elif row - len(self._lenses) < len(self._assemblies):
-                idx = row - len(self._lenses)
-                self._current_assembly = self._assemblies[idx]
-                self._current_lens = None
-                self._show_assembly_editor(True)
-                self._editor_tabs.setCurrentIndex(1)
-                self._load_assembly(self._current_assembly)
-                self._update_status(f"Selected assembly: {self._current_assembly.name} ({len(self._current_assembly.elements)} elements)")
+        """Handle lens/assembly selection (deprecated - list removed)"""
+        pass
     
     def _load_assembly(self, assembly):
         """Load assembly into assembly editor"""
@@ -1020,32 +950,26 @@ class OpenLensWindow(QMainWindow):
         self._update_status(f"Created: {asm.name}")
     
     def _on_delete_lens(self):
-        """Delete selected lens or assembly"""
-        current = self._lens_list_widget.currentRow()
-        if current < 0:
-            return
-        
-        if current < len(self._lenses):
-            # It's a lens
+        """Delete current lens or assembly"""
+        if self._current_lens:
             if len(self._lenses) > 1:
-                self._lenses.pop(current)
+                idx = self._lenses.index(self._current_lens)
+                self._lenses.pop(idx)
                 self._current_lens = self._lenses[0]
                 self._current_assembly = None
                 self._lens_editor.load_lens(self._current_lens)
-                self._update_status(f"Deleted. Selected: {self._current_lens.name}")
-        else:
-            # It's an assembly
-            asm_idx = current - len(self._lenses)
-            if asm_idx < len(self._assemblies):
-                self._assemblies.pop(asm_idx)
-                if self._assemblies:
-                    self._current_assembly = self._assemblies[0]
-                else:
-                    self._current_assembly = None
-                self._update_status("Deleted assembly")
-        
-        self._update_lens_list()
-        self._update_all_tabs()
+                self._update_all_tabs()
+                self._update_status(f"Deleted. Now editing: {self._current_lens.name}")
+            else:
+                self._update_status("Cannot delete the last lens")
+        elif self._current_assembly:
+            idx = self._assemblies.index(self._current_assembly)
+            self._assemblies.pop(idx)
+            if self._assemblies:
+                self._current_assembly = self._assemblies[0]
+            else:
+                self._current_assembly = None
+            self._update_status("Deleted assembly")
     
     def _on_open(self):
         """Open from database - just reload"""
