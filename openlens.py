@@ -2106,29 +2106,91 @@ class _3DVisualizationWidget(QWidget):
         
         r1, r2 = lens.radius_of_curvature_1, lens.radius_of_curvature_2
         thickness, diameter = lens.thickness, lens.diameter
+        max_r = diameter / 2.0
         
         import numpy as np
-        u = np.linspace(0, 2*np.pi, 30)
-        v = np.linspace(0, diameter/2, 20)
-        U, V = np.meshgrid(u, v)
         
-        X = V * np.cos(U)
-        Y = V * np.sin(U)
+        # Create circles at top and bottom edges
+        theta = np.linspace(0, 2*np.pi, 36)
         
+        # Front face Z position (simplified - use center of lens as Z=0)
+        z1_center = 0
         if abs(r1) > 0.1:
-            val = r1**2 - X**2 - Y**2
-            Z = np.sqrt(np.maximum(0, val))
-            self._ax.plot_surface(X, Y, Z, alpha=0.6, color='cyan')
+            sag = max_r**2 / (2 * r1) if r1 > 0 else -max_r**2 / (2 * abs(r1))
+            z1_center = sag
         
+        # Back face Z position
+        z2_center = thickness
         if abs(r2) > 0.1:
-            val2 = r2**2 - X**2 - Y**2
-            Z2 = thickness - np.sqrt(np.maximum(0, val2))
-            self._ax.plot_surface(X, Y, Z2, alpha=0.6, color='magenta')
+            sag = max_r**2 / (2 * r2) if r2 > 0 else -max_r**2 / (2 * abs(r2))
+            z2_center = thickness - sag
         
-        self._ax.set_xlabel('X', color='#aaa')
-        self._ax.set_ylabel('Y', color='#aaa')
-        self._ax.set_zlabel('Z', color='#aaa')
-        self._ax.tick_params(colors='#aaa')
+        # Circle at front edge
+        x_front = max_r * np.cos(theta)
+        y_front = max_r * np.sin(theta)
+        z_front = np.full_like(theta, z1_center)
+        self._ax.plot(x_front, y_front, z_front, color='blue', linewidth=2)
+        
+        # Circle at back edge
+        x_back = max_r * np.cos(theta)
+        y_back = max_r * np.sin(theta)
+        z_back = np.full_like(theta, z2_center)
+        self._ax.plot(x_back, y_back, z_back, color='green', linewidth=2)
+        
+        # Connect edges with vertical lines (cylinder wall)
+        for i in range(0, len(theta), 2):
+            ex = [x_front[i], x_back[i]]
+            ey = [y_front[i], y_back[i]]
+            ez = [z_front[i], z_back[i]]
+            self._ax.plot(ex, ey, ez, color='gray', linewidth=0.5)
+        
+        # Fill surfaces - create mesh grid
+        r_vals = np.linspace(0, max_r, 15)
+        theta_vals = np.linspace(0, 2*np.pi, 25)
+        R, THETA = np.meshgrid(r_vals, theta_vals)
+        
+        # Front surface (blue)
+        if abs(r1) > 0.1:
+            # z = r - sqrt(r^2 - rho^2) for convex
+            rho = R
+            if r1 > 0:
+                Z_front = r1 - np.sqrt(np.maximum(0, r1**2 - rho**2))
+            else:
+                Z_front = -abs(r1) + np.sqrt(np.maximum(0, r1**2 - rho**2))
+            X = R * np.cos(THETA)
+            Y = R * np.sin(THETA)
+            self._ax.plot_surface(X, Y, Z_front, alpha=0.5, color='blue', rstride=2, cstride=2)
+        
+        # Back surface (green)
+        if abs(r2) > 0.1:
+            rho = R
+            if r2 > 0:
+                Z_back = thickness + r2 - np.sqrt(np.maximum(0, r2**2 - rho**2))
+            else:
+                Z_back = thickness - abs(r2) + np.sqrt(np.maximum(0, r2**2 - rho**2))
+            X = R * np.cos(THETA)
+            Y = R * np.sin(THETA)
+            self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color='green', rstride=2, cstride=2)
+        
+        # Set axis limits to fit lens
+        padding = max(diameter, thickness) * 0.3
+        limit = max(diameter, thickness) / 2 + padding
+        self._ax.set_xlim([-limit, limit])
+        self._ax.set_ylim([-limit, limit])
+        self._ax.set_zlim([min(z1_center, z2_center) - padding, max(z1_center, z2_center) + padding])
+        
+        # Labels
+        self._ax.set_xlabel('X (mm)', color='#888')
+        self._ax.set_ylabel('Y (mm)', color='#888')
+        self._ax.set_zlabel('Z (mm)', color='#888')
+        self._ax.tick_params(colors='#666')
+        
+        self._ax.view_init(elev=20, azim=45)
+        
+        # Add dimension text
+        dim_text = f"D={diameter:.0f}mm  t={thickness:.1f}mm"
+        self._ax.text2D(0.02, 0.98, dim_text, transform=self._ax.transAxes,
+                       color='white', fontsize=10, fontweight='bold')
         
         self._canvas.draw()
         
