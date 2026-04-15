@@ -2392,22 +2392,31 @@ class StartupDialog(QDialog):
         super().__init__()
         self.setWindowTitle("OpenLens")
         self.setModal(True)
+        # Set fixed size immediately so geometry calculations are accurate
         self.setFixedSize(650, 650)
         
         self._selected_action = None
         self._selected_data = None
-        self._centered = False
+        self._force_centered_count = 0
         
         self._setup_ui()
     
+    def moveEvent(self, event):
+        """Catch window manager overrides and force center."""
+        super().moveEvent(event)
+        # If the window manager moves it somewhere else (like 0,0), 
+        # we fight back and move it to the center.
+        if self._force_centered_count < 5:
+            self._recenter()
+            self._force_centered_count += 1
+
     def showEvent(self, event):
-        """Center on screen when dialog is shown"""
+        """Final attempt to center when window is mapped."""
         super().showEvent(event)
-        # We need a longer delay and multiple attempts for GNOME/Ubuntu
-        # which often ignores position requests during the mapping phase.
+        self._recenter()
+        # Additional timers as a fallback if the window manager is very stubborn
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(50, self._recenter)
-        QTimer.singleShot(250, self._recenter)
+        QTimer.singleShot(100, self._recenter)
         QTimer.singleShot(500, self._recenter)
 
     def _recenter(self):
@@ -2420,22 +2429,20 @@ class StartupDialog(QDialog):
             screen = QGuiApplication.primaryScreen()
         
         if screen:
-            # 2. Use the full screen geometry (ignoring taskbars for true center)
-            screen_geom = screen.geometry()
+            # 2. Use the AVAILABLE screen geometry (subtracting docks/taskbars)
+            avail_geom = screen.availableGeometry()
             
-            # 3. Calculate top-left x,y using exactly the same logic as Tkinter
-            x = screen_geom.x() + (screen_geom.width() - 650) // 2
-            y = screen_geom.y() + (screen_geom.height() - 650) // 2
+            # 3. Calculate top-left x,y without dividing the width by 2
+            # Aligning top-left to total available width/height minus window half-width (325)
+            x = avail_geom.x() + avail_geom.width() - 325
+            y = avail_geom.y() + avail_geom.height() - 325
             
-            # 4. Use move() and setFixedSize. 
-            # On Linux, setGeometry can sometimes be ignored if it conflicts 
-            # with the window manager's decorations calculation.
-            self.move(x, y)
-            self.setFixedSize(650, 650)
-            
-            # Additional check to force the position if it's still wrong
-            if self.pos().x() != x or self.pos().y() != y:
+            current_pos = self.pos()
+            if current_pos.x() != x or current_pos.y() != y:
                 self.move(x, y)
+                # Force the OS to process the move immediately
+                from PySide6.QtWidgets import QApplication
+                QApplication.processEvents()
     
     def _setup_ui(self):
         from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, QLabel, QGroupBox, QWidget, QSizePolicy
@@ -2508,8 +2515,15 @@ class StartupDialog(QDialog):
             if item.widget():
                 item.widget().deleteLater()
             elif item.layout():
-                # For layouts, we need a recursive or more careful cleanup
-                pass
+                # Recursive cleanup for layouts
+                def clear_layout(layout):
+                    while layout.count():
+                        child = layout.takeAt(0)
+                        if child.widget():
+                            child.widget().deleteLater()
+                        elif child.layout():
+                            clear_layout(child.layout())
+                clear_layout(item.layout())
         
         if list_type == "lens":
             title = "Available Lenses"
@@ -2577,8 +2591,8 @@ class StartupDialog(QDialog):
         open_btn.clicked.connect(lambda: self._open_selected_from_list(list_widget, items_to_show, action))
         self.list_layout.addWidget(open_btn, alignment=Qt.AlignCenter)
         
-        # Recenter window as size might have changed
-        self._recenter()
+        # We do NOT call _recenter here anymore, to avoid "jumping" when expanding.
+        # The window stays at its current center.
 
     def _open_selected_from_list(self, list_widget, items, action):
         row = list_widget.currentRow()
