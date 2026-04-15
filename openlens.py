@@ -2089,6 +2089,8 @@ class _3DVisualizationWidget(QWidget):
             
             self._ax = self._figure.add_subplot(111, projection='3d', facecolor='#1e1e1e')
             self._ax.set_facecolor('#1e1e1e')
+            self._ax.view_init(elev=20, azim=45)
+            self._ax.mouse_init(rotate_btn=1, zoom_btn=3)
             
         except ImportError:
             from PySide6.QtWidgets import QLabel
@@ -2103,6 +2105,8 @@ class _3DVisualizationWidget(QWidget):
         
         self._ax.clear()
         self._ax.set_facecolor('#1e1e1e')
+        self._ax.view_init(elev=20, azim=45)
+        self._ax.mouse_init(rotate_btn=1, zoom_btn=3)
         
         r1, r2 = lens.radius_of_curvature_1, lens.radius_of_curvature_2
         thickness, diameter = lens.thickness, lens.diameter
@@ -2113,7 +2117,7 @@ class _3DVisualizationWidget(QWidget):
         # Create circles at top and bottom edges
         theta = np.linspace(0, 2*np.pi, 36)
         
-        # Front face Z position (simplified - use center of lens as Z=0)
+        # Front face Z position
         z1_center = 0
         if abs(r1) > 0.1:
             sag = max_r**2 / (2 * r1) if r1 > 0 else -max_r**2 / (2 * abs(r1))
@@ -2131,7 +2135,7 @@ class _3DVisualizationWidget(QWidget):
         z_front = np.full_like(theta, z1_center)
         self._ax.plot(x_front, y_front, z_front, color='blue', linewidth=2)
         
-        # Circle at back edge
+        # Circle at back edge  
         x_back = max_r * np.cos(theta)
         y_back = max_r * np.sin(theta)
         z_back = np.full_like(theta, z2_center)
@@ -2144,14 +2148,13 @@ class _3DVisualizationWidget(QWidget):
             ez = [z_front[i], z_back[i]]
             self._ax.plot(ex, ey, ez, color='gray', linewidth=0.5)
         
-        # Fill surfaces - create mesh grid
+        # Fill surfaces
         r_vals = np.linspace(0, max_r, 15)
         theta_vals = np.linspace(0, 2*np.pi, 25)
         R, THETA = np.meshgrid(r_vals, theta_vals)
         
         # Front surface (blue)
         if abs(r1) > 0.1:
-            # z = r - sqrt(r^2 - rho^2) for convex
             rho = R
             if r1 > 0:
                 Z_front = r1 - np.sqrt(np.maximum(0, r1**2 - rho**2))
@@ -2172,7 +2175,7 @@ class _3DVisualizationWidget(QWidget):
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color='green', rstride=2, cstride=2)
         
-        # Set axis limits to fit lens
+        # Set axis limits
         padding = max(diameter, thickness) * 0.3
         limit = max(diameter, thickness) / 2 + padding
         self._ax.set_xlim([-limit, limit])
@@ -2193,49 +2196,6 @@ class _3DVisualizationWidget(QWidget):
                        color='white', fontsize=10, fontweight='bold')
         
         self._canvas.draw()
-        
-        return  # End of _3DVisualizationWidget
-    
-    def paintEvent(self, event):
-        # Fallback 2D drawing if matplotlib not available
-        from PySide6.QtGui import QPainter
-        painter = QPainter(self)
-        w, h = self.width(), self.height()
-        from PySide6.QtGui import QColor
-        painter.fillRect(0, 0, w, h, QColor("#1e1e1e"))
-        
-        # Draw lens
-        path = QPainterPath()
-        
-        # Front surface
-        r1_abs = abs(r1) * scale
-        for i in range(51):
-            y = -diameter/2 * scale + diameter * scale * i / 50
-            if abs(y) <= r1_abs:
-                x = cx + (r1_abs - (r1_abs**2 - y**2)**0.5) if r1 > 0 else cx - (r1_abs - (r1_abs**2 - y**2)**0.5)
-                if i == 0:
-                    path.moveTo(x, cy + y)
-                else:
-                    path.lineTo(x, cy + y)
-        
-        # Back surface
-        r2_abs = abs(r2) * scale
-        for i in range(51):
-            y = diameter/2 * scale - diameter * scale * i / 50
-            if abs(y) <= r2_abs:
-                x = cx + thickness * scale + (r2_abs - (r2_abs**2 - y**2)**0.5) if r2 > 0 else cx + thickness * scale - (r2_abs - (r2_abs**2 - y**2)**0.5)
-                path.lineTo(x, cy + y)
-        
-        path.closeSubpath()
-        
-        painter.setPen(QPen(self._lens_color, 2))
-        painter.setBrush(QBrush(self._lens_color))
-        painter.drawPath(path)
-        
-        # Labels
-        painter.setPen(QPen(self._text_color, 1))
-        painter.drawText(cx, cy - diameter * scale / 2 - 5, "R1")
-        painter.drawText(cx + thickness * scale, cy - diameter * scale / 2 - 5, "R2")
 
 
 class AssemblyVisualizationWidget(QWidget):
