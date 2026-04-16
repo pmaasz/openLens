@@ -477,7 +477,7 @@ class OpenLensWindow(QMainWindow):
             
             from src.aberrations import AberrationsCalculator
             calculator = AberrationsCalculator(self._current_lens)
-            results = calculator.calculate_all()
+            results = calculator.calculate_all_aberrations()
             
             self._perf_spherical.setText(f"{results.get('spherical', 0):.4f} mm")
             self._perf_coma.setText(f"{results.get('coma', 0):.4f} mm")
@@ -2491,8 +2491,15 @@ class SimulationVisualizationWidget(QWidget):
             
             # Convert path points to widget coordinates
             for j in range(len(ray.path) - 1):
-                x1, y1 = ray.path[j]
-                x2, y2 = ray.path[j + 1]
+                # Handle both list/tuple and Vector3 objects
+                p1 = ray.path[j]
+                p2 = ray.path[j + 1]
+                if hasattr(p1, 'x'):  # Vector3
+                    x1, y1 = p1.x, p1.y
+                    x2, y2 = p2.x, p2.y
+                else:
+                    x1, y1 = p1[0], p1[1]
+                    x2, y2 = p2[0], p2[1]
                 
                 wx1 = cx + x1 * scale
                 wy1 = cy - y1 * scale
@@ -2508,8 +2515,14 @@ class SimulationVisualizationWidget(QWidget):
                     if len(ray.path) < 2:
                         continue
                     for j in range(len(ray.path) - 1):
-                        x1, y1 = ray.path[j]
-                        x2, y2 = ray.path[j + 1]
+                        p1 = ray.path[j]
+                        p2 = ray.path[j + 1]
+                        if hasattr(p1, 'x'):  # Vector3
+                            x1, y1 = p1.x, p1.y
+                            x2, y2 = p2.x, p2.y
+                        else:
+                            x1, y1 = p1[0], p1[1]
+                            x2, y2 = p2[0], p2[1]
                         wx1 = cx + x1 * scale
                         wy1 = cy - y1 * scale
                         wx2 = cx + x2 * scale
