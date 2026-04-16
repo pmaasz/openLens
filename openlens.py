@@ -662,8 +662,8 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             QMessageBox.information(self, "Export Complete", f"Exported to {filepath}")
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to export: {e}")
-    
-def _update_performance_metrics(self):
+
+    def _update_performance_metrics(self):
         """Update performance metrics for current lens"""
         if not self._current_lens:
             return
@@ -732,7 +732,7 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             
         except Exception as e:
             print(f"Performance update error: {e}")
-    
+
     def _create_optimization_tab(self):
         """Create the Optimization tab"""
         from src.optimizer import LensOptimizer
