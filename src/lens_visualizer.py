@@ -684,14 +684,28 @@ class LensVisualizer:
         # Draw lens surfaces
         self.ax.plot(x1, y_valid, color=self.COLORS_3D['surface_front'], linewidth=2.5, label='Front Surface')
         self.ax.plot(x2, y_valid2, color=self.COLORS_3D['surface_back'], linewidth=2.5, label='Back Surface')
-        
+
+        # Fill lens body (physical lens material)
+        # Ensure we interpolate to same y coordinates for filling
+        y_fill = np.linspace(-y_max, y_max, 200)
+
+        # Interpolate x1 and x2 to y_fill
+        x1_fill = np.interp(y_fill, y_valid, x1)
+        x2_fill = np.interp(y_fill, y_valid2, x2)
+
+        # Clip x2 to always be at least x1 + epsilon for physical validity in rendering
+        # This prevents the "crossing" artifact in the 2D rendering
+        x2_fill_clipped = np.maximum(x2_fill, x1_fill + 1e-6)
+
+        self.ax.fill_betweenx(y_fill, x1_fill, x2_fill_clipped, color=self.COLORS_3D['surface_front'], alpha=0.2)
+
         # Draw edges
         if len(x1) > 0 and len(x2) > 0:
             # Top edge
-            self.ax.plot([x1[0], x2[0]], [y_valid[0], y_valid2[0]], 
+            self.ax.plot([x1[0], x2_fill_clipped[0]], [y_valid[0], y_fill[0]], 
                         color=self.COLORS_3D['edge'], linewidth=1.5)
             # Bottom edge
-            self.ax.plot([x1[-1], x2[-1]], [y_valid[-1], y_valid2[-1]], 
+            self.ax.plot([x1[-1], x2_fill_clipped[-1]], [y_valid[-1], y_fill[-1]], 
                         color=self.COLORS_3D['edge'], linewidth=1.5)
         
         # Draw optical axis
