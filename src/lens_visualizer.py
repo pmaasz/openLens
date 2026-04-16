@@ -650,74 +650,63 @@ class LensVisualizer:
         
         # Front surface (R1) - treat R=0 as flat
         r1_is_flat = r1 == 0 or abs(r1) > 10000
-        if not r1_is_flat:
-            # Calculate sag for front surface
-            r1_abs = abs(r1)
-            # Ensure y doesn't exceed radius for sqrt stability
-            y_limit1 = min(y_max, r1_abs * 0.999)
-            y_valid = np.linspace(-y_limit1, y_limit1, 200)
-            
-            # Center of front surface is at x=0
-            if r1 > 0:  # Convex
-                x1 = -r1_abs + np.sqrt(r1_abs**2 - y_valid**2)
-            else:  # Concave
-                x1 = r1_abs - np.sqrt(r1_abs**2 - y_valid**2)
-        else:
-            # Flat surface
-            y_valid = y
-            x1 = np.zeros_like(y_valid)
         
         # Back surface (R2) - treat R=0 as flat
         r2_is_flat = r2 == 0 or abs(r2) > 10000
         
-        # Calculate sag at edges for thickness adjustment
-        # Conventional lens thickness is defined at the center (y=0)
-        # However, the user requested thickness be applied at the edges.
-        
-        # Calculate x coordinates at y = +/- diameter/2 (the edge)
-        # Note: we use diameter/2 even if it's slightly beyond the valid y for a high curvature radius
+        # Conventional lens logic: Thickness is usually vertex-to-vertex.
+        # However, the request is to apply it at the edge.
         h_edge = diameter / 2
         
+        # Calculate sag1 (facing left)
         if not r1_is_flat:
             r1_abs = abs(r1)
-            # Clip h_edge to r1_abs to avoid sqrt of negative
             h_edge_clipped1 = min(h_edge, r1_abs)
             sag1_edge = r1_abs - math.sqrt(r1_abs**2 - h_edge_clipped1**2)
-            x1_edge = -sag1_edge if r1 > 0 else sag1_edge
+            # Center of R1 vertex is at x=0
+            # For positive R1 (convex left): edge is at x = sag1_edge
+            # For negative R1 (concave left): edge is at x = -sag1_edge
+            x1_edge = sag1_edge if r1 > 0 else -sag1_edge
+            
+            y_limit1 = min(y_max, r1_abs * 0.999)
+            y_valid = np.linspace(-y_limit1, y_limit1, 200)
+            if r1 > 0:  # Convex
+                x1 = (r1_abs - np.sqrt(r1_abs**2 - y_valid**2))
+            else:  # Concave
+                x1 = -(r1_abs - np.sqrt(r1_abs**2 - y_valid**2))
         else:
             x1_edge = 0
+            y_valid = y
+            x1 = np.zeros_like(y_valid)
             
+        # Calculate x2_edge = x1_edge + thickness
+        x2_edge = x1_edge + thickness
+        
+        # Calculate back surface (R2) which faces right
         if not r2_is_flat:
             r2_abs = abs(r2)
-            # Clip h_edge to r2_abs
             h_edge_clipped2 = min(h_edge, r2_abs)
             sag2_edge = r2_abs - math.sqrt(r2_abs**2 - h_edge_clipped2**2)
             
-            # Relative x position of back surface edge vs back surface vertex
-            # If r2 > 0 (convex facing right), the edge (at z=thickness) is at x = vertex + sag
-            # If r2 < 0 (concave facing right), the edge is at x = vertex - sag
-            x2_edge_rel = sag2_edge if r2 > 0 else -sag2_edge
-            
-            # We want: x2_edge_abs = x1_edge + thickness
-            # And: x2_edge_abs = x2_vertex + x2_edge_rel
-            # Therefore: x2_vertex = x1_edge + thickness - x2_edge_rel
-            x2_vertex = x1_edge + thickness - x2_edge_rel
+            # For R2 (facing right):
+            # If R2 > 0 (convex right): edge is at x = vertex - sag2_edge => vertex = edge + sag2_edge
+            # If R2 < 0 (concave right): edge is at x = vertex + sag2_edge => vertex = edge - sag2_edge
+            x2_vertex = x2_edge + sag2_edge if r2 > 0 else x2_edge - sag2_edge
             
             y_limit2 = min(y_max, r2_abs * 0.999)
             y_valid2 = np.linspace(-y_limit2, y_limit2, 200)
-            
             if r2 > 0:  # Convex
-                x2 = x2_vertex + r2_abs - np.sqrt(r2_abs**2 - y_valid2**2)
+                x2 = x2_vertex - (r2_abs - np.sqrt(r2_abs**2 - y_valid2**2))
             else:  # Concave
-                x2 = x2_vertex - r2_abs + np.sqrt(r2_abs**2 - y_valid2**2)
+                x2 = x2_vertex + (r2_abs - np.sqrt(r2_abs**2 - y_valid2**2))
         else:
-            # Flat surface
             y_valid2 = y
-            x2 = np.full_like(y_valid2, x1_edge + thickness)
+            x2 = np.full_like(y_valid2, x2_edge)
         
         # Draw lens surfaces
         self.ax.plot(x1, y_valid, color=self.COLORS_3D['surface_front'], linewidth=2.5, label='Front Surface')
         self.ax.plot(x2, y_valid2, color=self.COLORS_3D['surface_back'], linewidth=2.5, label='Back Surface')
+
 
         # Fill lens body (physical lens material)
         # Ensure we interpolate to same y coordinates for filling
