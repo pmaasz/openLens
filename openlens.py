@@ -750,82 +750,257 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
 
     def _create_optimization_tab(self):
         """Create the Optimization tab"""
-        from src.optimizer import LensOptimizer
+        from src.optimizer import LensOptimizer, OptimizationVariable, OptimizationTarget
         
         opt = QWidget()
-        layout = QHBoxLayout(opt)
-        layout.setContentsMargins(10, 10, 10, 10)
         
-        left = QWidget()
-        left_layout = QVBoxLayout(left)
+        # Create scroll area
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("border: none;")
+        
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(10, 10, 10, 10)
         
         title = QLabel("Lens Optimization")
         title.setStyleSheet("font-size: 16px; font-weight: bold;")
-        left_layout.addWidget(title)
+        layout.addWidget(title)
         
+        # Variables Section
+        variables_group = QGroupBox("Optimization Variables")
+        variables_layout = QVBoxLayout(variables_group)
+        
+        var_layout = QHBoxLayout()
+        self._opt_var_r1 = QCheckBox("Radius 1")
+        self._opt_var_r1.setChecked(True)
+        self._opt_var_r2 = QCheckBox("Radius 2")
+        self._opt_var_r2.setChecked(True)
+        self._opt_var_thickness = QCheckBox("Thickness")
+        self._opt_var_thickness.setChecked(True)
+        self._opt_var_material = QCheckBox("Material (n)")
+        self._opt_var_diameter = QCheckBox("Diameter")
+        
+        var_layout.addWidget(self._opt_var_r1)
+        var_layout.addWidget(self._opt_var_r2)
+        var_layout.addWidget(self._opt_var_thickness)
+        var_layout.addWidget(self._opt_var_material)
+        var_layout.addWidget(self._opt_var_diameter)
+        variables_layout.addLayout(var_layout)
+        
+        layout.addWidget(variables_group)
+        
+        # Targets Section
         targets_group = QGroupBox("Optimization Targets")
         targets_layout = QFormLayout(targets_group)
         
+        self._opt_target_fl_enabled = QCheckBox("Target Focal Length (mm):")
+        self._opt_target_fl_enabled.setChecked(True)
         self._opt_target_fl = QDoubleSpinBox()
         self._opt_target_fl.setRange(1, 1000)
         self._opt_target_fl.setValue(50)
-        self._opt_target_fl.setSuffix(" mm")
-        targets_layout.addRow("Target Focal Length:", self._opt_target_fl)
+        targets_layout.addRow("", self._opt_target_fl_enabled)
+        targets_layout.addRow("Focal Length:", self._opt_target_fl)
         
-        self._opt_target_fno = QDoubleSpinBox()
-        self._opt_target_fno.setRange(1, 20)
-        self._opt_target_fno.setValue(2)
-        targets_layout.addRow("Target F/#:", self._opt_target_fno)
+        self._opt_target_spot = QCheckBox("Minimize RMS Spot Size")
+        self._opt_target_spot.setChecked(True)
+        targets_layout.addRow("Spot Size:", self._opt_target_spot)
         
-        self._opt_target_bfl = QDoubleSpinBox()
-        self._opt_target_bfl.setRange(1, 500)
-        self._opt_target_bfl.setValue(45)
-        self._opt_target_bfl.setSuffix(" mm")
-        targets_layout.addRow("Target BFL:", self._opt_target_bfl)
+        self._opt_target_spherical = QCheckBox("Minimize Spherical Aberration")
+        targets_layout.addRow("Spherical:", self._opt_target_spherical)
         
-        left_layout.addWidget(targets_group)
+        self._opt_target_coma = QCheckBox("Minimize Coma")
+        targets_layout.addRow("Coma:", self._opt_target_coma)
         
-        variables_group = QGroupBox("Variables to Optimize")
-        variables_layout = QVBoxLayout(variables_group)
+        self._opt_target_astig = QCheckBox("Minimize Astigmatism")
+        targets_layout.addRow("Astigmatism:", self._opt_target_astig)
         
-        self._opt_var_r1 = QCheckBox("Radius 1")
-        self._opt_var_r1.setChecked(True)
-        variables_layout.addWidget(self._opt_var_r1)
+        layout.addWidget(targets_group)
         
-        self._opt_var_r2 = QCheckBox("Radius 2")
-        self._opt_var_r2.setChecked(True)
-        variables_layout.addWidget(self._opt_var_r2)
+        # Constraints Section
+        constraints_group = QGroupBox("Constraints & Options")
+        constraints_layout = QFormLayout(constraints_group)
         
-        self._opt_var_thickness = QCheckBox("Thickness")
-        self._opt_var_thickness.setChecked(True)
-        variables_layout.addWidget(self._opt_var_thickness)
+        self._opt_min_thickness = QDoubleSpinBox()
+        self._opt_min_thickness.setRange(0.1, 50)
+        self._opt_min_thickness.setValue(1.0)
+        self._opt_min_thickness.setSuffix(" mm")
+        constraints_layout.addRow("Min Thickness:", self._opt_min_thickness)
         
-        self._opt_var_material = QCheckBox("Material (n)")
-        variables_layout.addWidget(self._opt_var_material)
+        self._opt_max_thickness = QDoubleSpinBox()
+        self._opt_max_thickness.setRange(1, 200)
+        self._opt_max_thickness.setValue(50)
+        self._opt_max_thickness.setSuffix(" mm")
+        constraints_layout.addRow("Max Thickness:", self._opt_max_thickness)
         
-        left_layout.addWidget(variables_group)
+        self._opt_min_edge = QDoubleSpinBox()
+        self._opt_min_edge.setRange(0.1, 20)
+        self._opt_min_edge.setValue(0.5)
+        self._opt_min_edge.setSuffix(" mm")
+        constraints_layout.addRow("Min Edge Thickness:", self._opt_min_edge)
         
+        self._opt_algorithm = QComboBox()
+        self._opt_algorithm.addItems(["Local (Simplex)", "Global (Simulated Annealing)", "Global (Genetic Algorithm)"])
+        self._opt_algorithm.setCurrentIndex(0)
+        constraints_layout.addRow("Algorithm:", self._opt_algorithm)
+        
+        self._opt_robust = QCheckBox("Robust Mode (Yield Optimization)")
+        constraints_layout.addRow("", self._opt_robust)
+        
+        layout.addWidget(constraints_group)
+        
+        # Buttons
         btn_layout = QHBoxLayout()
         run_opt_btn = QPushButton("Run Optimization")
         run_opt_btn.clicked.connect(self._on_run_optimization)
-        reset_btn = QPushButton("Reset")
+        stop_btn = QPushButton("Stop")
+        stop_btn.clicked.connect(self._on_stop_optimization)
+        reset_btn = QPushButton("Reset to Original")
         reset_btn.clicked.connect(self._on_reset_optimization)
         btn_layout.addWidget(run_opt_btn)
+        btn_layout.addWidget(stop_btn)
         btn_layout.addWidget(reset_btn)
-        left_layout.addLayout(btn_layout)
+        layout.addLayout(btn_layout)
         
-        self._opt_result = QLabel("Ready")
-        self._opt_result.setStyleSheet("padding: 10px; background: #2d2d2d; border-radius: 5px;")
-        left_layout.addWidget(self._opt_result)
+        # Results display
+        results_group = QGroupBox("Optimization Results")
+        results_layout = QVBoxLayout(results_group)
         
-        left_layout.addStretch()
+        self._opt_results_text = QTextEdit()
+        self._opt_results_text.setReadOnly(True)
+        self._opt_results_text.setMaximumHeight(150)
+        self._opt_results_text.setStyleSheet("background-color: #2b2b2b; color: #e0e0e0; font-family: Courier; font-size: 10px;")
+        results_layout.addWidget(self._opt_results_text)
         
-        layout.addWidget(left, 1)
+        layout.addWidget(results_group)
         
+        # Visualization
         self._opt_viz = LensVisualizationWidget()
-        layout.addWidget(self._opt_viz, 2)
+        layout.addWidget(self._opt_viz)
+        
+        layout.addStretch()
+        
+        # Set the content widget in the scroll area
+        scroll.setWidget(content)
+        
+        # Add scroll area to main layout
+        main_layout = QVBoxLayout(opt)
+        main_layout.addWidget(scroll)
+        
+        # Store optimization state
+        self._opt_is_running = False
+        self._opt_original_lens = None
         
         return opt
+    
+    def _on_run_optimization(self):
+        """Run lens optimization using LensOptimizer"""
+        if not self._current_lens:
+            self._opt_results_text.setPlainText("No lens selected.")
+            return
+        
+        if self._opt_is_running:
+            self._opt_results_text.setPlainText("Optimization already running.")
+            return
+        
+        self._opt_is_running = True
+        self._opt_original_lens = self._current_lens
+        
+        # Collect variables
+        variables = []
+        if self._opt_var_r1.isChecked():
+            variables.append(OptimizationVariable('radius_1', self._current_lens.radius_of_curvature_1))
+        if self._opt_var_r2.isChecked():
+            variables.append(OptimizationVariable('radius_2', self._current_lens.radius_of_curvature_2))
+        if self._opt_var_thickness.isChecked():
+            variables.append(OptimizationVariable('thickness', self._current_lens.thickness))
+        
+        if not variables:
+            self._opt_results_text.setPlainText("Select at least one variable.")
+            self._opt_is_running = False
+            return
+        
+        # Collect targets
+        targets = []
+        if self._opt_target_fl_enabled.isChecked():
+            targets.append(OptimizationTarget('focal_length', self._opt_target_fl.value(), weight=1.0))
+        if self._opt_target_spot.isChecked():
+            targets.append(OptimizationTarget('spot_size', 0, weight=1.0, minimize=True))
+        if self._opt_target_spherical.isChecked():
+            targets.append(OptimizationTarget('spherical', 0, weight=1.0, minimize=True))
+        if self._opt_target_coma.isChecked():
+            targets.append(OptimizationTarget('coma', 0, weight=1.0, minimize=True))
+        if self._opt_target_astig.isChecked():
+            targets.append(OptimizationTarget('astigmatism', 0, weight=1.0, minimize=True))
+        
+        if not targets:
+            self._opt_results_text.setPlainText("Select at least one target.")
+            self._opt_is_running = False
+            return
+        
+        # Build constraints
+        constraints = {}
+        constraints['min_thickness'] = self._opt_min_thickness.value()
+        constraints['max_thickness'] = self._opt_max_thickness.value()
+        constraints['min_edge_thickness'] = self._opt_min_edge.value()
+        
+        self._opt_results_text.setPlainText("Optimizing...")
+        
+        try:
+            # Create optimizer
+            from src.optical_system import OpticalSystem
+            system = OpticalSystem(name="Optimization")
+            system.add_lens(self._current_lens)
+            
+            optimizer = LensOptimizer(system, variables, targets, constraints=constraints)
+            
+            # Run optimization based on algorithm selection
+            algorithm = self._opt_algorithm.currentText()
+            if "Simplex" in algorithm:
+                result = optimizer.optimize(max_iterations=100)
+            elif "Simulated" in algorithm:
+                result = optimizer.optimize_simulated_annealing(max_iterations=100)
+            else:
+                result = optimizer.optimize(max_iterations=100)  # Default to simplex
+            
+            # Display results
+            if result.success:
+                text = f"Optimization Successful!\n\n"
+                text += f"Final Merit Function: {result.final_merit:.4f}\n"
+                text += f"Iterations: {result.iterations}\n\n"
+                text += "Optimized Values:\n"
+                for var in result.optimized_values:
+                    text += f"  {var.name}: {var.value:.4f}\n"
+                
+                self._opt_results_text.setPlainText(text)
+                
+                # Update visualization
+                if result.optimized_system and result.optimized_system.elements:
+                    optimized_lens = result.optimized_system.elements[0].lens
+                    self._opt_viz.update_lens(optimized_lens)
+            else:
+                self._opt_results_text.setPlainText(f"Optimization failed: {result.message}")
+                
+        except Exception as e:
+            self._opt_results_text.setPlainText(f"Error during optimization: {e}")
+        
+        finally:
+            self._opt_is_running = False
+    
+    def _on_stop_optimization(self):
+        """Stop the running optimization"""
+        self._opt_is_running = False
+        self._opt_results_text.append("\nOptimization stopped by user.")
+    
+    def _on_reset_optimization(self):
+        """Reset optimization to original lens values"""
+        if self._opt_original_lens:
+            self._lens_editor.load_lens(self._opt_original_lens)
+            self._update_all_tabs()
+            self._opt_results_text.setPlainText("Reset to original lens values.")
+            self._opt_viz.update_lens(self._opt_original_lens)
+        else:
+            self._opt_results_text.setPlainText("No original lens to reset to.")
     
     def _on_run_optimization(self):
         """Run lens optimization"""
