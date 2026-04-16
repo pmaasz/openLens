@@ -360,20 +360,6 @@ class OpenLensWindow(QMainWindow):
         ghost_note.setStyleSheet("color: #888; font-size: 10px;")
         controls_layout.addWidget(ghost_note)
         
-        # Image simulation checkbox
-        img_sim_group = QGroupBox("Image Simulation")
-        img_sim_layout = QVBoxLayout(img_sim_group)
-        
-        self._img_sim_check = QCheckBox("Enable")
-        img_sim_layout.addWidget(self._img_sim_check)
-        
-        self._img_pattern = QComboBox()
-        self._img_pattern.addItems(["Star", "Grid", "USAF 1951", "Slant Edge"])
-        img_sim_layout.addWidget(QLabel("Pattern:"))
-        img_sim_layout.addWidget(self._img_pattern)
-        
-        controls_layout.addWidget(img_sim_group)
-        
         controls_layout.addStretch()
         
         layout.addWidget(controls, 1)
@@ -2452,10 +2438,10 @@ class SimulationVisualizationWidget(QWidget):
         thickness = self._lens.thickness
         diameter = self._lens.diameter
         
-        max_dim = max(thickness * 3, diameter, 200) * 1.5
+        max_dim = max(thickness * 3, diameter, 30) * 1.2
         scale = min(w, h) / max_dim / 2
         
-        cx = w / 2 - thickness * scale / 2
+        cx = w / 2 - thickness * scale / 3
         cy = h / 2
         
         # Draw lens
