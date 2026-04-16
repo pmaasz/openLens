@@ -340,6 +340,21 @@ class OpenLensWindow(QMainWindow):
         self._sim_source_height.setValue(0)
         source_layout.addRow("Source Height:", self._sim_source_height)
         
+        self._sim_wavelength = QComboBox()
+        self._sim_wavelength.addItems(["550 nm (Green)", "650 nm (Red)", "450 nm (Blue)", "400 nm (Violet)", "700 nm (IR)", "Custom"])
+        self._sim_wavelength.setCurrentIndex(0)
+        source_layout.addRow("Wavelength:", self._sim_wavelength)
+        
+        self._sim_custom_wavelength = QDoubleSpinBox()
+        self._sim_custom_wavelength.setRange(380, 780)
+        self._sim_custom_wavelength.setValue(550)
+        self._sim_custom_wavelength.setSuffix(" nm")
+        self._sim_custom_wavelength.setEnabled(False)
+        source_layout.addRow("Custom:", self._sim_custom_wavelength)
+        
+        # Connect wavelength combo to enable/disable custom
+        self._sim_wavelength.currentIndexChanged.connect(self._on_wavelength_changed)
+        
         controls_layout.addWidget(source_group)
         
         # Ghost analysis checkbox (moved above buttons)
@@ -382,7 +397,20 @@ class OpenLensWindow(QMainWindow):
             angle = self._sim_angle.value()
             source_height = self._sim_source_height.value()
             show_ghosts = self._ghost_analysis.isChecked() if hasattr(self, '_ghost_analysis') else False
-            self._sim_viz.run_simulation(self._current_lens, num_rays, angle, source_height, show_ghosts)
+            
+            # Get wavelength
+            wavelength_idx = self._sim_wavelength.currentIndex()
+            if wavelength_idx == 5:  # Custom
+                wavelength = self._sim_custom_wavelength.value()
+            else:
+                wavelengths = [550, 650, 450, 400, 700]
+                wavelength = wavelengths[wavelength_idx]
+            
+            self._sim_viz.run_simulation(self._current_lens, num_rays, angle, source_height, show_ghosts, wavelength)
+    
+    def _on_wavelength_changed(self, index):
+        """Enable/disable custom wavelength input"""
+        self._sim_custom_wavelength.setEnabled(index == 5)
     
     def _on_clear_simulation(self):
         """Clear simulation visualization"""
@@ -2352,6 +2380,7 @@ class SimulationVisualizationWidget(QWidget):
         super().__init__(parent)
         self._lens = None
         self._rays = []
+        self._wavelength = 550  # Default wavelength in nm
         
         self.setMinimumSize(400, 300)
         self.setStyleSheet("background-color: #1e1e1e; border: 2px solid #888888;")
@@ -2377,6 +2406,43 @@ class SimulationVisualizationWidget(QWidget):
         
         # Install event filters
         self.setFocusPolicy(Qt.StrongFocus)
+    
+    @staticmethod
+    def wavelength_to_color(wavelength):
+        """Convert wavelength (nm) to RGB color"""
+        from PySide6.QtGui import QColor
+        if wavelength < 380:
+            wavelength = 380
+        elif wavelength > 780:
+            wavelength = 780
+        
+        # Simplified spectral color approximation
+        if wavelength < 440:
+            r = int((440 - wavelength) / (440 - 380) * 255)
+            g = 0
+            b = 255
+        elif wavelength < 490:
+            r = 0
+            g = int((wavelength - 440) / (490 - 440) * 255)
+            b = 255
+        elif wavelength < 510:
+            r = 0
+            g = 255
+            b = int((510 - wavelength) / (510 - 490) * 255)
+        elif wavelength < 580:
+            r = int((wavelength - 510) / (580 - 510) * 255)
+            g = 255
+            b = 0
+        elif wavelength < 645:
+            r = 255
+            g = int((645 - wavelength) / (645 - 580) * 255)
+            b = 0
+        else:
+            r = 255
+            g = 0
+            b = 0
+        
+        return QColor(r, g, b, 200)
     
     def wheelEvent(self, event):
         """Handle mouse wheel for zooming"""
@@ -2436,12 +2502,14 @@ class SimulationVisualizationWidget(QWidget):
         self._pan_y = 0
         self.update()
     
-    def run_simulation(self, lens, num_rays=11, angle=0, source_height=0, show_ghosts=False):
+    def run_simulation(self, lens, num_rays=11, angle=0, source_height=0, show_ghosts=False, wavelength=550):
         """Run ray tracing simulation"""
         self._lens = lens
         self._rays = []
         self._ghost_rays = []
         self._show_ghosts = show_ghosts
+        self._wavelength = wavelength
+        self._ray_color = self.wavelength_to_color(wavelength)
         
         try:
             from src.ray_tracer import LensRayTracer
