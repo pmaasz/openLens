@@ -341,8 +341,8 @@ class OpenLensWindow(QMainWindow):
         source_layout.addRow("Source Height:", self._sim_source_height)
         
         self._sim_wavelength = QComboBox()
-        self._sim_wavelength.addItems(["550 nm (Green)", "650 nm (Red)", "450 nm (Blue)", "400 nm (Violet)", "700 nm (IR)", "Custom"])
-        self._sim_wavelength.setCurrentIndex(0)
+        self._sim_wavelength.addItems(["400 nm (Violet)", "450 nm (Blue)", "550 nm (Green)", "650 nm (Red)", "700 nm (IR)", "Custom"])
+        self._sim_wavelength.setCurrentIndex(2)  # Default to 550nm (Green)
         source_layout.addRow("Wavelength:", self._sim_wavelength)
         
         self._sim_custom_wavelength = QDoubleSpinBox()
@@ -403,7 +403,7 @@ class OpenLensWindow(QMainWindow):
             if wavelength_idx == 5:  # Custom
                 wavelength = self._sim_custom_wavelength.value()
             else:
-                wavelengths = [550, 650, 450, 400, 700]
+                wavelengths = [400, 450, 550, 650, 700]
                 wavelength = wavelengths[wavelength_idx]
             
             self._sim_viz.run_simulation(self._current_lens, num_rays, angle, source_height, show_ghosts, wavelength)
