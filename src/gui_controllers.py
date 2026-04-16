@@ -1841,7 +1841,7 @@ class SimulationController:
                 from matplotlib.figure import Figure
                 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
                 
-                self.sim_figure = Figure(figsize=(12, 6), dpi=100, facecolor=COLOR_BG_DARK)
+                self.sim_figure = Figure(figsize=(14, 8), dpi=120, facecolor=COLOR_BG_DARK)
                 self.sim_figure.subplots_adjust(left=0.08, right=0.95, top=0.93, bottom=0.10)
                 self.sim_ax = self.sim_figure.add_subplot(111, facecolor=COLOR_BG_DARK)
                 
