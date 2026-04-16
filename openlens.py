@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QLabel, QListWidget, QListWidgetItem, QPushButton, 
                                QDoubleSpinBox, QSpinBox, QLineEdit, QGroupBox, QFormLayout, 
                                QFrame, QTabWidget, QComboBox, QCheckBox, QDialog, QStatusBar,
-                               QTextEdit, QFileDialog, QMessageBox)
+                               QTextEdit, QFileDialog, QMessageBox, QScrollArea)
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence
 
@@ -434,7 +434,15 @@ class OpenLensWindow(QMainWindow):
         from src.aberrations import AberrationsCalculator
         
         perf = QWidget()
-        layout = QVBoxLayout(perf)
+        
+        # Create scroll area
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("border: none;")
+        
+        # Create content widget
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(10, 10, 10, 10)
         
         title = QLabel("Performance Metrics Dashboard")
@@ -527,6 +535,13 @@ class OpenLensWindow(QMainWindow):
         layout.addWidget(self._perf_viz)
         
         self._perf_viz.update_lens(None)
+        
+        # Set the content widget in the scroll area
+        scroll.setWidget(content)
+        
+        # Add scroll area to main layout
+        main_layout = QVBoxLayout(perf)
+        main_layout.addWidget(scroll)
         
         return perf
     
