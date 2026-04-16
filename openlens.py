@@ -356,12 +356,14 @@ class OpenLensWindow(QMainWindow):
         run_btn.clicked.connect(self._on_run_simulation)
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(self._on_clear_simulation)
-        reset_view_btn = QPushButton("Reset View")
-        reset_view_btn.clicked.connect(self._reset_simulation_view)
         btn_layout.addWidget(run_btn)
         btn_layout.addWidget(clear_btn)
-        btn_layout.addWidget(reset_view_btn)
         controls_layout.addLayout(btn_layout)
+        
+        # Reset View button in bottom right
+        reset_view_btn = QPushButton("Reset View")
+        reset_view_btn.clicked.connect(self._reset_simulation_view)
+        controls_layout.addWidget(reset_view_btn)
         
         controls_layout.addStretch()
         
