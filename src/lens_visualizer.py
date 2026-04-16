@@ -651,68 +651,53 @@ class LensVisualizer:
         # Front surface (R1) - treat R=0 as flat
         r1_is_flat = r1 == 0 or abs(r1) > 10000
         if not r1_is_flat:
-            # Calculate sag for front surface
             r1_abs = abs(r1)
-            # Ensure y doesn't exceed radius for sqrt stability
-            y_limit1 = min(y_max, r1_abs * 0.999)
+            y_limit1 = min(y_max, r1_abs)
             y_valid = np.linspace(-y_limit1, y_limit1, 200)
             
-            # Vertex is at x=0.
-            # R1 > 0: convex (curves right), sag(y) = R1 - sqrt(R1^2 - y^2), x = sag(y)
-            # R1 < 0: concave (curves left), sag(y) = |R1| - sqrt(R1^2 - y^2), x = -sag(y)
             x1 = r1_abs - np.sqrt(r1_abs**2 - y_valid**2)
             if r1 < 0:
                 x1 = -x1
         else:
-            # Flat surface
             y_valid = y
             x1 = np.zeros_like(y_valid)
         
         # Back surface (R2) - treat R=0 as flat
         r2_is_flat = r2 == 0 or abs(r2) > 10000
         
-        # User-defined thickness is the physical distance at the edge (y = diameter/2)
+        # Calculate thickness at the ACTUAL edge where surfaces meet (y = diameter/2)
         h_edge = diameter / 2
         
-        # 1. Calculate the x-position of the front surface at the edge
+        # Calculate front surface edge position at y = h_edge
         if not r1_is_flat:
             r1_abs = abs(r1)
-            h_edge_clipped1 = min(h_edge, r1_abs * 0.999)
-            sag1_edge = r1_abs - math.sqrt(r1_abs**2 - h_edge_clipped1**2)
-            # Front vertex is at x=0
-            # If R1 > 0 (convex left), edge is at x = +sag1_edge
-            # If R1 < 0 (concave left), edge is at x = -sag1_edge
-            x1_edge = sag1_edge if r1 > 0 else -sag1_edge
+            if h_edge <= r1_abs:
+                sag1_edge = r1_abs - math.sqrt(r1_abs**2 - h_edge**2)
+                x1_edge = sag1_edge if r1 > 0 else -sag1_edge
+            else:
+                x1_edge = x1[0]  # Use the edge of the drawn surface
         else:
             x1_edge = 0
             
-        # 2. Set the back surface edge to be exactly 'thickness' away from the front edge
+        # Calculate back surface so that edge gap = thickness
         x2_edge = x1_edge + thickness
         
-        # 3. Calculate the back surface vertex position based on its sag at the edge
         if not r2_is_flat:
             r2_abs = abs(r2)
-            h_edge_clipped2 = min(h_edge, r2_abs * 0.999)
-            sag2_edge = r2_abs - math.sqrt(r2_abs**2 - h_edge_clipped2**2)
-            
-            # For R2 (facing right):
-            # If R2 > 0 (concave right): edge is at x = vertex + sag2_edge => vertex = edge - sag2_edge
-            # If R2 < 0 (convex right): edge is at x = vertex - sag2_edge => vertex = edge + sag2_edge
-            x2_vertex = x2_edge - sag2_edge if r2 > 0 else x2_edge + sag2_edge
-            
-            y_limit2 = min(y_max, r2_abs * 0.999)
+            y_limit2 = min(y_max, r2_abs)
             y_valid2 = np.linspace(-y_limit2, y_limit2, 200)
             
-            sag2 = r2_abs - np.sqrt(r2_abs**2 - y_valid2**2)
+            # Calculate vertex position from edge position
+            # x_edge = x_vertex + sag (for R>0) or x_vertex - sag (for R<0)
+            # For R2 > 0 (concave right): x2 = x2_vertex + sag => x2_vertex = x2 - sag
+            # For R2 < 0 (convex right): x2 = x2_vertex - sag => x2_vertex = x2 + sag
             if r2 > 0:
-                x2 = x2_vertex + sag2
+                x2 = x2_edge + (r2_abs - np.sqrt(r2_abs**2 - y_valid2**2))
             else:
-                x2 = x2_vertex - sag2
+                x2 = x2_edge - (r2_abs - np.sqrt(r2_abs**2 - y_valid2**2))
         else:
-            # Flat surface
             y_valid2 = y
-            x2_vertex = x2_edge
-            x2 = np.full_like(y_valid2, x2_vertex)
+            x2 = np.full_like(y_valid2, x2_edge)
         
         # Draw lens surfaces
         self.ax.plot(x1, y_valid, color=self.COLORS_3D['surface_front'], linewidth=2.5, label='Front Surface')
@@ -731,9 +716,6 @@ class LensVisualizer:
         # Draw edges
         # Top edge
         self.ax.plot([x1_fill[0], x2_fill[0]], [y_fill[0], y_fill[0]], 
-                    color=self.COLORS_3D['edge'], linewidth=1.5)
-        # Bottom edge
-        self.ax.plot([x1_fill[-1], x2_fill[-1]], [y_fill[-1], y_fill[-1]], 
                     color=self.COLORS_3D['edge'], linewidth=1.5)
         # Bottom edge
         self.ax.plot([x1_fill[-1], x2_fill[-1]], [y_fill[-1], y_fill[-1]], 
