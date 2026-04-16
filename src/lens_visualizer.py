@@ -657,13 +657,12 @@ class LensVisualizer:
             y_limit1 = min(y_max, r1_abs * 0.999)
             y_valid = np.linspace(-y_limit1, y_limit1, 200)
             
-            # Center of front surface is at x=0
-            # Optical convention: R1 > 0 means center is at x = +R1.
-            # Sag(y) = R - sqrt(R^2 - y^2).
-            # If R1 > 0, vertex is at 0, center is at R1, so surface point is x = 0 + R1 - sqrt(R1^2 - y^2)
-            # If R1 < 0, vertex is at 0, center is at R1 (to the left), so surface point is x = 0 + R1 + sqrt(R1^2 - y^2)
-            # Both simplify to: x = R1 - sign(R1) * sqrt(R1^2 - y^2)
-            x1 = r1 - np.sign(r1) * np.sqrt(r1**2 - y_valid**2)
+            # Vertex is at x=0.
+            # R1 > 0: convex (curves right), sag(y) = R1 - sqrt(R1^2 - y^2), x = sag(y)
+            # R1 < 0: concave (curves left), sag(y) = |R1| - sqrt(R1^2 - y^2), x = -sag(y)
+            x1 = r1_abs - np.sqrt(r1_abs**2 - y_valid**2)
+            if r1 < 0:
+                x1 = -x1
         else:
             # Flat surface
             y_valid = y
@@ -678,11 +677,17 @@ class LensVisualizer:
         if not r2_is_flat:
             r2_abs = abs(r2)
             y_limit2 = min(y_max, r2_abs * 0.999)
+            y_valid2 = np.linspace(-y_limit2, r2_abs * 0.999, 200)
             y_valid2 = np.linspace(-y_limit2, y_limit2, 200)
             
-            # Optical convention: R2 > 0 means center is at x = x2_vertex + R2.
-            # x = x2_vertex + R2 - sign(R2) * sqrt(R2^2 - y^2)
-            x2 = x2_vertex + r2 - np.sign(r2) * np.sqrt(r2**2 - y_valid2**2)
+            # Vertex 2 is at x = thickness.
+            # R2 > 0: concave (curves right), sag(y) = R2 - sqrt(R2^2 - y^2), x = x2_vertex + sag(y)
+            # R2 < 0: convex (curves left), sag(y) = |R2| - sqrt(R2^2 - y^2), x = x2_vertex - sag(y)
+            sag2 = r2_abs - np.sqrt(r2_abs**2 - y_valid2**2)
+            if r2 > 0:
+                x2 = x2_vertex + sag2
+            else:
+                x2 = x2_vertex - sag2
         else:
             # Flat surface
             y_valid2 = y
