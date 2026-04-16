@@ -342,6 +342,14 @@ class OpenLensWindow(QMainWindow):
         
         controls_layout.addWidget(source_group)
         
+        # Ghost analysis checkbox (moved above buttons)
+        self._ghost_analysis = QCheckBox("Show Ghost Analysis")
+        controls_layout.addWidget(self._ghost_analysis)
+        
+        ghost_note = QLabel("Analyze 2nd order reflections")
+        ghost_note.setStyleSheet("color: #888; font-size: 10px;")
+        controls_layout.addWidget(ghost_note)
+        
         # Simulation buttons
         btn_layout = QHBoxLayout()
         run_btn = QPushButton("Run Simulation")
@@ -351,14 +359,6 @@ class OpenLensWindow(QMainWindow):
         btn_layout.addWidget(run_btn)
         btn_layout.addWidget(clear_btn)
         controls_layout.addLayout(btn_layout)
-        
-        # Ghost analysis checkbox
-        self._ghost_analysis = QCheckBox("Show Ghost Analysis")
-        controls_layout.addWidget(self._ghost_analysis)
-        
-        ghost_note = QLabel("Analyze 2nd order reflections")
-        ghost_note.setStyleSheet("color: #888; font-size: 10px;")
-        controls_layout.addWidget(ghost_note)
         
         controls_layout.addStretch()
         
