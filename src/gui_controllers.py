@@ -2739,8 +2739,6 @@ class PerformanceController:
                   command=self.show_mtf).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(btn_frame2, text="Wavefront Map", 
                   command=self.show_wavefront_map).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        ttk.Button(btn_frame2, text="Image Simulation", 
-                  command=self.show_image_simulation).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(btn_frame2, text="Export Report", 
                   command=self.export_report).pack(side=tk.LEFT, padx=PADDING_SMALL)
     
