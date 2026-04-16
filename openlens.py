@@ -1058,67 +1058,259 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
     
     def _create_tolerancing_tab(self):
         """Create the Tolerancing tab"""
-        tol = QWidget()
-        layout = QHBoxLayout(tol)
-        layout.setContentsMargins(10, 10, 10, 10)
+        from src.tolerancing import MonteCarloAnalyzer, InverseSensitivityAnalyzer, ToleranceOperand, ToleranceType
         
-        left = QWidget()
-        left_layout = QVBoxLayout(left)
+        tol = QWidget()
+        
+        # Create scroll area
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("border: none;")
+        
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(10, 10, 10, 10)
         
         title = QLabel("Tolerancing Analysis")
         title.setStyleSheet("font-size: 16px; font-weight: bold;")
-        left_layout.addWidget(title)
+        layout.addWidget(title)
         
-        tol_group = QGroupBox("Tolerance Sensitivities")
-        tol_layout = QFormLayout(tol_group)
+        # Main split: Left (Operands) and Right (Analysis)
+        split_layout = QHBoxLayout()
         
-        self._tol_surface_sig = QDoubleSpinBox()
-        self._tol_surface_sig.setRange(0.001, 1)
-        self._tol_surface_sig.setValue(0.05)
-        self._tol_surface_sig.setSuffix(" mm")
-        tol_layout.addRow("Surface Sign:", self._tol_surface_sig)
+        # Left Panel: Tolerance Operands
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
         
-        self._tol_thickness_sig = QDoubleSpinBox()
-        self._tol_thickness_sig.setRange(0.001, 1)
-        self._tol_thickness_sig.setValue(0.02)
-        self._tol_thickness_sig.setSuffix(" mm")
-        tol_layout.addRow("Thickness:", self._tol_thickness_sig)
+        left_layout.addWidget(QLabel("Tolerance Operands"))
         
-        self._tol_index_sig = QDoubleSpinBox()
-        self._tol_index_sig.setRange(0.0001, 0.1)
-        self._tol_index_sig.setValue(0.001)
-        tol_layout.addRow("Index (n):", self._tol_index_sig)
+        # Toolbar
+        toolbar = QWidget()
+        toolbar_layout = QHBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(0, 0, 0, 0)
         
-        left_layout.addWidget(tol_group)
+        add_btn = QPushButton("Add Tolerance")
+        add_btn.clicked.connect(self._on_add_tolerance)
+        remove_btn = QPushButton("Remove")
+        remove_btn.clicked.connect(self._on_remove_tolerance)
+        clear_btn = QPushButton("Clear All")
+        clear_btn.clicked.connect(self._on_clear_tolerances)
+        default_btn = QPushButton("Default Set")
+        default_btn.clicked.connect(self._on_add_default_tolerances)
         
-        results_group = QGroupBox("Sensitivity Results")
-        results_layout = QFormLayout(results_group)
+        toolbar_layout.addWidget(add_btn)
+        toolbar_layout.addWidget(remove_btn)
+        toolbar_layout.addWidget(clear_btn)
+        toolbar_layout.addWidget(default_btn)
+        left_layout.addWidget(toolbar)
         
-        self._tol_fl_sens = QLabel("-")
-        results_layout.addRow("FL Sensitivity:", self._tol_fl_sens)
+        # Operands table (using QTableWidget if available, or QTextEdit)
+        self._tol_operands_text = QTextEdit()
+        self._tol_operands_text.setMaximumHeight(150)
+        self._tol_operands_text.setReadOnly(True)
+        self._tol_operands_text.setStyleSheet("background-color: #2b2b2b; color: #e0e0e0; font-family: Courier; font-size: 9px;")
+        left_layout.addWidget(QLabel("Operands (Element, Type, Min, Max):"))
+        left_layout.addWidget(self._tol_operands_text)
         
-        self._tol_power_sens = QLabel("-")
-        results_layout.addRow("Power Sensitivity:", self._tol_power_sens)
+        # Right Panel: Analysis
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
         
-        self._tol_bfl_sens = QLabel("-")
-        results_layout.addRow("BFL Sensitivity:", self._tol_bfl_sens)
+        right_layout.addWidget(QLabel("Analysis & Yield"))
         
-        left_layout.addWidget(results_group)
+        # Monte Carlo Settings
+        mc_group = QGroupBox("Monte Carlo Settings")
+        mc_layout = QFormLayout(mc_group)
         
+        self._tol_num_trials = QSpinBox()
+        self._tol_num_trials.setRange(10, 10000)
+        self._tol_num_trials.setValue(100)
+        mc_layout.addRow("Number of Trials:", self._tol_num_trials)
+        
+        self._tol_criterion = QDoubleSpinBox()
+        self._tol_criterion.setRange(0.001, 1)
+        self._tol_criterion.setValue(0.05)
+        self._tol_criterion.setSuffix(" mm")
+        mc_layout.addRow("Criterion Limit (RMS):", self._tol_criterion)
+        
+        right_layout.addWidget(mc_group)
+        
+        # Action Buttons
         btn_layout = QHBoxLayout()
-        calc_btn = QPushButton("Calculate")
-        calc_btn.clicked.connect(self._on_calculate_tolerances)
-        btn_layout.addWidget(calc_btn)
-        left_layout.addLayout(btn_layout)
+        run_mc_btn = QPushButton("Run Monte Carlo")
+        run_mc_btn.clicked.connect(self._on_run_monte_carlo)
+        run_inv_btn = QPushButton("Inverse Sensitivity")
+        run_inv_btn.clicked.connect(self._on_run_inverse_sensitivity)
         
-        left_layout.addStretch()
+        btn_layout.addWidget(run_mc_btn)
+        btn_layout.addWidget(run_inv_btn)
+        right_layout.addLayout(btn_layout)
         
-        layout.addWidget(left, 1)
+        # Results
+        results_group = QGroupBox("Results")
+        results_layout = QVBoxLayout(results_group)
         
-        self._tol_viz = LensVisualizationWidget()
-        layout.addWidget(self._tol_viz, 2)
+        self._tol_results_text = QTextEdit()
+        self._tol_results_text.setReadOnly(True)
+        self._tol_results_text.setMaximumHeight(200)
+        self._tol_results_text.setStyleSheet("background-color: #2b2b2b; color: #e0e0e0; font-family: Courier; font-size: 10px;")
+        self._tol_results_text.setPlainText("Configure tolerances and click 'Run Monte Carlo' or 'Inverse Sensitivity' to analyze.")
+        results_layout.addWidget(self._tol_results_text)
+        
+        right_layout.addWidget(results_group)
+        
+        # Add panels to split
+        split_layout.addWidget(left_panel, 1)
+        split_layout.addWidget(right_panel, 1)
+        
+        layout.addLayout(split_layout)
+        
+        # Store tolerancing data
+        self._tol_operands = []
+        
+        layout.addStretch()
+        
+        # Set the content widget in the scroll area
+        scroll.setWidget(content)
+        
+        # Add scroll area to main layout
+        main_layout = QVBoxLayout(tol)
+        main_layout.addWidget(scroll)
         
         return tol
+    
+    def _on_add_tolerance(self):
+        """Add a new tolerance operand"""
+        from PySide6.QtWidgets import QInputDialog
+        
+        if not self._current_lens:
+            return
+        
+        # Simple dialog - choose tolerance type
+        types = [t.value for t in ToleranceType]
+        type_name, ok = QInputDialog.getItem(self, "Add Tolerance", "Select parameter type:", types, 0, False)
+        
+        if ok and type_name:
+            # Get min/max values
+            min_val, ok1 = QInputDialog.getDouble(self, "Add Tolerance", "Min deviation:", -0.1, -10, 10, 4)
+            max_val, ok2 = QInputDialog.getDouble(self, "Add Tolerance", "Max deviation:", 0.1, -10, 10, 4)
+            
+            if ok1 and ok2:
+                tol_type = ToleranceType(type_name)
+                operand = ToleranceOperand(0, tol_type, min_val, max_val)
+                self._tol_operands.append(operand)
+                self._update_tolerance_operands_display()
+    
+    def _on_remove_tolerance(self):
+        """Remove the last tolerance operand"""
+        if self._tol_operands:
+            self._tol_operands.pop()
+            self._update_tolerance_operands_display()
+    
+    def _on_clear_tolerances(self):
+        """Clear all tolerance operands"""
+        self._tol_operands = []
+        self._update_tolerance_operands_display()
+    
+    def _on_add_default_tolerances(self):
+        """Add default tolerance operands"""
+        from src.tolerancing import ToleranceType
+        
+        self._tol_operands = [
+            ToleranceOperand(0, ToleranceType.RADIUS_1, -0.1, 0.1),
+            ToleranceOperand(0, ToleranceType.RADIUS_2, -0.1, 0.1),
+            ToleranceOperand(0, ToleranceType.THICKNESS, -0.05, 0.05),
+            ToleranceOperand(0, ToleranceType.DECENTER_Y, -0.05, 0.05),
+            ToleranceOperand(0, ToleranceType.TILT_X, -0.1, 0.1),
+        ]
+        self._update_tolerance_operands_display()
+    
+    def _update_tolerance_operands_display(self):
+        """Update the operands display"""
+        text = "Element | Type                 | Min      | Max\n"
+        text += "-" * 55 + "\n"
+        for op in self._tol_operands:
+            text += f"{op.element_index:7} | {op.param_type.value:21} | {op.min_val:8.4f} | {op.max_val:8.4f}\n"
+        self._tol_operands_text.setPlainText(text if self._tol_operands else "No operands defined.")
+    
+    def _on_run_monte_carlo(self):
+        """Run Monte Carlo analysis"""
+        from src.tolerancing import MonteCarloAnalyzer
+        from src.optical_system import OpticalSystem
+        
+        if not self._current_lens:
+            self._tol_results_text.setPlainText("No lens selected.")
+            return
+        
+        if not self._tol_operands:
+            self._tol_results_text.setPlainText("No tolerance operands defined.")
+            return
+        
+        try:
+            system = OpticalSystem(name="Tolerancing")
+            system.add_lens(self._current_lens)
+            
+            analyzer = MonteCarloAnalyzer(system, self._tol_operands)
+            
+            num_trials = self._tol_num_trials.value()
+            criterion = self._tol_criterion.value()
+            
+            self._tol_results_text.setPlainText(f"Running Monte Carlo analysis ({num_trials} trials)...")
+            
+            results = analyzer.run_monte_carlo(num_trials=num_trials, criterion=criterion)
+            
+            text = f"=== MONTE CARLO RESULTS ===\n\n"
+            text += f"Total Trials: {results['total_trials']}\n"
+            text += f"Passed (Yield): {results['passed_trials']} ({results['yield_percent']:.1f}%)\n"
+            text += f"Failed: {results['failed_trials']}\n"
+            text += f"RMS Spot Size - Mean: {results['mean_rms']:.4f} mm\n"
+            text += f"RMS Spot Size - Std Dev: {results['std_rms']:.4f} mm\n"
+            text += f"RMS Spot Size - Max: {results['max_rms']:.4f} mm\n"
+            text += f"RMS Spot Size - Min: {results['min_rms']:.4f} mm\n"
+            
+            self._tol_results_text.setPlainText(text)
+            
+        except Exception as e:
+            self._tol_results_text.setPlainText(f"Error running Monte Carlo: {e}")
+    
+    def _on_run_inverse_sensitivity(self):
+        """Run Inverse Sensitivity analysis"""
+        from src.tolerancing import InverseSensitivityAnalyzer
+        from src.optical_system import OpticalSystem
+        
+        if not self._current_lens:
+            self._tol_results_text.setPlainText("No lens selected.")
+            return
+        
+        if not self._tol_operands:
+            self._tol_results_text.setPlainText("No tolerance operands defined.")
+            return
+        
+        try:
+            system = OpticalSystem(name="Tolerancing")
+            system.add_lens(self._current_lens)
+            
+            analyzer = InverseSensitivityAnalyzer(system, self._tol_operands)
+            
+            criterion = self._tol_criterion.value()
+            
+            self._tol_results_text.setPlainText("Running Inverse Sensitivity analysis...")
+            
+            results = analyzer.optimize_limits(target_yield_criterion=criterion, method='rss')
+            
+            text = f"=== INVERSE SENSITIVITY RESULTS ===\n\n"
+            text += f"Target Yield Criterion: {criterion} mm RMS\n\n"
+            text += "Optimized Tolerances:\n"
+            text += "-" * 55 + "\n"
+            text += f"{'Type':<20} | {'Min':>10} | {'Max':>10}\n"
+            text += "-" * 55 + "\n"
+            for op in results:
+                text += f"{op.param_type.value:<20} | {op.min_val:10.4f} | {op.max_val:10.4f}\n"
+            
+            self._tol_results_text.setPlainText(text)
+            
+        except Exception as e:
+            self._tol_results_text.setPlainText(f"Error running Inverse Sensitivity: {e}")
     
     def _on_calculate_tolerances(self):
         """Calculate tolerance sensitivities"""
