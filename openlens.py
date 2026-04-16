@@ -1936,37 +1936,65 @@ class _2DVisualizationWidget(QWidget):
         
         # Draw radius 1 surface (blue)
         r1_abs = abs(r1) * scale
+        half_d = diameter/2 * scale
+        h = diameter / 2
+        
+        # Calculate front surface edge position at y = h (for thickness calculation)
+        if r1_abs > 0:
+            sag1_edge = r1_abs - (r1_abs**2 - half_d**2)**0.5
+            x1_edge = cx + sag1_edge if r1 > 0 else cx - sag1_edge
+        else:
+            x1_edge = cx
+        
+        # Position back surface so that edge gap = thickness
+        x2_edge = x1_edge + thickness * scale
+        
         if r1_abs > 0:
             path1 = QPainterPath()
+            r1_val = abs(r1)
+            # Use scaled h but clamp to radius
             for i in range(51):
-                y = -diameter/2*scale + diameter*scale*i/50
-                if abs(y) <= r1_abs:
-                    if r1 > 0:
-                        x = cx + (r1_abs - (r1_abs**2 - y**2)**0.5)
-                    else:
-                        x = cx - (r1_abs - (r1_abs**2 - y**2)**0.5)
+                y_scaled = -half_d + half_d * i / 50
+                y_val = abs(y_scaled) / scale  # Convert back to mm
+                if y_val <= r1_val:
+                    x_offset = r1_val - (r1_val**2 - y_val**2)**0.5
+                    x = cx + x_offset if r1 > 0 else cx - x_offset
                     if i == 0:
-                        path1.moveTo(x, cy+y)
+                        path1.moveTo(x, cy + y_scaled)
                     else:
-                        path1.lineTo(x, cy+y)
+                        path1.lineTo(x, cy + y_scaled)
             painter.setPen(QPen(self._r1_color, 3))
             painter.drawPath(path1)
         
-        # Draw radius 2 surface (green)
+        # Draw radius 2 surface (green) - use edge-based positioning
         r2_abs = abs(r2) * scale
+        x2_vertex_scaled = thickness * scale  # Default for flat surface
+        
         if r2_abs > 0:
+            r2_val = abs(r2)
+            sag2_edge = r2_val - (r2_val**2 - h**2)**0.5
+            # x2_edge = x2_vertex + sag (for R>0) or x2_vertex - sag (for R<0)
+            x2_vertex = x2_edge - sag2_edge if r2 > 0 else x2_edge + sag2_edge
+            x2_vertex_scaled = x2_vertex - cx  # Convert to scale offset from cx
+            
             path2 = QPainterPath()
             for i in range(51):
-                y = diameter/2*scale - diameter*scale*i/50
-                if abs(y) <= r2_abs:
-                    if r2 > 0:
-                        x = cx + thickness*scale + (r2_abs - (r2_abs**2 - y**2)**0.5)
-                    else:
-                        x = cx + thickness*scale - (r2_abs - (r2_abs**2 - y**2)**0.5)
+                y_scaled = half_d - half_d * i / 50
+                y_val = abs(y_scaled) / scale  # Convert back to mm
+                if y_val <= r2_val:
+                    x_offset = r2_val - (r2_val**2 - y_val**2)**0.5
+                    x = cx + x2_vertex_scaled + x_offset if r2 > 0 else cx + x2_vertex_scaled - x_offset
                     if i == 0:
-                        path2.moveTo(x, cy+y)
+                        path2.moveTo(x, cy + y_scaled)
                     else:
-                        path2.lineTo(x, cy+y)
+                        path2.lineTo(x, cy + y_scaled)
+            painter.setPen(QPen(self._r2_color, 3))
+            painter.drawPath(path2)
+        else:
+            # Flat surface
+            path2 = QPainterPath()
+            path2.moveTo(x2_edge, cy - half_d)
+            path2.lineTo(x2_edge, cy + half_d)
             painter.setPen(QPen(self._r2_color, 3))
             painter.drawPath(path2)
         
@@ -1979,52 +2007,37 @@ class _2DVisualizationWidget(QWidget):
         y_bot = cy + diameter/2 * scale   # Bottom of lens
         half_d = diameter/2 * scale
         
-        # Calculate X at R1 surface at top
-        if r1_abs > 0:
-            x1_top = cx + (r1_abs - (r1_abs**2 - half_d**2)**0.5) if r1 > 0 else cx - (r1_abs - (r1_abs**2 - half_d**2)**0.5)
-        else:
-            x1_top = cx  # Flat surface
-        
-        # Calculate X at R1 surface at bottom
-        if r1_abs > 0:
-            x1_bot = cx + (r1_abs - (r1_abs**2 - half_d**2)**0.5) if r1 > 0 else cx - (r1_abs - (r1_abs**2 - half_d**2)**0.5)
-        else:
-            x1_bot = cx
-        
-        # Calculate X at R2 surface at top
-        if r2_abs > 0:
-            x2_top = cx + thickness*scale + (r2_abs - (r2_abs**2 - half_d**2)**0.5) if r2 > 0 else cx + thickness*scale - (r2_abs - (r2_abs**2 - half_d**2)**0.5)
-        else:
-            x2_top = cx + thickness*scale
-        
-        # Calculate X at R2 surface at bottom
-        if r2_abs > 0:
-            x2_bot = cx + thickness*scale + (r2_abs - (r2_abs**2 - half_d**2)**0.5) if r2 > 0 else cx + thickness*scale - (r2_abs - (r2_abs**2 - half_d**2)**0.5)
-        else:
-            x2_bot = cx + thickness*scale
+        # Use edge-based positions for edges
+        x1_top = x1_edge
+        x1_bot = x1_edge
+        x2_top = x2_edge
+        x2_bot = x2_edge
         
         painter.setPen(QPen(self._edge_color, 3))
         painter.drawLine(x1_top, y_top, x2_top, y_top)  # Top edge
         painter.drawLine(x1_bot, y_bot, x2_bot, y_bot)  # Bottom edge
         
-        # Fill lens area
+        # Fill lens area - use edge-based positions
         path_fill = QPainterPath()
         for i in range(51):
             y = -diameter/2*scale + diameter*scale*i/50
-            if r1_abs > 0 and abs(y) <= r1_abs:
-                if r1 > 0:
-                    x1 = cx + (r1_abs - (r1_abs**2 - y**2)**0.5)
-                else:
-                    x1 = cx - (r1_abs - (r1_abs**2 - y**2)**0.5)
+            y_val = abs(y) / scale  # Convert back to mm
+            
+            # Front surface
+            if r1_abs > 0 and y_val <= abs(r1):
+                r1_val = abs(r1)
+                x1 = cx + (r1_val - (r1_val**2 - y_val**2)**0.5) if r1 > 0 else cx - (r1_val - (r1_val**2 - y_val**2)**0.5)
             else:
-                x1 = cx
-            if r2_abs > 0 and abs(y) <= r2_abs:
-                if r2 > 0:
-                    x2 = cx + thickness*scale + (r2_abs - (r2_abs**2 - y**2)**0.5)
-                else:
-                    x2 = cx + thickness*scale - (r2_abs - (r2_abs**2 - y**2)**0.5)
+                x1 = x1_edge if y_val <= diameter/2 else cx
+            
+            # Back surface - use vertex-based calculation
+            if r2_abs > 0 and y_val <= abs(r2):
+                r2_val = abs(r2)
+                sag2_at_y = r2_val - (r2_val**2 - y_val**2)**0.5
+                x2 = x2_vertex_scaled + cx + sag2_at_y if r2 > 0 else x2_vertex_scaled + cx - sag2_at_y
             else:
-                x2 = cx + thickness*scale
+                x2 = x2_edge if y_val <= diameter/2 else x2_edge
+            
             if i == 0:
                 path_fill.moveTo(x1, cy+y)
             else:
