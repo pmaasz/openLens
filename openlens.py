@@ -345,12 +345,14 @@ class OpenLensWindow(QMainWindow):
         self._sim_wavelength.setCurrentIndex(2)  # Default to 550nm (Green)
         source_layout.addRow("Wavelength:", self._sim_wavelength)
         
+        self._sim_custom_label = QLabel("Custom:")
         self._sim_custom_wavelength = QDoubleSpinBox()
         self._sim_custom_wavelength.setRange(380, 780)
         self._sim_custom_wavelength.setValue(550)
         self._sim_custom_wavelength.setSuffix(" nm")
+        self._sim_custom_label.setVisible(False)
         self._sim_custom_wavelength.setVisible(False)
-        self._sim_custom_row = source_layout.addRow("Custom:", self._sim_custom_wavelength)
+        source_layout.addRow(self._sim_custom_label, self._sim_custom_wavelength)
         
         # Connect wavelength combo to enable/disable custom
         self._sim_wavelength.currentIndexChanged.connect(self._on_wavelength_changed)
@@ -411,6 +413,7 @@ class OpenLensWindow(QMainWindow):
     def _on_wavelength_changed(self, index):
         """Show/hide custom wavelength input based on selection"""
         is_custom = (index == 5)
+        self._sim_custom_label.setVisible(is_custom)
         self._sim_custom_wavelength.setVisible(is_custom)
         if is_custom:
             self._sim_custom_wavelength.setEnabled(True)
