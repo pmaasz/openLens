@@ -1846,8 +1846,8 @@ class SimulationController:
                 self.sim_ax = self.sim_figure.add_subplot(111, facecolor=COLOR_BG_DARK)
                 
                 # Configure axes
-                self.sim_ax.set_xlim(-100, 150)
-                self.sim_ax.set_ylim(-30, 30)
+                self.sim_ax.set_xlim(-20, 80)
+                self.sim_ax.set_ylim(-20, 20)
                 self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
                 self.sim_ax.set_xlabel('Position (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
                 self.sim_ax.set_ylabel('Height (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
