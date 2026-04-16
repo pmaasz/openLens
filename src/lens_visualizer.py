@@ -650,51 +650,49 @@ class LensVisualizer:
         
         # Front surface (R1) - treat R=0 as flat
         r1_is_flat = r1 == 0 or abs(r1) > 10000
+        
+        # Calculate sag at the edge
+        h = y_max
+        
         if not r1_is_flat:
             r1_abs = abs(r1)
-            y_limit1 = min(y_max, r1_abs)
-            y_valid = np.linspace(-y_limit1, y_limit1, 200)
-            
+            # Clamp h to valid range for sqrt
+            h_clamped = min(h, r1_abs * 0.9999)
+            sag_at_edge = r1_abs - math.sqrt(r1_abs**2 - h_clamped**2)
+            # Edge x position relative to vertex (at x=0)
+            # For R1 > 0 (center to right): edge is to the right of vertex, so x_edge = +sag
+            # For R1 < 0 (center to left): edge is to the left of vertex, so x_edge = -sag
+            x1_edge = sag_at_edge if r1 > 0 else -sag_at_edge
+            y_valid = np.linspace(-h_clamped, h_clamped, 200)
             x1 = r1_abs - np.sqrt(r1_abs**2 - y_valid**2)
             if r1 < 0:
                 x1 = -x1
         else:
+            x1_edge = 0
             y_valid = y
             x1 = np.zeros_like(y_valid)
         
-        # Back surface (R2) - treat R=0 as flat
+        # Back surface (R2)
         r2_is_flat = r2 == 0 or abs(r2) > 10000
         
-        # Calculate thickness at the ACTUAL edge where surfaces meet (y = diameter/2)
-        h_edge = diameter / 2
-        
-        # Calculate front surface edge position at y = h_edge
-        if not r1_is_flat:
-            r1_abs = abs(r1)
-            if h_edge <= r1_abs:
-                sag1_edge = r1_abs - math.sqrt(r1_abs**2 - h_edge**2)
-                x1_edge = sag1_edge if r1 > 0 else -sag1_edge
-            else:
-                x1_edge = x1[0]  # Use the edge of the drawn surface
-        else:
-            x1_edge = 0
-            
-        # Calculate back surface so that edge gap = thickness
+        # Position back surface so that the edge gap equals the user-defined thickness
         x2_edge = x1_edge + thickness
         
         if not r2_is_flat:
             r2_abs = abs(r2)
-            y_limit2 = min(y_max, r2_abs)
-            y_valid2 = np.linspace(-y_limit2, y_limit2, 200)
+            h2_clamped = min(h, r2_abs * 0.9999)
+            sag2_at_edge = r2_abs - math.sqrt(r2_abs**2 - h2_clamped**2)
+            # Edge is at x2_edge, need to find vertex position:
+            # If R2 > 0 (center to right): x_edge = x_vertex + sag, so x_vertex = x_edge - sag
+            # If R2 < 0 (center to left): x_edge = x_vertex - sag, so x_vertex = x_edge + sag
+            x2_vertex = x2_edge - sag2_at_edge if r2 > 0 else x2_edge + sag2_at_edge
             
-            # Calculate vertex position from edge position
-            # x_edge = x_vertex + sag (for R>0) or x_vertex - sag (for R<0)
-            # For R2 > 0 (concave right): x2 = x2_vertex + sag => x2_vertex = x2 - sag
-            # For R2 < 0 (convex right): x2 = x2_vertex - sag => x2_vertex = x2 + sag
+            y_valid2 = np.linspace(-h2_clamped, h2_clamped, 200)
+            sag2 = r2_abs - np.sqrt(r2_abs**2 - y_valid2**2)
             if r2 > 0:
-                x2 = x2_edge + (r2_abs - np.sqrt(r2_abs**2 - y_valid2**2))
+                x2 = x2_vertex + sag2
             else:
-                x2 = x2_edge - (r2_abs - np.sqrt(r2_abs**2 - y_valid2**2))
+                x2 = x2_vertex - sag2
         else:
             y_valid2 = y
             x2 = np.full_like(y_valid2, x2_edge)
