@@ -16,7 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QLabel, QListWidget, QListWidgetItem, QPushButton, 
                                QDoubleSpinBox, QSpinBox, QLineEdit, QGroupBox, QFormLayout, 
-                               QFrame, QTabWidget, QComboBox, QCheckBox, QDialog, QStatusBar)
+                               QFrame, QTabWidget, QComboBox, QCheckBox, QDialog, QStatusBar,
+                               QTextEdit, QFileDialog, QMessageBox)
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence
 
@@ -433,102 +434,298 @@ class OpenLensWindow(QMainWindow):
         from src.aberrations import AberrationsCalculator
         
         perf = QWidget()
-        layout = QHBoxLayout(perf)
+        layout = QVBoxLayout(perf)
         layout.setContentsMargins(10, 10, 10, 10)
         
-        left = QWidget()
-        left_layout = QVBoxLayout(left)
-        
-        title = QLabel("Performance Metrics")
+        title = QLabel("Performance Metrics Dashboard")
         title.setStyleSheet("font-size: 16px; font-weight: bold;")
-        left_layout.addWidget(title)
+        layout.addWidget(title)
         
-        metrics_group = QGroupBox("Optical Performance")
-        metrics_layout = QFormLayout(metrics_group)
+        # Metrics display area
+        metrics_group = QGroupBox("Optical Performance Metrics")
+        metrics_layout = QVBoxLayout(metrics_group)
         
-        self._perf_long_focal = QLabel("-")
-        self._perf_long_focal.setStyleSheet("color: #00a0ff; font-weight: bold;")
-        metrics_layout.addRow("Focal Length:", self._perf_long_focal)
+        self._perf_metrics_text = QTextEdit()
+        self._perf_metrics_text.setReadOnly(True)
+        self._perf_metrics_text.setMaximumHeight(200)
+        self._perf_metrics_text.setStyleSheet("background-color: #2b2b2b; color: #e0e0e0; font-family: Courier; font-size: 10px;")
+        self._perf_metrics_text.setPlainText("Select a lens and click 'Calculate Metrics' to view performance data.")
+        metrics_layout.addWidget(self._perf_metrics_text)
         
-        self._perf_power = QLabel("-")
-        self._perf_power.setStyleSheet("color: #00a0ff; font-weight: bold;")
-        metrics_layout.addRow("Optical Power:", self._perf_power)
+        layout.addWidget(metrics_group)
         
-        self._perf_back_focal = QLabel("-")
-        self._perf_back_focal.setStyleSheet("color: #00a0ff; font-weight: bold;")
-        metrics_layout.addRow("Back Focal Length:", self._perf_back_focal)
+        # Calculation parameters
+        params_group = QGroupBox("Calculation Parameters")
+        params_layout = QFormLayout(params_group)
         
-        left_layout.addWidget(metrics_group)
+        self._perf_entrance_pupil = QDoubleSpinBox()
+        self._perf_entrance_pupil.setRange(1, 100)
+        self._perf_entrance_pupil.setValue(10.0)
+        self._perf_entrance_pupil.setSuffix(" mm")
+        params_layout.addRow("Entrance Pupil Diameter:", self._perf_entrance_pupil)
         
-        aber_group = QGroupBox("Aberrations")
-        aber_layout = QFormLayout(aber_group)
+        self._perf_wavelength = QComboBox()
+        self._perf_wavelength.addItems(["400 nm (Violet)", "450 nm (Blue)", "550 nm (Green)", "650 nm (Red)", "700 nm (IR)"])
+        self._perf_wavelength.setCurrentIndex(2)  # Default to 550nm
+        params_layout.addRow("Wavelength:", self._perf_wavelength)
         
-        self._perf_spherical = QLabel("-")
-        self._perf_spherical.setStyleSheet("color: #ffaa00;")
-        aber_layout.addRow("Spherical:", self._perf_spherical)
+        self._perf_object_distance = QDoubleSpinBox()
+        self._perf_object_distance.setRange(1, 10000)
+        self._perf_object_distance.setValue(1000)
+        self._perf_object_distance.setSuffix(" mm")
+        params_layout.addRow("Object Distance:", self._perf_object_distance)
         
-        self._perf_coma = QLabel("-")
-        self._perf_coma.setStyleSheet("color: #ffaa00;")
-        aber_layout.addRow("Coma:", self._perf_coma)
+        self._perf_sensor_size = QDoubleSpinBox()
+        self._perf_sensor_size.setRange(1, 100)
+        self._perf_sensor_size.setValue(36)
+        self._perf_sensor_size.setSuffix(" mm")
+        params_layout.addRow("Sensor Size:", self._perf_sensor_size)
         
-        self._perf_astig = QLabel("-")
-        self._perf_astig.setStyleSheet("color: #ffaa00;")
-        aber_layout.addRow("Astigmatism:", self._perf_astig)
+        layout.addWidget(params_group)
         
-        self._perf_distortion = QLabel("-")
-        self._perf_distortion.setStyleSheet("color: #ffaa00;")
-        aber_layout.addRow("Distortion:", self._perf_distortion)
+        # Buttons - Row 1: Geometric Analysis
+        btn_layout1 = QHBoxLayout()
+        calc_btn = QPushButton("Calculate Metrics")
+        calc_btn.clicked.connect(self._on_calculate_performance_metrics)
+        spot_btn = QPushButton("Spot Diagram")
+        spot_btn.clicked.connect(self._on_show_spot_diagram)
+        ray_fan_btn = QPushButton("Ray Fan")
+        ray_fan_btn.clicked.connect(self._on_show_ray_fan)
+        field_btn = QPushButton("Field Curves")
+        field_btn.clicked.connect(self._on_show_field_curves)
+        ghost_btn = QPushButton("Ghost Analysis")
+        ghost_btn.clicked.connect(self._on_show_ghost_analysis)
         
-        self._perf_mtfc = QLabel("-")
-        self._perf_mtfc.setStyleSheet("color: #00ff88;")
-        aber_layout.addRow("MTF Cutoff:", self._perf_mtfc)
+        btn_layout1.addWidget(calc_btn)
+        btn_layout1.addWidget(spot_btn)
+        btn_layout1.addWidget(ray_fan_btn)
+        btn_layout1.addWidget(field_btn)
+        btn_layout1.addWidget(ghost_btn)
+        layout.addLayout(btn_layout1)
         
-        left_layout.addWidget(aber_group)
+        # Buttons - Row 2: Image Quality & Export
+        btn_layout2 = QHBoxLayout()
+        psf_btn = QPushButton("PSF Analysis")
+        psf_btn.clicked.connect(self._on_show_psf)
+        mtf_btn = QPushButton("MTF Analysis")
+        mtf_btn.clicked.connect(self._on_show_mtf)
+        wavefront_btn = QPushButton("Wavefront Map")
+        wavefront_btn.clicked.connect(self._on_show_wavefront_map)
+        export_btn = QPushButton("Export Report")
+        export_btn.clicked.connect(self._on_export_performance_report)
         
-        left_layout.addStretch()
+        btn_layout2.addWidget(psf_btn)
+        btn_layout2.addWidget(mtf_btn)
+        btn_layout2.addWidget(wavefront_btn)
+        btn_layout2.addWidget(export_btn)
+        layout.addLayout(btn_layout2)
         
-        layout.addWidget(left, 1)
+        layout.addStretch()
         
+        # Placeholder for visualization (currently using separate widget)
         self._perf_viz = PerformanceVisualizationWidget()
-        layout.addWidget(self._perf_viz, 2)
+        layout.addWidget(self._perf_viz)
         
         self._perf_viz.update_lens(None)
         
         return perf
     
-    def _update_performance_metrics(self):
+    def _on_calculate_performance_metrics(self):
+        """Calculate and display performance metrics"""
+        if not self._current_lens:
+            self._perf_metrics_text.setPlainText("No lens selected.")
+            return
+        
+        try:
+            wavelengths = [400, 450, 550, 650, 700]
+            wavelength = wavelengths[self._perf_wavelength.currentIndex()]
+            entrance_pupil = self._perf_entrance_pupil.value()
+            object_distance = self._perf_object_distance.value()
+            sensor_size = self._perf_sensor_size.value()
+            
+            lens = self._current_lens
+            calculator = AberrationsCalculator(lens)
+            
+            # Get optical properties
+            fl = lens.calculate_focal_length()
+            power = lens.calculate_optical_power()
+            bfl = lens.calculate_back_focal_length()
+            
+            # Calculate aberrations
+            results = calculator.calculate_all_aberrations()
+            
+            # Build metrics text
+            text = f"""=== OPTICAL PERFORMANCE METRICS ===
+Lens: {lens.name}
+
+--- Basic Optical Properties ---
+Focal Length: {f"{fl:.2f} mm" if fl else "Infinite"}
+Optical Power: {f"{power:.4f} D" if power else "N/A"}
+Back Focal Length: {f"{bfl:.2f} mm" if bfl else "N/A"}
+Diameter: {lens.diameter:.2f} mm
+Thickness: {lens.thickness:.2f} mm
+
+--- Calculation Parameters ---
+Wavelength: {wavelength} nm
+Entrance Pupil: {entrance_pupil} mm
+Object Distance: {object_distance} mm
+Sensor Size: {sensor_size} mm
+
+--- Primary Aberrations ---
+Spherical Aberration: {results.get('spherical', 0):.4f} mm
+Coma: {results.get('coma', 0):.4f} mm
+Astigmatism: {results.get('astigmatism', 0):.4f} mm
+Distortion: {results.get('distortion', 0):.2f} %
+Chromatic Aberration: {results.get('chromatic', 0):.4f} mm
+
+--- Image Quality Metrics ---
+MTF Cutoff: {results.get('mtf_cutoff', 0):.1f} lp/mm
+Strehl Ratio: {results.get('strehl', 0):.3f}
+Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
+"""
+            self._perf_metrics_text.setPlainText(text)
+            
+            # Also update individual labels if they exist
+            if hasattr(self, '_perf_long_focal') and fl:
+                self._perf_long_focal.setText(f"{fl:.2f} mm")
+            if hasattr(self, '_perf_power') and power:
+                self._perf_power.setText(f"{power:.4f} D")
+            if hasattr(self, '_perf_back_focal') and bfl:
+                self._perf_back_focal.setText(f"{bfl:.2f} mm")
+            if hasattr(self, '_perf_spherical'):
+                self._perf_spherical.setText(f"{results.get('spherical', 0):.4f} mm")
+            if hasattr(self, '_perf_coma'):
+                self._perf_coma.setText(f"{results.get('coma', 0):.4f} mm")
+            if hasattr(self, '_perf_astig'):
+                self._perf_astig.setText(f"{results.get('astigmatism', 0):.4f} mm")
+            if hasattr(self, '_perf_distortion'):
+                self._perf_distortion.setText(f"{results.get('distortion', 0):.2f} %")
+            if hasattr(self, '_perf_mtfc'):
+                self._perf_mtfc.setText(f"{results.get('mtf_cutoff', 0):.1f} lp/mm")
+                
+        except Exception as e:
+            self._perf_metrics_text.setPlainText(f"Error calculating metrics: {e}")
+    
+    def _on_show_spot_diagram(self):
+        """Show spot diagram"""
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(self, "Spot Diagram", "Spot Diagram feature - to be implemented")
+    
+    def _on_show_ray_fan(self):
+        """Show ray fan plot"""
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(self, "Ray Fan", "Ray Fan feature - to be implemented")
+    
+    def _on_show_field_curves(self):
+        """Show field curves"""
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(self, "Field Curves", "Field Curves feature - to be implemented")
+    
+    def _on_show_ghost_analysis(self):
+        """Show ghost analysis"""
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(self, "Ghost Analysis", "Ghost Analysis feature - to be implemented")
+    
+    def _on_show_psf(self):
+        """Show PSF analysis"""
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(self, "PSF Analysis", "PSF Analysis feature - to be implemented")
+    
+    def _on_show_mtf(self):
+        """Show MTF analysis"""
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(self, "MTF Analysis", "MTF Analysis feature - to be implemented")
+    
+    def _on_show_wavefront_map(self):
+        """Show wavefront map"""
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(self, "Wavefront Map", "Wavefront Map feature - to be implemented")
+    
+    def _on_export_performance_report(self):
+        """Export performance report"""
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        if not self._current_lens:
+            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+            return
+        
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Export Performance Report", f"{self._current_lens.name}_performance.txt",
+            "Text Files (*.txt)"
+        )
+        
+        if not filepath:
+            return
+        
+        try:
+            with open(filepath, 'w') as f:
+                f.write(self._perf_metrics_text.toPlainText())
+            QMessageBox.information(self, "Export Complete", f"Exported to {filepath}")
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export: {e}")
+    
+def _update_performance_metrics(self):
         """Update performance metrics for current lens"""
         if not self._current_lens:
             return
         
         try:
             fl = self._current_lens.calculate_focal_length()
-            if fl:
-                self._perf_long_focal.setText(f"{fl:.2f} mm")
-            else:
-                self._perf_long_focal.setText("Infinite")
+            fl_text = f"{fl:.2f} mm" if fl else "Infinite"
             
             power = self._current_lens.calculate_optical_power()
-            if power:
-                self._perf_power.setText(f"{power:.4f} D")
-            else:
-                self._perf_power.setText("-")
+            power_text = f"{power:.4f} D" if power else "-"
             
             bfl = self._current_lens.calculate_back_focal_length()
-            if bfl:
-                self._perf_back_focal.setText(f"{bfl:.2f} mm")
-            else:
-                self._perf_back_focal.setText("-")
+            bfl_text = f"{bfl:.2f} mm" if bfl else "-"
             
             from src.aberrations import AberrationsCalculator
             calculator = AberrationsCalculator(self._current_lens)
             results = calculator.calculate_all_aberrations()
             
-            self._perf_spherical.setText(f"{results.get('spherical', 0):.4f} mm")
-            self._perf_coma.setText(f"{results.get('coma', 0):.4f} mm")
-            self._perf_astig.setText(f"{results.get('astigmatism', 0):.4f} mm")
-            self._perf_distortion.setText(f"{results.get('distortion', 0):.4f} %")
-            self._perf_mtfc.setText(f"{results.get('mtf_cutoff', 0):.1f} lp/mm")
+            # Update individual labels if they exist (for backward compatibility)
+            if hasattr(self, '_perf_long_focal'):
+                self._perf_long_focal.setText(fl_text)
+            if hasattr(self, '_perf_power'):
+                self._perf_power.setText(power_text)
+            if hasattr(self, '_perf_back_focal'):
+                self._perf_back_focal.setText(bfl_text)
+            if hasattr(self, '_perf_spherical'):
+                self._perf_spherical.setText(f"{results.get('spherical', 0):.4f} mm")
+            if hasattr(self, '_perf_coma'):
+                self._perf_coma.setText(f"{results.get('coma', 0):.4f} mm")
+            if hasattr(self, '_perf_astig'):
+                self._perf_astig.setText(f"{results.get('astigmatism', 0):.4f} mm")
+            if hasattr(self, '_perf_distortion'):
+                self._perf_distortion.setText(f"{results.get('distortion', 0):.2f} %")
+            if hasattr(self, '_perf_mtfc'):
+                self._perf_mtfc.setText(f"{results.get('mtf_cutoff', 0):.1f} lp/mm")
+            
+            # Update text display if it exists
+            if hasattr(self, '_perf_metrics_text'):
+                lens = self._current_lens
+                text = f"""=== OPTICAL PERFORMANCE METRICS ===
+Lens: {lens.name}
+
+--- Basic Optical Properties ---
+Focal Length: {fl_text}
+Optical Power: {power_text}
+Back Focal Length: {bfl_text}
+Diameter: {lens.diameter:.2f} mm
+Thickness: {lens.thickness:.2f} mm
+
+--- Primary Aberrations ---
+Spherical Aberration: {results.get('spherical', 0):.4f} mm
+Coma: {results.get('coma', 0):.4f} mm
+Astigmatism: {results.get('astigmatism', 0):.4f} mm
+Distortion: {results.get('distortion', 0):.2f} %
+Chromatic Aberration: {results.get('chromatic', 0):.4f} mm
+
+--- Image Quality Metrics ---
+MTF Cutoff: {results.get('mtf_cutoff', 0):.1f} lp/mm
+Strehl Ratio: {results.get('strehl', 0):.3f}
+Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
+"""
+                self._perf_metrics_text.setPlainText(text)
             
             self._perf_viz.update_lens(self._current_lens)
             self._perf_viz.update_metrics(results)
