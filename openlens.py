@@ -349,8 +349,8 @@ class OpenLensWindow(QMainWindow):
         self._sim_custom_wavelength.setRange(380, 780)
         self._sim_custom_wavelength.setValue(550)
         self._sim_custom_wavelength.setSuffix(" nm")
-        self._sim_custom_wavelength.setEnabled(False)
-        source_layout.addRow("Custom:", self._sim_custom_wavelength)
+        self._sim_custom_wavelength.setVisible(False)
+        self._sim_custom_row = source_layout.addRow("Custom:", self._sim_custom_wavelength)
         
         # Connect wavelength combo to enable/disable custom
         self._sim_wavelength.currentIndexChanged.connect(self._on_wavelength_changed)
@@ -409,8 +409,13 @@ class OpenLensWindow(QMainWindow):
             self._sim_viz.run_simulation(self._current_lens, num_rays, angle, source_height, show_ghosts, wavelength)
     
     def _on_wavelength_changed(self, index):
-        """Enable/disable custom wavelength input"""
-        self._sim_custom_wavelength.setEnabled(index == 5)
+        """Show/hide custom wavelength input based on selection"""
+        is_custom = (index == 5)
+        self._sim_custom_wavelength.setVisible(is_custom)
+        if is_custom:
+            self._sim_custom_wavelength.setEnabled(True)
+        else:
+            self._sim_custom_wavelength.setEnabled(False)
     
     def _on_clear_simulation(self):
         """Clear simulation visualization"""
