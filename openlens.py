@@ -2354,7 +2354,7 @@ class SimulationVisualizationWidget(QWidget):
         self._rays = []
         
         self.setMinimumSize(400, 300)
-        self.setStyleSheet("background-color: #1e1e1e; border: 1px solid #3f3f3f;")
+        self.setStyleSheet("background-color: #1e1e1e; border: 2px solid #888888;")
         
         from PySide6.QtGui import QColor
         self._bg_color = QColor("#1e1e1e")
