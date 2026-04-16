@@ -671,18 +671,38 @@ class LensVisualizer:
         # Back surface (R2) - treat R=0 as flat
         r2_is_flat = r2 == 0 or abs(r2) > 10000
         
-        # Vertex 2 is at x = thickness
-        x2_vertex = thickness
+        # User-defined thickness is the physical distance at the edge (y = diameter/2)
+        h_edge = diameter / 2
         
+        # 1. Calculate the x-position of the front surface at the edge
+        if not r1_is_flat:
+            r1_abs = abs(r1)
+            h_edge_clipped1 = min(h_edge, r1_abs * 0.999)
+            sag1_edge = r1_abs - math.sqrt(r1_abs**2 - h_edge_clipped1**2)
+            # Front vertex is at x=0
+            # If R1 > 0 (convex left), edge is at x = +sag1_edge
+            # If R1 < 0 (concave left), edge is at x = -sag1_edge
+            x1_edge = sag1_edge if r1 > 0 else -sag1_edge
+        else:
+            x1_edge = 0
+            
+        # 2. Set the back surface edge to be exactly 'thickness' away from the front edge
+        x2_edge = x1_edge + thickness
+        
+        # 3. Calculate the back surface vertex position based on its sag at the edge
         if not r2_is_flat:
             r2_abs = abs(r2)
+            h_edge_clipped2 = min(h_edge, r2_abs * 0.999)
+            sag2_edge = r2_abs - math.sqrt(r2_abs**2 - h_edge_clipped2**2)
+            
+            # For R2 (facing right):
+            # If R2 > 0 (concave right): edge is at x = vertex + sag2_edge => vertex = edge - sag2_edge
+            # If R2 < 0 (convex right): edge is at x = vertex - sag2_edge => vertex = edge + sag2_edge
+            x2_vertex = x2_edge - sag2_edge if r2 > 0 else x2_edge + sag2_edge
+            
             y_limit2 = min(y_max, r2_abs * 0.999)
-            y_valid2 = np.linspace(-y_limit2, r2_abs * 0.999, 200)
             y_valid2 = np.linspace(-y_limit2, y_limit2, 200)
             
-            # Vertex 2 is at x = thickness.
-            # R2 > 0: concave (curves right), sag(y) = R2 - sqrt(R2^2 - y^2), x = x2_vertex + sag(y)
-            # R2 < 0: convex (curves left), sag(y) = |R2| - sqrt(R2^2 - y^2), x = x2_vertex - sag(y)
             sag2 = r2_abs - np.sqrt(r2_abs**2 - y_valid2**2)
             if r2 > 0:
                 x2 = x2_vertex + sag2
@@ -691,6 +711,7 @@ class LensVisualizer:
         else:
             # Flat surface
             y_valid2 = y
+            x2_vertex = x2_edge
             x2 = np.full_like(y_valid2, x2_vertex)
         
         # Draw lens surfaces
