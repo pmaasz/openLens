@@ -1846,8 +1846,8 @@ class SimulationController:
                 self.sim_ax = self.sim_figure.add_subplot(111, facecolor=COLOR_BG_DARK)
                 
                 # Configure axes
-                self.sim_ax.set_xlim(-10, 40)
-                self.sim_ax.set_ylim(-10, 10)
+                self.sim_ax.set_xlim(-5, 15)
+                self.sim_ax.set_ylim(-30, 30)
                 self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
                 self.sim_ax.set_xlabel('Position (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
                 self.sim_ax.set_ylabel('Height (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
@@ -2302,8 +2302,8 @@ class SimulationController:
         self.sim_ax.clear()
         
         # Set axis limits for zoomed-in view
-        self.sim_ax.set_xlim(-10, 40)
-        self.sim_ax.set_ylim(-10, 10)
+        self.sim_ax.set_xlim(-5, 15)
+        self.sim_ax.set_ylim(-30, 30)
         
         # Redraw the lens/system geometry
         if hasattr(self.current_lens, 'elements'):
@@ -2381,8 +2381,8 @@ class SimulationController:
         self.sim_ax.clear()
         
         # Set axis limits for zoomed-in view
-        self.sim_ax.set_xlim(-10, 40)
-        self.sim_ax.set_ylim(-10, 10)
+        self.sim_ax.set_xlim(-5, 15)
+        self.sim_ax.set_ylim(-30, 30)
         
         # Draw system/lens first
         is_system = hasattr(self.current_lens, 'elements')
@@ -2592,8 +2592,8 @@ class SimulationController:
             COLOR_BG_DARK, COLOR_BG_LIGHT, COLOR_FG = '#2b2b2b', '#3f3f3f', '#e0e0e0'
             FONT_SIZE_NORMAL = 10
         
-        self.sim_ax.set_xlim(-10, 40)
-        self.sim_ax.set_ylim(-10, 10)
+        self.sim_ax.set_xlim(-5, 15)
+        self.sim_ax.set_ylim(-30, 30)
         self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
         self.sim_ax.set_xlabel('Position (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
         self.sim_ax.set_ylabel('Height (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
