@@ -356,8 +356,11 @@ class OpenLensWindow(QMainWindow):
         run_btn.clicked.connect(self._on_run_simulation)
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(self._on_clear_simulation)
+        reset_view_btn = QPushButton("Reset View")
+        reset_view_btn.clicked.connect(self._reset_simulation_view)
         btn_layout.addWidget(run_btn)
         btn_layout.addWidget(clear_btn)
+        btn_layout.addWidget(reset_view_btn)
         controls_layout.addLayout(btn_layout)
         
         controls_layout.addStretch()
@@ -382,6 +385,10 @@ class OpenLensWindow(QMainWindow):
     def _on_clear_simulation(self):
         """Clear simulation visualization"""
         self._sim_viz.clear_simulation()
+    
+    def _reset_simulation_view(self):
+        """Reset the simulation view (zoom and pan)"""
+        self._sim_viz.reset_view()
     
     def _create_performance_tab(self):
         """Create the Performance tab"""
@@ -2357,6 +2364,75 @@ class SimulationVisualizationWidget(QWidget):
         self._show_ghosts = False
         self._show_image_sim = False
         self._image_pattern = "Star"
+        
+        # Zoom and pan state
+        self._zoom = 1.0
+        self._pan_x = 0
+        self._pan_y = 0
+        self._is_panning = False
+        self._last_mouse_x = 0
+        self._last_mouse_y = 0
+        
+        # Install event filters
+        self.setFocusPolicy(Qt.StrongFocus)
+    
+    def wheelEvent(self, event):
+        """Handle mouse wheel for zooming"""
+        from PySide6.QtCore import Qt
+        if event.angleDelta().y() > 0:
+            self._zoom *= 1.1
+        else:
+            self._zoom /= 1.1
+        self._zoom = max(0.1, min(self._zoom, 50.0))
+        self.update()
+    
+    def mousePressEvent(self, event):
+        """Start panning on mouse press"""
+        from PySide6.QtCore import Qt
+        if event.button() == Qt.LeftButton:
+            self._is_panning = True
+            self._last_mouse_x = event.position().x()
+            self._last_mouse_y = event.position().y()
+    
+    def mouseMoveEvent(self, event):
+        """Pan the view when dragging"""
+        if self._is_panning:
+            dx = event.position().x() - self._last_mouse_x
+            dy = event.position().y() - self._last_mouse_y
+            self._pan_x += dx
+            self._pan_y -= dy  # Invert because screen Y is down
+            self._last_mouse_x = event.position().x()
+            self._last_mouse_y = event.position().y()
+            self.update()
+    
+    def mouseReleaseEvent(self, event):
+        """Stop panning on mouse release"""
+        from PySide6.QtCore import Qt
+        if event.button() == Qt.LeftButton:
+            self._is_panning = False
+    
+    def keyPressEvent(self, event):
+        """Handle keyboard for zoom/pan reset"""
+        from PySide6.QtCore import Qt
+        if event.key() == Qt.Key_R:
+            self._zoom = 1.0
+            self._pan_x = 0
+            self._pan_y = 0
+            self.update()
+        elif event.key() == Qt.Key_Plus or event.key() == Qt.Key_Equal:
+            self._zoom *= 1.2
+            self.update()
+        elif event.key() == Qt.Key_Minus:
+            self._zoom /= 1.2
+            self._zoom = max(0.1, self._zoom)
+            self.update()
+    
+    def reset_view(self):
+        """Reset zoom and pan"""
+        self._zoom = 1.0
+        self._pan_x = 0
+        self._pan_y = 0
+        self.update()
     
     def run_simulation(self, lens, num_rays=11, angle=0, source_height=0, show_ghosts=False):
         """Run ray tracing simulation"""
@@ -2452,10 +2528,10 @@ class SimulationVisualizationWidget(QWidget):
         diameter = self._lens.diameter
         
         max_dim = max(thickness * 3, diameter, 30) * 1.2
-        scale = min(w, h) / max_dim / 2
+        scale = min(w, h) / max_dim / 2 * self._zoom
         
-        cx = w / 2 - thickness * scale / 3
-        cy = h / 2
+        cx = w / 2 + self._pan_x - thickness * scale / 3
+        cy = h / 2 + self._pan_y
         
         # Draw lens
         path = QPainterPath()
