@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QDoubleSpinBox, QSpinBox, QLineEdit, QGroupBox, QFormLayout, 
                                QFrame, QTabWidget, QComboBox, QCheckBox, QDialog, QStatusBar,
                                QTextEdit, QFileDialog, QMessageBox, QScrollArea)
-from PySide6.QtCore import Qt, QTimer, Slot, Signal
+from PySide6.QtCore import Qt, QTimer, Slot, Signal, QMetaObject, Q_ARG
 from PySide6.QtGui import QKeySequence
 
 # Matplotlib imports for Analysis
@@ -74,6 +74,10 @@ class AnalysisPlotDialog(QDialog):
 class OpenLensWindow(QMainWindow):
     """Main application window"""
     
+    # Define custom signals for thread-safe UI updates
+    opt_finished = Signal(object, list)
+    opt_failed = Signal(str)
+    
     def __init__(self, action=None, data=None):
         super().__init__()
         
@@ -90,6 +94,10 @@ class OpenLensWindow(QMainWindow):
         
         self._setup_ui()
         self._create_menu()
+        
+        # Connect signals
+        self.opt_finished.connect(self._on_optimization_finished)
+        self.opt_failed.connect(self._on_optimization_failed)
         
         self._handle_startup(action, data)
     
@@ -1458,20 +1466,14 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
                 else:
                     result = optimizer.optimize(max_iterations=100)
                 
-                from PySide6.QtCore import QMetaObject, Qt, Q_ARG
-                QMetaObject.invokeMethod(self, "_on_optimization_finished", 
-                                       Qt.QueuedConnection,
-                                       Q_ARG(object, result),
-                                       Q_ARG(list, variables))
+                # Emit signals instead of using invokeMethod
+                self.opt_finished.emit(result, variables)
                                        
             except Exception as e:
                 import traceback
                 error_details = traceback.format_exc()
                 logger.error(f"Optimization error:\n{error_details}")
-                from PySide6.QtCore import QMetaObject, Qt, Q_ARG
-                QMetaObject.invokeMethod(self, "_on_optimization_failed",
-                                       Qt.QueuedConnection,
-                                       Q_ARG(str, str(e)))
+                self.opt_failed.emit(str(e))
 
         import threading
         thread = threading.Thread(target=run_optimization, daemon=True)
@@ -2900,6 +2902,7 @@ class LensEditorWidget(QWidget):
             }
         """)
         name_layout.addRow("Name:", self._name_input)
+        self._name_input.textChanged.connect(self._on_name_changed)
         layout.addWidget(name_group)
         
         # Dimensions
@@ -3009,6 +3012,19 @@ class LensEditorWidget(QWidget):
         
         return frame
     
+    def _on_name_changed(self, name):
+        """Handle name change"""
+        if self._lens:
+            self._lens.name = name
+            
+            # Notify parent to update UI lists
+            if self._parent and hasattr(self._parent, '_update_lens_list'):
+                self._parent._update_lens_list()
+            
+            # Auto-save to database
+            if self._parent and hasattr(self._parent, '_save_to_database'):
+                self._parent._save_to_database()
+
     def _on_property_changed(self):
         """Handle property changes with auto-save"""
         if self._lens:
@@ -3128,7 +3144,10 @@ class LensEditorWidget(QWidget):
     def load_lens(self, lens):
         """Load a lens into the editor"""
         self._lens = lens
+        # Block signals to prevent _on_name_changed from firing during load
+        self._name_input.blockSignals(True)
         self._name_input.setText(lens.name)
+        self._name_input.blockSignals(False)
         self._r1_input.setValue(lens.radius_of_curvature_1)
         self._r2_input.setValue(lens.radius_of_curvature_2)
         self._thickness_input.setValue(lens.thickness)
