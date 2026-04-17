@@ -3913,27 +3913,43 @@ class AssemblyVisualizationWidget(QWidget):
         """Draw a single lens"""
         from PySide6.QtGui import QPainterPath, QPen, QBrush
         
+        # Helper to get sag at y
+        def get_sag(r, y):
+            if abs(r) < 1e-6: return 0
+            r_a = abs(r)
+            if y > r_a: return r_a
+            sag = r_a - (r_a**2 - y**2)**0.5
+            return sag if r > 0 else -sag
+
+        half_d = diameter / 2
+        x1_vertex = cx
+        sag1_edge = get_sag(r1, half_d)
+        x1_edge = x1_vertex + sag1_edge * scale
+        
+        x2_edge = x1_edge + thickness * scale
+        sag2_edge = get_sag(r2, half_d)
+        x2_vertex = x2_edge - sag2_edge * scale
+
         path = QPainterPath()
+        pts = 50
         
-        # Front surface
-        r1_abs = abs(r1) * scale
-        for i in range(51):
-            y = -diameter/2 * scale + diameter * scale * i / 50
-            if abs(y) <= r1_abs:
-                x = cx + (r1_abs - (r1_abs**2 - y**2)**0.5) if r1 > 0 else cx - (r1_abs - (r1_abs**2 - y**2)**0.5)
-                if i == 0:
-                    path.moveTo(x, cy + y)
-                else:
-                    path.lineTo(x, cy + y)
+        # 1. Front Surface (top to bottom)
+        for i in range(pts + 1):
+            y = -half_d + (diameter * i / pts)
+            x = x1_vertex + get_sag(r1, abs(y)) * scale
+            if i == 0: path.moveTo(x, cy + y * scale)
+            else: path.lineTo(x, cy + y * scale)
+            
+        # 2. Bottom Edge
+        path.lineTo(x2_edge, cy + half_d * scale)
         
-        # Back surface
-        r2_abs = abs(r2) * scale
-        for i in range(51):
-            y = diameter/2 * scale - diameter * scale * i / 50
-            if abs(y) <= r2_abs:
-                x = cx + thickness * scale + (r2_abs - (r2_abs**2 - y**2)**0.5) if r2 > 0 else cx + thickness * scale - (r2_abs - (r2_abs**2 - y**2)**0.5)
-                path.lineTo(x, cy + y)
-        
+        # 3. Back Surface (bottom to top)
+        for i in range(pts + 1):
+            y = half_d - (diameter * i / pts)
+            x = x2_vertex + get_sag(r2, abs(y)) * scale
+            path.lineTo(x, cy + y * scale)
+            
+        # 4. Top Edge
         path.closeSubpath()
         
         painter.setPen(QPen(color, 2))
@@ -4193,34 +4209,56 @@ class SimulationVisualizationWidget(QWidget):
         cy = h / 2 + self._pan_y
 
         def draw_single_lens(pnt, lens, start_x, center_y, sc, color):
-            path = QPainterPath()
+            from PySide6.QtGui import QPainterPath, QPen, QBrush
+            
+            # Helper to get sag at y
+            def get_sag(r, y):
+                if abs(r) < 1e-6: return 0
+                r_a = abs(r)
+                if y > r_a: return r_a
+                sag = r_a - (r_a**2 - y**2)**0.5
+                return sag if r > 0 else -sag
+
             r1 = lens.radius_of_curvature_1
             r2 = lens.radius_of_curvature_2
             t = lens.thickness
             d = lens.diameter
+            half_d = d / 2
+
+            x1_vertex = start_x
+            sag1_edge = get_sag(r1, half_d)
+            x1_edge = x1_vertex + sag1_edge * sc
             
-            r1_abs = abs(r1) * sc if abs(r1) > 1e-6 else 0
-            for i in range(51):
-                y = -d/2 * sc + d * sc * i / 50
-                if r1_abs > 0 and abs(y) <= r1_abs:
-                    x = start_x + (r1_abs - (r1_abs**2 - y**2)**0.5) if r1 > 0 else start_x - (r1_abs - (r1_abs**2 - y**2)**0.5)
-                else:
-                    x = start_x
-                if i == 0: path.moveTo(x, center_y + y)
-                else: path.lineTo(x, center_y + y)
+            x2_edge = x1_edge + t * sc
+            sag2_edge = get_sag(r2, half_d)
+            x2_vertex = x2_edge - sag2_edge * sc
+
+            path = QPainterPath()
+            pts = 50
             
-            r2_abs = abs(r2) * sc if abs(r2) > 1e-6 else 0
-            for i in range(51):
-                y = d/2 * sc - d * sc * i / 50
-                if r2_abs > 0 and abs(y) <= r2_abs:
-                    x = start_x + t * sc + (r2_abs - (r2_abs**2 - y**2)**0.5) if r2 > 0 else start_x + t * sc - (r2_abs - (r2_abs**2 - y**2)**0.5)
-                else:
-                    x = start_x + t * sc
-                path.lineTo(x, center_y + y)
+            # 1. Front Surface (top to bottom)
+            for i in range(pts + 1):
+                y = -half_d + (d * i / pts)
+                x = x1_vertex + get_sag(r1, abs(y)) * sc
+                if i == 0: path.moveTo(x, center_y + y * sc)
+                else: path.lineTo(x, center_y + y * sc)
+                
+            # 2. Bottom Edge
+            path.lineTo(x2_edge, center_y + half_d * sc)
+            
+            # 3. Back Surface (bottom to top)
+            for i in range(pts + 1):
+                y = half_d - (d * i / pts)
+                x = x2_vertex + get_sag(r2, abs(y)) * sc
+                path.lineTo(x, center_y + y * sc)
+                
+            # 4. Top Edge
             path.closeSubpath()
+            
             pnt.setPen(QPen(color, 2))
             pnt.setBrush(QBrush(color))
             pnt.drawPath(path)
+
 
         # Draw lenses
         if self._system:
