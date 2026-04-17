@@ -3575,133 +3575,94 @@ class _2DVisualizationWidget(QWidget):
         r2_abs = abs(r2)
         half_d = diameter / 2
         
-        # Front surface sag at edge
-        if r1_abs > 1e-6:
-            if r1_abs > half_d:
-                sag1_edge = r1_abs - (r1_abs**2 - half_d**2)**0.5
-            else:
-                sag1_edge = r1_abs
-        else:
-            sag1_edge = 0 # Flat surface
-            
-        x1_edge = cx + (sag1_edge * scale if r1 > 0 else -sag1_edge * scale)
+        # Helper to get sag at y
+        def get_sag(r, y):
+            if abs(r) < 1e-6: return 0
+            r_a = abs(r)
+            if y > r_a: return r_a
+            sag = r_a - (r_a**2 - y**2)**0.5
+            return sag if r > 0 else -sag
+
+        # X positions
         x1_vertex = cx
+        sag1_edge = get_sag(r1, half_d)
+        x1_edge = x1_vertex + sag1_edge * scale
         
-        # Back surface edge position
         x2_edge = x1_edge + thickness * scale
-        
-        # Back surface vertex position
-        if r2_abs > 1e-6:
-            if r2_abs > half_d:
-                sag2_edge = r2_abs - (r2_abs**2 - half_d**2)**0.5
-            else:
-                sag2_edge = r2_abs
-        else:
-            sag2_edge = 0 # Flat surface
-            
-        # If r2 > 0, vertex is to the left of edge (x2_edge = x2_vertex + sag)
-        # If r2 < 0, vertex is to the right of edge (x2_edge = x2_vertex - sag)
-        x2_vertex = x2_edge - (sag2_edge * scale if r2 > 0 else -sag2_edge * scale)
+        sag2_edge = get_sag(r2, half_d)
+        x2_vertex = x2_edge - sag2_edge * scale
 
         # Clear handles
         self._handles = {}
 
-        # Draw Lens Path
+        # Construct single coherent lens path for filling
         path_lens = QPainterPath()
         
-        # Front surface
-        if r1_abs < 1e-6:
-            # Straight line for flat surface
-            path_lens.moveTo(cx, cy - half_d * scale)
-            path_lens.lineTo(cx, cy + half_d * scale)
-        else:
-            for i in range(51):
-                y_mm = -half_d + diameter * i / 50
-                y_scaled = y_mm * scale
-                if abs(y_mm) <= r1_abs:
-                    sag = r1_abs - (r1_abs**2 - y_mm**2)**0.5
-                    x = cx + (sag * scale if r1 > 0 else -sag * scale)
-                else:
-                    x = x1_edge
-                if i == 0: path_lens.moveTo(x, cy + y_scaled)
-                else: path_lens.lineTo(x, cy + y_scaled)
-        
-        # Top edge
-        path_lens.lineTo(x2_edge, cy - half_d * scale)
-        
-        # Back surface (bottom-to-top)
-        if r2_abs < 1e-6:
-            # Straight line for flat surface
-            path_lens.lineTo(x2_edge, cy + half_d * scale)
-            path_lens.lineTo(x2_edge, cy - half_d * scale)
-        else:
-            for i in range(51):
-                y_mm = -half_d + diameter * i / 50
-                y_scaled = -y_mm * scale # Draw bottom to top
-                if abs(y_mm) <= r2_abs:
-                    sag = r2_abs - (r2_abs**2 - y_mm**2)**0.5
-                    x = x2_vertex + (sag * scale if r2 > 0 else -sag * scale)
-                else:
-                    x = x2_edge
-                path_lens.lineTo(x, cy + y_scaled)
+        # 1. Front Surface (top to bottom)
+        pts = 50
+        for i in range(pts + 1):
+            y = -half_d + (diameter * i / pts)
+            x = x1_vertex + get_sag(r1, abs(y)) * scale
+            if i == 0: path_lens.moveTo(x, cy + y * scale)
+            else: path_lens.lineTo(x, cy + y * scale)
             
+        # 2. Bottom Edge
+        path_lens.lineTo(x2_edge, cy + half_d * scale)
+        
+        # 3. Back Surface (bottom to top)
+        for i in range(pts + 1):
+            y = half_d - (diameter * i / pts)
+            x = x2_vertex + get_sag(r2, abs(y)) * scale
+            path_lens.lineTo(x, cy + y * scale)
+            
+        # 4. Top Edge
         path_lens.closeSubpath()
         
         # Fill and stroke lens
-        painter.setPen(QPen(self._edge_color, 2))
+        painter.setPen(QPen(self._edge_color, 1))
         painter.setBrush(QBrush(self._fill_color))
         painter.drawPath(path_lens)
         
-        # Highlight surfaces
-        if r1_abs > 1e-6:
-            path_r1 = QPainterPath()
-            for i in range(51):
-                y_mm = -half_d + diameter * i / 50
-                if abs(y_mm) <= r1_abs:
-                    sag = r1_abs - (r1_abs**2 - y_mm**2)**0.5
-                    x = cx + (sag * scale if r1 > 0 else -sag * scale)
-                    if i == 0: path_r1.moveTo(x, cy + y_mm * scale)
-                    else: path_r1.lineTo(x, cy + y_mm * scale)
-            painter.setPen(QPen(self._r1_color, 3))
-            painter.drawPath(path_r1)
-        else:
-            painter.setPen(QPen(self._r1_color, 3))
-            painter.drawLine(cx, cy - half_d * scale, cx, cy + half_d * scale)
+        # Highlight surfaces with colors
+        # R1
+        path_r1 = QPainterPath()
+        for i in range(pts + 1):
+            y = -half_d + (diameter * i / pts)
+            x = x1_vertex + get_sag(r1, abs(y)) * scale
+            if i == 0: path_r1.moveTo(x, cy + y * scale)
+            else: path_r1.lineTo(x, cy + y * scale)
+        painter.setPen(QPen(self._r1_color, 2))
+        painter.drawPath(path_r1)
         
-        if r2_abs > 1e-6:
-            path_r2 = QPainterPath()
-            for i in range(51):
-                y_mm = -half_d + diameter * i / 50
-                if abs(y_mm) <= r2_abs:
-                    sag = r2_abs - (r2_abs**2 - y_mm**2)**0.5
-                    x = x2_vertex + (sag * scale if r2 > 0 else -sag * scale)
-                    if i == 0: path_r2.moveTo(x, cy + y_mm * scale)
-                    else: path_r2.lineTo(x, cy + y_mm * scale)
-            painter.setPen(QPen(self._r2_color, 3))
-            painter.drawPath(path_r2)
-        else:
-            painter.setPen(QPen(self._r2_color, 3))
-            painter.drawLine(x2_edge, cy - half_d * scale, x2_edge, cy + half_d * scale)
+        # R2
+        path_r2 = QPainterPath()
+        for i in range(pts + 1):
+            y = -half_d + (diameter * i / pts)
+            x = x2_vertex + get_sag(r2, abs(y)) * scale
+            if i == 0: path_r2.moveTo(x, cy + y * scale)
+            else: path_r2.lineTo(x, cy + y * scale)
+        painter.setPen(QPen(self._r2_color, 2))
+        painter.drawPath(path_r2)
 
-        # Draw handles
-        def draw_handle(p, name, pos):
+        # Draw handles (spaced out to avoid crowding)
+        def draw_handle(p, name, pos, label=""):
             self._handles[name] = pos
-            p.setPen(QPen(Qt.white, 1))
             if self._active_handle == name:
-                p.setBrush(QBrush(QColor(0, 255, 0, 200)))
+                p.setPen(QPen(QColor(0, 255, 0), 2))
+                p.setBrush(QBrush(QColor(0, 255, 0, 150)))
             else:
-                p.setBrush(QBrush(QColor(255, 255, 255, 100)))
-            p.drawEllipse(pos, 5, 5)
-
+                p.setPen(QPen(Qt.white, 1))
+                p.setBrush(QBrush(QColor(255, 255, 255, 50)))
+            p.drawEllipse(pos, 6, 6)
+            
+        # R1 handle at vertex
         draw_handle(painter, 'r1', QPoint(int(x1_vertex), int(cy)))
+        # R2 handle at vertex
         draw_handle(painter, 'r2', QPoint(int(x2_vertex), int(cy)))
-        
-        # Adjust thickness handle position for flat/curved surfaces
-        t_handle_x = x2_edge if r2_abs < 1e-6 else x2_vertex
-        draw_handle(painter, 'thickness', QPoint(int(t_handle_x), int(cy + 15)))
-        
-        # Diameter handle at the top edge center
-        draw_handle(painter, 'diameter', QPoint(int((cx + x2_edge)/2), int(cy - half_d * scale)))
+        # Thickness handle at bottom center
+        draw_handle(painter, 'thickness', QPoint(int((x1_edge + x2_edge)/2), int(cy + half_d * scale + 15)))
+        # Diameter handle at top center
+        draw_handle(painter, 'diameter', QPoint(int((x1_edge + x2_edge)/2), int(cy - half_d * scale - 15)))
 
 
 class _3DVisualizationWidget(QWidget):
