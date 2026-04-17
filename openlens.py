@@ -1214,8 +1214,11 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         self._opt_target_fl = QDoubleSpinBox()
         self._opt_target_fl.setRange(1, 1000)
         self._opt_target_fl.setValue(50)
-        targets_layout.addRow("", self._opt_target_fl_enabled)
-        targets_layout.addRow("Focal Length:", self._opt_target_fl)
+        
+        # Enable/disable spinbox based on checkbox
+        self._opt_target_fl_enabled.toggled.connect(self._opt_target_fl.setEnabled)
+        
+        targets_layout.addRow(self._opt_target_fl_enabled, self._opt_target_fl)
         
         self._opt_target_spot = QCheckBox("Minimize RMS Spot Size")
         self._opt_target_spot.setChecked(True)
@@ -1233,6 +1236,9 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         top_row_layout.addWidget(variables_group)
         top_row_layout.addWidget(targets_group)
         layout.addLayout(top_row_layout)
+        
+        # Constraints and Results side-by-side
+        middle_row_layout = QHBoxLayout()
         
         # Constraints Section
         constraints_group = QGroupBox("Constraints & Options")
@@ -1264,7 +1270,19 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         self._opt_robust = QCheckBox("Robust Mode (Yield Optimization)")
         constraints_layout.addRow("", self._opt_robust)
         
-        layout.addWidget(constraints_group)
+        # Results display
+        results_group = QGroupBox("Optimization Results")
+        results_layout = QVBoxLayout(results_group)
+        
+        self._opt_results_text = QTextEdit()
+        self._opt_results_text.setReadOnly(True)
+        self._opt_results_text.setMinimumHeight(150)
+        self._opt_results_text.setStyleSheet("background-color: #2b2b2b; color: #e0e0e0; font-family: Courier; font-size: 10px;")
+        results_layout.addWidget(self._opt_results_text)
+        
+        middle_row_layout.addWidget(constraints_group, 1)
+        middle_row_layout.addWidget(results_group, 1)
+        layout.addLayout(middle_row_layout)
         
         # Buttons
         btn_layout = QHBoxLayout()
@@ -1272,24 +1290,16 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         run_opt_btn.clicked.connect(self._on_run_optimization)
         stop_btn = QPushButton("Stop")
         stop_btn.clicked.connect(self._on_stop_optimization)
+        self._opt_apply_btn = QPushButton("Apply&Keep")
+        self._opt_apply_btn.setEnabled(False)
+        self._opt_apply_btn.clicked.connect(self._on_apply_optimization)
         reset_btn = QPushButton("Reset to Original")
         reset_btn.clicked.connect(self._on_reset_optimization)
         btn_layout.addWidget(run_opt_btn)
         btn_layout.addWidget(stop_btn)
+        btn_layout.addWidget(self._opt_apply_btn)
         btn_layout.addWidget(reset_btn)
         layout.addLayout(btn_layout)
-        
-        # Results display
-        results_group = QGroupBox("Optimization Results")
-        results_layout = QVBoxLayout(results_group)
-        
-        self._opt_results_text = QTextEdit()
-        self._opt_results_text.setReadOnly(True)
-        self._opt_results_text.setMaximumHeight(150)
-        self._opt_results_text.setStyleSheet("background-color: #2b2b2b; color: #e0e0e0; font-family: Courier; font-size: 10px;")
-        results_layout.addWidget(self._opt_results_text)
-        
-        layout.addWidget(results_group)
         
         # Visualization
         self._opt_viz = _2DVisualizationWidget()
@@ -1307,11 +1317,13 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         # Store optimization state
         self._opt_is_running = False
         self._opt_original_lens = None
+        self._opt_pending_lens = None
         
         return opt
     
     def _on_run_optimization(self):
         """Run lens optimization using LensOptimizer"""
+        from src.optimizer import LensOptimizer, OptimizationVariable, OptimizationTarget
         if not self._current_lens:
             self._opt_results_text.setPlainText("No lens selected.")
             return
@@ -1322,15 +1334,56 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         
         self._opt_is_running = True
         self._opt_original_lens = self._current_lens
+        self._opt_pending_lens = None
+        self._opt_apply_btn.setEnabled(False)
         
         # Collect variables
         variables = []
         if self._opt_var_r1.isChecked():
-            variables.append(OptimizationVariable('radius_1', self._current_lens.radius_of_curvature_1))
+            variables.append(OptimizationVariable(
+                name="Radius 1",
+                element_index=0,
+                parameter="radius_of_curvature_1",
+                current_value=self._current_lens.radius_of_curvature_1,
+                min_value=-10000.0,
+                max_value=10000.0
+            ))
         if self._opt_var_r2.isChecked():
-            variables.append(OptimizationVariable('radius_2', self._current_lens.radius_of_curvature_2))
+            variables.append(OptimizationVariable(
+                name="Radius 2",
+                element_index=0,
+                parameter="radius_of_curvature_2",
+                current_value=self._current_lens.radius_of_curvature_2,
+                min_value=-10000.0,
+                max_value=10000.0
+            ))
         if self._opt_var_thickness.isChecked():
-            variables.append(OptimizationVariable('thickness', self._current_lens.thickness))
+            variables.append(OptimizationVariable(
+                name="Thickness",
+                element_index=0,
+                parameter="thickness",
+                current_value=self._current_lens.thickness,
+                min_value=self._opt_min_thickness.value(),
+                max_value=self._opt_max_thickness.value()
+            ))
+        if self._opt_var_material.isChecked():
+            variables.append(OptimizationVariable(
+                name="Refractive Index",
+                element_index=0,
+                parameter="refractive_index",
+                current_value=self._current_lens.refractive_index,
+                min_value=1.3,
+                max_value=2.0
+            ))
+        if self._opt_var_diameter.isChecked():
+            variables.append(OptimizationVariable(
+                name="Diameter",
+                element_index=0,
+                parameter="diameter",
+                current_value=self._current_lens.diameter,
+                min_value=1.0,
+                max_value=200.0
+            ))
         
         if not variables:
             self._opt_results_text.setPlainText("Select at least one variable.")
@@ -1340,15 +1393,15 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         # Collect targets
         targets = []
         if self._opt_target_fl_enabled.isChecked():
-            targets.append(OptimizationTarget('focal_length', self._opt_target_fl.value(), weight=1.0))
+            targets.append(OptimizationTarget('focal_length', self._opt_target_fl.value(), weight=1.0, target_type="target"))
         if self._opt_target_spot.isChecked():
-            targets.append(OptimizationTarget('spot_size', 0, weight=1.0, minimize=True))
+            targets.append(OptimizationTarget('spot_size', 0, weight=1.0, target_type="minimize"))
         if self._opt_target_spherical.isChecked():
-            targets.append(OptimizationTarget('spherical', 0, weight=1.0, minimize=True))
+            targets.append(OptimizationTarget('spherical', 0, weight=1.0, target_type="minimize"))
         if self._opt_target_coma.isChecked():
-            targets.append(OptimizationTarget('coma', 0, weight=1.0, minimize=True))
+            targets.append(OptimizationTarget('coma', 0, weight=1.0, target_type="minimize"))
         if self._opt_target_astig.isChecked():
-            targets.append(OptimizationTarget('astigmatism', 0, weight=1.0, minimize=True))
+            targets.append(OptimizationTarget('astigmatism', 0, weight=1.0, target_type="minimize"))
         
         if not targets:
             self._opt_results_text.setPlainText("Select at least one target.")
@@ -1356,9 +1409,10 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             return
         
         # Build constraints
+        # Note: LensOptimizer uses 'min_center_thickness' and 'max_center_thickness' internally
         constraints = {}
-        constraints['min_thickness'] = self._opt_min_thickness.value()
-        constraints['max_thickness'] = self._opt_max_thickness.value()
+        constraints['min_center_thickness'] = self._opt_min_thickness.value()
+        constraints['max_center_thickness'] = self._opt_max_thickness.value()
         constraints['min_edge_thickness'] = self._opt_min_edge.value()
         
         self._opt_results_text.setPlainText("Optimizing...")
@@ -1388,28 +1442,45 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
                 text = f"Optimization Successful!\n\n"
                 text += f"Final Merit Function: {result.final_merit:.4f}\n"
                 text += f"Iterations: {result.iterations}\n\n"
-                text += "Optimized Values:\n"
-                for var in result.optimized_values:
-                    text += f"  {var.name}: {var.value:.4f}\n"
+                text += "Optimized Values (Preview):\n"
+                
+                # Extract optimized values from the system
+                if result.optimized_system and result.optimized_system.elements:
+                    lens = result.optimized_system.elements[0].lens
+                    for var in variables:
+                        val = getattr(lens, var.parameter)
+                        text += f"  {var.name}: {val:.4f}\n"
                 
                 self._opt_results_text.setPlainText(text)
+                self._opt_results_text.append("\nClick 'Apply & Keep' to save these changes.")
                 
-                # Update visualization and current lens
+                # Update visualization but don't commit yet
                 if result.optimized_system and result.optimized_system.elements:
                     optimized_lens = result.optimized_system.elements[0].lens
-                    self._current_lens = optimized_lens
-                    self._lens_editor.load_lens(optimized_lens)
-                    self._update_all_tabs()
+                    self._opt_pending_lens = optimized_lens
+                    self._opt_apply_btn.setEnabled(True)
                     self._opt_viz.update_lens(optimized_lens)
             else:
                 self._opt_results_text.setPlainText(f"Optimization failed: {result.message}")
                 
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
             self._opt_results_text.setPlainText(f"Error during optimization: {e}")
-            logger.error(f"Optimization error: {e}")
+            logger.error(f"Optimization error:\n{error_details}")
         
         finally:
             self._opt_is_running = False
+    
+    def _on_apply_optimization(self):
+        """Apply the optimization results to the current lens"""
+        if self._opt_pending_lens:
+            self._current_lens = self._opt_pending_lens
+            self._lens_editor.load_lens(self._current_lens)
+            self._update_all_tabs()
+            self._opt_apply_btn.setEnabled(False)
+            self._opt_pending_lens = None
+            self._opt_results_text.append("\nChanges applied to lens.")
     
     def _on_stop_optimization(self):
         """Stop the running optimization"""
@@ -1419,66 +1490,15 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
     def _on_reset_optimization(self):
         """Reset optimization to original lens values"""
         if self._opt_original_lens:
-            self._lens_editor.load_lens(self._opt_original_lens)
+            self._current_lens = self._opt_original_lens
+            self._lens_editor.load_lens(self._current_lens)
             self._update_all_tabs()
             self._opt_results_text.setPlainText("Reset to original lens values.")
-            self._opt_viz.update_lens(self._opt_original_lens)
+            self._opt_viz.update_lens(self._current_lens)
+            self._opt_apply_btn.setEnabled(False)
+            self._opt_pending_lens = None
         else:
             self._opt_results_text.setPlainText("No original lens to reset to.")
-    
-    def _on_run_optimization(self):
-        """Run lens optimization"""
-        if not self._current_lens:
-            return
-        
-        target_fl = self._opt_target_fl.value()
-        target_fno = self._opt_target_fno.value()
-        
-        variables = []
-        if self._opt_var_r1.isChecked():
-            variables.append('radius_1')
-        if self._opt_var_r2.isChecked():
-            variables.append('radius_2')
-        if self._opt_var_thickness.isChecked():
-            variables.append('thickness')
-        
-        if not variables:
-            self._opt_result.setText("Select at least one variable")
-            return
-        
-        self._opt_result.setText("Optimizing...")
-        
-        try:
-            lens = self._current_lens
-            original_fl = lens.calculate_focal_length()
-            
-            if original_fl and abs(original_fl - target_fl) < 0.1:
-                self._opt_result.setText(f"Already at target!\nFL: {original_fl:.2f} mm")
-            else:
-                step = 0.5 if original_fl and original_fl > target_fl else -0.5
-                for i in range(50):
-                    if 'radius_1' in variables:
-                        lens.radius_of_curvature_1 += step
-                    if 'radius_2' in variables:
-                        lens.radius_of_curvature_2 -= step
-                    
-                    new_fl = lens.calculate_focal_length()
-                    if new_fl and abs(new_fl - target_fl) < 0.1:
-                        break
-                
-                new_fl = lens.calculate_focal_length()
-                self._opt_result.setText(f"Optimized!\nTarget: {target_fl:.1f} mm\nResult: {new_fl:.2f} mm" if new_fl else "Error")
-                self._lens_editor.load_lens(lens)
-                self._update_all_tabs()
-                
-        except Exception as e:
-            self._opt_result.setText(f"Error: {str(e)[:30]}")
-    
-    def _on_reset_optimization(self):
-        """Reset optimization to defaults"""
-        if self._current_lens:
-            self._lens_editor.load_lens(self._current_lens)
-            self._opt_result.setText("Reset complete")
     
     def _create_tolerancing_tab(self):
         """Create the Tolerancing tab"""
