@@ -342,14 +342,24 @@ class LensVisualizer:
             x = r * np.outer(np.sin(np.arccos(1 - v)), np.cos(u))
             y = r * np.outer(np.sin(np.arccos(1 - v)), np.sin(u))
             z = r * (1 - np.outer(np.cos(np.arccos(1 - v)), np.ones(np.size(u))))
+            # Convex front surface (R1 > 0) vertex at 0, center at +R1.
+            # Surfaces are defined as z(r) = R - sqrt(R^2 - r^2) = sag.
+            # This 'z' is already 'sag' (positive).
             if is_front:
-                z = -z  # Front surface curves toward negative Z
+                pass  # z = sag (convex front curves right)
+            else:
+                z = z  # z = sag (convex back curves right from its vertex)
         else:  # Concave (curving inward)
             x = r * np.outer(np.sin(np.arccos(1 - v)), np.cos(u))
             y = r * np.outer(np.sin(np.arccos(1 - v)), np.sin(u))
             z = -r * (1 - np.outer(np.cos(np.arccos(1 - v)), np.ones(np.size(u))))
+            # Concave front surface (R1 < 0) vertex at 0, center at -|R1|.
+            # z = -sag (concave front curves left).
+            # This 'z' is already -sag.
             if is_front:
-                z = -z
+                pass 
+            else:
+                z = z # z = -sag (concave back curves left from its vertex)
         
         # Limit to lens diameter
         mask = x**2 + y**2 <= (diameter/2)**2
@@ -496,11 +506,12 @@ class LensVisualizer:
         if not r1_is_flat:
             r1_abs = abs(r1)
             h_edge = diameter / 2
-            if h_edge < r1_abs:
-                sag_front = r1_abs - math.sqrt(r1_abs**2 - h_edge**2)
-                z_front_edge = -sag_front if r1 > 0 else sag_front
-            else:
-                z_front_edge = 0
+            # Sagitta formula: sag = r - sqrt(r^2 - h^2)
+            # Front surface centered at R1, vertex at 0.
+            # R1 > 0 (convex): Center is at +R1. x = R1 - sqrt(R1^2 - h^2) = +sag
+            # R1 < 0 (concave): Center is at -R1. x = -R1 + sqrt(R1^2 - h^2) = -sag
+            sag_front = r1_abs - math.sqrt(r1_abs**2 - h_edge**2)
+            z_front_edge = sag_front if r1 > 0 else -sag_front
         else:
             z_front_edge = 0
         z_front_edge += z_offset
@@ -510,11 +521,11 @@ class LensVisualizer:
         if not r2_is_flat:
             r2_abs = abs(r2)
             h_edge = diameter / 2
-            if h_edge < r2_abs:
-                sag_back = r2_abs - math.sqrt(r2_abs**2 - h_edge**2)
-                z_back_edge = thickness + sag_back if r2 > 0 else thickness - sag_back
-            else:
-                z_back_edge = thickness
+            # Back surface centered at thickness + R2, vertex at thickness.
+            # R2 > 0 (convex): Center is at t+R2. x = (t+R2) - sqrt(R2^2 - h^2) = t + sag
+            # R2 < 0 (concave): Center is at t+R2. x = (t+R2) + sqrt(R2^2 - h^2) = t - sag
+            sag_back = r2_abs - math.sqrt(r2_abs**2 - h_edge**2)
+            z_back_edge = thickness + sag_back if r2 > 0 else thickness - sag_back
         else:
             z_back_edge = thickness
         z_back_edge += z_offset
