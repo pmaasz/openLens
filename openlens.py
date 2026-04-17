@@ -135,6 +135,21 @@ class OpenLensWindow(QMainWindow):
         from src.gui.storage import LensStorage
         
         try:
+            # Sync tolerances to current target metadata before saving
+            target = self._current_assembly if self._current_assembly else self._current_lens
+            if target:
+                if not hasattr(target, 'metadata'):
+                    target.metadata = {}
+                target.metadata['tolerances'] = [
+                    {
+                        'element_index': op.element_index,
+                        'type': op.param_type.value,
+                        'min_val': op.min_val,
+                        'max_val': op.max_val,
+                        'distribution': getattr(op, 'distribution', 'uniform')
+                    } for op in self._tol_operands
+                ]
+
             storage = LensStorage(self._db_path, lambda x: None)
             all_items = self._lenses + self._assemblies
             storage.save_lenses(all_items)
@@ -168,17 +183,65 @@ class OpenLensWindow(QMainWindow):
             self._status_bar.showMessage(message)
     
     def _load_lens_from_data(self, data):
-        """Load lens from saved data"""
-        if isinstance(data, dict):
+        """Load lens or assembly from saved data"""
+        from src.optical_system import OpticalSystem
+        if isinstance(data, OpticalSystem):
+            self._assemblies.append(data)
+            self._current_assembly = data
+            self._current_lens = None
+            self._show_assembly_editor(True)
+            self._show_lens_editor(False)
+            self._assembly_viz.update_system(data)
+            self._optical_system = data
+        elif isinstance(data, Lens):
             self._lenses.append(data)
-            self._current_lens = data if isinstance(data, Lens) else None
+            self._current_lens = data
+            self._current_assembly = None
+            self._show_assembly_editor(False)
+            self._show_lens_editor(True)
+        elif isinstance(data, dict):
+            # Fallback for dict data
+            if data.get('type') == 'OpticalSystem':
+                system = OpticalSystem.from_dict(data)
+                self._assemblies.append(system)
+                self._current_assembly = system
+                self._current_lens = None
+            else:
+                lens = Lens.from_dict(data)
+                self._lenses.append(lens)
+                self._current_lens = lens
+                self._current_assembly = None
         else:
             self._load_default_lens()
         
         self._update_lens_list()
         if self._current_lens:
             self._lens_editor.load_lens(self._current_lens)
-            self._update_all_tabs()
+        
+        # Load tolerances if they exist in metadata
+        target = self._current_assembly if self._current_assembly else self._current_lens
+        if target and hasattr(target, 'metadata') and 'tolerances' in target.metadata:
+            try:
+                from src.tolerancing import ToleranceOperand, ToleranceType
+                self._tol_operands = []
+                for t_data in target.metadata['tolerances']:
+                    p_type = next((t for t in ToleranceType if t.value == t_data['type']), ToleranceType.RADIUS_1)
+                    op = ToleranceOperand(
+                        element_index=t_data['element_index'],
+                        param_type=p_type,
+                        min_val=t_data['min_val'],
+                        max_val=t_data['max_val'],
+                        distribution=t_data.get('distribution', 'uniform')
+                    )
+                    self._tol_operands.append(op)
+                self._update_tolerance_operands_display()
+            except Exception as e:
+                logger.warning(f"Failed to load tolerances: {e}")
+        else:
+            self._tol_operands = []
+            self._update_tolerance_operands_display()
+
+        self._update_all_tabs()
     
     def _setup_ui(self):
         """Setup the main UI"""
@@ -449,7 +512,8 @@ class OpenLensWindow(QMainWindow):
     
     def _on_run_simulation(self):
         """Run ray tracing simulation"""
-        if self._current_lens:
+        active_system = self._current_assembly if self._current_assembly else self._current_lens
+        if active_system:
             num_rays = int(self._sim_num_rays.value())
             angle = self._sim_angle.value()
             source_height = self._sim_source_height.value()
@@ -463,7 +527,7 @@ class OpenLensWindow(QMainWindow):
                 wavelengths = [400, 450, 550, 650, 700]
                 wavelength = wavelengths[wavelength_idx]
             
-            self._sim_viz.run_simulation(self._current_lens, num_rays, angle, source_height, show_ghosts, wavelength)
+            self._sim_viz.run_simulation(active_system, num_rays, angle, source_height, show_ghosts, wavelength)
     
     def _on_wavelength_changed(self, index):
         """Show/hide custom wavelength input based on selection"""
@@ -579,11 +643,14 @@ class OpenLensWindow(QMainWindow):
         wavefront_btn.clicked.connect(self._on_show_wavefront_map)
         export_btn = QPushButton("Export Report")
         export_btn.clicked.connect(self._on_export_performance_report)
+        image_sim_btn = QPushButton("Image Simulation")
+        image_sim_btn.clicked.connect(self._on_show_image_simulation)
         
         btn_layout2.addWidget(psf_btn)
         btn_layout2.addWidget(mtf_btn)
         btn_layout2.addWidget(wavefront_btn)
         btn_layout2.addWidget(export_btn)
+        btn_layout2.addWidget(image_sim_btn)
         layout.addLayout(btn_layout2)
         
         layout.addStretch()
@@ -1082,10 +1149,9 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             dialog.exec()
             
         except Exception as e:
-            logger.error(f"Wavefront error: {e}")
-            QMessageBox.critical(self, "Analysis Error", f"Failed to generate wavefront map: {e}")
+            logger.error(f"Performance analysis error: {e}")
+            QMessageBox.critical(self, "Analysis Error", f"Operation failed: {e}")
 
-    
     def _on_export_performance_report(self):
         """Export performance report"""
         from PySide6.QtWidgets import QFileDialog, QMessageBox
@@ -1106,7 +1172,135 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
                 f.write(self._perf_metrics_text.toPlainText())
             QMessageBox.information(self, "Export Complete", f"Exported to {filepath}")
         except Exception as e:
-            QMessageBox.critical(self, "Export Error", f"Failed to export: {e}")
+            logger.error(f"Export error: {e}")
+            QMessageBox.critical(self, "Export Error", f"Failed to export report: {e}")
+
+    def _on_show_image_simulation(self):
+        """Show image simulation by loading a custom image and applying lens blur"""
+        if not self._current_lens:
+            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+            return
+            
+        try:
+            from PySide6.QtWidgets import QFileDialog, QInputDialog
+            from src.analysis.psf_mtf import ImageQualityAnalyzer
+            from src.optical_system import OpticalSystem
+            import numpy as np
+            from PIL import Image
+            
+            # Prepare System
+            if self._current_assembly:
+                system = self._current_assembly
+            else:
+                system = OpticalSystem(name=self._current_lens.name)
+                system.add_lens(self._current_lens)
+
+            # 1. Select source (Pattern or File)
+            source_type, ok = QInputDialog.getItem(self, "Image Simulation", 
+                                                "Select Image Source:", ["Geometric Patterns", "Load Image File..."], 0, False)
+            if not ok:
+                return
+                
+            input_image = None
+            title_suffix = ""
+            
+            if source_type == "Load Image File...":
+                filepath, _ = QFileDialog.getOpenFileName(self, "Select Image", "", "Images (*.png *.jpg *.jpeg *.bmp *.tif)")
+                if not filepath:
+                    return
+                # Load and convert to RGB
+                img = Image.open(filepath).convert('RGB')
+                # Resize if too large for performance
+                if max(img.size) > 512:
+                    img.thumbnail((512, 512))
+                input_image = np.array(img).astype(float) / 255.0
+                title_suffix = f"File: {os.path.basename(filepath)}"
+            else:
+                # Select pattern
+                patterns = ["Star", "Grid", "USAF 1951"]
+                pattern, ok = QInputDialog.getItem(self, "Image Simulation", "Select Pattern:", patterns, 0, False)
+                if not ok:
+                    return
+                
+                size = 512
+                input_image = np.zeros((size, size, 3))
+                cx, cy = size // 2, size // 2
+                title_suffix = f"Pattern: {pattern}"
+                
+                if pattern == "Star":
+                    import math
+                    for i in range(36):
+                        angle = i * 10 * math.pi / 180
+                        x2 = int(cx + 200 * math.cos(angle))
+                        y2 = int(cy + 200 * math.sin(angle))
+                        # Simple line drawing
+                        for t in np.linspace(0, 1, 400):
+                            px = int(cx + t * (x2 - cx))
+                            py = int(cy + t * (y2 - cy))
+                            if 0 <= px < size and 0 <= py < size:
+                                input_image[py, px, :] = 1.0
+                elif pattern == "Grid":
+                    for i in range(0, size, 40):
+                        input_image[i, :, :] = 1.0
+                        input_image[:, i, :] = 1.0
+                elif pattern == "USAF 1951":
+                    # Simplified USAF-like pattern
+                    for i in range(4):
+                        s = 40 // (i + 1)
+                        input_image[cy-100:cy-100+s, cx-100:cx-100+3*s:2*s, :] = 1.0
+                        input_image[cy-100:cy-100+3*s:2*s, cx-100:cx-100+s, :] = 1.0
+
+            # 2. Run simulation using ImageQualityAnalyzer
+            analyzer = ImageQualityAnalyzer(system)
+            
+            # Parameters
+            wavelengths = (656.3, 587.6, 486.1) # R, G, B
+            field = 0.0
+            defocus = 0.0
+            pixel_size = 0.005 # 5 microns
+            
+            self._update_status("Running simulation... this may take a moment.")
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            
+            try:
+                simulated = analyzer.simulate_image(
+                    input_image,
+                    pixel_size=pixel_size,
+                    wavelengths=wavelengths,
+                    field_angle=field,
+                    focus_shift=defocus
+                )
+            finally:
+                QApplication.restoreOverrideCursor()
+
+            # 3. Show in dialog
+            dialog = AnalysisPlotDialog(f"Image Simulation - {system.name}", self)
+            ax = dialog.get_axes()
+            
+            # Show original and blurred side-by-side
+            fig = dialog.figure
+            fig.clear()
+            ax1 = fig.add_subplot(121)
+            ax2 = fig.add_subplot(122)
+            
+            ax1.imshow(input_image)
+            ax1.set_title("Original")
+            ax1.axis('off')
+            
+            ax2.imshow(simulated)
+            ax2.set_title("Simulated Performance")
+            ax2.axis('off')
+            
+            fig.suptitle(f"Optical Simulation: {title_suffix}\nSystem: {system.name}")
+            fig.tight_layout()
+            
+            dialog.exec()
+            
+        except Exception as e:
+            logger.error(f"Image simulation error: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "Analysis Error", f"Failed to generate image simulation: {e}")
 
     def _update_performance_metrics(self):
         """Update performance metrics for current lens or assembly"""
@@ -3710,6 +3904,7 @@ class SimulationVisualizationWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._lens = None
+        self._system = None
         self._rays = []
         self._wavelength = 550  # Default wavelength in nm
         
@@ -3833,9 +4028,16 @@ class SimulationVisualizationWidget(QWidget):
         self._pan_y = 0
         self.update()
     
-    def run_simulation(self, lens, num_rays=11, angle=0, source_height=0, show_ghosts=False, wavelength=550):
+    def run_simulation(self, lens_or_system, num_rays=11, angle=0, source_height=0, show_ghosts=False, wavelength=550):
         """Run ray tracing simulation"""
-        self._lens = lens
+        from src.optical_system import OpticalSystem
+        if isinstance(lens_or_system, OpticalSystem):
+            self._system = lens_or_system
+            self._lens = None
+        else:
+            self._lens = lens_or_system
+            self._system = None
+            
         self._rays = []
         self._ghost_rays = []
         self._show_ghosts = show_ghosts
@@ -3843,13 +4045,19 @@ class SimulationVisualizationWidget(QWidget):
         self._ray_color = self.wavelength_to_color(wavelength)
         
         try:
-            from src.ray_tracer import LensRayTracer
-            from src.ray_tracer import Ray
+            from src.ray_tracer import LensRayTracer, Ray
             
-            tracer = LensRayTracer(lens)
+            # Use appropriate tracer
+            if self._system:
+                # OpticalSystem has multiple elements
+                from src.ray_tracer import SystemRayTracer
+                tracer = SystemRayTracer(self._system)
+                diameter = self._system.elements[0].lens.diameter if self._system.elements else 25.0
+            else:
+                tracer = LensRayTracer(self._lens)
+                diameter = self._lens.diameter
             
             angle_rad = angle * 3.14159 / 180.0
-            diameter = lens.diameter
             
             for i in range(num_rays):
                 if num_rays == 1:
@@ -3861,22 +4069,26 @@ class SimulationVisualizationWidget(QWidget):
                 tracer.trace_ray(ray)
                 self._rays.append(ray)
             
-            if show_ghosts and lens:
-                self._run_ghost_analysis(lens, tracer)
+            if show_ghosts:
+                if self._system:
+                    self._run_ghost_analysis(self._system, tracer)
+                elif self._lens:
+                    # Wrap lens in temporary system for GhostAnalyzer
+                    temp_system = OpticalSystem(name="Ghost Analysis")
+                    temp_system.add_lens(self._lens)
+                    self._run_ghost_analysis(temp_system, tracer)
         
         except Exception as e:
             print(f"Simulation error: {e}")
+            import traceback
+            traceback.print_exc()
         
         self.update()
     
-    def _run_ghost_analysis(self, lens, tracer):
+    def _run_ghost_analysis(self, system, tracer):
         """Run ghost analysis for 2nd order reflections"""
         try:
-            from src.optical_system import OpticalSystem
             from src.analysis.ghost import GhostAnalyzer
-            
-            system = OpticalSystem(name="Ghost Analysis")
-            system.add_lens(lens, air_gap_before=5.0)
             analyzer = GhostAnalyzer(system)
             ghosts = analyzer.trace_ghosts(num_rays=3)
             
@@ -3904,6 +4116,7 @@ class SimulationVisualizationWidget(QWidget):
     def paintEvent(self, event):
         """Paint the simulation"""
         from PySide6.QtGui import QPainter, QPen, QColor, QPainterPath, QBrush
+        from PySide6.QtCore import Qt
         
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
@@ -3913,7 +4126,7 @@ class SimulationVisualizationWidget(QWidget):
         
         painter.fillRect(0, 0, w, h, self._bg_color)
         
-        if not self._lens:
+        if not self._lens and not self._system:
             painter.setPen(QPen(self._text_color, 1))
             painter.drawText(w//2 - 80, h//2, "Run simulation to see rays")
             return
@@ -3922,88 +4135,78 @@ class SimulationVisualizationWidget(QWidget):
         painter.setPen(QPen(self._axis_color, 1, Qt.DashLine))
         painter.drawLine(0, h//2, w, h//2)
         
-        # Lens geometry
-        r1 = self._lens.radius_of_curvature_1
-        r2 = self._lens.radius_of_curvature_2
-        thickness = self._lens.thickness
-        diameter = self._lens.diameter
+        # Determine total bounds for scaling
+        if self._system:
+            total_thickness = self._system.get_total_length()
+            max_diameter = max((e.lens.diameter for e in self._system.elements), default=25.0)
+        else:
+            total_thickness = self._lens.thickness
+            max_diameter = self._lens.diameter
+            
+        max_dim = max(total_thickness * 2, max_diameter, 30) * 1.2
+        scale = min(w, h) / max_dim * self._zoom
         
-        max_dim = max(thickness * 3, diameter, 30) * 1.2
-        scale = min(w, h) / max_dim / 2 * self._zoom
-        
-        cx = w / 2 + self._pan_x - thickness * scale / 3
+        cx = w / 4 + self._pan_x
         cy = h / 2 + self._pan_y
-        
-        # Draw lens
-        path = QPainterPath()
-        r1_abs = abs(r1) * scale
-        for i in range(51):
-            y = -diameter/2 * scale + diameter * scale * i / 50
-            if abs(y) <= r1_abs and r1_abs > 0:
-                x = cx + (r1_abs - (r1_abs**2 - y**2)**0.5) if r1 > 0 else cx - (r1_abs - (r1_abs**2 - y**2)**0.5)
-                if i == 0:
-                    path.moveTo(x, cy + y)
+
+        def draw_single_lens(pnt, lens, start_x, center_y, sc, color):
+            path = QPainterPath()
+            r1 = lens.radius_of_curvature_1
+            r2 = lens.radius_of_curvature_2
+            t = lens.thickness
+            d = lens.diameter
+            
+            r1_abs = abs(r1) * sc if abs(r1) > 1e-6 else 0
+            for i in range(51):
+                y = -d/2 * sc + d * sc * i / 50
+                if r1_abs > 0 and abs(y) <= r1_abs:
+                    x = start_x + (r1_abs - (r1_abs**2 - y**2)**0.5) if r1 > 0 else start_x - (r1_abs - (r1_abs**2 - y**2)**0.5)
                 else:
-                    path.lineTo(x, cy + y)
-        
-        r2_abs = abs(r2) * scale
-        for i in range(51):
-            y = diameter/2 * scale - diameter * scale * i / 50
-            if abs(y) <= r2_abs and r2_abs > 0:
-                x = cx + thickness * scale + (r2_abs - (r2_abs**2 - y**2)**0.5) if r2 > 0 else cx + thickness * scale - (r2_abs - (r2_abs**2 - y**2)**0.5)
-                path.lineTo(x, cy + y)
-        
-        path.closeSubpath()
-        
-        painter.setPen(QPen(self._lens_color, 2))
-        painter.setBrush(QBrush(self._lens_color))
-        painter.drawPath(path)
+                    x = start_x
+                if i == 0: path.moveTo(x, center_y + y)
+                else: path.lineTo(x, center_y + y)
+            
+            r2_abs = abs(r2) * sc if abs(r2) > 1e-6 else 0
+            for i in range(51):
+                y = d/2 * sc - d * sc * i / 50
+                if r2_abs > 0 and abs(y) <= r2_abs:
+                    x = start_x + t * sc + (r2_abs - (r2_abs**2 - y**2)**0.5) if r2 > 0 else start_x + t * sc - (r2_abs - (r2_abs**2 - y**2)**0.5)
+                else:
+                    x = start_x + t * sc
+                path.lineTo(x, center_y + y)
+            path.closeSubpath()
+            pnt.setPen(QPen(color, 2))
+            pnt.setBrush(QBrush(color))
+            pnt.drawPath(path)
+
+        # Draw lenses
+        if self._system:
+            for element in self._system.elements:
+                draw_single_lens(painter, element.lens, cx + element.position * scale, cy, scale, self._lens_color)
+        else:
+            draw_single_lens(painter, self._lens, cx, cy, scale, self._lens_color)
         
         # Draw rays
         painter.setPen(QPen(self._ray_color, 1.5))
-        
         for ray in self._rays:
-            if len(ray.path) < 2:
-                continue
-            
-            # Convert path points to widget coordinates
+            if len(ray.path) < 2: continue
             for j in range(len(ray.path) - 1):
-                # Handle both list/tuple and Vector3 objects
-                p1 = ray.path[j]
-                p2 = ray.path[j + 1]
-                if hasattr(p1, 'x'):  # Vector3
-                    x1, y1 = p1.x, p1.y
-                    x2, y2 = p2.x, p2.y
-                else:
-                    x1, y1 = p1[0], p1[1]
-                    x2, y2 = p2[0], p2[1]
-                
-                wx1 = cx + x1 * scale
-                wy1 = cy - y1 * scale
-                wx2 = cx + x2 * scale
-                wy2 = cy - y2 * scale
-                
-                painter.drawLine(int(wx1), int(wy1), int(wx2), int(wy2))
+                p1, p2 = ray.path[j], ray.path[j + 1]
+                if hasattr(p1, 'x'): x1, y1, x2, y2 = p1.x, p1.y, p2.x, p2.y
+                else: x1, y1, x2, y2 = p1[0], p1[1], p2[0], p2[1]
+                painter.drawLine(int(cx + x1 * scale), int(cy - y1 * scale), int(cx + x2 * scale), int(cy - y2 * scale))
         
+        # Ghost rays
         if self._show_ghosts and self._ghost_rays:
             painter.setPen(QPen(self._ghost_color, 1))
             for ghost_path in self._ghost_rays:
                 for ray in ghost_path:
-                    if len(ray.path) < 2:
-                        continue
+                    if len(ray.path) < 2: continue
                     for j in range(len(ray.path) - 1):
-                        p1 = ray.path[j]
-                        p2 = ray.path[j + 1]
-                        if hasattr(p1, 'x'):  # Vector3
-                            x1, y1 = p1.x, p1.y
-                            x2, y2 = p2.x, p2.y
-                        else:
-                            x1, y1 = p1[0], p1[1]
-                            x2, y2 = p2[0], p2[1]
-                        wx1 = cx + x1 * scale
-                        wy1 = cy - y1 * scale
-                        wx2 = cx + x2 * scale
-                        wy2 = cy - y2 * scale
+                        p1, p2 = ray.path[j], ray.path[j + 1]
+                        if hasattr(p1, 'x'): x1, y1, x2, y2 = p1.x, p1.y, p2.x, p2.y
+                        else: x1, y1, x2, y2 = p1[0], p1[1], p2[0], p2[1]
+                        painter.drawLine(int(cx + x1 * scale), int(cy - y1 * scale), int(cx + x2 * scale), int(cy - y2 * scale))
                         painter.drawLine(int(wx1), int(wy1), int(wx2), int(wy2))
         
         if self._show_image_sim and self._lens:
