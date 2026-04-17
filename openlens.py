@@ -6,6 +6,7 @@ PySide6-based modern GUI
 
 import sys
 import os
+import math
 import logging
 
 logger = logging.getLogger(__name__)
@@ -193,6 +194,7 @@ class OpenLensWindow(QMainWindow):
             self._show_lens_editor(False)
             self._assembly_viz.update_system(data)
             self._optical_system = data
+            self._update_system_list()
         elif isinstance(data, Lens):
             self._lenses.append(data)
             self._current_lens = data
@@ -665,50 +667,84 @@ class OpenLensWindow(QMainWindow):
         return perf
     
     def _on_calculate_performance_metrics(self):
-        """Calculate and display performance metrics"""
-        if not self._current_lens:
-            self._perf_metrics_text.setPlainText("No lens selected.")
+        """Calculate and display performance metrics for the active lens or assembly"""
+        active_system = self._current_assembly if self._current_assembly else self._current_lens
+        if not active_system:
+            self._perf_metrics_text.setPlainText("No system selected.")
             return
         
         try:
             from src.aberrations import AberrationsCalculator
+            from src.optical_system import OpticalSystem
+            
+            # 1. Prepare parameters
             wavelengths = [400, 450, 550, 650, 700]
             wavelength = wavelengths[self._perf_wavelength.currentIndex()]
             entrance_pupil = self._perf_entrance_pupil.value()
             object_distance = self._perf_object_distance.value()
             sensor_size = self._perf_sensor_size.value()
             
-            lens = self._current_lens
-            calculator = AberrationsCalculator(lens)
+            # For multi-field metrics, we'll use a default max field angle based on sensor size or 20 deg
+            # Or better, derive it from sensor size and focal length if possible
+            
+            # Wrap in OpticalSystem if it's just a lens
+            if not isinstance(active_system, OpticalSystem):
+                system = OpticalSystem(name=active_system.name)
+                system.add_lens(active_system)
+            else:
+                system = active_system
+
+            calculator = AberrationsCalculator(system)
             
             # Get optical properties
-            fl = lens.calculate_focal_length()
-            power = lens.calculate_optical_power()
-            bfl = lens.calculate_back_focal_length()
+            # Note: For assemblies, we should use system-level focal length
+            if hasattr(system, 'get_system_focal_length'):
+                fl = system.get_system_focal_length()
+            else:
+                fl = active_system.calculate_focal_length()
+                
+            power = system.calculate_optical_power() if hasattr(system, 'calculate_optical_power') else active_system.calculate_optical_power()
+            bfl = system.calculate_back_focal_length() if hasattr(system, 'calculate_back_focal_length') else active_system.calculate_back_focal_length()
             
-            # Calculate aberrations
-            results = calculator.calculate_all_aberrations()
+            # Calculate aberrations (this now handles systems)
+            # Use field angle derived from sensor size: theta = atan(sensor/2 / fl)
+            field_angle = 0.0
+            if fl and fl > 0:
+                field_angle = math.degrees(math.atan((sensor_size / 2.0) / fl))
             
+            results = calculator.calculate_all_aberrations(field_angle=field_angle)
+            
+            # Calculate chromatic focal shift if it's an assembly
+            chromatic_text = ""
+            if isinstance(active_system, OpticalSystem):
+                chromatic = active_system.calculate_chromatic_aberration()
+                if chromatic.get('longitudinal') is not None:
+                    chromatic_text = f"Chromatic Focal Shift (C-F): {chromatic['longitudinal']:.4f} mm\n"
+                    if 'bfl_d' in chromatic:
+                        chromatic_text += f"  BFL (F=486nm): {chromatic['bfl_F']:.3f} mm\n"
+                        chromatic_text += f"  BFL (d=587nm): {chromatic['bfl_d']:.3f} mm\n"
+                        chromatic_text += f"  BFL (C=656nm): {chromatic['bfl_C']:.3f} mm\n"
+
             # Build metrics text
             text = f"""=== OPTICAL PERFORMANCE METRICS ===
-Lens: {lens.name}
+System: {system.name}
+Type: {"Assembly" if isinstance(active_system, OpticalSystem) else "Single Lens"}
 
 --- Basic Optical Properties ---
 Focal Length: {f"{fl:.2f} mm" if fl else "Infinite"}
 Optical Power: {f"{power:.4f} D" if power else "N/A"}
 Back Focal Length: {f"{bfl:.2f} mm" if bfl else "N/A"}
-Diameter: {lens.diameter:.2f} mm
-Thickness: {lens.thickness:.2f} mm
-
+Entrance Pupil: {entrance_pupil:.2f} mm
+f-number (f/#): {results.get('f_number', 0):.2f}
+{chromatic_text}
 --- Calculation Parameters ---
 Wavelength: {wavelength} nm
-Entrance Pupil: {entrance_pupil} mm
 Object Distance: {object_distance} mm
-Sensor Size: {sensor_size} mm
+Max Field Angle: {field_angle:.2f} deg (derived from {sensor_size}mm sensor)
 
 --- Primary Aberrations ---
-Spherical Aberration: {results.get('spherical', 0):.4f} mm
-Coma: {results.get('coma', 0):.4f} mm
+Spherical Aberration: {results.get('spherical', 0):.4f} mm (longitudinal)
+Coma: {results.get('coma', 0):.4f} mm (transverse)
 Astigmatism: {results.get('astigmatism', 0):.4f} mm
 Distortion: {results.get('distortion', 0):.2f} %
 Chromatic Aberration: {results.get('chromatic', 0):.4f} mm
@@ -717,34 +753,24 @@ Chromatic Aberration: {results.get('chromatic', 0):.4f} mm
 MTF Cutoff: {results.get('mtf_cutoff', 0):.1f} lp/mm
 Strehl Ratio: {results.get('strehl', 0):.3f}
 Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
+Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
 """
             self._perf_metrics_text.setPlainText(text)
             
-            # Also update individual labels if they exist
-            if hasattr(self, '_perf_long_focal') and fl:
-                self._perf_long_focal.setText(f"{fl:.2f} mm")
-            if hasattr(self, '_perf_power') and power:
-                self._perf_power.setText(f"{power:.4f} D")
-            if hasattr(self, '_perf_back_focal') and bfl:
-                self._perf_back_focal.setText(f"{bfl:.2f} mm")
-            if hasattr(self, '_perf_spherical'):
-                self._perf_spherical.setText(f"{results.get('spherical', 0):.4f} mm")
-            if hasattr(self, '_perf_coma'):
-                self._perf_coma.setText(f"{results.get('coma', 0):.4f} mm")
-            if hasattr(self, '_perf_astig'):
-                self._perf_astig.setText(f"{results.get('astigmatism', 0):.4f} mm")
-            if hasattr(self, '_perf_distortion'):
-                self._perf_distortion.setText(f"{results.get('distortion', 0):.2f} %")
-            if hasattr(self, '_perf_mtfc'):
-                self._perf_mtfc.setText(f"{results.get('mtf_cutoff', 0):.1f} lp/mm")
+            # Update status
+            self._update_status(f"Calculated metrics for {system.name}")
                 
         except Exception as e:
+            import traceback
+            logger.error(f"Performance calculation error: {e}\n{traceback.format_exc()}")
             self._perf_metrics_text.setPlainText(f"Error calculating metrics: {e}")
+
     
     def _on_show_spot_diagram(self):
-        """Show spot diagram using SpotDiagram analyzer"""
-        if not self._current_lens:
-            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+        """Show spot diagram using SpotDiagram analyzer for active system"""
+        active_system = self._current_assembly if self._current_assembly else self._current_lens
+        if not active_system:
+            QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
         
         try:
@@ -755,35 +781,95 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             wavelengths_vals = [400, 450, 550, 650, 700]
             wavelength = wavelengths_vals[self._perf_wavelength.currentIndex()]
             entrance_pupil = self._perf_entrance_pupil.value()
+            sensor_size = self._perf_sensor_size.value()
             
             # 2. Setup optical system
-            system = OpticalSystem(name="Spot Analysis")
-            system.add_lens(self._current_lens)
+            if not isinstance(active_system, OpticalSystem):
+                system = OpticalSystem(name=active_system.name)
+                system.add_lens(active_system)
+            else:
+                system = active_system
             
             # 3. Create analyzer
-            analyzer = SpotDiagram(system)
+            try:
+                analyzer = SpotDiagram(system)
+            except Exception as e:
+                raise RuntimeError(f"Failed to initialize spot analyzer: {e}")
             
-            # 4. Perform analysis (on-axis, paraxial focus)
-            res = analyzer.trace_spot(
-                field_angle_y=0.0,
-                wavelength=wavelength,
-                num_rings=6
-            )
+            # 4. Perform analysis (multi-field if possible)
+            # For now, on-axis and max-field (derived from sensor)
+            fl = system.get_system_focal_length() if hasattr(system, 'get_system_focal_length') else system.calculate_focal_length()
+            max_field = 0.0
+            if fl and fl > 0:
+                max_field = math.degrees(math.atan((sensor_size / 2.0) / fl))
+
+            # Sample wavelengths if we want chromatic spot diagram
+            wavelengths = [wavelength]
+            colors = ['#0078d4'] # Default blue
+            
+            # If d line (587) selected, maybe show F and C too?
+            if wavelength == 550 or wavelength == 587 or wavelength == 450:
+                # Show RGB-ish lines
+                wavelengths = [656.3, 587.6, 486.1]
+                colors = ['#ff0000', '#00ff00', '#0000ff'] # Red, Green, Blue
+
+            def trace_multi_wl(field):
+                all_pts = []
+                stats = []
+                for wl in wavelengths:
+                    try:
+                        res = analyzer.trace_spot(field_angle_y=field, wavelength=wl, num_rings=6)
+                        if res['valid_rays'] > 0:
+                            all_pts.append(res['points'])
+                            stats.append(res)
+                    except Exception as e:
+                        logger.warning(f"Spot trace failed for {wl}nm at {field} deg: {e}")
+                return all_pts, stats
+
+            # Trace on-axis
+            pts_on, stats_on = trace_multi_wl(0.0)
+            if not pts_on:
+                raise RuntimeError("No on-axis rays reached the image plane. Check for total internal reflection or blocked aperture.")
+            
+            # Trace off-axis
+            pts_off, stats_off = trace_multi_wl(max_field) if max_field > 0 else ([], [])
             
             # 5. Show in dialog
-            dialog = AnalysisPlotDialog(f"Spot Diagram - {self._current_lens.name}", self)
-            ax = dialog.get_axes()
+            dialog = AnalysisPlotDialog(f"Spot Diagram - {system.name}", self)
             
-            points = res['points']
-            y_coords = [p[0] * 1000 for p in points] # mm to um
-            z_coords = [p[1] * 1000 for p in points]
-            
-            ax.scatter(z_coords, y_coords, s=10, alpha=0.6, color='#0078d4')
-            ax.set_aspect('equal')
-            ax.set_xlabel("Sagittal (µm)")
-            ax.set_ylabel("Tangential (µm)")
-            ax.set_title(f"Spot Diagram (λ={wavelength}nm, RMS={res['rms_radius']*1000:.2f}µm)")
-            ax.grid(True, linestyle='--', alpha=0.3)
+            if pts_off:
+                ax1 = dialog.get_axes(1, 2, 1)
+                ax2 = dialog.get_axes(1, 2, 2)
+                
+                # On-axis
+                for i, pts in enumerate(pts_on):
+                    ax1.scatter([p[1]*1000 for p in pts], [p[0]*1000 for p in pts], 
+                               s=8, alpha=0.5, color=colors[i % len(colors)], label=f"{wavelengths[i]}nm")
+                ax1.set_aspect('equal')
+                rms_val = stats_on[0]['rms_radius']*1000 if stats_on else 0
+                ax1.set_title(f"On-axis (RMS={rms_val:.2f}µm)")
+                ax1.grid(True, linestyle='--', alpha=0.3)
+                
+                # Off-axis
+                for i, pts in enumerate(pts_off):
+                    centroid = stats_off[i]['centroid']
+                    ax2.scatter([(p[1]-centroid[1])*1000 for p in pts], [(p[0]-centroid[0])*1000 for p in pts], 
+                               s=8, alpha=0.5, color=colors[i % len(colors)])
+                ax2.set_aspect('equal')
+                rms_val_off = stats_off[0]['rms_radius']*1000 if stats_off else 0
+                ax2.set_title(f"Field {max_field:.1f}° (RMS={rms_val_off:.2f}µm)")
+                ax2.grid(True, linestyle='--', alpha=0.3)
+                ax1.legend(fontsize='x-small')
+            else:
+                ax = dialog.get_axes()
+                for i, pts in enumerate(pts_on):
+                    ax.scatter([p[1]*1000 for p in pts], [p[0]*1000 for p in pts], 
+                               s=8, alpha=0.5, color=colors[i % len(colors)], label=f"{wavelengths[i]}nm")
+                ax.set_aspect('equal')
+                rms_val = stats_on[0]['rms_radius']*1000 if stats_on else 0
+                ax.set_title(f"Spot Diagram (RMS={rms_val:.2f}µm)")
+                ax.grid(True, linestyle='--', alpha=0.3)
+                ax.legend(fontsize='x-small')
             
             dialog.exec()
             
@@ -792,9 +878,10 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate spot diagram: {e}")
     
     def _on_show_ray_fan(self):
-        """Show ray fan plot using GeometricTraceAnalysis"""
-        if not self._current_lens:
-            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+        """Show ray fan plot using GeometricTraceAnalysis for active system"""
+        active_system = self._current_assembly if self._current_assembly else self._current_lens
+        if not active_system:
+            QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
             
         try:
@@ -803,49 +890,80 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             
             # 1. Prepare parameters
             wavelengths_vals = [400, 450, 550, 650, 700]
-            wavelength = wavelengths_vals[self._perf_wavelength.currentIndex()]
+            selected_wl = wavelengths_vals[self._perf_wavelength.currentIndex()]
             
             # 2. Setup optical system
-            system = OpticalSystem(name="Ray Fan Analysis")
-            system.add_lens(self._current_lens)
+            if not isinstance(active_system, OpticalSystem):
+                system = OpticalSystem(name=active_system.name)
+                system.add_lens(active_system)
+            else:
+                system = active_system
             
             # 3. Create analyzer
             analyzer = GeometricTraceAnalysis(system)
             
             # 4. Perform analysis
-            res_y = analyzer.calculate_ray_fan(field_angle=0.0, wavelength=wavelength, pupil_axis='y')
-            res_z = analyzer.calculate_ray_fan(field_angle=0.0, wavelength=wavelength, pupil_axis='z')
+            dialog = AnalysisPlotDialog(f"Ray Fan - {system.name}", self)
+            ax1 = dialog.get_axes(1, 2, 1) # Tangential
+            ax2 = dialog.get_axes(1, 2, 2) # Sagittal
             
-            # 5. Show in dialog
-            dialog = AnalysisPlotDialog(f"Ray Fan - {self._current_lens.name}", self)
-            ax = dialog.get_axes()
+            # Use chromatic lines if appropriate
+            wls = [selected_wl]
+            colors = ['#0078d4']
+            if selected_wl in [550, 587, 450]:
+                wls = [486.1, 587.6, 656.3] # F, d, C
+                colors = ['#0000ff', '#00ff00', '#ff0000']
+
+            fan_success = False
+            for i, wl in enumerate(wls):
+                try:
+                    # Tangential Fan (Pupil Y)
+                    res_t = analyzer.calculate_ray_fan(field_angle=0.0, wavelength=wl, pupil_axis='y')
+                    if res_t['ray_errors']:
+                        ax1.plot(res_t['pupil_coords'], [e*1000 for e in res_t['ray_errors']], 
+                                color=colors[i], label=f"{wl}nm" if i==0 else "")
+                        fan_success = True
+                    
+                    # Sagittal Fan (Pupil Z)
+                    res_s = analyzer.calculate_ray_fan(field_angle=0.0, wavelength=wl, pupil_axis='z')
+                    if res_s['ray_errors']:
+                        ax2.plot(res_s['pupil_coords'], [e*1000 for e in res_s['ray_errors']], 
+                                color=colors[i])
+                except Exception as e:
+                    logger.warning(f"Ray fan trace failed for {wl}nm: {e}")
+
+            if not fan_success:
+                raise RuntimeError("No rays reached the image plane for the ray fan analysis. Verify system geometry and apertures.")
+
+            ax1.axhline(0, color='gray', linestyle='-', linewidth=0.5)
+            ax1.axvline(0, color='gray', linestyle='-', linewidth=0.5)
+            ax1.set_xlabel("Normalized Pupil (Py)")
+            ax1.set_ylabel("Transverse Error (µm)")
+            ax1.set_title("Tangential Fan")
+            ax1.grid(True, linestyle='--', alpha=0.3)
             
-            # Plot Tangential (Y) fan
-            ax.plot(res_y['pupil_coords'], [e*1000 for e in res_y['ray_errors']], 
-                    'b-', label='Tangential (Ey)')
-            # Plot Sagittal (Z) fan
-            ax.plot(res_z['pupil_coords'], [e*1000 for e in res_z['ray_errors']], 
-                    'r--', label='Sagittal (Ez)')
+            ax2.axhline(0, color='gray', linestyle='-', linewidth=0.5)
+            ax2.axvline(0, color='gray', linestyle='-', linewidth=0.5)
+            ax2.set_xlabel("Normalized Pupil (Px)")
+            ax2.set_ylabel("Transverse Error (µm)")
+            ax2.set_title("Sagittal Fan")
+            ax2.grid(True, linestyle='--', alpha=0.3)
             
-            ax.axhline(0, color='gray', linestyle='-', linewidth=0.5)
-            ax.axvline(0, color='gray', linestyle='-', linewidth=0.5)
-            
-            ax.set_xlabel("Pupil Coordinate (normalized)")
-            ax.set_ylabel("Transverse Error (µm)")
-            ax.set_title(f"Ray Fan Plot (λ={wavelength}nm)")
-            ax.legend()
-            ax.grid(True, linestyle='--', alpha=0.3)
-            
+            if len(wls) > 1:
+                ax1.legend(fontsize='x-small')
+                
             dialog.exec()
             
         except Exception as e:
             logger.error(f"Ray fan error: {e}")
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate ray fan: {e}")
 
+
     def _on_show_field_curves(self):
-        """Show field curves using GeometricTraceAnalysis"""
-        if not self._current_lens:
-            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+        """Show field curves using GeometricTraceAnalysis for active system"""
+        active_system = self._current_assembly if self._current_assembly else self._current_lens
+        if not active_system:
+            QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
             
         try:
@@ -855,21 +973,31 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             # 1. Prepare parameters
             wavelengths_vals = [400, 450, 550, 650, 700]
             wavelength = wavelengths_vals[self._perf_wavelength.currentIndex()]
+            sensor_size = self._perf_sensor_size.value()
             
             # 2. Setup optical system
-            system = OpticalSystem(name="Field Analysis")
-            system.add_lens(self._current_lens)
+            if not isinstance(active_system, OpticalSystem):
+                system = OpticalSystem(name=active_system.name)
+                system.add_lens(active_system)
+            else:
+                system = active_system
             
             # 3. Create analyzer
             analyzer = GeometricTraceAnalysis(system)
             
             # 4. Perform analysis
+            # Derive max field angle from sensor size
+            fl = system.get_system_focal_length() if hasattr(system, 'get_system_focal_length') else system.calculate_focal_length()
+            max_field = 20.0 # Default fallback
+            if fl and fl > 0:
+                max_field = math.degrees(math.atan((sensor_size / 2.0) / fl))
+
             res = analyzer.calculate_field_curvature_distortion(
-                max_field_angle=20.0, num_points=11, wavelength=wavelength
+                max_field_angle=max_field, num_points=11, wavelength=wavelength
             )
             
             # 5. Show in dialog
-            dialog = AnalysisPlotDialog(f"Field Curvature & Distortion - {self._current_lens.name}", self)
+            dialog = AnalysisPlotDialog(f"Field Curvature & Distortion - {system.name}", self)
             
             # Subplot 1: Field Curvature
             ax1 = dialog.get_axes(1, 2, 1)
@@ -897,10 +1025,43 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             logger.error(f"Field curves error: {e}")
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate field curves: {e}")
     
+    def _draw_system_2d_on_axes(self, ax, system):
+        """Helper to draw a multi-element system on Matplotlib axes"""
+        import numpy as np
+        for element in system.elements:
+            lens = element.lens
+            z_offset = element.position
+            r1 = lens.radius_of_curvature_1
+            r2 = lens.radius_of_curvature_2
+            t = lens.thickness
+            d = lens.diameter
+            h = d / 2.0
+            
+            y_pts = np.linspace(-h, h, 100)
+            
+            # Front surface
+            if abs(r1) > 1e-9 and abs(r1) < 1e5:
+                x_front = z_offset + r1 - np.sign(r1) * np.sqrt(r1**2 - y_pts**2)
+            else:
+                x_front = np.full_like(y_pts, z_offset)
+            ax.plot(x_front, y_pts, 'w-', linewidth=1.5, alpha=0.8)
+            
+            # Back surface
+            if abs(r2) > 1e-9 and abs(r2) < 1e5:
+                x_back = z_offset + t + r2 - np.sign(r2) * np.sqrt(r2**2 - y_pts**2)
+            else:
+                x_back = np.full_like(y_pts, z_offset + t)
+            ax.plot(x_back, y_pts, 'w-', linewidth=1.5, alpha=0.8)
+            
+            # Edge lines
+            ax.plot([x_front[0], x_back[0]], [y_pts[0], y_pts[0]], 'w-', linewidth=1.5, alpha=0.8)
+            ax.plot([x_front[-1], x_back[-1]], [y_pts[-1], y_pts[-1]], 'w-', linewidth=1.5, alpha=0.8)
+
     def _on_show_ghost_analysis(self):
-        """Show ghost analysis using GhostAnalyzer"""
-        if not self._current_lens:
-            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+        """Show ghost analysis using GhostAnalyzer for active system"""
+        active_system = self._current_assembly if self._current_assembly else self._current_lens
+        if not active_system:
+            QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
             
         try:
@@ -908,8 +1069,11 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             from src.analysis.ghost import GhostAnalyzer
             
             # 1. Setup optical system
-            system = OpticalSystem(name="Ghost Analysis")
-            system.add_lens(self._current_lens)
+            if not isinstance(active_system, OpticalSystem):
+                system = OpticalSystem(name=active_system.name)
+                system.add_lens(active_system)
+            else:
+                system = active_system
             
             # 2. Create analyzer
             analyzer = GhostAnalyzer(system)
@@ -918,38 +1082,11 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             ghost_paths = analyzer.trace_ghosts(num_rays=11)
             
             # 4. Show in dialog
-            dialog = AnalysisPlotDialog(f"Ghost Analysis - {self._current_lens.name}", self)
+            dialog = AnalysisPlotDialog(f"Ghost Analysis - {system.name}", self)
             ax = dialog.get_axes()
             
-            # Manual drawing of lens surfaces (replacement for missing VisualizationHelper)
-            lens = self._current_lens
-            r1 = lens.radius_of_curvature_1
-            r2 = lens.radius_of_curvature_2
-            t = lens.thickness
-            d = lens.diameter
-            h = d / 2.0
-            
-            # Plot surfaces
-            import numpy as np
-            y_pts = np.linspace(-h, h, 100)
-            
-            # Front surface
-            if abs(r1) > 1e-9:
-                x_front = r1 - np.sign(r1) * np.sqrt(r1**2 - y_pts**2)
-            else:
-                x_front = np.zeros_like(y_pts)
-            ax.plot(x_front, y_pts, 'w-', linewidth=1.5, alpha=0.8)
-            
-            # Back surface
-            if abs(r2) > 1e-9:
-                x_back = t + r2 - np.sign(r2) * np.sqrt(r2**2 - y_pts**2)
-            else:
-                x_back = np.full_like(y_pts, t)
-            ax.plot(x_back, y_pts, 'w-', linewidth=1.5, alpha=0.8)
-            
-            # Edge lines
-            ax.plot([x_front[0], x_back[0]], [y_pts[0], y_pts[0]], 'w-', linewidth=1.5, alpha=0.8)
-            ax.plot([x_front[-1], x_back[-1]], [y_pts[-1], y_pts[-1]], 'w-', linewidth=1.5, alpha=0.8)
+            # Draw system geometry
+            self._draw_system_2d_on_axes(ax, system)
 
             # Trace and plot each ghost path
             colors = ['#ff0000', '#ff8000', '#ffff00', '#00ff00', '#00ffff', '#0000ff', '#ff00ff']
@@ -980,9 +1117,10 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate ghost analysis: {e}")
     
     def _on_show_psf(self):
-        """Show PSF analysis using ImageQualityAnalyzer"""
-        if not self._current_lens:
-            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+        """Show PSF analysis using ImageQualityAnalyzer for active system"""
+        active_system = self._current_assembly if self._current_assembly else self._current_lens
+        if not active_system:
+            QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
             
         try:
@@ -994,48 +1132,51 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             wavelength = wavelengths_vals[self._perf_wavelength.currentIndex()]
             
             # 2. Setup optical system
-            system = OpticalSystem(name="PSF Analysis")
-            system.add_lens(self._current_lens)
+            if not isinstance(active_system, OpticalSystem):
+                system = OpticalSystem(name=active_system.name)
+                system.add_lens(active_system)
+            else:
+                system = active_system
             
             # 3. Create analyzer
             analyzer = ImageQualityAnalyzer(system)
             
-            # 4. Perform analysis (geometric PSF for speed)
-            res = analyzer.calculate_psf(
-                field_angle=0.0, 
-                wavelength=wavelength, 
-                sensor_size=0.1, 
-                pixels=128
-            )
+            # 4. Perform analysis
+            # We sample a small area around the chief ray intersection
+            psf_data = analyzer.calculate_psf(field_angle=0.0, wavelength=wavelength, pixels=64)
             
             # 5. Show in dialog
-            dialog = AnalysisPlotDialog(f"PSF Analysis - {self._current_lens.name}", self)
-            ax = dialog.get_axes()
+            dialog = AnalysisPlotDialog(f"Point Spread Function - {system.name}", self)
+            ax = dialog.get_axes(projection='3d')
             
-            # Heatmap
+            # Create grid for plotting
             import numpy as np
-            im = ax.imshow(res['image'], extent=[
-                (res['z_axis'][0] - res['centroid'][1]) * 1000, 
-                (res['z_axis'][-1] - res['centroid'][1]) * 1000,
-                (res['y_axis'][0] - res['centroid'][0]) * 1000, 
-                (res['y_axis'][-1] - res['centroid'][0]) * 1000
-            ], cmap='magma', origin='lower')
+            x = np.linspace(-psf_data['size_um']/2, psf_data['size_um']/2, psf_data['grid_size'])
+            y = np.linspace(-psf_data['size_um']/2, psf_data['size_um']/2, psf_data['grid_size'])
+            X, Y = np.meshgrid(x, y)
+            Z = psf_data['intensity']
             
-            ax.set_xlabel("Sagittal Position (µm)")
-            ax.set_ylabel("Tangential Position (µm)")
-            ax.set_title(f"Geometric Point Spread Function (λ={wavelength}nm)")
-            dialog.figure.colorbar(im, ax=ax, label='Relative Intensity')
+            # Normalize Z
+            if Z.max() > 0:
+                Z = Z / Z.max()
+            
+            surf = ax.plot_surface(X, Y, Z, cmap='viridis', edgecolor='none', alpha=0.8)
+            ax.set_xlabel("X (µm)")
+            ax.set_ylabel("Y (µm)")
+            ax.set_zlabel("Relative Intensity")
+            ax.set_title(f"PSF (λ={wavelength}nm)")
             
             dialog.exec()
             
         except Exception as e:
             logger.error(f"PSF error: {e}")
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate PSF: {e}")
-    
+
     def _on_show_mtf(self):
-        """Show MTF analysis using ImageQualityAnalyzer"""
-        if not self._current_lens:
-            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+        """Show MTF analysis using ImageQualityAnalyzer for active system"""
+        active_system = self._current_assembly if self._current_assembly else self._current_lens
+        if not active_system:
+            QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
             
         try:
@@ -1045,47 +1186,53 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             # 1. Prepare parameters
             wavelengths_vals = [400, 450, 550, 650, 700]
             wavelength = wavelengths_vals[self._perf_wavelength.currentIndex()]
+            sensor_size = self._perf_sensor_size.value()
             
             # 2. Setup optical system
-            system = OpticalSystem(name="MTF Analysis")
-            system.add_lens(self._current_lens)
+            if not isinstance(active_system, OpticalSystem):
+                system = OpticalSystem(name=active_system.name)
+                system.add_lens(active_system)
+            else:
+                system = active_system
             
             # 3. Create analyzer
             analyzer = ImageQualityAnalyzer(system)
             
             # 4. Perform analysis
-            res = analyzer.calculate_mtf(
-                field_angle=0.0, 
-                wavelength=wavelength, 
-                max_freq=100.0
-            )
+            # Derive max field angle
+            fl = system.get_system_focal_length() if hasattr(system, 'get_system_focal_length') else system.calculate_focal_length()
+            max_field = 0.0
+            if fl and fl > 0:
+                max_field = math.degrees(math.atan((sensor_size / 2.0) / fl))
+
+            # Calculate MTF for 0, 0.7, and 1.0 field
+            fields = [0.0, max_field * 0.7, max_field] if max_field > 0 else [0.0]
             
-            # 5. Show in dialog
-            dialog = AnalysisPlotDialog(f"MTF Analysis - {self._current_lens.name}", self)
+            dialog = AnalysisPlotDialog(f"Modulation Transfer Function - {system.name}", self)
             ax = dialog.get_axes()
             
-            ax.plot(res['freq'], res['mtf_tan'], 'b-', label='Tangential')
-            ax.plot(res['freq'], res['mtf_sag'], 'r--', label='Sagittal')
+            styles = ['-', '--', ':']
+            colors = ['#0078d4', '#ff7800', '#2b88d8']
             
-            # Ideal diffraction limit for reference
-            ep_diam = self._current_lens.diameter
-            efl = self._current_lens.calculate_focal_length() or 100.0
-            f_number = efl / ep_diam
-            import math
-            cutoff = 1000.0 / (wavelength * 1e-6 * f_number) # lp/mm
-            
-            if cutoff > 0:
-                import numpy as np
-                freq_ideal = [f for f in res['freq'] if f < cutoff]
-                mtf_ideal = [(2/math.pi) * (math.acos(f/cutoff) - (f/cutoff)*math.sqrt(1 - (f/cutoff)**2)) 
-                             for f in freq_ideal]
-                ax.plot(freq_ideal, mtf_ideal, 'g:', label='Diffraction Limit')
-            
+            for i, field in enumerate(fields):
+                res = analyzer.calculate_mtf(field_angle=field, wavelength=wavelength)
+                freqs = res['frequencies']
+                mtf_tan = res['mtf_tangential']
+                mtf_sag = res['mtf_sagittal']
+                
+                label_base = f"Field {field:.1f}°"
+                ax.plot(freqs, mtf_tan, color=colors[i % len(colors)], linestyle='-', label=f"{label_base} (T)")
+                ax.plot(freqs, mtf_sag, color=colors[i % len(colors)], linestyle='--', label=f"{label_base} (S)")
+
+            # Add diffraction limit
+            dl_res = analyzer.calculate_diffraction_limited_mtf(wavelength=wavelength)
+            ax.plot(dl_res['frequencies'], dl_res['mtf'], 'k-', alpha=0.3, label="Diffraction Limit")
+
             ax.set_xlabel("Spatial Frequency (lp/mm)")
-            ax.set_ylabel("Modulation (0-1)")
+            ax.set_ylabel("Modulation")
+            ax.set_title(f"MTF (λ={wavelength}nm)")
             ax.set_ylim(0, 1.05)
-            ax.set_title(f"Modulation Transfer Function (λ={wavelength}nm)")
-            ax.legend()
+            ax.legend(fontsize='x-small')
             ax.grid(True, linestyle='--', alpha=0.3)
             
             dialog.exec()
@@ -1093,11 +1240,13 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         except Exception as e:
             logger.error(f"MTF error: {e}")
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate MTF: {e}")
+
     
     def _on_show_wavefront_map(self):
-        """Show wavefront map using WavefrontSensor"""
-        if not self._current_lens:
-            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+        """Show wavefront map using WavefrontSensor for active system"""
+        active_system = self._current_assembly if self._current_assembly else self._current_lens
+        if not active_system:
+            QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
             
         try:
@@ -1109,8 +1258,11 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             wavelength = wavelengths_vals[self._perf_wavelength.currentIndex()]
             
             # 2. Setup optical system
-            system = OpticalSystem(name="Wavefront Analysis")
-            system.add_lens(self._current_lens)
+            if not isinstance(active_system, OpticalSystem):
+                system = OpticalSystem(name=active_system.name)
+                system.add_lens(active_system)
+            else:
+                system = active_system
             
             # 3. Create sensor
             sensor = WavefrontSensor(system)
@@ -1124,7 +1276,7 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             )
             
             # 5. Show in dialog
-            dialog = AnalysisPlotDialog(f"Wavefront Error - {self._current_lens.name}", self)
+            dialog = AnalysisPlotDialog(f"Wavefront Error - {system.name}", self)
             ax = dialog.get_axes()
             
             # Heatmap of W (nan handled by imshow)
@@ -1176,9 +1328,10 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             QMessageBox.critical(self, "Export Error", f"Failed to export report: {e}")
 
     def _on_show_image_simulation(self):
-        """Show image simulation by loading a custom image and applying lens blur"""
-        if not self._current_lens:
-            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+        """Show image simulation by loading a custom image and applying lens blur for active system"""
+        active_system = self._current_assembly if self._current_assembly else self._current_lens
+        if not active_system:
+            QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
             
         try:
@@ -1187,13 +1340,14 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             from src.optical_system import OpticalSystem
             import numpy as np
             from PIL import Image
+            import os
             
             # Prepare System
-            if self._current_assembly:
-                system = self._current_assembly
+            if isinstance(active_system, OpticalSystem):
+                system = active_system
             else:
-                system = OpticalSystem(name=self._current_lens.name)
-                system.add_lens(self._current_lens)
+                system = OpticalSystem(name=active_system.name)
+                system.add_lens(active_system)
 
             # 1. Select source (Pattern or File)
             source_type, ok = QInputDialog.getItem(self, "Image Simulation", 
@@ -1309,29 +1463,27 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         
         try:
             from src.optical_system import OpticalSystem
+            from src.aberrations import AberrationsCalculator
+
             if self._current_assembly:
-                active_system = self._current_assembly
-                name = active_system.name
+                system = self._current_assembly
+                name = system.name
             else:
-                active_system = OpticalSystem(name="Temporary")
-                active_system.add_lens(self._current_lens)
+                system = OpticalSystem(name="Temporary")
+                system.add_lens(self._current_lens)
                 name = self._current_lens.name
 
-            from src.aberrations import AberrationsCalculator
-            # AberrationsCalculator might need adjustment for multi-element
-            # For now, let's assume it handles OpticalSystem or we use the first lens
-            target = active_system.elements[0].lens if active_system.elements else self._current_lens
-            
-            fl = target.calculate_focal_length()
+            # Use system-level properties where possible
+            fl = system.get_system_focal_length() if hasattr(system, 'get_system_focal_length') else system.calculate_focal_length()
             fl_text = f"{fl:.2f} mm" if fl else "Infinite"
             
-            power = target.calculate_optical_power()
+            power = system.calculate_optical_power() if hasattr(system, 'calculate_optical_power') else system.elements[0].lens.calculate_optical_power()
             power_text = f"{power:.4f} D" if power else "-"
             
-            bfl = target.calculate_back_focal_length()
+            bfl = system.calculate_back_focal_length() if hasattr(system, 'calculate_back_focal_length') else system.elements[0].lens.calculate_back_focal_length()
             bfl_text = f"{bfl:.2f} mm" if bfl else "-"
             
-            calculator = AberrationsCalculator(target)
+            calculator = AberrationsCalculator(system)
             results = calculator.calculate_all_aberrations()
             
             # Update individual labels if they exist (for backward compatibility)
@@ -1361,9 +1513,12 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
 Focal Length: {fl_text}
 Optical Power: {power_text}
 Back Focal Length: {bfl_text}
-Diameter: {target.diameter:.2f} mm
-Thickness: {target.thickness:.2f} mm
-
+"""
+                if not self._current_assembly:
+                    text += f"Diameter: {system.elements[0].lens.diameter:.2f} mm\n"
+                    text += f"Thickness: {system.elements[0].lens.thickness:.2f} mm\n"
+                
+                text += f"""
 --- Primary Aberrations ---
 Spherical Aberration: {results.get('spherical', 0):.4f} mm
 Coma: {results.get('coma', 0):.4f} mm
@@ -1383,7 +1538,7 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
 
 
     def _create_optimization_tab(self):
-        """Create the Optimization tab"""
+        """Create the Optimization tab with support for both single lenses and assemblies"""
         from src.optimizer import LensOptimizer, OptimizationVariable, OptimizationTarget
         
         opt = QWidget()
@@ -1397,28 +1552,16 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         layout = QVBoxLayout(content)
         layout.setContentsMargins(10, 10, 10, 10)
         
-        # Top section: Variables and Targets side-by-side
-        top_row_layout = QHBoxLayout()
-        
-        # Variables Section
-        variables_group = QGroupBox("Optimization Variables")
-        variables_layout = QVBoxLayout(variables_group)
-        
-        self._opt_var_r1 = QCheckBox("Radius 1")
-        self._opt_var_r1.setChecked(True)
-        self._opt_var_r2 = QCheckBox("Radius 2")
-        self._opt_var_r2.setChecked(True)
-        self._opt_var_thickness = QCheckBox("Thickness")
-        self._opt_var_thickness.setChecked(True)
-        self._opt_var_material = QCheckBox("Material (n)")
-        self._opt_var_diameter = QCheckBox("Diameter")
-        
-        variables_layout.addWidget(self._opt_var_r1)
-        variables_layout.addWidget(self._opt_var_r2)
-        variables_layout.addWidget(self._opt_var_thickness)
-        variables_layout.addWidget(self._opt_var_material)
-        variables_layout.addWidget(self._opt_var_diameter)
-        variables_layout.addStretch()
+        # Variables Section - Now dynamic for Assemblies
+        self._opt_vars_group = QGroupBox("Optimization Variables")
+        self._opt_vars_container = QVBoxLayout(self._opt_vars_group)
+        self._opt_vars_scroll = QScrollArea()
+        self._opt_vars_scroll.setWidgetResizable(True)
+        self._opt_vars_scroll.setMinimumHeight(150)
+        self._opt_vars_widget = QWidget()
+        self._opt_vars_layout = QVBoxLayout(self._opt_vars_widget)
+        self._opt_vars_scroll.setWidget(self._opt_vars_widget)
+        self._opt_vars_container.addWidget(self._opt_vars_scroll)
         
         # Targets Section
         targets_group = QGroupBox("Optimization Targets")
@@ -1427,12 +1570,10 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         self._opt_target_fl_enabled = QCheckBox("Target Focal Length (mm):")
         self._opt_target_fl_enabled.setChecked(True)
         self._opt_target_fl = QDoubleSpinBox()
-        self._opt_target_fl.setRange(1, 1000)
+        self._opt_target_fl.setRange(1, 10000)
         self._opt_target_fl.setValue(50)
         
-        # Enable/disable spinbox based on checkbox
         self._opt_target_fl_enabled.toggled.connect(self._opt_target_fl.setEnabled)
-        
         targets_layout.addRow(self._opt_target_fl_enabled, self._opt_target_fl)
         
         self._opt_target_spot = QCheckBox("Minimize RMS Spot Size")
@@ -1448,8 +1589,10 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         self._opt_target_astig = QCheckBox("Minimize Astigmatism")
         targets_layout.addRow("Astigmatism:", self._opt_target_astig)
         
-        top_row_layout.addWidget(variables_group)
-        top_row_layout.addWidget(targets_group)
+        # Layout organization
+        top_row_layout = QHBoxLayout()
+        top_row_layout.addWidget(self._opt_vars_group, 1)
+        top_row_layout.addWidget(targets_group, 1)
         layout.addLayout(top_row_layout)
         
         # Constraints and Results side-by-side
@@ -1466,7 +1609,7 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         constraints_layout.addRow("Min Thickness:", self._opt_min_thickness)
         
         self._opt_max_thickness = QDoubleSpinBox()
-        self._opt_max_thickness.setRange(1, 200)
+        self._opt_max_thickness.setRange(1, 500)
         self._opt_max_thickness.setValue(50)
         self._opt_max_thickness.setSuffix(" mm")
         constraints_layout.addRow("Max Thickness:", self._opt_max_thickness)
@@ -1476,6 +1619,12 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         self._opt_min_edge.setValue(0.5)
         self._opt_min_edge.setSuffix(" mm")
         constraints_layout.addRow("Min Edge Thickness:", self._opt_min_edge)
+        
+        self._opt_min_gap = QDoubleSpinBox()
+        self._opt_min_gap.setRange(0, 100)
+        self._opt_min_gap.setValue(0.1)
+        self._opt_min_gap.setSuffix(" mm")
+        constraints_layout.addRow("Min Air Gap:", self._opt_min_gap)
         
         self._opt_algorithm = QComboBox()
         self._opt_algorithm.addItems(["Local (Simplex)", "Global (Simulated Annealing)", "Global (Genetic Algorithm)"])
@@ -1516,28 +1665,109 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         btn_layout.addWidget(reset_btn)
         layout.addLayout(btn_layout)
         
-        # Visualization
-        self._opt_viz = _2DVisualizationWidget()
-        layout.addWidget(self._opt_viz)
+        # Visualization (Dual Support)
+        self._opt_lens_viz = _2DVisualizationWidget()
+        self._opt_asm_viz = AssemblyVisualizationWidget()
+        self._opt_asm_viz.setVisible(False)
+        layout.addWidget(self._opt_lens_viz)
+        layout.addWidget(self._opt_asm_viz)
         
         layout.addStretch()
         
-        # Set the content widget in the scroll area
         scroll.setWidget(content)
-        
-        # Add scroll area to main layout
         main_layout = QVBoxLayout(opt)
         main_layout.addWidget(scroll)
         
-        # Store optimization state
         self._opt_is_running = False
-        self._opt_original_lens = None
-        self._opt_pending_lens = None
+        self._opt_original_target = None
+        self._opt_pending_target = None
+        
+        # Variables map for dynamic checkboxes
+        self._opt_check_vars = {} # key -> QCheckBox
         
         return opt
+
+    def _refresh_optimization_variables(self):
+        """Update the variables list based on current selection (Lens or Assembly)"""
+        # Clear existing
+        while self._opt_vars_layout.count():
+            child = self._opt_vars_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        self._opt_check_vars.clear()
+        
+        active_target = self._current_assembly if self._current_assembly else self._current_lens
+        if not active_target:
+            self._opt_vars_layout.addWidget(QLabel("No system selected"))
+            return
+
+        from src.optical_system import OpticalSystem
+        
+        if isinstance(active_target, OpticalSystem):
+            self._opt_lens_viz.setVisible(False)
+            self._opt_asm_viz.setVisible(True)
+            self._opt_asm_viz.update_system(active_target)
+            
+            for i, element in enumerate(active_target.elements):
+                lens_name = element.lens.name or f"Lens {i+1}"
+                group = QGroupBox(f"{i+1}. {lens_name}")
+                vbox = QVBoxLayout(group)
+                
+                for label, param, key in [
+                    ("Radius 1", "radius_of_curvature_1", f"r1_{i}"),
+                    ("Radius 2", "radius_of_curvature_2", f"r2_{i}"),
+                    ("Thickness", "thickness", f"th_{i}"),
+                    ("Refractive Index", "refractive_index", f"n_{i}")
+                ]:
+                    val = getattr(element.lens, param)
+                    cb = QCheckBox(f"{label} ({val:.2f})")
+                    cb.setChecked(label in ["Radius 1", "Radius 2"])
+                    self._opt_check_vars[key] = cb
+                    vbox.addWidget(cb)
+                
+                # Air Gap
+                if i < len(active_target.air_gaps):
+                    gap_val = active_target.air_gaps[i].thickness
+                    cb = QCheckBox(f"Air Gap to Next ({gap_val:.2f})")
+                    self._opt_check_vars[f"gap_{i}"] = cb
+                    vbox.addWidget(cb)
+                    
+                self._opt_vars_layout.addWidget(group)
+        else:
+            self._opt_lens_viz.setVisible(True)
+            self._opt_asm_viz.setVisible(False)
+            self._opt_lens_viz.update_lens(active_target)
+            
+            group = QGroupBox("Lens Properties")
+            vbox = QVBoxLayout(group)
+            for label, param, key in [
+                ("Radius 1", "radius_of_curvature_1", "r1_0"),
+                ("Radius 2", "radius_of_curvature_2", "r2_0"),
+                ("Thickness", "thickness", "th_0"),
+                ("Refractive Index", "refractive_index", "n_0"),
+                ("Diameter", "diameter", "d_0")
+            ]:
+                val = getattr(active_target, param)
+                cb = QCheckBox(f"{label} ({val:.2f})")
+                cb.setChecked(label in ["Radius 1", "Radius 2", "Thickness"])
+                self._opt_check_vars[key] = cb
+                vbox.addWidget(cb)
+            self._opt_vars_layout.addWidget(group)
+            
+        self._opt_vars_layout.addStretch()
     
+    def _on_stop_optimization(self):
+        """Stop the currently running optimization"""
+        if self._opt_is_running:
+            # We don't have a direct kill mechanism for the optimizer thread yet,
+            # but we can set the flag so the UI knows we are 'done'
+            self._opt_is_running = False
+            self._opt_results_text.setPlainText("Optimization stopped by user.")
+            self._update_status("Optimization stopped.")
+            self._opt_apply_btn.setEnabled(False)
+
     def _on_run_optimization(self):
-        """Run lens optimization using LensOptimizer or GlobalOptimizer"""
+        """Run system optimization using LensOptimizer or GlobalOptimizer"""
         from src.optimizer import OptimizationVariable, OptimizationTarget
         try:
             from src.global_optimizer import GlobalOptimizer
@@ -1546,8 +1776,9 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             from src.optimizer import LensOptimizer as GlobalOptimizer
             HAS_GLOBAL = False
 
-        if not self._current_lens:
-            self._opt_results_text.setPlainText("No lens selected.")
+        active_target = self._current_assembly if self._current_assembly else self._current_lens
+        if not active_target:
+            self._opt_results_text.setPlainText("No system selected.")
             return
         
         if self._opt_is_running:
@@ -1555,57 +1786,37 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             return
         
         self._opt_is_running = True
-        self._opt_original_lens = self._current_lens
-        self._opt_pending_lens = None
+        self._opt_original_target = active_target
+        self._opt_pending_target = None
         self._opt_apply_btn.setEnabled(False)
         
-        # Collect variables
+        # Collect variables from dynamic checkboxes
         variables = []
-        if self._opt_var_r1.isChecked():
-            variables.append(OptimizationVariable(
-                name="Radius 1",
-                element_index=0,
-                parameter="radius_of_curvature_1",
-                current_value=self._current_lens.radius_of_curvature_1,
-                min_value=-10000.0,
-                max_value=10000.0
-            ))
-        if self._opt_var_r2.isChecked():
-            variables.append(OptimizationVariable(
-                name="Radius 2",
-                element_index=0,
-                parameter="radius_of_curvature_2",
-                current_value=self._current_lens.radius_of_curvature_2,
-                min_value=-10000.0,
-                max_value=10000.0
-            ))
-        if self._opt_var_thickness.isChecked():
-            variables.append(OptimizationVariable(
-                name="Thickness",
-                element_index=0,
-                parameter="thickness",
-                current_value=self._current_lens.thickness,
-                min_value=self._opt_min_thickness.value(),
-                max_value=self._opt_max_thickness.value()
-            ))
-        if self._opt_var_material.isChecked():
-            variables.append(OptimizationVariable(
-                name="Refractive Index",
-                element_index=0,
-                parameter="refractive_index",
-                current_value=self._current_lens.refractive_index,
-                min_value=1.3,
-                max_value=2.0
-            ))
-        if self._opt_var_diameter.isChecked():
-            variables.append(OptimizationVariable(
-                name="Diameter",
-                element_index=0,
-                parameter="diameter",
-                current_value=self._current_lens.diameter,
-                min_value=1.0,
-                max_value=200.0
-            ))
+        from src.optical_system import OpticalSystem
+        
+        if isinstance(active_target, OpticalSystem):
+            for i, element in enumerate(active_target.elements):
+                if self._opt_check_vars.get(f"r1_{i}").isChecked():
+                    variables.append(OptimizationVariable(f"R1_L{i+1}", i, "radius_of_curvature_1", element.lens.radius_of_curvature_1, -10000, 10000))
+                if self._opt_check_vars.get(f"r2_{i}").isChecked():
+                    variables.append(OptimizationVariable(f"R2_L{i+1}", i, "radius_of_curvature_2", element.lens.radius_of_curvature_2, -10000, 10000))
+                if self._opt_check_vars.get(f"th_{i}").isChecked():
+                    variables.append(OptimizationVariable(f"Th_L{i+1}", i, "thickness", element.lens.thickness, self._opt_min_thickness.value(), self._opt_max_thickness.value()))
+                if self._opt_check_vars.get(f"n_{i}").isChecked():
+                    variables.append(OptimizationVariable(f"N_L{i+1}", i, "refractive_index", element.lens.refractive_index, 1.3, 2.4))
+                if self._opt_check_vars.get(f"gap_{i}") and self._opt_check_vars.get(f"gap_{i}").isChecked():
+                    variables.append(OptimizationVariable(f"Gap_{i+1}_{i+2}", i, "air_gap", active_target.air_gaps[i].thickness, self._opt_min_gap.value(), 500))
+        else:
+            if self._opt_check_vars.get("r1_0").isChecked():
+                variables.append(OptimizationVariable("Radius 1", 0, "radius_of_curvature_1", active_target.radius_of_curvature_1, -10000, 10000))
+            if self._opt_check_vars.get("r2_0").isChecked():
+                variables.append(OptimizationVariable("Radius 2", 0, "radius_of_curvature_2", active_target.radius_of_curvature_2, -10000, 10000))
+            if self._opt_check_vars.get("th_0").isChecked():
+                variables.append(OptimizationVariable("Thickness", 0, "thickness", active_target.thickness, self._opt_min_thickness.value(), self._opt_max_thickness.value()))
+            if self._opt_check_vars.get("n_0").isChecked():
+                variables.append(OptimizationVariable("Index", 0, "refractive_index", active_target.refractive_index, 1.3, 2.4))
+            if self._opt_check_vars.get("d_0") and self._opt_check_vars.get("d_0").isChecked():
+                variables.append(OptimizationVariable("Diameter", 0, "diameter", active_target.diameter, 1, 500))
         
         if not variables:
             self._opt_results_text.setPlainText("Select at least one variable.")
@@ -1635,17 +1846,21 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         constraints['min_center_thickness'] = self._opt_min_thickness.value()
         constraints['max_center_thickness'] = self._opt_max_thickness.value()
         constraints['min_edge_thickness'] = self._opt_min_edge.value()
+        constraints['min_air_gap'] = self._opt_min_gap.value()
         
         self._opt_results_text.setPlainText("Optimizing...")
         
-        def run_optimization():
+        def run_optimization_thread():
             try:
                 from src.optical_system import OpticalSystem
                 import copy
                 
                 # Setup system
-                system = OpticalSystem(name="Optimization")
-                system.add_lens(copy.deepcopy(self._current_lens))
+                if isinstance(active_target, OpticalSystem):
+                    system = copy.deepcopy(active_target)
+                else:
+                    system = OpticalSystem(name="Optimization")
+                    system.add_lens(copy.deepcopy(active_target))
                 
                 optimizer = GlobalOptimizer(system, variables, targets, constraints=constraints)
                 
@@ -1660,7 +1875,7 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
                 else:
                     result = optimizer.optimize(max_iterations=100)
                 
-                # Emit signals instead of using invokeMethod
+                # Emit signals
                 self.opt_finished.emit(result, variables)
                                        
             except Exception as e:
@@ -1670,13 +1885,14 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
                 self.opt_failed.emit(str(e))
 
         import threading
-        thread = threading.Thread(target=run_optimization, daemon=True)
+        thread = threading.Thread(target=run_optimization_thread, daemon=True)
         thread.start()
 
     @Slot(object, list)
     def _on_optimization_finished(self, result, variables):
         """Callback for finished optimization"""
         self._opt_is_running = False
+        from src.optical_system import OpticalSystem
         
         if result.success:
             text = f"Optimization Successful!\n\n"
@@ -1684,58 +1900,75 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             text += f"Iterations: {result.iterations}\n\n"
             text += "Optimized Values (Preview):\n"
             
-            # Extract optimized values from the system
-            if result.optimized_system and result.optimized_system.elements:
-                lens = result.optimized_system.elements[0].lens
-                for var in variables:
-                    val = getattr(lens, var.parameter)
-                    text += f"  {var.name}: {val:.4f}\n"
+            # Show parameter changes
+            if result.optimized_system:
+                self._opt_pending_target = result.optimized_system
+                self._opt_apply_btn.setEnabled(True)
+                
+                if isinstance(result.optimized_system, OpticalSystem):
+                    self._opt_asm_viz.update_system(result.optimized_system)
+                    for var in variables:
+                        if var.parameter == "air_gap":
+                            val = result.optimized_system.air_gaps[var.element_index].thickness
+                        else:
+                            val = getattr(result.optimized_system.elements[var.element_index].lens, var.parameter)
+                        text += f"  {var.name}: {val:.4f}\n"
+                else:
+                    # Case where it returns just a lens? (Unlikely with SystemOptimizer but handle it)
+                    lens = result.optimized_system.elements[0].lens if hasattr(result.optimized_system, 'elements') else result.optimized_system
+                    self._opt_lens_viz.update_lens(lens)
+                    for var in variables:
+                        val = getattr(lens, var.parameter)
+                        text += f"  {var.name}: {val:.4f}\n"
             
             self._opt_results_text.setPlainText(text)
             self._opt_results_text.append("\nClick 'Apply & Keep' to save these changes.")
-            
-            # Update visualization but don't commit yet
-            if result.optimized_system and result.optimized_system.elements:
-                optimized_lens = result.optimized_system.elements[0].lens
-                self._opt_pending_lens = optimized_lens
-                self._opt_apply_btn.setEnabled(True)
-                self._opt_viz.update_lens(optimized_lens)
         else:
             self._opt_results_text.setPlainText(f"Optimization failed: {result.message}")
 
     @Slot(str)
-    def _on_optimization_failed(self, error_msg):
+    def _on_optimization_failed(self, message):
         """Callback for failed optimization"""
         self._opt_is_running = False
-        self._opt_results_text.setPlainText(f"Error during optimization: {error_msg}")
-    
+        self._opt_results_text.setPlainText(f"Optimization Error: {message}")
+        self._update_status(f"Optimization failed: {message}")
+
     def _on_apply_optimization(self):
-        """Apply the optimization results to the current lens"""
-        if self._opt_pending_lens:
-            self._current_lens = self._opt_pending_lens
-            self._lens_editor.load_lens(self._current_lens)
+        """Apply the optimization results to the current system"""
+        if self._opt_pending_target:
+            from src.optical_system import OpticalSystem
+            if isinstance(self._opt_pending_target, OpticalSystem):
+                self._current_assembly = self._opt_pending_target
+                self._optical_system = self._opt_pending_target
+                self._assembly_viz.update_system(self._current_assembly)
+            else:
+                self._current_lens = self._opt_pending_target
+                self._lens_editor.load_lens(self._current_lens)
+            
             self._update_all_tabs()
             self._opt_apply_btn.setEnabled(False)
-            self._opt_pending_lens = None
-            self._opt_results_text.append("\nChanges applied to lens.")
-    
-    def _on_stop_optimization(self):
-        """Stop the running optimization"""
-        self._opt_is_running = False
-        self._opt_results_text.append("\nOptimization stopped by user.")
-    
+            self._opt_pending_target = None
+            self._opt_results_text.append("\nChanges applied to system.")
+            self._save_to_database()
+
     def _on_reset_optimization(self):
-        """Reset optimization to original lens values"""
-        if self._opt_original_lens:
-            self._current_lens = self._opt_original_lens
-            self._lens_editor.load_lens(self._current_lens)
+        """Reset optimization to original values"""
+        if self._opt_original_target:
+            from src.optical_system import OpticalSystem
+            if isinstance(self._opt_original_target, OpticalSystem):
+                self._current_assembly = self._opt_original_target
+                self._optical_system = self._opt_original_target
+                self._opt_asm_viz.update_system(self._current_assembly)
+            else:
+                self._current_lens = self._opt_original_target
+                self._opt_lens_viz.update_lens(self._current_lens)
+            
             self._update_all_tabs()
-            self._opt_results_text.setPlainText("Reset to original lens values.")
-            self._opt_viz.update_lens(self._current_lens)
+            self._opt_results_text.setPlainText("Reset to original values.")
             self._opt_apply_btn.setEnabled(False)
-            self._opt_pending_lens = None
+            self._opt_pending_target = None
         else:
-            self._opt_results_text.setPlainText("No original lens to reset to.")
+            self._opt_results_text.setPlainText("No original state to reset to.")
     
     def _create_tolerancing_tab(self):
         """Create the Tolerancing tab"""
@@ -2453,28 +2686,13 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         if not self._current_lens and not self._current_assembly:
             return
         
-        # Determine what to use for analysis: current lens or current assembly
-        if self._current_assembly:
-            active_system = self._current_assembly
-        else:
-            # Create a temporary system for the single lens
-            from src.optical_system import OpticalSystem
-            active_system = OpticalSystem(name="Temporary")
-            active_system.add_lens(self._current_lens)
+        active_system = self._current_assembly if self._current_assembly else self._current_lens
 
         if hasattr(self, '_sim_viz'):
-            # Simulation visualization needs a lens or system
-            # Currently SimulationVisualizationWidget.run_simulation takes a lens
-            # We should update it to handle OpticalSystem or pass the first lens for now
-            target = self._current_lens if self._current_lens else self._current_assembly.elements[0].lens
-            self._sim_viz.run_simulation(target, 
-                                  int(self._sim_num_rays.value()) if hasattr(self, '_sim_num_rays') else 11,
-                                  self._sim_angle.value() if hasattr(self, '_sim_angle') else 0,
-                                  self._sim_source_height.value() if hasattr(self, '_sim_source_height') else 0)
+            self._on_run_simulation()
         
-        if hasattr(self, '_opt_viz'):
-            target = self._current_lens if self._current_lens else self._current_assembly.elements[0].lens
-            self._opt_viz.update_lens(target)
+        if hasattr(self, '_opt_vars_layout'):
+            self._refresh_optimization_variables()
         
         if hasattr(self, '_tol_viz') and hasattr(self._tol_viz, 'update_lens'):
             target = self._current_lens if self._current_lens else self._current_assembly.elements[0].lens
@@ -4338,7 +4556,6 @@ class SimulationVisualizationWidget(QWidget):
                         if hasattr(p1, 'x'): x1, y1, x2, y2 = p1.x, p1.y, p2.x, p2.y
                         else: x1, y1, x2, y2 = p1[0], p1[1], p2[0], p2[1]
                         painter.drawLine(int(cx + x1 * scale), int(cy - y1 * scale), int(cx + x2 * scale), int(cy - y2 * scale))
-                        painter.drawLine(int(wx1), int(wy1), int(wx2), int(wy2))
         
         if self._show_image_sim and self._lens:
             painter.setPen(QPen(QColor(0, 255, 136), 2))

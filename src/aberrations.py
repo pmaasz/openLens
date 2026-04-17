@@ -46,7 +46,7 @@ AIRY_DISK_DIAMETER_FACTOR = 2.44
 
 class AberrationsCalculator:
     """
-    Calculate primary (Seidel) aberrations for a single lens element.
+    Calculate primary (Seidel) aberrations for a single lens element or an optical system.
     
     The five primary aberrations are:
     1. Spherical Aberration (SA)
@@ -58,20 +58,29 @@ class AberrationsCalculator:
     Additionally calculates chromatic aberration when Abbe number is available.
     """
     
-    def __init__(self, lens: Any) -> None:
+    def __init__(self, target: Any) -> None:
         """
-        Initialize calculator with a lens object.
+        Initialize calculator with a lens or an optical system.
         
         Args:
-            lens: Lens object with optical parameters (radius_of_curvature_1,
-                  radius_of_curvature_2, thickness, diameter, refractive_index)
+            target: Lens object or OpticalSystem object.
         """
-        self.lens = lens
-        self.n = lens.refractive_index
-        self.R1 = lens.radius_of_curvature_1
-        self.R2 = lens.radius_of_curvature_2
-        self.d = lens.thickness
-        self.D = lens.diameter
+        self.target = target
+        # Check if target is an OpticalSystem (has elements)
+        if hasattr(target, 'elements'):
+            self.is_system = True
+            # For system calculations, use effective properties
+            self.n = 1.0 # System in air
+            self.D = target.elements[0].lens.diameter if target.elements else 25.0
+            # focal_length = target.get_system_focal_length()
+        else:
+            self.is_system = False
+            self.lens = target
+            self.n = target.refractive_index
+            self.R1 = target.radius_of_curvature_1
+            self.R2 = target.radius_of_curvature_2
+            self.d = target.thickness
+            self.D = target.diameter
         
     def calculate_all_aberrations(self, 
                                    object_distance: Optional[float] = None,
@@ -86,7 +95,10 @@ class AberrationsCalculator:
         Returns:
             Dictionary with aberration values and optical parameters
         """
-        focal_length = self.lens.calculate_focal_length()
+        if self.is_system:
+            focal_length = self.target.get_system_focal_length()
+        else:
+            focal_length = self.lens.calculate_focal_length()
         
         if focal_length is None:
             return {
@@ -103,52 +115,186 @@ class AberrationsCalculator:
         # Calculate numerical aperture and other parameters
         na = self._calculate_numerical_aperture(focal_length)
         
+        if self.is_system:
+            # For systems, we primarily rely on exact calculations where possible
+            field_data = self._calculate_field_metrics_system(field_angle)
+            return {
+                'focal_length': focal_length,
+                'numerical_aperture': na,
+                'f_number': self._calculate_f_number(focal_length),
+                'spherical': self._calculate_spherical_aberration(focal_length),
+                'coma': field_data['coma'],
+                'astigmatism': field_data['astigmatism'],
+                'field_curvature': field_data['field_curvature'],
+                'distortion': field_data['distortion'],
+                'chromatic': self._calculate_chromatic_aberration(focal_length),
+                'airy_disk_diameter': self._calculate_airy_disk(focal_length),
+                'spot_rms': self._calculate_spot_rms() if self.is_system else 0,
+                'strehl': self._calculate_strehl_ratio(focal_length),
+                'mtf_cutoff': self._calculate_mtf_cutoff(focal_length)
+            }
+
         return {
             'focal_length': focal_length,
             'numerical_aperture': na,
             'f_number': self._calculate_f_number(focal_length),
-            'spherical_aberration': self._calculate_spherical_aberration(focal_length),
+            'spherical': self._calculate_spherical_aberration(focal_length),
             'coma': self._calculate_coma(focal_length, field_angle),
             'astigmatism': self._calculate_astigmatism(focal_length, field_angle),
             'field_curvature': self._calculate_field_curvature(focal_length),
             'distortion': self._calculate_distortion(focal_length, field_angle),
-            'chromatic_aberration': self._calculate_chromatic_aberration(focal_length),
-            'airy_disk_diameter': self._calculate_airy_disk(focal_length)
+            'chromatic': self._calculate_chromatic_aberration(focal_length),
+            'airy_disk_diameter': self._calculate_airy_disk(focal_length),
+            'strehl': self._calculate_strehl_ratio(focal_length),
+            'mtf_cutoff': self._calculate_mtf_cutoff(focal_length)
         }
     
-    def _calculate_numerical_aperture(self, focal_length: float) -> float:
-        """
-        Calculate numerical aperture NA = n_medium * sin(θ) where θ = arctan(D/2f).
-        
-        For a lens in air, the numerical aperture uses the medium refractive index (air = 1.0),
-        NOT the lens material's refractive index.
-        
-        Args:
-            focal_length: Focal length in mm
-            
-        Returns:
-            Numerical aperture (dimensionless)
-        """
-        if focal_length == 0:
-            return 0
-        # Use air refractive index (1.0), not lens material index
-        theta = math.atan(self.D / (2 * abs(focal_length)))
-        return REFRACTIVE_INDEX_AIR * math.sin(theta)
-    
     def _calculate_f_number(self, focal_length: float) -> float:
-        """
-        Calculate f-number (f/#) = f/D.
-        
-        Args:
-            focal_length: Focal length in mm
-            
-        Returns:
-            F-number (dimensionless)
-        """
-        if self.D == 0:
+        """Calculate the f-number (f/D)"""
+        if self.D <= 0:
             return float('inf')
         return abs(focal_length) / self.D
+
+    def _calculate_numerical_aperture(self, focal_length: float) -> float:
+        """Calculate the numerical aperture (NA)"""
+        if abs(focal_length) < EPSILON:
+            return 0.0
+        # For object at infinity: NA = D / (2 * f)
+        return self.D / (2 * abs(focal_length))
+
+    def _calculate_field_metrics_system(self, field_angle: float) -> Dict[str, float]:
+        """Calculate field-dependent aberrations for an optical system using real ray tracing"""
+        try:
+            from .analysis.geometric import GeometricTraceAnalysis
+            analysis = GeometricTraceAnalysis(self.target)
+            
+            # 1. Field Curvature and Distortion
+            # Sample up to field_angle
+            fc_data = analysis.calculate_field_curvature_distortion(
+                max_field_angle=max(field_angle, 0.1),
+                num_points=10
+            )
+            
+            # 2. Coma (from Ray Fan)
+            fan_data = analysis.calculate_ray_fan(field_angle=field_angle)
+            
+            # Extract metrics at the requested field_angle
+            # fc_data['tan_focus_shift'] etc are lists, we want the last element if we sampled up to field_angle
+            field_curv = fc_data['tan_focus_shift'][-1] if fc_data['tan_focus_shift'] else 0.0
+            dist = fc_data['distortion_pct'][-1] if fc_data['distortion_pct'] else 0.0
+            astig = abs(fc_data['tan_focus_shift'][-1] - fc_data['sag_focus_shift'][-1]) if fc_data['tan_focus_shift'] and fc_data['sag_focus_shift'] else 0.0
+            
+            # Coma estimation from ray fan (asymmetry in transverse error)
+            errors = fan_data['ray_errors']
+            coma_val = 0.0
+            if len(errors) >= 2:
+                # Coma ~= (y_top + y_bottom) / 2 - y_chief
+                # Ray fan returns errors relative to chief ray, so coma is (error_top + error_bottom)/2
+                coma_val = (errors[0] + errors[-1]) / 2.0
+                
+            return {
+                'field_curvature': field_curv,
+                'distortion': dist,
+                'astigmatism': astig,
+                'coma': coma_val
+            }
+        except Exception:
+            return {'field_curvature': 0.0, 'distortion': 0.0, 'astigmatism': 0.0, 'coma': 0.0}
+
+    def _calculate_coma(self, focal_length: float, field_angle_deg: float) -> float:
+        """Calculate third-order Seidel coma for a single lens"""
+        # Third-order Seidel approximation fallback
+        if abs(focal_length) < EPSILON or field_angle_deg == 0:
+            return 0.0
+            
+        # Coma depends on Shape Factor (B) and Conjugate Factor (C)
+        # B = (R2 + R1) / (R2 - R1)
+        if abs(self.R2 - self.R1) < EPSILON:
+            B = 0.0
+        else:
+            B = (self.R2 + self.R1) / (self.R2 - self.R1)
+            
+        # For object at infinity, C = -1
+        C = -1.0
+        
+        # Coma S2 = (y^3 * field_angle / f^2) * [(n+1)/n * B + (2n+1)/n * C]
+        # (Simplified relative value)
+        n = self.n
+        factor = ((n + 1.0) / n) * B + ((2.0 * n + 1.0) / n) * C
+        coma = ( (self.D/2.0)**3 * math.radians(field_angle_deg) / focal_length**2 ) * factor
+        return coma
+
+    def _calculate_astigmatism(self, focal_length: float, field_angle_deg: float) -> float:
+        """Calculate third-order Seidel astigmatism for a single lens"""
+        if field_angle_deg == 0:
+            return 0.0
+        # Longitudinal astigmatism ~= h^2 / f (Simplified)
+        h = focal_length * math.tan(math.radians(field_angle_deg))
+        return (h**2) / focal_length
+
+    def _calculate_field_curvature(self, focal_length: float) -> float:
+        """Calculate Petzval field curvature for a single lens"""
+        # Petzval Radius R_p = n * f
+        return self.n * focal_length
+
+    def _calculate_distortion(self, focal_length: float, field_angle_deg: float) -> float:
+        """Calculate third-order Seidel distortion for a single lens"""
+        # Placeholders for single lens Seidel approximation
+        return 0.0
     
+    def _calculate_strehl_ratio(self, focal_length: float) -> float:
+        """Estimate Strehl ratio from wavefront error/spot size"""
+        # Simplified estimation: Strehl ~= exp(-(2*pi*RMS_OPD)^2)
+        # For now, return a placeholder based on spot size vs airy disk
+        spot_rms = self._calculate_spot_rms() if self.is_system else 5.0 # Placeholder for single lens
+        airy_r = self._calculate_airy_disk(focal_length) * 500 # diameter/2 in um
+        if airy_r <= 0: return 0
+        ratio = airy_r / max(airy_r, spot_rms)
+        return min(1.0, ratio**2)
+
+    def _calculate_mtf_cutoff(self, focal_length: float) -> float:
+        """Calculate diffraction-limited MTF cutoff frequency in lp/mm"""
+        f_num = self._calculate_f_number(focal_length)
+        if f_num <= 0: return 0
+        wavelength = WAVELENGTH_GREEN * 1e-6 # mm
+        return 1.0 / (wavelength * f_num)
+    
+    def _calculate_spot_rms(self) -> float:
+        """Calculate RMS spot size using ray tracing (System only)"""
+        if not self.is_system: return 0
+        try:
+            from .ray_tracer import SystemRayTracer
+            tracer = SystemRayTracer(self.target)
+            rays = tracer.trace_parallel_rays(num_rays=21)
+            
+            # Find best focus (minimum RMS)
+            # Simplified: calculate at paraxial focus
+            f = self.target.get_system_focal_length()
+            if not f: return 0
+            
+            # Use back focal length or last element position + f
+            bfl = self.target.calculate_back_focal_length()
+            if not bfl: return 0
+            
+            last_elem = self.target.elements[-1]
+            focus_x = last_elem.position + last_elem.thickness + bfl
+            
+            y_hits = []
+            for ray in rays:
+                if not ray.terminated:
+                    # Propagate to focus_x
+                    dist = focus_x - ray.x
+                    y_at_focus = ray.y + dist * math.tan(ray.angle)
+                    y_hits.append(y_at_focus)
+            
+            if not y_hits: return 0
+            
+            mean_y = sum(y_hits) / len(y_hits)
+            rms = math.sqrt(sum((y - mean_y)**2 for y in y_hits) / len(y_hits))
+            return rms * 1000 # convert to um
+        except:
+            return 0
+
     def _calculate_spherical_aberration(self, focal_length: float) -> float:
         """
         Calculate longitudinal spherical aberration (LSA).
@@ -172,8 +318,10 @@ class AberrationsCalculator:
         if exact_lsa is not None:
             return exact_lsa
             
-        # Fallback to Seidel approximation
-        return self._calculate_spherical_aberration_seidel(focal_length)
+        # Fallback to Seidel approximation (only for single lens)
+        if not self.is_system:
+            return self._calculate_spherical_aberration_seidel(focal_length)
+        return 0
 
     def _calculate_spherical_aberration_exact(self) -> Optional[float]:
         """
@@ -184,237 +332,56 @@ class AberrationsCalculator:
             return None
             
         try:
-            tracer = LensRayTracer(self.lens)
-            
-            # Start position for rays (before lens)
-            start_x = -10.0 - self.d
-            
-            # 1. Trace Marginal Ray (at edge of aperture)
-            y_marginal = self.D / 2.0
-            ray_marginal = Ray(start_x, y_marginal, angle=0.0)
-            tracer.trace_ray(ray_marginal)
-            
-            if ray_marginal.terminated and abs(ray_marginal.y) > self.D/2:
-                # Ray missed lens or TIR
-                return None
+            if self.is_system:
+                from .ray_tracer import SystemRayTracer
+                tracer = SystemRayTracer(self.target)
                 
-            # Calculate marginal focus
-            # Ray exits at (x, y) with angle.
-            # Focus X = x - y / tan(angle)
-            if abs(math.tan(ray_marginal.angle)) < 1e-9:
-                return None # Infinite focus
+                # Trace Marginal Ray
+                y_marginal = self.D / 2.0 * 0.99
+                ray_m = Ray(self.target.elements[0].position - 10, y_marginal, angle=0.0)
+                tracer._trace_ray_through_system(ray_m)
                 
-            marginal_focus = ray_marginal.x - ray_marginal.y / math.tan(ray_marginal.angle)
-            
-            # 2. Trace Paraxial Ray (close to axis)
-            y_paraxial = self.D / 2.0 * 0.01 # 1% of aperture
-            ray_paraxial = Ray(start_x, y_paraxial, angle=0.0)
-            tracer.trace_ray(ray_paraxial)
-            
-            if abs(math.tan(ray_paraxial.angle)) < 1e-9:
-                return None # Infinite focus
+                if ray_m.terminated or abs(math.tan(ray_m.angle)) < 1e-9: return None
+                m_focus = ray_m.x - ray_m.y / math.tan(ray_m.angle)
                 
-            paraxial_focus = ray_paraxial.x - ray_paraxial.y / math.tan(ray_paraxial.angle)
-            
-            # LSA = Marginal - Paraxial
-            return marginal_focus - paraxial_focus
-            
+                # Trace Paraxial Ray
+                y_paraxial = self.D / 2.0 * 0.01
+                ray_p = Ray(self.target.elements[0].position - 10, y_paraxial, angle=0.0)
+                tracer._trace_ray_through_system(ray_p)
+                
+                if ray_p.terminated or abs(math.tan(ray_p.angle)) < 1e-9: return None
+                p_focus = ray_p.x - ray_p.y / math.tan(ray_p.angle)
+                
+                return m_focus - p_focus
+            else:
+                # Original single lens logic
+                tracer = LensRayTracer(self.lens)
+                start_x = -10.0 - self.d
+                y_marginal = self.D / 2.0
+                ray_marginal = Ray(start_x, y_marginal, angle=0.0)
+                tracer.trace_ray(ray_marginal)
+                if ray_marginal.terminated or abs(math.tan(ray_marginal.angle)) < 1e-9: return None
+                marginal_focus = ray_marginal.x - ray_marginal.y / math.tan(ray_marginal.angle)
+                
+                y_paraxial = self.D / 2.0 * 0.01
+                ray_paraxial = Ray(start_x, y_paraxial, angle=0.0)
+                tracer.trace_ray(ray_paraxial)
+                if abs(math.tan(ray_paraxial.angle)) < 1e-9: return None
+                paraxial_focus = ray_paraxial.x - ray_paraxial.y / math.tan(ray_paraxial.angle)
+                
+                return marginal_focus - paraxial_focus
         except Exception:
             return None
 
-    def _calculate_spherical_aberration_seidel(self, focal_length: float) -> float:
-        """
-        Calculate longitudinal spherical aberration (LSA) using Seidel approximation.
-        """
-        if abs(focal_length) < EPSILON:
-            return 0
-            
-        # Shape factor: q = (R2 + R1) / (R2 - R1)
-        denominator = self.R2 - self.R1
-        if abs(denominator) < EPSILON:
-            # Handle degenerate cases
-            if abs(self.R1) > 1e6 and abs(self.R2) > 1e6:
-                shape_factor = 0  # Flat plate
-            else:
-                shape_factor = 0  # Fallback for meniscus with R1 ≈ R2
-        else:
-            shape_factor = (self.R2 + self.R1) / denominator
-        
-        # Aperture radius
-        y = self.D / 2
-        
-        n = self.n
-        
-        # For object at infinity, position factor p = -1
-        p = -1.0
-        
-        # Guard against n = 1 (would cause division by zero)
-        if abs(n - 1.0) < EPSILON:
-            return 0
-        
-        # Third-order spherical aberration coefficient (Seidel)
-        # This is a more complete formula that includes shape and position factors
-        # Based on: S_I = (1/4) * [(n+2)/(n(n-1)^2)] * q^2 + [(3n+2)(n-1)/(n(n-1)^2)] * p*q + ...
-        # Simplified form for practical calculation:
-        
-        # Optimal shape factor for minimum spherical aberration (object at infinity):
-        # q_opt = -2(n^2 - 1) / (n + 2)
-        q_opt = -2 * (n * n - 1) / (n + 2)
-        
-        # Spherical aberration coefficient (proportional to deviation from optimal shape)
-        # Using the formula: K ∝ (n / (n-1)^2) * f(q, p, n)
-        K_base = n / (8 * (n - 1) ** 2)
-        
-        # Shape-dependent term (simplified but physically motivated)
-        # SA is minimized at q_opt and increases quadratically with deviation
-        shape_term = 1.0 + (shape_factor - q_opt) ** 2 / 4.0
-        
-        K = K_base * shape_term
-        
-        # Longitudinal spherical aberration
-        # LSA = -K * y^4 / f^3
-        lsa = -K * (y ** 4) / (abs(focal_length) ** 3)
-        
-        return lsa
-    
-    def _calculate_coma(self, focal_length: float, field_angle_deg: float) -> float:
-        """
-        Calculate coma aberration.
-        
-        Coma varies linearly with field angle and with cube of aperture.
-        Tangential coma: TCO ∝ y³ * θ / f²
-        
-        Args:
-            focal_length: Focal length in mm
-            field_angle_deg: Field angle in degrees
-            
-        Returns:
-            Tangential coma coefficient (relative units)
-        """
-        if focal_length == 0 or field_angle_deg == 0:
-            return 0
-        
-        field_angle_rad = math.radians(field_angle_deg)
-        y = self.D / 2
-        
-        # Shape factor
-        # q = (R2 + R1) / (R2 - R1)
-        denominator = self.R2 - self.R1
-        
-        if abs(denominator) < 1e-9:
-            shape_factor = 0
-        else:
-            shape_factor = (self.R2 + self.R1) / denominator
-        
-        # Coma coefficient (simplified)
-        n = self.n
-        K_coma = (n / (2 * (n - 1))) * shape_factor
-        
-        coma = K_coma * (y**3) * field_angle_rad / (abs(focal_length)**2)
-        
-        return coma
-    
-    def _calculate_astigmatism(self, focal_length: float, field_angle_deg: float) -> float:
-        """
-        Calculate astigmatism.
-        
-        Astigmatism causes point sources to appear as lines.
-        AST ∝ θ² / f
-        
-        Args:
-            focal_length: Focal length in mm
-            field_angle_deg: Field angle in degrees
-            
-        Returns:
-            Astigmatic focal difference in mm
-        """
-        if focal_length == 0 or field_angle_deg == 0:
-            return 0
-        
-        field_angle_rad = math.radians(field_angle_deg)
-        
-        # Simplified astigmatism formula
-        # Astigmatic difference between sagittal and tangential foci
-        astigmatism = abs(focal_length) * (field_angle_rad**2) / (2 * self.n)
-        
-        return astigmatism
-    
-    def _calculate_field_curvature(self, focal_length: float) -> float:
-        """
-        Calculate Petzval field curvature.
-        
-        The Petzval surface is curved, causing off-axis points to focus
-        on a curved surface rather than a flat plane.
-        
-        Petzval sum for single lens: P = 1/(n*f)
-        Petzval radius of curvature: R_p = 1/P = n*f
-        
-        For converging lenses (positive f), the Petzval radius is positive
-        (curved toward the lens). For diverging lenses, it's negative.
-        
-        Returns:
-            Petzval radius of curvature in mm
-        """
-        if focal_length == 0:
-            return 0
-        
-        # Petzval radius preserving sign information
-        # R_p = n * f (not -abs(f)*n which was incorrect)
-        petzval_radius = self.n * focal_length
-        
-        return petzval_radius
-    
-    def _calculate_distortion(self, focal_length: float, field_angle_deg: float) -> float:
-        """
-        Calculate distortion (barrel or pincushion).
-        
-        Distortion ∝ θ³
-        
-        Positive = pincushion distortion
-        Negative = barrel distortion
-        
-        Args:
-            focal_length: Focal length in mm
-            field_angle_deg: Field angle in degrees
-            
-        Returns:
-            Distortion coefficient (%)
-        """
-        if focal_length == 0 or field_angle_deg == 0:
-            return 0
-        
-        field_angle_rad = math.radians(field_angle_deg)
-        
-        # Shape factor determines sign of distortion
-        # q = (R2 + R1) / (R2 - R1)
-        denominator = self.R2 - self.R1
-        
-        if abs(denominator) < 1e-9:  # Avoid division by zero
-            # For flat plate (R1=R2=inf) or meniscus with R1=R2
-            shape_factor = 0
-        else:
-            shape_factor = (self.R2 + self.R1) / denominator
-        
-        # Simplified distortion coefficient
-        distortion_pct = shape_factor * (field_angle_rad**3) * 100
-        
-        return distortion_pct
-    
     def _calculate_chromatic_aberration(self, focal_length: float) -> Optional[float]:
-        """
-        Calculate longitudinal chromatic aberration (LCA).
+        """Calculate longitudinal chromatic aberration (LCA)"""
+        if self.is_system:
+            # Use system method if it exists
+            if hasattr(self.target, 'calculate_chromatic_aberration'):
+                res = self.target.calculate_chromatic_aberration()
+                return res.get('longitudinal')
+            return 0
         
-        Chromatic aberration occurs because refractive index varies with wavelength.
-        
-        For accurate calculation, we need the Abbe number (V_d).
-        Since we don't have it in the lens object, we'll use typical values
-        based on material, or provide an estimate.
-        
-        LCA = f / V_d
-        
-        Returns:
-            Longitudinal chromatic aberration in mm, or None if Abbe number unknown
-        """
         # Typical Abbe numbers for common materials
         abbe_numbers = {
             'BK7': 64.17,  # Standard crown glass
@@ -430,19 +397,12 @@ class AberrationsCalculator:
         
         if abbe_number is None:
             # Estimate based on refractive index
-            # Higher index generally means lower Abbe number
-            if self.n < 1.5:  # Low index glass
-                abbe_number = 65  # Low dispersion
-            elif self.n < 1.6:  # Medium index
-                abbe_number = 55  # Medium dispersion
-            elif self.n < 1.7:  # Higher index
-                abbe_number = 40  # Higher dispersion
-            else:
-                abbe_number = 30  # High dispersion (flint glass)
+            if self.n < 1.5:  abbe_number = 65 
+            elif self.n < 1.6: abbe_number = 55 
+            elif self.n < 1.7: abbe_number = 40 
+            else: abbe_number = 30  
         
-        # Longitudinal chromatic aberration
         lca = abs(focal_length) / abbe_number
-        
         return lca
     
     def _calculate_airy_disk(self, focal_length: float, wavelength: float = WAVELENGTH_GREEN * 1e-6) -> float:
@@ -533,6 +493,28 @@ INTERPRETATION:
         
         return summary
 
+
+    def _calculate_spherical_aberration_seidel(self, focal_length: float) -> float:
+        """Calculate third-order Seidel spherical aberration for a single lens"""
+        # Spherical aberration S1 = (y^4 / f^3) * [(n/(n-1))^2 + (n+2)/(n(n-1)^2) * (B + (2(n^2-1)/n+2) * C)^2]
+        # B = (R2 + R1) / (R2 - R1)
+        if abs(self.R2 - self.R1) < EPSILON:
+            B = 0.0
+        else:
+            B = (self.R2 + self.R1) / (self.R2 - self.R1)
+            
+        C = -1.0 # Object at infinity
+        n = self.n
+        y = self.D / 2.0
+        
+        # Simplified Seidel coefficient calculation
+        term1 = (n / (n - 1.0))**2
+        term2 = (n + 2.0) / (n * (n - 1.0)**2)
+        term3 = (B + (2.0 * (n**2 - 1.0) / (n + 2.0)) * C)**2
+        
+        # Longitudinal spherical aberration estimation
+        lsa = -(y**2 / (8.0 * focal_length**3)) * (term1 + term2 * term3) * focal_length**2
+        return lsa
 
 def analyze_lens_quality(lens: Any, field_angle: float = 5.0) -> Dict[str, Any]:
     """

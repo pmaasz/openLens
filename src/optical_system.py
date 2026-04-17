@@ -216,6 +216,13 @@ class OpticalSystem:
         last_element = self.elements[-1]
         return last_element.position + last_element.thickness
     
+    def calculate_optical_power(self) -> Optional[float]:
+        """Calculate the total optical power of the system in diopters."""
+        efl = self.get_system_focal_length()
+        if efl is None or abs(efl) < 1e-10:
+            return 0.0
+        return 1000.0 / efl
+
     def get_system_focal_length(self) -> Optional[float]:
         """
         Calculate system focal length using thin lens approximation
@@ -344,12 +351,42 @@ class OpticalSystem:
             return None
 
     def calculate_chromatic_aberration(self) -> Dict[str, Any]:
-        """Calculate system chromatic aberration (simplified)"""
-        # Placeholder for real calculation
-        return {
-            "longitudinal": 0.5, # mm
-            "corrected": True
+        """Calculate system longitudinal chromatic aberration using standard F, d, C lines."""
+        # Standard Fraunhofer lines in nm
+        lines = {
+            'F': 486.1,  # Blue
+            'd': 587.6,  # Yellow (Reference)
+            'C': 656.3   # Red
         }
+        
+        bfls = {}
+        original_states = []
+        
+        # Save original wavelengths
+        for element in self.elements:
+            original_states.append(element.lens.wavelength)
+            
+        try:
+            for line, wl in lines.items():
+                for element in self.elements:
+                    element.lens.update_refractive_index(wavelength=wl)
+                bfls[line] = self.calculate_back_focal_length()
+            
+            if bfls['F'] is not None and bfls['C'] is not None:
+                longitudinal = bfls['C'] - bfls['F']
+                return {
+                    "longitudinal": longitudinal,
+                    "bfl_F": bfls['F'],
+                    "bfl_d": bfls['d'],
+                    "bfl_C": bfls['C'],
+                    "corrected": abs(longitudinal) < 0.1
+                }
+            return {"longitudinal": 0.0, "corrected": False}
+                
+        finally:
+            # Restore original wavelengths
+            for i, element in enumerate(self.elements):
+                element.lens.update_refractive_index(wavelength=original_states[i])
 
     def _calculate_system_matrix(self) -> Optional[Tuple[float, float, float, float]]:
         """Calculate system ray-transfer (ABCD) matrix"""
