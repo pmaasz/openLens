@@ -84,17 +84,21 @@ class AberrationsCalculator:
         
     def calculate_all_aberrations(self, 
                                    object_distance: Optional[float] = None,
-                                   field_angle: float = 0.0) -> Dict[str, Any]:
+                                   field_angle: float = 0.0,
+                                   wavelength: float = 550.0) -> Dict[str, Any]:
         """
         Calculate all primary aberrations.
         
         Args:
             object_distance: Distance to object in mm. None for infinity (collimated light)
             field_angle: Off-axis angle in degrees (for coma, astigmatism, distortion)
+            wavelength: Wavelength in nm (for chromatic aberrations)
             
         Returns:
             Dictionary with aberration values and optical parameters
         """
+        # Note: Current simplified model uses primary wavelength for Seidel aberrations
+        # Future enhancement: Update refractive indices based on wavelength parameter
         if self.is_system:
             focal_length = self.target.get_system_focal_length()
         else:

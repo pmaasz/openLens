@@ -73,6 +73,10 @@ class OpticalSystem:
         last_pos = 0.0
         last_thick = 0.0
         
+        # Ensure flat list is up to date before adding
+        if not self.elements and len(self.root.children) > 0:
+             self._rebuild_from_tree()
+
         # Use existing elements list (which is up to date) to find last position
         if self.elements:
             last_elem = self.elements[-1]
@@ -323,19 +327,21 @@ class OpticalSystem:
         
         # Load elements
         system.elements = []
-        for e_data in data.get("elements", []):
+        # Clear default root children to avoid duplication if any
+        system.root.children = []
+        
+        gaps_data = data.get("air_gaps", [])
+        
+        for i, e_data in enumerate(data.get("elements", [])):
             lens_data = e_data.get("lens")
             lens = Lens.from_dict(lens_data)
-            le = LensElement(lens=lens, position=e_data.get("position", 0.0), 
-                             lens_id=e_data.get("lens_id"))
-            system.elements.append(le)
             
-        # Load air gaps
-        system.air_gaps = []
-        for g_data in data.get("air_gaps", []):
-            gap = AirGap(thickness=g_data.get("thickness", 0.0), 
-                         position=g_data.get("position", 0.0))
-            system.air_gaps.append(gap)
+            # Use gap logic consistent with add_lens
+            gap_before = 0.0
+            if i > 0 and i-1 < len(gaps_data):
+                gap_before = gaps_data[i-1].get('thickness', 0.0)
+            
+            system.add_lens(lens, air_gap_before=gap_before)
             
         return system
 
