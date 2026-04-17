@@ -470,23 +470,27 @@ class OpenLensWindow(QMainWindow):
         self._perf_entrance_pupil.setRange(1, 100)
         self._perf_entrance_pupil.setValue(10.0)
         self._perf_entrance_pupil.setSuffix(" mm")
-        params_layout.addRow("Entrance Pupil Diameter:", self._perf_entrance_pupil)
+        self._perf_entrance_pupil.setFixedWidth(100)
+        params_layout.addRow("Entrance Pupil:", self._perf_entrance_pupil)
         
         self._perf_wavelength = QComboBox()
         self._perf_wavelength.addItems(["400 nm (Violet)", "450 nm (Blue)", "550 nm (Green)", "650 nm (Red)", "700 nm (IR)"])
         self._perf_wavelength.setCurrentIndex(2)  # Default to 550nm
+        self._perf_wavelength.setFixedWidth(140)
         params_layout.addRow("Wavelength:", self._perf_wavelength)
         
         self._perf_object_distance = QDoubleSpinBox()
         self._perf_object_distance.setRange(1, 10000)
         self._perf_object_distance.setValue(1000)
         self._perf_object_distance.setSuffix(" mm")
+        self._perf_object_distance.setFixedWidth(100)
         params_layout.addRow("Object Distance:", self._perf_object_distance)
         
         self._perf_sensor_size = QDoubleSpinBox()
         self._perf_sensor_size.setRange(1, 100)
         self._perf_sensor_size.setValue(36)
         self._perf_sensor_size.setSuffix(" mm")
+        self._perf_sensor_size.setFixedWidth(100)
         params_layout.addRow("Sensor Size:", self._perf_sensor_size)
         
         layout.addWidget(params_group)
