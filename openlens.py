@@ -534,12 +534,6 @@ class OpenLensWindow(QMainWindow):
         
         layout.addStretch()
         
-        # Placeholder for visualization (currently using separate widget)
-        self._perf_viz = PerformanceVisualizationWidget()
-        layout.addWidget(self._perf_viz)
-        
-        self._perf_viz.update_lens(None)
-        
         # Set the content widget in the scroll area
         scroll.setWidget(content)
         
@@ -745,9 +739,6 @@ Strehl Ratio: {results.get('strehl', 0):.3f}
 Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
 """
                 self._perf_metrics_text.setPlainText(text)
-            
-            self._perf_viz.update_lens(self._current_lens)
-            self._perf_viz.update_metrics(results)
             
         except Exception as e:
             print(f"Performance update error: {e}")
