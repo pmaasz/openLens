@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QDoubleSpinBox, QSpinBox, QLineEdit, QGroupBox, QFormLayout, 
                                QFrame, QTabWidget, QComboBox, QCheckBox, QDialog, QStatusBar,
                                QTextEdit, QFileDialog, QMessageBox, QScrollArea)
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Slot, Signal
 from PySide6.QtGui import QKeySequence
 
 # Matplotlib imports for Analysis
@@ -1101,22 +1101,35 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             QMessageBox.critical(self, "Export Error", f"Failed to export: {e}")
 
     def _update_performance_metrics(self):
-        """Update performance metrics for current lens"""
-        if not self._current_lens:
+        """Update performance metrics for current lens or assembly"""
+        if not self._current_lens and not self._current_assembly:
             return
         
         try:
-            fl = self._current_lens.calculate_focal_length()
+            from src.optical_system import OpticalSystem
+            if self._current_assembly:
+                active_system = self._current_assembly
+                name = active_system.name
+            else:
+                active_system = OpticalSystem(name="Temporary")
+                active_system.add_lens(self._current_lens)
+                name = self._current_lens.name
+
+            from src.aberrations import AberrationsCalculator
+            # AberrationsCalculator might need adjustment for multi-element
+            # For now, let's assume it handles OpticalSystem or we use the first lens
+            target = active_system.elements[0].lens if active_system.elements else self._current_lens
+            
+            fl = target.calculate_focal_length()
             fl_text = f"{fl:.2f} mm" if fl else "Infinite"
             
-            power = self._current_lens.calculate_optical_power()
+            power = target.calculate_optical_power()
             power_text = f"{power:.4f} D" if power else "-"
             
-            bfl = self._current_lens.calculate_back_focal_length()
+            bfl = target.calculate_back_focal_length()
             bfl_text = f"{bfl:.2f} mm" if bfl else "-"
             
-            from src.aberrations import AberrationsCalculator
-            calculator = AberrationsCalculator(self._current_lens)
+            calculator = AberrationsCalculator(target)
             results = calculator.calculate_all_aberrations()
             
             # Update individual labels if they exist (for backward compatibility)
@@ -1139,16 +1152,15 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             
             # Update text display if it exists
             if hasattr(self, '_perf_metrics_text'):
-                lens = self._current_lens
                 text = f"""=== OPTICAL PERFORMANCE METRICS ===
-Lens: {lens.name}
+{ 'Assembly' if self._current_assembly else 'Lens' }: {name}
 
 --- Basic Optical Properties ---
 Focal Length: {fl_text}
 Optical Power: {power_text}
 Back Focal Length: {bfl_text}
-Diameter: {lens.diameter:.2f} mm
-Thickness: {lens.thickness:.2f} mm
+Diameter: {target.diameter:.2f} mm
+Thickness: {target.thickness:.2f} mm
 
 --- Primary Aberrations ---
 Spherical Aberration: {results.get('spherical', 0):.4f} mm
@@ -1165,7 +1177,8 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
                 self._perf_metrics_text.setPlainText(text)
             
         except Exception as e:
-            print(f"Performance update error: {e}")
+            logger.error(f"Performance update error: {e}")
+
 
     def _create_optimization_tab(self):
         """Create the Optimization tab"""
@@ -1322,8 +1335,15 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         return opt
     
     def _on_run_optimization(self):
-        """Run lens optimization using LensOptimizer"""
-        from src.optimizer import LensOptimizer, OptimizationVariable, OptimizationTarget
+        """Run lens optimization using LensOptimizer or GlobalOptimizer"""
+        from src.optimizer import OptimizationVariable, OptimizationTarget
+        try:
+            from src.global_optimizer import GlobalOptimizer
+            HAS_GLOBAL = True
+        except ImportError:
+            from src.optimizer import LensOptimizer as GlobalOptimizer
+            HAS_GLOBAL = False
+
         if not self._current_lens:
             self._opt_results_text.setPlainText("No lens selected.")
             return
@@ -1409,7 +1429,6 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             return
         
         # Build constraints
-        # Note: LensOptimizer uses 'min_center_thickness' and 'max_center_thickness' internally
         constraints = {}
         constraints['min_center_thickness'] = self._opt_min_thickness.value()
         constraints['max_center_thickness'] = self._opt_max_thickness.value()
@@ -1417,60 +1436,82 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         
         self._opt_results_text.setPlainText("Optimizing...")
         
-        try:
-            # Create optimizer
-            from src.optical_system import OpticalSystem
-            system = OpticalSystem(name="Optimization")
-            system.add_lens(self._current_lens)
-            
-            optimizer = LensOptimizer(system, variables, targets, constraints=constraints)
-            
-            # Hook into optimizer iteration for real-time visualization update
-            # (Note: LensOptimizer would need to support callback, but for now we update after)
-            
-            # Run optimization based on algorithm selection
-            algorithm = self._opt_algorithm.currentText()
-            if "Simplex" in algorithm:
-                result = optimizer.optimize(max_iterations=100)
-            elif "Simulated" in algorithm:
-                result = optimizer.optimize_simulated_annealing(max_iterations=100)
-            else:
-                result = optimizer.optimize(max_iterations=100)  # Default to simplex
-            
-            # Display results
-            if result.success:
-                text = f"Optimization Successful!\n\n"
-                text += f"Final Merit Function: {result.final_merit:.4f}\n"
-                text += f"Iterations: {result.iterations}\n\n"
-                text += "Optimized Values (Preview):\n"
+        def run_optimization():
+            try:
+                from src.optical_system import OpticalSystem
+                import copy
                 
-                # Extract optimized values from the system
-                if result.optimized_system and result.optimized_system.elements:
-                    lens = result.optimized_system.elements[0].lens
-                    for var in variables:
-                        val = getattr(lens, var.parameter)
-                        text += f"  {var.name}: {val:.4f}\n"
+                # Setup system
+                system = OpticalSystem(name="Optimization")
+                system.add_lens(copy.deepcopy(self._current_lens))
                 
-                self._opt_results_text.setPlainText(text)
-                self._opt_results_text.append("\nClick 'Apply & Keep' to save these changes.")
+                optimizer = GlobalOptimizer(system, variables, targets, constraints=constraints)
                 
-                # Update visualization but don't commit yet
-                if result.optimized_system and result.optimized_system.elements:
-                    optimized_lens = result.optimized_system.elements[0].lens
-                    self._opt_pending_lens = optimized_lens
-                    self._opt_apply_btn.setEnabled(True)
-                    self._opt_viz.update_lens(optimized_lens)
-            else:
-                self._opt_results_text.setPlainText(f"Optimization failed: {result.message}")
+                # Run optimization based on algorithm selection
+                algorithm = self._opt_algorithm.currentText()
+                if "Simplex" in algorithm:
+                    result = optimizer.optimize(max_iterations=100)
+                elif "Simulated" in algorithm:
+                    result = optimizer.optimize_simulated_annealing(max_iterations=500)
+                elif "Genetic" in algorithm:
+                    result = optimizer.optimize_genetic(population_size=30, generations=30)
+                else:
+                    result = optimizer.optimize(max_iterations=100)
                 
-        except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            self._opt_results_text.setPlainText(f"Error during optimization: {e}")
-            logger.error(f"Optimization error:\n{error_details}")
+                from PySide6.QtCore import QMetaObject, Qt, Q_ARG
+                QMetaObject.invokeMethod(self, "_on_optimization_finished", 
+                                       Qt.QueuedConnection,
+                                       Q_ARG(object, result),
+                                       Q_ARG(list, variables))
+                                       
+            except Exception as e:
+                import traceback
+                error_details = traceback.format_exc()
+                logger.error(f"Optimization error:\n{error_details}")
+                from PySide6.QtCore import QMetaObject, Qt, Q_ARG
+                QMetaObject.invokeMethod(self, "_on_optimization_failed",
+                                       Qt.QueuedConnection,
+                                       Q_ARG(str, str(e)))
+
+        import threading
+        thread = threading.Thread(target=run_optimization, daemon=True)
+        thread.start()
+
+    @Slot(object, list)
+    def _on_optimization_finished(self, result, variables):
+        """Callback for finished optimization"""
+        self._opt_is_running = False
         
-        finally:
-            self._opt_is_running = False
+        if result.success:
+            text = f"Optimization Successful!\n\n"
+            text += f"Final Merit Function: {result.final_merit:.4f}\n"
+            text += f"Iterations: {result.iterations}\n\n"
+            text += "Optimized Values (Preview):\n"
+            
+            # Extract optimized values from the system
+            if result.optimized_system and result.optimized_system.elements:
+                lens = result.optimized_system.elements[0].lens
+                for var in variables:
+                    val = getattr(lens, var.parameter)
+                    text += f"  {var.name}: {val:.4f}\n"
+            
+            self._opt_results_text.setPlainText(text)
+            self._opt_results_text.append("\nClick 'Apply & Keep' to save these changes.")
+            
+            # Update visualization but don't commit yet
+            if result.optimized_system and result.optimized_system.elements:
+                optimized_lens = result.optimized_system.elements[0].lens
+                self._opt_pending_lens = optimized_lens
+                self._opt_apply_btn.setEnabled(True)
+                self._opt_viz.update_lens(optimized_lens)
+        else:
+            self._opt_results_text.setPlainText(f"Optimization failed: {result.message}")
+
+    @Slot(str)
+    def _on_optimization_failed(self, error_msg):
+        """Callback for failed optimization"""
+        self._opt_is_running = False
+        self._opt_results_text.setPlainText(f"Error during optimization: {error_msg}")
     
     def _on_apply_optimization(self):
         """Apply the optimization results to the current lens"""
@@ -1548,13 +1589,17 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         toolbar_layout.addWidget(default_btn)
         left_layout.addWidget(toolbar)
         
-        # Operands table (using QTableWidget if available, or QTextEdit)
-        self._tol_operands_text = QTextEdit()
-        self._tol_operands_text.setMaximumHeight(150)
-        self._tol_operands_text.setReadOnly(True)
-        self._tol_operands_text.setStyleSheet("background-color: #2b2b2b; color: #e0e0e0; font-family: Courier; font-size: 9px;")
-        left_layout.addWidget(QLabel("Operands (Element, Type, Min, Max):"))
-        left_layout.addWidget(self._tol_operands_text)
+        # Operands table
+        from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView
+        self._tol_table = QTableWidget()
+        self._tol_table.setColumnCount(5)
+        self._tol_table.setHorizontalHeaderLabels(["Element #", "Type", "Min", "Max", "Distribution"])
+        self._tol_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self._tol_table.setEditTriggers(QTableWidget.DoubleClicked)
+        self._tol_table.itemChanged.connect(self._on_tol_item_changed)
+        self._tol_table.setStyleSheet("background-color: #2b2b2b; color: #e0e0e0; font-family: Courier; font-size: 10px;")
+        left_layout.addWidget(QLabel("Operands (Double-click to edit Min/Max):"))
+        left_layout.addWidget(self._tol_table)
         
         # Right Panel: Analysis
         right_panel = QWidget()
@@ -1590,13 +1635,21 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         btn_layout.addWidget(run_inv_btn)
         right_layout.addLayout(btn_layout)
         
+        # Progress Bar
+        from PySide6.QtWidgets import QProgressBar
+        self._tol_progress = QProgressBar()
+        self._tol_progress.setRange(0, 100)
+        self._tol_progress.setValue(0)
+        self._tol_progress.setVisible(False)
+        right_layout.addWidget(self._tol_progress)
+        
         # Results
         results_group = QGroupBox("Results")
         results_layout = QVBoxLayout(results_group)
         
         self._tol_results_text = QTextEdit()
         self._tol_results_text.setReadOnly(True)
-        self._tol_results_text.setMaximumHeight(200)
+        self._tol_results_text.setMinimumHeight(200)
         self._tol_results_text.setStyleSheet("background-color: #2b2b2b; color: #e0e0e0; font-family: Courier; font-size: 10px;")
         self._tol_results_text.setPlainText("Configure tolerances and click 'Run Monte Carlo' or 'Inverse Sensitivity' to analyze.")
         results_layout.addWidget(self._tol_results_text)
@@ -1624,64 +1677,171 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         return tol
     
     def _on_add_tolerance(self):
-        """Add a new tolerance operand"""
-        from PySide6.QtWidgets import QInputDialog
+        """Add a new tolerance operand with element selection"""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QFormLayout, QComboBox, QDoubleSpinBox, QPushButton
         
         if not self._current_lens:
             return
-        
-        # Simple dialog - choose tolerance type
-        types = [t.value for t in ToleranceType]
-        type_name, ok = QInputDialog.getItem(self, "Add Tolerance", "Select parameter type:", types, 0, False)
-        
-        if ok and type_name:
-            # Get min/max values
-            min_val, ok1 = QInputDialog.getDouble(self, "Add Tolerance", "Min deviation:", -0.1, -10, 10, 4)
-            max_val, ok2 = QInputDialog.getDouble(self, "Add Tolerance", "Max deviation:", 0.1, -10, 10, 4)
             
-            if ok1 and ok2:
-                tol_type = ToleranceType(type_name)
-                operand = ToleranceOperand(0, tol_type, min_val, max_val)
-                self._tol_operands.append(operand)
-                self._update_tolerance_operands_display()
-    
-    def _on_remove_tolerance(self):
-        """Remove the last tolerance operand"""
-        if self._tol_operands:
-            self._tol_operands.pop()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Add Tolerance Operand")
+        layout = QVBoxLayout(dialog)
+        form = QFormLayout()
+        
+        # Element selection
+        num_elements = 1
+        if hasattr(self._current_lens, 'elements'):
+            num_elements = len(self._current_lens.elements)
+        
+        elem_combo = QComboBox()
+        elem_combo.addItems([str(i) for i in range(num_elements)])
+        form.addRow("Element Index:", elem_combo)
+        
+        # Type selection
+        from src.tolerancing import ToleranceType, ToleranceOperand
+        type_combo = QComboBox()
+        type_combo.addItems([t.value for t in ToleranceType])
+        form.addRow("Parameter Type:", type_combo)
+        
+        # Min/Max
+        min_spin = QDoubleSpinBox()
+        min_spin.setRange(-10, 10)
+        min_spin.setDecimals(4)
+        min_spin.setValue(-0.1)
+        form.addRow("Min Deviation:", min_spin)
+        
+        max_spin = QDoubleSpinBox()
+        max_spin.setRange(-10, 10)
+        max_spin.setDecimals(4)
+        max_spin.setValue(0.1)
+        form.addRow("Max Deviation:", max_spin)
+        
+        # Distribution
+        dist_combo = QComboBox()
+        dist_combo.addItems(["uniform", "gaussian"])
+        form.addRow("Distribution:", dist_combo)
+        
+        layout.addLayout(form)
+        
+        add_btn = QPushButton("Add")
+        add_btn.clicked.connect(dialog.accept)
+        layout.addWidget(add_btn)
+        
+        if dialog.exec():
+            p_type = None
+            for member in ToleranceType:
+                if member.value == type_combo.currentText():
+                    p_type = member
+                    break
+            
+            operand = ToleranceOperand(
+                element_index=int(elem_combo.currentText()),
+                param_type=p_type,
+                min_val=min_spin.value(),
+                max_val=max_spin.value(),
+                distribution=dist_combo.currentText()
+            )
+            self._tol_operands.append(operand)
             self._update_tolerance_operands_display()
-    
+
+    def _on_add_default_tolerances(self):
+        """Add standard tolerances for all elements in the system"""
+        from src.tolerancing import ToleranceType, ToleranceOperand
+        
+        if not self._current_lens:
+            return
+            
+        num_elements = 1
+        if hasattr(self._current_lens, 'elements'):
+            num_elements = len(self._current_lens.elements)
+            
+        new_operands = []
+        for i in range(num_elements):
+            new_operands.extend([
+                ToleranceOperand(i, ToleranceType.RADIUS_1, -0.1, 0.1),
+                ToleranceOperand(i, ToleranceType.RADIUS_2, -0.1, 0.1),
+                ToleranceOperand(i, ToleranceType.THICKNESS, -0.05, 0.05),
+                ToleranceOperand(i, ToleranceType.DECENTER_Y, -0.05, 0.05),
+                ToleranceOperand(i, ToleranceType.TILT_X, -0.1, 0.1),
+            ])
+        
+            self._tol_operands.extend(new_operands)
+        self._update_tolerance_operands_display()
+
+    def _on_remove_tolerance(self):
+        """Remove selected tolerance operands from the table"""
+        selected_rows = sorted(set(index.row() for index in self._tol_table.selectedIndexes()), reverse=True)
+        if not selected_rows and self._tol_operands:
+            # Fallback to removing last row if nothing selected
+            self._tol_operands.pop()
+        else:
+            for row in selected_rows:
+                if row < len(self._tol_operands):
+                    self._tol_operands.pop(row)
+        
+        self._update_tolerance_operands_display()
+
     def _on_clear_tolerances(self):
         """Clear all tolerance operands"""
-        self._tol_operands = []
-        self._update_tolerance_operands_display()
-    
-    def _on_add_default_tolerances(self):
-        """Add default tolerance operands"""
-        from src.tolerancing import ToleranceType
-        
-        self._tol_operands = [
-            ToleranceOperand(0, ToleranceType.RADIUS_1, -0.1, 0.1),
-            ToleranceOperand(0, ToleranceType.RADIUS_2, -0.1, 0.1),
-            ToleranceOperand(0, ToleranceType.THICKNESS, -0.05, 0.05),
-            ToleranceOperand(0, ToleranceType.DECENTER_Y, -0.05, 0.05),
-            ToleranceOperand(0, ToleranceType.TILT_X, -0.1, 0.1),
-        ]
-        self._update_tolerance_operands_display()
-    
+        from PySide6.QtWidgets import QMessageBox
+        if not self._tol_operands:
+            return
+            
+        if QMessageBox.question(self, "Clear All", "Are you sure you want to clear all tolerance operands?",
+                               QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+            self._tol_operands = []
+            self._update_tolerance_operands_display()
+
+    def _on_tol_item_changed(self, item):
+        """Handle manual edits in the tolerance table"""
+        row = item.row()
+        col = item.column()
+        if row < len(self._tol_operands) and col in (2, 3):
+            try:
+                val = float(item.text())
+                if col == 2:
+                    self._tol_operands[row].min_val = val
+                else:
+                    self._tol_operands[row].max_val = val
+            except ValueError:
+                # Revert if invalid
+                self._update_tolerance_operands_display()
+
     def _update_tolerance_operands_display(self):
-        """Update the operands display"""
-        text = "Element | Type                 | Min      | Max\n"
-        text += "-" * 55 + "\n"
-        for op in self._tol_operands:
-            text += f"{op.element_index:7} | {op.param_type.value:21} | {op.min_val:8.4f} | {op.max_val:8.4f}\n"
-        self._tol_operands_text.setPlainText(text if self._tol_operands else "No operands defined.")
-    
-    def _on_run_monte_carlo(self):
-        """Run Monte Carlo analysis"""
-        from src.tolerancing import MonteCarloAnalyzer
-        from src.optical_system import OpticalSystem
+        """Update the operands table display"""
+        from PySide6.QtWidgets import QTableWidgetItem
+        from PySide6.QtCore import Qt
         
+        self._tol_table.blockSignals(True)
+        self._tol_table.setRowCount(len(self._tol_operands))
+        
+        for i, op in enumerate(self._tol_operands):
+            # Element #
+            item = QTableWidgetItem(str(op.element_index))
+            item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+            self._tol_table.setItem(i, 0, item)
+            
+            # Type
+            item = QTableWidgetItem(op.param_type.value)
+            item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+            self._tol_table.setItem(i, 1, item)
+            
+            # Min
+            self._tol_table.setItem(i, 2, QTableWidgetItem(f"{op.min_val:+.4f}"))
+            
+            # Max
+            self._tol_table.setItem(i, 3, QTableWidgetItem(f"{op.max_val:+.4f}"))
+            
+            # Distribution
+            dist = getattr(op, 'distribution', 'uniform')
+            item = QTableWidgetItem(dist)
+            item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+            self._tol_table.setItem(i, 4, item)
+            
+        self._tol_table.blockSignals(False)
+
+    def _on_run_monte_carlo(self):
+        """Run Monte Carlo analysis in a thread to keep UI responsive"""
         if not self._current_lens:
             self._tol_results_text.setPlainText("No lens selected.")
             return
@@ -1690,19 +1850,34 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             self._tol_results_text.setPlainText("No tolerance operands defined.")
             return
         
+        self._tol_results_text.setPlainText(f"Starting Monte Carlo analysis ({self._tol_num_trials.value()} trials)...")
+        self._tol_progress.setVisible(True)
+        self._tol_progress.setValue(0)
+        
+        import threading
+        thread = threading.Thread(target=self._run_mc_worker, daemon=True)
+        thread.start()
+
+    def _run_mc_worker(self):
+        """Worker thread for Monte Carlo analysis"""
+        from src.tolerancing import MonteCarloAnalyzer
+        from src.optical_system import OpticalSystem
+        from PySide6.QtCore import QMetaObject, Qt, Q_ARG
+        import copy
+        
         try:
+            # Copy system for thread safety
             system = OpticalSystem(name="Tolerancing")
-            system.add_lens(self._current_lens)
+            system.add_lens(copy.deepcopy(self._current_lens))
             
             analyzer = MonteCarloAnalyzer(system, self._tol_operands)
-            
             num_trials = self._tol_num_trials.value()
             criterion = self._tol_criterion.value()
             
-            self._tol_results_text.setPlainText(f"Running Monte Carlo analysis ({num_trials} trials)...")
-            
+            # Run analysis
             results = analyzer.run_monte_carlo(num_trials=num_trials, criterion=criterion)
             
+            # Format report
             text = f"=== MONTE CARLO RESULTS ===\n\n"
             text += f"Total Trials: {results['total_trials']}\n"
             text += f"Passed (Yield): {results['passed_trials']} ({results['yield_percent']:.1f}%)\n"
@@ -1712,33 +1887,54 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             text += f"RMS Spot Size - Max: {results['max_rms']:.4f} mm\n"
             text += f"RMS Spot Size - Min: {results['min_rms']:.4f} mm\n"
             
-            self._tol_results_text.setPlainText(text)
-            
-            # Show histogram in dialog
-            dialog = AnalysisPlotDialog(f"Monte Carlo Distribution - {self._current_lens.name}", self)
-            ax = dialog.get_axes()
-            
-            all_rms = results.get('all_rms', [])
-            if all_rms:
-                import numpy as np
-                ax.hist(all_rms, bins=max(10, num_trials // 10), color='skyblue', edgecolor='black', alpha=0.7)
-                ax.axvline(criterion, color='red', linestyle='--', label=f'Criterion ({criterion})')
-                ax.axvline(results['mean_rms'], color='green', linestyle='-', label=f'Mean ({results["mean_rms"]:.4f})')
-                ax.set_xlabel("RMS Spot Size (mm)")
-                ax.set_ylabel("Frequency")
-                ax.set_title("Monte Carlo Yield Distribution")
-                ax.legend()
-                ax.grid(True, linestyle='--', alpha=0.3)
-                dialog.exec()
+            # Update UI from thread
+            QMetaObject.invokeMethod(self, "_on_analysis_finished", 
+                                   Qt.QueuedConnection,
+                                   Q_ARG(str, text),
+                                   Q_ARG(dict, results))
             
         except Exception as e:
-            self._tol_results_text.setPlainText(f"Error running Monte Carlo: {e}")
-    
-    def _on_run_inverse_sensitivity(self):
-        """Run Inverse Sensitivity analysis"""
-        from src.tolerancing import InverseSensitivityAnalyzer
-        from src.optical_system import OpticalSystem
+            import traceback
+            error_details = traceback.format_exc()
+            QMetaObject.invokeMethod(self, "_on_analysis_failed",
+                                   Qt.QueuedConnection,
+                                   Q_ARG(str, f"Monte Carlo Error: {e}\n{error_details}"))
+
+    @Slot(str, dict)
+    def _on_analysis_finished(self, text, results):
+        """Callback for finished analysis"""
+        self._tol_results_text.setPlainText(text)
+        self._tol_progress.setValue(100)
+        self._tol_progress.setVisible(False)
         
+        # Show histogram
+        num_trials = results.get('total_trials', 100)
+        criterion = self._tol_criterion.value()
+        
+        dialog = AnalysisPlotDialog(f"Monte Carlo Distribution - {self._current_lens.name}", self)
+        ax = dialog.get_axes()
+        
+        all_rms = results.get('all_rms', [])
+        if all_rms:
+            import numpy as np
+            ax.hist(all_rms, bins=max(10, num_trials // 10), color='skyblue', edgecolor='black', alpha=0.7)
+            ax.axvline(criterion, color='red', linestyle='--', label=f'Criterion ({criterion})')
+            ax.axvline(results['mean_rms'], color='green', linestyle='-', label=f'Mean ({results["mean_rms"]:.4f})')
+            ax.set_xlabel("RMS Spot Size (mm)")
+            ax.set_ylabel("Frequency")
+            ax.set_title("Monte Carlo Yield Distribution")
+            ax.legend()
+            ax.grid(True, linestyle='--', alpha=0.3)
+            dialog.exec()
+
+    @Slot(str)
+    def _on_analysis_failed(self, error_msg):
+        """Callback for failed analysis"""
+        self._tol_results_text.setPlainText(error_msg)
+        self._tol_progress.setVisible(False)
+
+    def _on_run_inverse_sensitivity(self):
+        """Run Inverse Sensitivity analysis in a thread"""
         if not self._current_lens:
             self._tol_results_text.setPlainText("No lens selected.")
             return
@@ -1747,31 +1943,52 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             self._tol_results_text.setPlainText("No tolerance operands defined.")
             return
         
+        self._tol_results_text.setPlainText("Starting Inverse Sensitivity analysis...")
+        self._tol_progress.setVisible(True)
+        self._tol_progress.setMinimum(0)
+        self._tol_progress.setMaximum(0) # Busy indicator
+        
+        import threading
+        thread = threading.Thread(target=self._run_inv_worker, daemon=True)
+        thread.start()
+
+    def _run_inv_worker(self):
+        """Worker thread for Inverse Sensitivity"""
+        from src.tolerancing import InverseSensitivityAnalyzer
+        from src.optical_system import OpticalSystem
+        from PySide6.QtCore import QMetaObject, Qt, Q_ARG
+        import copy
+        
         try:
             system = OpticalSystem(name="Tolerancing")
-            system.add_lens(self._current_lens)
+            system.add_lens(copy.deepcopy(self._current_lens))
             
             analyzer = InverseSensitivityAnalyzer(system, self._tol_operands)
-            
             criterion = self._tol_criterion.value()
             
-            self._tol_results_text.setPlainText("Running Inverse Sensitivity analysis...")
-            
+            # Use RSS method as in Tkinter version
             results = analyzer.optimize_limits(target_yield_criterion=criterion, method='rss')
             
             text = f"=== INVERSE SENSITIVITY RESULTS ===\n\n"
             text += f"Target Yield Criterion: {criterion} mm RMS\n\n"
-            text += "Optimized Tolerances:\n"
+            text += "Suggested Limits (RSS budget):\n"
             text += "-" * 55 + "\n"
-            text += f"{'Type':<20} | {'Min':>10} | {'Max':>10}\n"
+            text += f"{'Elem':<5} | {'Type':<20} | {'Limit (+/-)':<10}\n"
             text += "-" * 55 + "\n"
             for op in results:
-                text += f"{op.param_type.value:<20} | {op.min_val:10.4f} | {op.max_val:10.4f}\n"
+                text += f"{op.element_index:<5} | {op.param_type.value:<20} | {op.max_val:10.4f}\n"
             
-            self._tol_results_text.setPlainText(text)
-            
+            QMetaObject.invokeMethod(self, "_on_analysis_finished", 
+                                   Qt.QueuedConnection,
+                                   Q_ARG(str, text),
+                                   Q_ARG(dict, {}))
+                                   
         except Exception as e:
-            self._tol_results_text.setPlainText(f"Error running Inverse Sensitivity: {e}")
+            import traceback
+            error_details = traceback.format_exc()
+            QMetaObject.invokeMethod(self, "_on_analysis_failed",
+                                   Qt.QueuedConnection,
+                                   Q_ARG(str, f"Inverse Sensitivity Error: {e}\n{error_details}"))
     
     def _on_calculate_tolerances(self):
         """Calculate tolerance sensitivities"""
@@ -1878,6 +2095,7 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             self._optical_system.add_lens(lens, air_gap_before=5.0)
             self._update_system_list()
             self._assembly_viz.update_system(self._optical_system)
+            self._on_assembly_changed()
     
     def _on_remove_lens_from_system(self):
         """Remove selected lens from system"""
@@ -1886,6 +2104,7 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             self._optical_system.remove_lens(current)
             self._update_system_list()
             self._assembly_viz.update_system(self._optical_system)
+            self._on_assembly_changed()
     
     def _on_move_lens_up(self):
         """Move lens up in system"""
@@ -1895,6 +2114,7 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
                 self._optical_system.elements[current-1], self._optical_system.elements[current]
             self._update_system_list()
             self._assembly_viz.update_system(self._optical_system)
+            self._on_assembly_changed()
     
     def _on_move_lens_down(self):
         """Move lens down in system"""
@@ -1904,6 +2124,14 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
                 self._optical_system.elements[current+1], self._optical_system.elements[current]
             self._update_system_list()
             self._assembly_viz.update_system(self._optical_system)
+            self._on_assembly_changed()
+
+    def _on_assembly_changed(self):
+        """Handle assembly change, update other tabs if in assembly mode"""
+        if self._current_assembly:
+             # If we are currently editing an assembly, other tabs should reflect it
+             self._update_all_tabs()
+
     
     def _update_system_list(self):
         """Update the system list"""
@@ -1975,23 +2203,39 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             self._update_system_list()
     
     def _update_all_tabs(self):
-        """Update all tab displays for current lens"""
-        if not self._current_lens:
+        """Update all tab displays for current lens or assembly"""
+        if not self._current_lens and not self._current_assembly:
             return
         
+        # Determine what to use for analysis: current lens or current assembly
+        if self._current_assembly:
+            active_system = self._current_assembly
+        else:
+            # Create a temporary system for the single lens
+            from src.optical_system import OpticalSystem
+            active_system = OpticalSystem(name="Temporary")
+            active_system.add_lens(self._current_lens)
+
         if hasattr(self, '_sim_viz'):
-            self._sim_viz.run_simulation(self._current_lens, 
+            # Simulation visualization needs a lens or system
+            # Currently SimulationVisualizationWidget.run_simulation takes a lens
+            # We should update it to handle OpticalSystem or pass the first lens for now
+            target = self._current_lens if self._current_lens else self._current_assembly.elements[0].lens
+            self._sim_viz.run_simulation(target, 
                                   int(self._sim_num_rays.value()) if hasattr(self, '_sim_num_rays') else 11,
                                   self._sim_angle.value() if hasattr(self, '_sim_angle') else 0,
                                   self._sim_source_height.value() if hasattr(self, '_sim_source_height') else 0)
         
         if hasattr(self, '_opt_viz'):
-            self._opt_viz.update_lens(self._current_lens)
+            target = self._current_lens if self._current_lens else self._current_assembly.elements[0].lens
+            self._opt_viz.update_lens(target)
         
-        if hasattr(self, '_tol_viz'):
-            self._tol_viz.update_lens(self._current_lens)
+        if hasattr(self, '_tol_viz') and hasattr(self._tol_viz, 'update_lens'):
+            target = self._current_lens if self._current_lens else self._current_assembly.elements[0].lens
+            self._tol_viz.update_lens(target)
         
         self._update_performance_metrics()
+
     
     def _on_new_lens(self):
         """Create new lens"""
@@ -2433,11 +2677,21 @@ Ctrl+6         Tolerancing
                 subcontrol-origin: margin;
                 left: 10px;
             }
-            QDoubleSpinBox, QSpinBox {
+            QDoubleSpinBox, QSpinBox, QLineEdit, QTextEdit, QTableWidget {
                 background-color: #2d2d2d;
                 color: #e0e0e0;
                 border: 1px solid #3f3f3f;
                 padding: 3px;
+            }
+            QHeaderView::section {
+                background-color: #2d2d2d;
+                color: #e0e0e0;
+                padding: 4px;
+                border: 1px solid #3f3f3f;
+            }
+            QTableCornerButton::section {
+                background-color: #2d2d2d;
+                border: 1px solid #3f3f3f;
             }
             QPushButton {
                 background-color: #2d2d2d;
@@ -2478,7 +2732,17 @@ Ctrl+6         Tolerancing
                 color: #e0e0e0;
                 border-top: 1px solid #3f3f3f;
             }
+            QProgressBar {
+                border: 1px solid #3f3f3f;
+                border-radius: 2px;
+                text-align: center;
+                background-color: #2d2d2d;
+            }
+            QProgressBar::chunk {
+                background-color: #0078d4;
+            }
         """)
+
     
     def _on_reset_window(self):
         """Reset window to default size and position"""
