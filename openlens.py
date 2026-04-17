@@ -21,8 +21,54 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence
 
+# Matplotlib imports for Analysis
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
+
 from src.lens import Lens
 from src.services import LensService
+
+
+class AnalysisPlotDialog(QDialog):
+    """Reusable dialog for displaying Matplotlib plots."""
+    
+    def __init__(self, title, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.resize(800, 600)
+        
+        layout = QVBoxLayout(self)
+        
+        # Create figure and canvas
+        self.figure = Figure(figsize=(8, 6), dpi=100)
+        if hasattr(parent, '_theme') and parent._theme == 'dark':
+            self.figure.patch.set_facecolor('#1e1e1e')
+            
+        self.canvas = FigureCanvas(self.figure)
+        layout.addWidget(self.canvas)
+        
+        # Add navigation toolbar
+        self.toolbar = NavigationToolbar(self.canvas, self)
+        layout.addWidget(self.toolbar)
+        
+        # Add close button
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        layout.addWidget(close_btn)
+
+    def get_axes(self, *args, **kwargs):
+        """Get axes for the figure, setting dark theme if needed."""
+        ax = self.figure.add_subplot(*args, **kwargs)
+        if hasattr(self.parent(), '_theme') and self.parent()._theme == 'dark':
+            ax.set_facecolor('#1e1e1e')
+            ax.tick_params(colors='#e0e0e0')
+            ax.xaxis.label.set_color('#e0e0e0')
+            ax.yaxis.label.set_color('#e0e0e0')
+            ax.title.set_color('#e0e0e0')
+            for spine in ax.spines.values():
+                spine.set_edgecolor('#3f3f3f')
+        return ax
 
 
 class OpenLensWindow(QMainWindow):
@@ -550,6 +596,7 @@ class OpenLensWindow(QMainWindow):
             return
         
         try:
+            from src.aberrations import AberrationsCalculator
             wavelengths = [400, 450, 550, 650, 700]
             wavelength = wavelengths[self._perf_wavelength.currentIndex()]
             entrance_pupil = self._perf_entrance_pupil.value()
@@ -620,39 +667,416 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             self._perf_metrics_text.setPlainText(f"Error calculating metrics: {e}")
     
     def _on_show_spot_diagram(self):
-        """Show spot diagram"""
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(self, "Spot Diagram", "Spot Diagram feature - to be implemented")
+        """Show spot diagram using SpotDiagram analyzer"""
+        if not self._current_lens:
+            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+            return
+        
+        try:
+            from src.optical_system import OpticalSystem
+            from src.analysis.spot_diagram import SpotDiagram
+            
+            # 1. Prepare parameters
+            wavelengths_vals = [400, 450, 550, 650, 700]
+            wavelength = wavelengths_vals[self._perf_wavelength.currentIndex()]
+            entrance_pupil = self._perf_entrance_pupil.value()
+            
+            # 2. Setup optical system
+            system = OpticalSystem(name="Spot Analysis")
+            system.add_lens(self._current_lens)
+            
+            # 3. Create analyzer
+            analyzer = SpotDiagram(system)
+            
+            # 4. Perform analysis (on-axis, paraxial focus)
+            res = analyzer.trace_spot(
+                field_angle_y=0.0,
+                wavelength=wavelength,
+                num_rings=6
+            )
+            
+            # 5. Show in dialog
+            dialog = AnalysisPlotDialog(f"Spot Diagram - {self._current_lens.name}", self)
+            ax = dialog.get_axes()
+            
+            points = res['points']
+            y_coords = [p[0] * 1000 for p in points] # mm to um
+            z_coords = [p[1] * 1000 for p in points]
+            
+            ax.scatter(z_coords, y_coords, s=10, alpha=0.6, color='#0078d4')
+            ax.set_aspect('equal')
+            ax.set_xlabel("Sagittal (µm)")
+            ax.set_ylabel("Tangential (µm)")
+            ax.set_title(f"Spot Diagram (λ={wavelength}nm, RMS={res['rms_radius']*1000:.2f}µm)")
+            ax.grid(True, linestyle='--', alpha=0.3)
+            
+            dialog.exec()
+            
+        except Exception as e:
+            logger.error(f"Spot diagram error: {e}")
+            QMessageBox.critical(self, "Analysis Error", f"Failed to generate spot diagram: {e}")
     
     def _on_show_ray_fan(self):
-        """Show ray fan plot"""
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(self, "Ray Fan", "Ray Fan feature - to be implemented")
-    
+        """Show ray fan plot using GeometricTraceAnalysis"""
+        if not self._current_lens:
+            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+            return
+            
+        try:
+            from src.optical_system import OpticalSystem
+            from src.analysis.geometric import GeometricTraceAnalysis
+            
+            # 1. Prepare parameters
+            wavelengths_vals = [400, 450, 550, 650, 700]
+            wavelength = wavelengths_vals[self._perf_wavelength.currentIndex()]
+            
+            # 2. Setup optical system
+            system = OpticalSystem(name="Ray Fan Analysis")
+            system.add_lens(self._current_lens)
+            
+            # 3. Create analyzer
+            analyzer = GeometricTraceAnalysis(system)
+            
+            # 4. Perform analysis
+            res_y = analyzer.calculate_ray_fan(field_angle=0.0, wavelength=wavelength, pupil_axis='y')
+            res_z = analyzer.calculate_ray_fan(field_angle=0.0, wavelength=wavelength, pupil_axis='z')
+            
+            # 5. Show in dialog
+            dialog = AnalysisPlotDialog(f"Ray Fan - {self._current_lens.name}", self)
+            ax = dialog.get_axes()
+            
+            # Plot Tangential (Y) fan
+            ax.plot(res_y['pupil_coords'], [e*1000 for e in res_y['ray_errors']], 
+                    'b-', label='Tangential (Ey)')
+            # Plot Sagittal (Z) fan
+            ax.plot(res_z['pupil_coords'], [e*1000 for e in res_z['ray_errors']], 
+                    'r--', label='Sagittal (Ez)')
+            
+            ax.axhline(0, color='gray', linestyle='-', linewidth=0.5)
+            ax.axvline(0, color='gray', linestyle='-', linewidth=0.5)
+            
+            ax.set_xlabel("Pupil Coordinate (normalized)")
+            ax.set_ylabel("Transverse Error (µm)")
+            ax.set_title(f"Ray Fan Plot (λ={wavelength}nm)")
+            ax.legend()
+            ax.grid(True, linestyle='--', alpha=0.3)
+            
+            dialog.exec()
+            
+        except Exception as e:
+            logger.error(f"Ray fan error: {e}")
+            QMessageBox.critical(self, "Analysis Error", f"Failed to generate ray fan: {e}")
+
     def _on_show_field_curves(self):
-        """Show field curves"""
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(self, "Field Curves", "Field Curves feature - to be implemented")
+        """Show field curves using GeometricTraceAnalysis"""
+        if not self._current_lens:
+            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+            return
+            
+        try:
+            from src.optical_system import OpticalSystem
+            from src.analysis.geometric import GeometricTraceAnalysis
+            
+            # 1. Prepare parameters
+            wavelengths_vals = [400, 450, 550, 650, 700]
+            wavelength = wavelengths_vals[self._perf_wavelength.currentIndex()]
+            
+            # 2. Setup optical system
+            system = OpticalSystem(name="Field Analysis")
+            system.add_lens(self._current_lens)
+            
+            # 3. Create analyzer
+            analyzer = GeometricTraceAnalysis(system)
+            
+            # 4. Perform analysis
+            res = analyzer.calculate_field_curvature_distortion(
+                max_field_angle=20.0, num_points=11, wavelength=wavelength
+            )
+            
+            # 5. Show in dialog
+            dialog = AnalysisPlotDialog(f"Field Curvature & Distortion - {self._current_lens.name}", self)
+            
+            # Subplot 1: Field Curvature
+            ax1 = dialog.get_axes(1, 2, 1)
+            ax1.plot(res['tan_focus_shift'], res['field_angles'], 'b-', label='Tangential')
+            ax1.plot(res['sag_focus_shift'], res['field_angles'], 'r--', label='Sagittal')
+            ax1.axvline(0, color='gray', linestyle='-', linewidth=0.5)
+            ax1.set_xlabel("Focus Shift (mm)")
+            ax1.set_ylabel("Field Angle (deg)")
+            ax1.set_title("Field Curvature")
+            ax1.legend()
+            ax1.grid(True, linestyle='--', alpha=0.3)
+            
+            # Subplot 2: Distortion
+            ax2 = dialog.get_axes(1, 2, 2)
+            ax2.plot(res['distortion_pct'], res['field_angles'], 'g-')
+            ax2.axvline(0, color='gray', linestyle='-', linewidth=0.5)
+            ax2.set_xlabel("Distortion (%)")
+            ax2.set_ylabel("Field Angle (deg)")
+            ax2.set_title("Distortion")
+            ax2.grid(True, linestyle='--', alpha=0.3)
+            
+            dialog.exec()
+            
+        except Exception as e:
+            logger.error(f"Field curves error: {e}")
+            QMessageBox.critical(self, "Analysis Error", f"Failed to generate field curves: {e}")
     
     def _on_show_ghost_analysis(self):
-        """Show ghost analysis"""
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(self, "Ghost Analysis", "Ghost Analysis feature - to be implemented")
+        """Show ghost analysis using GhostAnalyzer"""
+        if not self._current_lens:
+            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+            return
+            
+        try:
+            from src.optical_system import OpticalSystem
+            from src.analysis.ghost import GhostAnalyzer
+            
+            # 1. Setup optical system
+            system = OpticalSystem(name="Ghost Analysis")
+            system.add_lens(self._current_lens)
+            
+            # 2. Create analyzer
+            analyzer = GhostAnalyzer(system)
+            
+            # 3. Perform analysis
+            ghost_paths = analyzer.trace_ghosts(num_rays=11)
+            
+            # 4. Show in dialog
+            dialog = AnalysisPlotDialog(f"Ghost Analysis - {self._current_lens.name}", self)
+            ax = dialog.get_axes()
+            
+            # Manual drawing of lens surfaces (replacement for missing VisualizationHelper)
+            lens = self._current_lens
+            r1 = lens.radius_of_curvature_1
+            r2 = lens.radius_of_curvature_2
+            t = lens.thickness
+            d = lens.diameter
+            h = d / 2.0
+            
+            # Plot surfaces
+            import numpy as np
+            y_pts = np.linspace(-h, h, 100)
+            
+            # Front surface
+            if abs(r1) > 1e-9:
+                x_front = r1 - np.sign(r1) * np.sqrt(r1**2 - y_pts**2)
+            else:
+                x_front = np.zeros_like(y_pts)
+            ax.plot(x_front, y_pts, 'w-', linewidth=1.5, alpha=0.8)
+            
+            # Back surface
+            if abs(r2) > 1e-9:
+                x_back = t + r2 - np.sign(r2) * np.sqrt(r2**2 - y_pts**2)
+            else:
+                x_back = np.full_like(y_pts, t)
+            ax.plot(x_back, y_pts, 'w-', linewidth=1.5, alpha=0.8)
+            
+            # Edge lines
+            ax.plot([x_front[0], x_back[0]], [y_pts[0], y_pts[0]], 'w-', linewidth=1.5, alpha=0.8)
+            ax.plot([x_front[-1], x_back[-1]], [y_pts[-1], y_pts[-1]], 'w-', linewidth=1.5, alpha=0.8)
+
+            # Trace and plot each ghost path
+            colors = ['#ff0000', '#ff8000', '#ffff00', '#00ff00', '#00ffff', '#0000ff', '#ff00ff']
+            for i, path in enumerate(ghost_paths[:7]): # Limit to first 7 paths for clarity
+                color = colors[i % len(colors)]
+                label = f"Ghost {path.reflection_1_index}->{path.reflection_2_index} (I={path.intensity:.4f})"
+                
+                for ray in path.rays:
+                    x_vals = [p.x for p in ray.path]
+                    y_vals = [p.y for p in ray.path]
+                    ax.plot(x_vals, y_vals, '-', color=color, alpha=0.3, linewidth=0.5)
+                
+                # Plot one representative ray for the legend
+                if path.rays:
+                    ax.plot([], [], '-', color=color, label=label)
+            
+            ax.set_aspect('equal')
+            ax.set_xlabel("X (mm)")
+            ax.set_ylabel("Y (mm)")
+            ax.set_title(f"Ghost Reflection Paths (2nd Order)")
+            ax.legend(fontsize='x-small', loc='upper right')
+            ax.grid(True, linestyle='--', alpha=0.3)
+            
+            dialog.exec()
+            
+        except Exception as e:
+            logger.error(f"Ghost analysis error: {e}")
+            QMessageBox.critical(self, "Analysis Error", f"Failed to generate ghost analysis: {e}")
     
     def _on_show_psf(self):
-        """Show PSF analysis"""
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(self, "PSF Analysis", "PSF Analysis feature - to be implemented")
+        """Show PSF analysis using ImageQualityAnalyzer"""
+        if not self._current_lens:
+            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+            return
+            
+        try:
+            from src.optical_system import OpticalSystem
+            from src.analysis.psf_mtf import ImageQualityAnalyzer
+            
+            # 1. Prepare parameters
+            wavelengths_vals = [400, 450, 550, 650, 700]
+            wavelength = wavelengths_vals[self._perf_wavelength.currentIndex()]
+            
+            # 2. Setup optical system
+            system = OpticalSystem(name="PSF Analysis")
+            system.add_lens(self._current_lens)
+            
+            # 3. Create analyzer
+            analyzer = ImageQualityAnalyzer(system)
+            
+            # 4. Perform analysis (geometric PSF for speed)
+            res = analyzer.calculate_psf(
+                field_angle=0.0, 
+                wavelength=wavelength, 
+                sensor_size=0.1, 
+                pixels=128
+            )
+            
+            # 5. Show in dialog
+            dialog = AnalysisPlotDialog(f"PSF Analysis - {self._current_lens.name}", self)
+            ax = dialog.get_axes()
+            
+            # Heatmap
+            import numpy as np
+            im = ax.imshow(res['image'], extent=[
+                (res['z_axis'][0] - res['centroid'][1]) * 1000, 
+                (res['z_axis'][-1] - res['centroid'][1]) * 1000,
+                (res['y_axis'][0] - res['centroid'][0]) * 1000, 
+                (res['y_axis'][-1] - res['centroid'][0]) * 1000
+            ], cmap='magma', origin='lower')
+            
+            ax.set_xlabel("Sagittal Position (µm)")
+            ax.set_ylabel("Tangential Position (µm)")
+            ax.set_title(f"Geometric Point Spread Function (λ={wavelength}nm)")
+            dialog.figure.colorbar(im, ax=ax, label='Relative Intensity')
+            
+            dialog.exec()
+            
+        except Exception as e:
+            logger.error(f"PSF error: {e}")
+            QMessageBox.critical(self, "Analysis Error", f"Failed to generate PSF: {e}")
     
     def _on_show_mtf(self):
-        """Show MTF analysis"""
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(self, "MTF Analysis", "MTF Analysis feature - to be implemented")
+        """Show MTF analysis using ImageQualityAnalyzer"""
+        if not self._current_lens:
+            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+            return
+            
+        try:
+            from src.optical_system import OpticalSystem
+            from src.analysis.psf_mtf import ImageQualityAnalyzer
+            
+            # 1. Prepare parameters
+            wavelengths_vals = [400, 450, 550, 650, 700]
+            wavelength = wavelengths_vals[self._perf_wavelength.currentIndex()]
+            
+            # 2. Setup optical system
+            system = OpticalSystem(name="MTF Analysis")
+            system.add_lens(self._current_lens)
+            
+            # 3. Create analyzer
+            analyzer = ImageQualityAnalyzer(system)
+            
+            # 4. Perform analysis
+            res = analyzer.calculate_mtf(
+                field_angle=0.0, 
+                wavelength=wavelength, 
+                max_freq=100.0
+            )
+            
+            # 5. Show in dialog
+            dialog = AnalysisPlotDialog(f"MTF Analysis - {self._current_lens.name}", self)
+            ax = dialog.get_axes()
+            
+            ax.plot(res['freq'], res['mtf_tan'], 'b-', label='Tangential')
+            ax.plot(res['freq'], res['mtf_sag'], 'r--', label='Sagittal')
+            
+            # Ideal diffraction limit for reference
+            ep_diam = self._current_lens.diameter
+            efl = self._current_lens.calculate_focal_length() or 100.0
+            f_number = efl / ep_diam
+            import math
+            cutoff = 1000.0 / (wavelength * 1e-6 * f_number) # lp/mm
+            
+            if cutoff > 0:
+                import numpy as np
+                freq_ideal = [f for f in res['freq'] if f < cutoff]
+                mtf_ideal = [(2/math.pi) * (math.acos(f/cutoff) - (f/cutoff)*math.sqrt(1 - (f/cutoff)**2)) 
+                             for f in freq_ideal]
+                ax.plot(freq_ideal, mtf_ideal, 'g:', label='Diffraction Limit')
+            
+            ax.set_xlabel("Spatial Frequency (lp/mm)")
+            ax.set_ylabel("Modulation (0-1)")
+            ax.set_ylim(0, 1.05)
+            ax.set_title(f"Modulation Transfer Function (λ={wavelength}nm)")
+            ax.legend()
+            ax.grid(True, linestyle='--', alpha=0.3)
+            
+            dialog.exec()
+            
+        except Exception as e:
+            logger.error(f"MTF error: {e}")
+            QMessageBox.critical(self, "Analysis Error", f"Failed to generate MTF: {e}")
     
     def _on_show_wavefront_map(self):
-        """Show wavefront map"""
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(self, "Wavefront Map", "Wavefront Map feature - to be implemented")
+        """Show wavefront map using WavefrontSensor"""
+        if not self._current_lens:
+            QMessageBox.warning(self, "No Lens", "Please select a lens first")
+            return
+            
+        try:
+            from src.optical_system import OpticalSystem
+            from src.analysis.diffraction_psf import WavefrontSensor
+            
+            # 1. Prepare parameters
+            wavelengths_vals = [400, 450, 550, 650, 700]
+            wavelength = wavelengths_vals[self._perf_wavelength.currentIndex()]
+            
+            # 2. Setup optical system
+            system = OpticalSystem(name="Wavefront Analysis")
+            system.add_lens(self._current_lens)
+            
+            # 3. Create sensor
+            sensor = WavefrontSensor(system)
+            
+            # 4. Perform analysis
+            # grid_size 64 is enough for visualization
+            wf = sensor.get_pupil_wavefront(
+                field_angle=0.0, 
+                wavelength=wavelength * 1e-6, 
+                grid_size=64
+            )
+            
+            # 5. Show in dialog
+            dialog = AnalysisPlotDialog(f"Wavefront Error - {self._current_lens.name}", self)
+            ax = dialog.get_axes()
+            
+            # Heatmap of W (nan handled by imshow)
+            import numpy as np
+            im = ax.imshow(wf.W, extent=[
+                wf.Z.min(), wf.Z.max(), wf.Y.min(), wf.Y.max()
+            ], cmap='RdBu_r', origin='lower')
+            
+            ax.set_xlabel("Pupil X (mm)")
+            ax.set_ylabel("Pupil Y (mm)")
+            ax.set_title(f"Wavefront Error (λ={wavelength}nm)")
+            
+            # Add contour lines
+            if not np.all(np.isnan(wf.W)):
+                ax.contour(wf.W, levels=10, colors='k', alpha=0.3, extent=[
+                    wf.Z.min(), wf.Z.max(), wf.Y.min(), wf.Y.max()
+                ], origin='lower')
+            
+            # Add colorbar
+            dialog.figure.colorbar(im, ax=ax, label='OPD (Waves)')
+            
+            dialog.exec()
+            
+        except Exception as e:
+            logger.error(f"Wavefront error: {e}")
+            QMessageBox.critical(self, "Analysis Error", f"Failed to generate wavefront map: {e}")
+
     
     def _on_export_performance_report(self):
         """Export performance report"""
