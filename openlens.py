@@ -2252,7 +2252,19 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         sys_group = QGroupBox("System Builder")
         sys_layout = QVBoxLayout(sys_group)
         self._system_list = QListWidget()
+        self._system_list.currentRowChanged.connect(self._on_system_item_selected)
         sys_layout.addWidget(self._system_list)
+        
+        # Air Gap Editor (contextual)
+        self._air_gap_group = QGroupBox("Air Gap (Before Selected Element)")
+        self._air_gap_group.setEnabled(False)
+        ag_layout = QFormLayout(self._air_gap_group)
+        self._air_gap_input = QDoubleSpinBox()
+        self._air_gap_input.setRange(0, 1000)
+        self._air_gap_input.setSuffix(" mm")
+        self._air_gap_input.valueChanged.connect(self._on_air_gap_changed)
+        ag_layout.addRow("Thickness:", self._air_gap_input)
+        sys_layout.addWidget(self._air_gap_group)
         
         btn_row = QHBoxLayout()
         up_btn = QPushButton("Up")
@@ -2331,10 +2343,48 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
     
     def _update_system_list(self):
         """Update the system list"""
+        self._system_list.blockSignals(True)
         self._system_list.clear()
-        for element in self._optical_system.elements:
+        for i, element in enumerate(self._optical_system.elements):
             lens = element.lens
-            self._system_list.addItem(f"{lens.name} (n={lens.refractive_index:.3f})")
+            self._system_list.addItem(f"{i}: {lens.name} (n={lens.refractive_index:.3f})")
+        self._system_list.blockSignals(False)
+
+    def _on_system_item_selected(self, index):
+        """Handle selection in the system list to show air gap editor"""
+        if index >= 0 and index < len(self._optical_system.elements):
+            # Element 0 has no 'air_gap_before' in the current model logic usually,
+            # but let's check the OpticalSystem structure.
+            # In OpticalSystem.add_lens(air_gap_before=...) it seems to store it in self.air_gaps.
+            
+            # Show/Enable air gap editor for any element > 0
+            if index > 0:
+                self._air_gap_group.setEnabled(True)
+                # Air gap index is usually index - 1 (gap between element index-1 and index)
+                gap_idx = index - 1
+                if gap_idx < len(self._optical_system.air_gaps):
+                    gap = self._optical_system.air_gaps[gap_idx]
+                    self._air_gap_input.blockSignals(True)
+                    self._air_gap_input.setValue(gap.thickness)
+                    self._air_gap_input.blockSignals(False)
+            else:
+                self._air_gap_group.setEnabled(False)
+        else:
+            self._air_gap_group.setEnabled(False)
+
+    def _on_air_gap_changed(self, value):
+        """Handle air gap thickness change"""
+        index = self._system_list.currentRow()
+        if index > 0:
+            gap_idx = index - 1
+            if gap_idx < len(self._optical_system.air_gaps):
+                self._optical_system.air_gaps[gap_idx].thickness = value
+                self._assembly_viz.update_system(self._optical_system)
+                self._on_assembly_changed()
+                
+                # Auto-save to database
+                if hasattr(self, '_save_to_database'):
+                    self._save_to_database()
     
     def _load_default_lens(self):
         """Load default lens on startup"""
