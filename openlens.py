@@ -3073,7 +3073,21 @@ class LensEditorWidget(QWidget):
         
         # Right: Visualization
         self._viz_widget = LensVisualizationWidget()
+        # Connect interactive signals from the 2D visualization widget
+        self._viz_widget._2d_widget.property_changed.connect(self._on_interactive_property_changed)
+        
         main_layout.addWidget(self._viz_widget, 2)
+
+    def _on_interactive_property_changed(self, prop, value):
+        """Update UI and lens when dragging in 2D view"""
+        if prop == 'r1':
+            self._r1_input.setValue(value)
+        elif prop == 'r2':
+            self._r2_input.setValue(value)
+        elif prop == 'thickness':
+            self._thickness_input.setValue(value)
+        elif prop == 'diameter':
+            self._diameter_input.setValue(value)
     
     def _create_properties_panel(self):
         """Create the properties panel"""
@@ -3410,6 +3424,9 @@ class LensVisualizationWidget(QWidget):
 class _2DVisualizationWidget(QWidget):
     """2D lens visualization"""
     
+    # Signals for interactive manipulation
+    property_changed = Signal(str, float)
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self._lens = None
@@ -3426,7 +3443,81 @@ class _2DVisualizationWidget(QWidget):
         self._edge_color = QColor(150, 150, 150, 200)   # Grey for lens edge
         self._text_color = QColor("#e0e0e0")
         self._axis_color = QColor("#666666")
-    
+        self._handle_color = QColor(255, 255, 255, 200) # White for interactive handles
+        
+        # Interaction state
+        self._active_handle = None # 'r1', 'r2', 'thickness', 'diameter'
+        self._last_mouse_pos = None
+        self._handles = {} # name -> (x, y)
+        self._scale = 1.0
+        self._cx = 0
+        self._cy = 0
+        
+        self.setMouseTracking(True)
+
+    def mousePressEvent(self, event):
+        if not self._lens: return
+        
+        pos = event.position().toPoint()
+        for name, h_pos in self._handles.items():
+            dx = pos.x() - h_pos.x()
+            dy = pos.y() - h_pos.y()
+            if (dx*dx + dy*dy) < 100: # 10px radius hit area
+                self._active_handle = name
+                self._last_mouse_pos = pos
+                self.setCursor(Qt.ClosedHandCursor)
+                break
+
+    def mouseReleaseEvent(self, event):
+        self._active_handle = None
+        self.setCursor(Qt.ArrowCursor)
+
+    def mouseMoveEvent(self, event):
+        if not self._lens: return
+        
+        pos = event.position().toPoint()
+        if self._active_handle:
+            dx = (pos.x() - self._last_mouse_pos.x()) / self._scale
+            dy = (pos.y() - self._last_mouse_pos.y()) / self._scale
+            
+            if self._active_handle == 'r1':
+                # Dragging R1 vertex horizontally
+                new_r1 = self._lens.radius_of_curvature_1 + dx
+                # Snap to flat if close to zero
+                if abs(new_r1) < 1.0: new_r1 = 0.0
+                self.property_changed.emit('r1', new_r1)
+            elif self._active_handle == 'r2':
+                # Dragging R2 vertex horizontally
+                new_r2 = self._lens.radius_of_curvature_2 + dx
+                # Snap to flat if close to zero
+                if abs(new_r2) < 1.0: new_r2 = 0.0
+                self.property_changed.emit('r2', new_r2)
+            elif self._active_handle == 'thickness':
+                # Dragging right edge
+                new_t = self._lens.thickness + dx
+                if new_t < 0.1: new_t = 0.1
+                self.property_changed.emit('thickness', new_t)
+            elif self._active_handle == 'diameter':
+                # Dragging top/bottom edge
+                new_d = self._lens.diameter - 2 * dy # Screen Y is inverted
+                if new_d < 1.0: new_d = 1.0
+                self.property_changed.emit('diameter', new_d)
+                
+            self._last_mouse_pos = pos
+        else:
+            # Update cursor if hovering over a handle
+            hovering = False
+            for h_pos in self._handles.values():
+                dx = pos.x() - h_pos.x()
+                dy = pos.y() - h_pos.y()
+                if (dx*dx + dy*dy) < 100:
+                    hovering = True
+                    break
+            if hovering:
+                self.setCursor(Qt.PointingHandCursor)
+            else:
+                self.setCursor(Qt.ArrowCursor)
+
     def set_view_mode(self, mode):
         self._view_mode = mode
         self.update()
@@ -3437,7 +3528,7 @@ class _2DVisualizationWidget(QWidget):
     
     def paintEvent(self, event):
         from PySide6.QtGui import QPainter, QPen, QColor, QPainterPath, QBrush
-        from PySide6.QtCore import Qt
+        from PySide6.QtCore import Qt, QPoint
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
@@ -3454,172 +3545,163 @@ class _2DVisualizationWidget(QWidget):
         
         # Larger scale for bigger lens
         max_dim = max(thickness * 2, diameter, 100)
-        scale = min(w, h) / max_dim * 0.85
+        self._scale = min(w, h) / max_dim * 0.85
+        scale = self._scale
         cx, cy = w/2, h/2
+        self._cx, self._cy = cx, cy
         
         # Draw grid
         grid_color = QColor("#333333")
         painter.setPen(QPen(grid_color, 1))
-        grid_spacing = 5 * scale  # 5mm grid
-        grid_x = 0
-        while grid_x < w:
-            painter.drawLine(grid_x, 0, grid_x, h)
-            grid_x += grid_spacing
-        grid_y = 0
-        while grid_y < h:
-            painter.drawLine(0, grid_y, w, grid_y)
-            grid_y += grid_spacing
+        grid_spacing = 10 * scale  # 10mm grid
+        
+        # Draw grid lines relative to center
+        start_x = cx % grid_spacing
+        while start_x < w:
+            painter.drawLine(start_x, 0, start_x, h)
+            start_x += grid_spacing
+        start_y = cy % grid_spacing
+        while start_y < h:
+            painter.drawLine(0, start_y, w, start_y)
+            start_y += grid_spacing
         
         # Draw axis
         painter.setPen(QPen(self._axis_color, 1))
         painter.drawLine(0, cy, w, cy)
         painter.drawLine(cx, 0, cx, h)
         
-        # Draw axis measurements (in mm)
-        font = painter.font()
-        font.setPointSize(8)
-        painter.setFont(font)
-        text_color = QColor("#888888")
-        painter.setPen(QPen(text_color, 1))
+        # Geometric calculations
+        r1_abs = abs(r1)
+        r2_abs = abs(r2)
+        half_d = diameter / 2
         
-        # X-axis measurements at bottom
-        y_axis = h - 15
-        unit = 10  # Show every 10mm
-        x_unit = unit * scale
-        for x in range(0, w, int(x_unit)):
-            mm = int(x / scale)
-            painter.drawText(x - 8, y_axis, f"{mm}")
-        
-        # Y-axis measurements at left
-        x_label = 5
-        for y in range(0, h, int(x_unit)):
-            mm = int((h - y) / scale)
-            painter.drawText(x_label, y + 3, f"{mm}")
-        
-        # Draw radius 1 surface (blue)
-        r1_abs = abs(r1) * scale
-        half_d = diameter/2 * scale
-        h = diameter / 2
-        
-        # Calculate front surface edge position at y = h (for thickness calculation)
-        if r1_abs > 0:
-            sag1_edge = r1_abs - (r1_abs**2 - half_d**2)**0.5
-            x1_edge = cx + sag1_edge if r1 > 0 else cx - sag1_edge
+        # Front surface sag at edge
+        if r1_abs > 1e-6:
+            if r1_abs > half_d:
+                sag1_edge = r1_abs - (r1_abs**2 - half_d**2)**0.5
+            else:
+                sag1_edge = r1_abs
         else:
-            x1_edge = cx
+            sag1_edge = 0 # Flat surface
+            
+        x1_edge = cx + (sag1_edge * scale if r1 > 0 else -sag1_edge * scale)
+        x1_vertex = cx
         
-        # Position back surface so that edge gap = thickness
+        # Back surface edge position
         x2_edge = x1_edge + thickness * scale
         
-        if r1_abs > 0:
-            path1 = QPainterPath()
-            r1_val = abs(r1)
-            # Use scaled h but clamp to radius
-            for i in range(51):
-                y_scaled = -half_d + half_d * i / 50
-                y_val = abs(y_scaled) / scale  # Convert back to mm
-                if y_val <= r1_val:
-                    x_offset = r1_val - (r1_val**2 - y_val**2)**0.5
-                    x = cx + x_offset if r1 > 0 else cx - x_offset
-                    if i == 0:
-                        path1.moveTo(x, cy + y_scaled)
-                    else:
-                        path1.lineTo(x, cy + y_scaled)
-            painter.setPen(QPen(self._r1_color, 3))
-            painter.drawPath(path1)
-        
-        # Draw radius 2 surface (green) - use edge-based positioning
-        r2_abs = abs(r2) * scale
-        x2_vertex_scaled = thickness * scale  # Default for flat surface
-        
-        if r2_abs > 0:
-            r2_val = abs(r2)
-            sag2_edge = r2_val - (r2_val**2 - h**2)**0.5
-            # x2_edge = x2_vertex + sag (for R>0) or x2_vertex - sag (for R<0)
-            x2_vertex = x2_edge - sag2_edge if r2 > 0 else x2_edge + sag2_edge
-            x2_vertex_scaled = x2_vertex - cx  # Convert to scale offset from cx
-            
-            path2 = QPainterPath()
-            for i in range(51):
-                y_scaled = half_d - half_d * i / 50
-                y_val = abs(y_scaled) / scale  # Convert back to mm
-                if y_val <= r2_val:
-                    x_offset = r2_val - (r2_val**2 - y_val**2)**0.5
-                    x = cx + x2_vertex_scaled + x_offset if r2 > 0 else cx + x2_vertex_scaled - x_offset
-                    if i == 0:
-                        path2.moveTo(x, cy + y_scaled)
-                    else:
-                        path2.lineTo(x, cy + y_scaled)
-            painter.setPen(QPen(self._r2_color, 3))
-            painter.drawPath(path2)
+        # Back surface vertex position
+        if r2_abs > 1e-6:
+            if r2_abs > half_d:
+                sag2_edge = r2_abs - (r2_abs**2 - half_d**2)**0.5
+            else:
+                sag2_edge = r2_abs
         else:
-            # Flat surface
-            path2 = QPainterPath()
-            path2.moveTo(x2_edge, cy - half_d)
-            path2.lineTo(x2_edge, cy + half_d)
-            painter.setPen(QPen(self._r2_color, 3))
-            painter.drawPath(path2)
-        
-        # Draw lens edge (connecting curved surfaces at top/bottom)
-        y1 = cy - diameter/2 * scale
-        y2 = cy + diameter/2 * scale
-        
-        # Draw lens edge (connecting curved surfaces at top/bottom of diameter)
-        y_top = cy - diameter/2 * scale  # Top of lens
-        y_bot = cy + diameter/2 * scale   # Bottom of lens
-        half_d = diameter/2 * scale
-        
-        # Use edge-based positions for edges
-        x1_top = x1_edge
-        x1_bot = x1_edge
-        x2_top = x2_edge
-        x2_bot = x2_edge
-        
-        painter.setPen(QPen(self._edge_color, 3))
-        painter.drawLine(x1_top, y_top, x2_top, y_top)  # Top edge
-        painter.drawLine(x1_bot, y_bot, x2_bot, y_bot)  # Bottom edge
-        
-        # Fill lens area - use edge-based positions
-        path_fill = QPainterPath()
-        for i in range(51):
-            y = -diameter/2*scale + diameter*scale*i/50
-            y_val = abs(y) / scale  # Convert back to mm
+            sag2_edge = 0 # Flat surface
             
-            # Front surface
-            if r1_abs > 0 and y_val <= abs(r1):
-                r1_val = abs(r1)
-                x1 = cx + (r1_val - (r1_val**2 - y_val**2)**0.5) if r1 > 0 else cx - (r1_val - (r1_val**2 - y_val**2)**0.5)
-            else:
-                x1 = x1_edge if y_val <= diameter/2 else cx
-            
-            # Back surface - use vertex-based calculation
-            if r2_abs > 0 and y_val <= abs(r2):
-                r2_val = abs(r2)
-                sag2_at_y = r2_val - (r2_val**2 - y_val**2)**0.5
-                x2 = x2_vertex_scaled + cx + sag2_at_y if r2 > 0 else x2_vertex_scaled + cx - sag2_at_y
-            else:
-                x2 = x2_edge if y_val <= diameter/2 else x2_edge
-            
-            if i == 0:
-                path_fill.moveTo(x1, cy+y)
-            else:
-                path_fill.lineTo(x1, cy+y)
+        # If r2 > 0, vertex is to the left of edge (x2_edge = x2_vertex + sag)
+        # If r2 < 0, vertex is to the right of edge (x2_edge = x2_vertex - sag)
+        x2_vertex = x2_edge - (sag2_edge * scale if r2 > 0 else -sag2_edge * scale)
+
+        # Clear handles
+        self._handles = {}
+
+        # Draw Lens Path
+        path_lens = QPainterPath()
         
-        for i in range(51):
-            y = diameter/2*scale - diameter*scale*i/50
-            if r2_abs > 0 and abs(y) <= r2_abs:
-                if r2 > 0:
-                    x2 = cx + thickness*scale + (r2_abs - (r2_abs**2 - y**2)**0.5)
+        # Front surface
+        if r1_abs < 1e-6:
+            # Straight line for flat surface
+            path_lens.moveTo(cx, cy - half_d * scale)
+            path_lens.lineTo(cx, cy + half_d * scale)
+        else:
+            for i in range(51):
+                y_mm = -half_d + diameter * i / 50
+                y_scaled = y_mm * scale
+                if abs(y_mm) <= r1_abs:
+                    sag = r1_abs - (r1_abs**2 - y_mm**2)**0.5
+                    x = cx + (sag * scale if r1 > 0 else -sag * scale)
                 else:
-                    x2 = cx + thickness*scale - (r2_abs - (r2_abs**2 - y**2)**0.5)
-            else:
-                x2 = cx + thickness*scale
-            path_fill.lineTo(x2, cy+y)
+                    x = x1_edge
+                if i == 0: path_lens.moveTo(x, cy + y_scaled)
+                else: path_lens.lineTo(x, cy + y_scaled)
         
-        path_fill.closeSubpath()
-        painter.setPen(QPen(self._fill_color, 1))
+        # Top edge
+        path_lens.lineTo(x2_edge, cy - half_d * scale)
+        
+        # Back surface (bottom-to-top)
+        if r2_abs < 1e-6:
+            # Straight line for flat surface
+            path_lens.lineTo(x2_edge, cy + half_d * scale)
+            path_lens.lineTo(x2_edge, cy - half_d * scale)
+        else:
+            for i in range(51):
+                y_mm = -half_d + diameter * i / 50
+                y_scaled = -y_mm * scale # Draw bottom to top
+                if abs(y_mm) <= r2_abs:
+                    sag = r2_abs - (r2_abs**2 - y_mm**2)**0.5
+                    x = x2_vertex + (sag * scale if r2 > 0 else -sag * scale)
+                else:
+                    x = x2_edge
+                path_lens.lineTo(x, cy + y_scaled)
+            
+        path_lens.closeSubpath()
+        
+        # Fill and stroke lens
+        painter.setPen(QPen(self._edge_color, 2))
         painter.setBrush(QBrush(self._fill_color))
-        painter.drawPath(path_fill)
+        painter.drawPath(path_lens)
+        
+        # Highlight surfaces
+        if r1_abs > 1e-6:
+            path_r1 = QPainterPath()
+            for i in range(51):
+                y_mm = -half_d + diameter * i / 50
+                if abs(y_mm) <= r1_abs:
+                    sag = r1_abs - (r1_abs**2 - y_mm**2)**0.5
+                    x = cx + (sag * scale if r1 > 0 else -sag * scale)
+                    if i == 0: path_r1.moveTo(x, cy + y_mm * scale)
+                    else: path_r1.lineTo(x, cy + y_mm * scale)
+            painter.setPen(QPen(self._r1_color, 3))
+            painter.drawPath(path_r1)
+        else:
+            painter.setPen(QPen(self._r1_color, 3))
+            painter.drawLine(cx, cy - half_d * scale, cx, cy + half_d * scale)
+        
+        if r2_abs > 1e-6:
+            path_r2 = QPainterPath()
+            for i in range(51):
+                y_mm = -half_d + diameter * i / 50
+                if abs(y_mm) <= r2_abs:
+                    sag = r2_abs - (r2_abs**2 - y_mm**2)**0.5
+                    x = x2_vertex + (sag * scale if r2 > 0 else -sag * scale)
+                    if i == 0: path_r2.moveTo(x, cy + y_mm * scale)
+                    else: path_r2.lineTo(x, cy + y_mm * scale)
+            painter.setPen(QPen(self._r2_color, 3))
+            painter.drawPath(path_r2)
+        else:
+            painter.setPen(QPen(self._r2_color, 3))
+            painter.drawLine(x2_edge, cy - half_d * scale, x2_edge, cy + half_d * scale)
+
+        # Draw handles
+        def draw_handle(p, name, pos):
+            self._handles[name] = pos
+            p.setPen(QPen(Qt.white, 1))
+            if self._active_handle == name:
+                p.setBrush(QBrush(QColor(0, 255, 0, 200)))
+            else:
+                p.setBrush(QBrush(QColor(255, 255, 255, 100)))
+            p.drawEllipse(pos, 5, 5)
+
+        draw_handle(painter, 'r1', QPoint(int(x1_vertex), int(cy)))
+        draw_handle(painter, 'r2', QPoint(int(x2_vertex), int(cy)))
+        
+        # Adjust thickness handle position for flat/curved surfaces
+        t_handle_x = x2_edge if r2_abs < 1e-6 else x2_vertex
+        draw_handle(painter, 'thickness', QPoint(int(t_handle_x), int(cy + 15)))
+        
+        # Diameter handle at the top edge center
+        draw_handle(painter, 'diameter', QPoint(int((cx + x2_edge)/2), int(cy - half_d * scale)))
 
 
 class _3DVisualizationWidget(QWidget):
