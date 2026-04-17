@@ -1182,15 +1182,13 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         layout = QVBoxLayout(content)
         layout.setContentsMargins(10, 10, 10, 10)
         
-        title = QLabel("Lens Optimization")
-        title.setStyleSheet("font-size: 16px; font-weight: bold;")
-        layout.addWidget(title)
+        # Top section: Variables and Targets side-by-side
+        top_row_layout = QHBoxLayout()
         
         # Variables Section
         variables_group = QGroupBox("Optimization Variables")
         variables_layout = QVBoxLayout(variables_group)
         
-        var_layout = QHBoxLayout()
         self._opt_var_r1 = QCheckBox("Radius 1")
         self._opt_var_r1.setChecked(True)
         self._opt_var_r2 = QCheckBox("Radius 2")
@@ -1200,14 +1198,12 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         self._opt_var_material = QCheckBox("Material (n)")
         self._opt_var_diameter = QCheckBox("Diameter")
         
-        var_layout.addWidget(self._opt_var_r1)
-        var_layout.addWidget(self._opt_var_r2)
-        var_layout.addWidget(self._opt_var_thickness)
-        var_layout.addWidget(self._opt_var_material)
-        var_layout.addWidget(self._opt_var_diameter)
-        variables_layout.addLayout(var_layout)
-        
-        layout.addWidget(variables_group)
+        variables_layout.addWidget(self._opt_var_r1)
+        variables_layout.addWidget(self._opt_var_r2)
+        variables_layout.addWidget(self._opt_var_thickness)
+        variables_layout.addWidget(self._opt_var_material)
+        variables_layout.addWidget(self._opt_var_diameter)
+        variables_layout.addStretch()
         
         # Targets Section
         targets_group = QGroupBox("Optimization Targets")
@@ -1234,7 +1230,9 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         self._opt_target_astig = QCheckBox("Minimize Astigmatism")
         targets_layout.addRow("Astigmatism:", self._opt_target_astig)
         
-        layout.addWidget(targets_group)
+        top_row_layout.addWidget(variables_group)
+        top_row_layout.addWidget(targets_group)
+        layout.addLayout(top_row_layout)
         
         # Constraints Section
         constraints_group = QGroupBox("Constraints & Options")
@@ -1294,7 +1292,7 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
         layout.addWidget(results_group)
         
         # Visualization
-        self._opt_viz = LensVisualizationWidget()
+        self._opt_viz = _2DVisualizationWidget()
         layout.addWidget(self._opt_viz)
         
         layout.addStretch()
@@ -1373,6 +1371,9 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             
             optimizer = LensOptimizer(system, variables, targets, constraints=constraints)
             
+            # Hook into optimizer iteration for real-time visualization update
+            # (Note: LensOptimizer would need to support callback, but for now we update after)
+            
             # Run optimization based on algorithm selection
             algorithm = self._opt_algorithm.currentText()
             if "Simplex" in algorithm:
@@ -1393,15 +1394,19 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
                 
                 self._opt_results_text.setPlainText(text)
                 
-                # Update visualization
+                # Update visualization and current lens
                 if result.optimized_system and result.optimized_system.elements:
                     optimized_lens = result.optimized_system.elements[0].lens
+                    self._current_lens = optimized_lens
+                    self._lens_editor.load_lens(optimized_lens)
+                    self._update_all_tabs()
                     self._opt_viz.update_lens(optimized_lens)
             else:
                 self._opt_results_text.setPlainText(f"Optimization failed: {result.message}")
                 
         except Exception as e:
             self._opt_results_text.setPlainText(f"Error during optimization: {e}")
+            logger.error(f"Optimization error: {e}")
         
         finally:
             self._opt_is_running = False
@@ -1688,6 +1693,23 @@ Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
             text += f"RMS Spot Size - Min: {results['min_rms']:.4f} mm\n"
             
             self._tol_results_text.setPlainText(text)
+            
+            # Show histogram in dialog
+            dialog = AnalysisPlotDialog(f"Monte Carlo Distribution - {self._current_lens.name}", self)
+            ax = dialog.get_axes()
+            
+            all_rms = results.get('all_rms', [])
+            if all_rms:
+                import numpy as np
+                ax.hist(all_rms, bins=max(10, num_trials // 10), color='skyblue', edgecolor='black', alpha=0.7)
+                ax.axvline(criterion, color='red', linestyle='--', label=f'Criterion ({criterion})')
+                ax.axvline(results['mean_rms'], color='green', linestyle='-', label=f'Mean ({results["mean_rms"]:.4f})')
+                ax.set_xlabel("RMS Spot Size (mm)")
+                ax.set_ylabel("Frequency")
+                ax.set_title("Monte Carlo Yield Distribution")
+                ax.legend()
+                ax.grid(True, linestyle='--', alpha=0.3)
+                dialog.exec()
             
         except Exception as e:
             self._tol_results_text.setPlainText(f"Error running Monte Carlo: {e}")
