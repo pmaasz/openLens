@@ -14,8 +14,8 @@ def read_file(filename):
 
 setup(
     name='openlens',
-    version='0.2.0',
-    description='An interactive optical lens design and simulation tool with ISO 10110 export',
+    version='0.3.0',
+    description='An interactive optical lens design and simulation tool (PySide6-based)',
     long_description=read_file('README.md'),
     long_description_content_type='text/markdown',
     author='Philip',
@@ -28,8 +28,9 @@ setup(
     
     python_requires='>=3.6',
     
-    # Core dependencies (tkinter is assumed to be available)
+    # Core dependencies (PySide6 for GUI)
     install_requires=[
+        'PySide6>=6.0',
     ],
     
     # Optional dependencies for 3D visualization
@@ -47,7 +48,7 @@ setup(
     # Console scripts - entry points for command-line execution
     entry_points={
         'console_scripts': [
-            'openlens=src.lens_editor_gui:main',
+            'openlens=openlens:main',
             'openlens-cli=src.lens_editor:main',
         ],
     },
