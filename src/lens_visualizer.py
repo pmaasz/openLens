@@ -10,8 +10,6 @@ import matplotlib
 matplotlib.use('TkAgg')  # Use TkAgg backend for embedding in tkinter
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from mpl_toolkits.mplot3d import Axes3D
-
 
 class LensVisualizer:
     """Creates 3D visualization of lens geometry with dark mode support"""
@@ -315,14 +313,13 @@ class LensVisualizer:
         self.ax_coords.set_zlabel('Z (mm)', color=self.COLORS_3D['text'], fontsize=9)
         
     def calculate_surface_points(self, radius, diameter, is_front=True):
+        r = abs(radius)
         """Calculate points for a spherical surface with optimized resolution"""
-        if abs(radius) > 10000:  # Treat as flat surface
+        if r > 10000 or r == 0:  # Treat as flat surface
             return None
         
         # Calculate the sagitta (height) of the spherical cap
-        r = abs(radius)
         h = diameter / 2  # half-diameter
-        
         if h >= r:
             h = r * 0.95  # Prevent invalid geometry
         
@@ -337,10 +334,11 @@ class LensVisualizer:
         # Create surface points
         u = np.linspace(0, 2 * np.pi, u_res)
         v = np.linspace(0, sag/r, v_res)
+
+        x = r * np.outer(np.sin(np.arccos(1 - v)), np.cos(u))
+        y = r * np.outer(np.sin(np.arccos(1 - v)), np.sin(u))
         
         if radius > 0:  # Convex (curving outward)
-            x = r * np.outer(np.sin(np.arccos(1 - v)), np.cos(u))
-            y = r * np.outer(np.sin(np.arccos(1 - v)), np.sin(u))
             z = r * (1 - np.outer(np.cos(np.arccos(1 - v)), np.ones(np.size(u))))
             # Convex surfaces (R > 0) curve OUTWARD from the lens body.
             # In our system: 
@@ -351,8 +349,6 @@ class LensVisualizer:
             else:
                 pass # curves away from body (upwards from thickness)
         else:  # Concave (curving inward)
-            x = r * np.outer(np.sin(np.arccos(1 - v)), np.cos(u))
-            y = r * np.outer(np.sin(np.arccos(1 - v)), np.sin(u))
             z = -r * (1 - np.outer(np.cos(np.arccos(1 - v)), np.ones(np.size(u))))
             # Concave surfaces (R < 0) curve INWARD to the lens body.
             # R < 0 gives z = -sag initially.
