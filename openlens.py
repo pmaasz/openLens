@@ -4067,27 +4067,29 @@ class _3DVisualizationWidget(QWidget):
         y_front = max_r * np.sin(theta)
         # Calculate sag at the edge to find actual edge Z position
         z_front_edge = 0
-        r1_abs = abs(r1)
+        # Helper for edge sag
+        def get_sag_edge(r, y):
+            if abs(r) < 1e-6: return 0
+            r_a = abs(r)
+            y_safe = min(y, r_a)
+            sag = r_a - np.sqrt(max(0, r_a**2 - y_safe**2))
+            return sag if r > 0 else -sag
+
+        # Front edge circle at z=0 (curves per get_sag)
         if r1_abs > 0.1:
-            # Clamp max_r to ensure it doesn't exceed r1_abs for the edge calculation
-            max_r_clamped = min(max_r, r1_abs * 0.999)
-            sag_front = r1_abs - np.sqrt(r1_abs**2 - max_r_clamped**2)
-            z_front_edge = -sag_front if r1 > 0 else sag_front
-            
+            z_front_edge = get_sag_edge(r1, max_r)
+        else:
+            z_front_edge = 0
         z_front = np.full_like(theta, z_front_edge)
         self._ax.plot(x_front, y_front, z_front, color='blue', linewidth=2)
         
-        # Circle at back edge  
+        # Back edge circle at z=thickness
         x_back = max_r * np.cos(theta)
         y_back = max_r * np.sin(theta)
-        # Calculate sag at the edge to find actual edge Z position
-        z_back_edge = thickness
-        r2_abs = abs(r2)
         if r2_abs > 0.1:
-            # Clamp max_r to ensure it doesn't exceed r2_abs for the edge calculation
-            max_r_clamped = min(max_r, r2_abs * 0.999)
-            sag_back = r2_abs - np.sqrt(r2_abs**2 - max_r_clamped**2)
-            z_back_edge = thickness + sag_back if r2 < 0 else thickness - sag_back
+            z_back_edge = thickness + get_sag_edge(r2, max_r)
+        else:
+            z_back_edge = thickness
             
         z_back = np.full_like(theta, z_back_edge)
         self._ax.plot(x_back, y_back, z_back, color='green', linewidth=2)
@@ -4104,36 +4106,24 @@ class _3DVisualizationWidget(QWidget):
         theta_vals = np.linspace(0, 2*np.pi, 25)
         R, THETA = np.meshgrid(r_vals, theta_vals)
 
-        # Front surface (blue)
-        if r1_abs > 0.1:
-            rho = R
-            # Ensure rho doesn't exceed radius of curvature
-            rho_safe = np.minimum(rho, r1_abs * 0.999)
-            # Standard convention: R > 0 curves outward (downwards from 0)
-            # Sag formula: z = r - sqrt(r^2 - rho^2)
-            # Convex (R > 0): z = - (r1 - sqrt(r1^2 - rho^2))
-            # Concave (R < 0): z = + (r1_abs - sqrt(r1_abs^2 - rho^2))
-            if r1 > 0:
-                Z_front = (r1_abs - np.sqrt(r1**2 - rho_safe**2))
-            else:
-                Z_front = - (r1_abs - np.sqrt(r1_abs**2 - rho_safe**2))
+        # Helper to get sag at radial distance (same logic as 2D)
+        def get_sag_3d(r, rho):
+            if abs(r) < 1e-6: return 0
+            r_a = abs(r)
+            rho_safe = min(rho, r_a)
+            sag = r_a - np.sqrt(max(0, r_a**2 - rho_safe**2))
+            return sag if r > 0 else -sag
 
+        # Front surface at z=0
+        if r1_abs > 0.1:
+            Z_front = get_sag_3d(r1, rho)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_front, alpha=0.5, color='blue', rstride=2, cstride=2)
 
-        # Back surface (green)
+        # Back surface at z=thickness
         if r2_abs > 0.1:
-            rho = R
-            # Ensure rho doesn't exceed radius of curvature
-            rho_safe = np.minimum(rho, r2_abs * 0.999)
-            # Standard convention: R < 0 curves outward (upwards from thickness)
-            # Convex (R < 0): z = thickness + (r2_abs - sqrt(r2_abs^2 - rho^2))
-            # Concave (R > 0): z = thickness - (r2 - sqrt(r2^2 - rho^2))
-            if r2 < 0:
-                Z_back = thickness - (r2_abs - np.sqrt(r2_abs**2 - rho_safe**2))
-            else:
-                Z_back = thickness + (r2_abs - np.sqrt(r2_abs**2 - rho_safe**2))
+            Z_back = thickness + get_sag_3d(r2, rho)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color='green', rstride=2, cstride=2)
