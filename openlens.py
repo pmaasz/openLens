@@ -1160,10 +1160,11 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             
             # Create grid for plotting
             import numpy as np
-            x = np.linspace(-psf_data['size_um']/2, psf_data['size_um']/2, psf_data['grid_size'])
-            y = np.linspace(-psf_data['size_um']/2, psf_data['size_um']/2, psf_data['grid_size'])
-            X, Y = np.meshgrid(x, y)
-            Z = psf_data['intensity']
+            # Use correct keys from calculate_psf() return dict
+            z_axis = psf_data.get('z_axis', np.linspace(-0.05, 0.05, 64))
+            y_axis = psf_data.get('y_axis', np.linspace(-0.05, 0.05, 64))
+            X, Y = np.meshgrid(z_axis, y_axis)
+            Z = psf_data.get('image', np.zeros((64, 64)))
             
             # Normalize Z
             if Z.max() > 0:
@@ -1225,17 +1226,18 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             
             for i, field in enumerate(fields):
                 res = analyzer.calculate_mtf(field_angle=field, wavelength=wavelength)
-                freqs = res['frequencies']
-                mtf_tan = res['mtf_tangential']
-                mtf_sag = res['mtf_sagittal']
+                freqs = res['freq']
+                mtf_tan = res['mtf_tan']
+                mtf_sag = res['mtf_sag']
                 
                 label_base = f"Field {field:.1f}°"
                 ax.plot(freqs, mtf_tan, color=colors[i % len(colors)], linestyle='-', label=f"{label_base} (T)")
                 ax.plot(freqs, mtf_sag, color=colors[i % len(colors)], linestyle='--', label=f"{label_base} (S)")
 
-            # Add diffraction limit
-            dl_res = analyzer.calculate_diffraction_limited_mtf(wavelength=wavelength)
-            ax.plot(dl_res['frequencies'], dl_res['mtf'], 'k-', alpha=0.3, label="Diffraction Limit")
+            # Add diffraction limit (theoretical)
+            # Axial resolution limit at this wavelength
+            diffraction_cutoff = 1.0 / (wavelength * 1e-6) if wavelength else 100
+            ax.axvline(x=diffraction_cutoff, color='gray', linestyle=':', alpha=0.3, label="Diffraction Limit")
 
             ax.set_xlabel("Spatial Frequency (lp/mm)")
             ax.set_ylabel("Modulation")
