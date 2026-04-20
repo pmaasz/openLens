@@ -4107,24 +4107,27 @@ class _3DVisualizationWidget(QWidget):
         theta_vals = np.linspace(0, 2*np.pi, 25)
         R, THETA = np.meshgrid(r_vals, theta_vals)
 
-        # Helper to get sag at radial distance (same logic as 2D)
-        def get_sag_3d(r, rho):
+        # Helper to get sag at radial distance 
+        def get_sag(r, rho):
             if abs(r) < 1e-6: return 0
             r_a = abs(r)
-            rho_safe = min(rho, r_a)
-            sag = r_a - np.sqrt(max(0, r_a**2 - rho_safe**2))
-            return sag if r > 0 else -sag
+            rho_safe = np.minimum(rho, r_a)
+            sag = r_a - np.sqrt(np.maximum(0, r_a**2 - rho_safe**2))
+            # sag is always positive magnitude
+            # For convex surface (r>0): curve OUTWARD = negative Z direction
+            # For concave surface (r<0): curve OUTWARD = positive Z direction  
+            return -sag if r > 0 else sag
 
         # Front surface at z=0
         if r1_abs > 0.1:
-            Z_front = get_sag_3d(r1, rho)
+            Z_front = get_sag(r1, R)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_front, alpha=0.5, color='blue', rstride=2, cstride=2)
 
         # Back surface at z=thickness
         if r2_abs > 0.1:
-            Z_back = thickness + get_sag_3d(r2, rho)
+            Z_back = thickness + get_sag(r2, R)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color='green', rstride=2, cstride=2)
