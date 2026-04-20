@@ -28,6 +28,15 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
 from src.lens import Lens
+
+# Try to import from new module structure, fall back to inline
+try:
+    from src.gui.widgets import LensEditorWidget, LensVisualizationWidget
+    from src.gui.dialogs import StartupDialog
+except ImportError:
+    LensEditorWidget = None
+    LensVisualizationWidget = None
+    StartupDialog = None
 from src.services import LensService
 
 
@@ -4090,11 +4099,10 @@ class _3DVisualizationWidget(QWidget):
         r_vals = np.linspace(0, max_r, 15)
         theta_vals = np.linspace(0, 2*np.pi, 25)
         R, THETA = np.meshgrid(r_vals, theta_vals)
-        
+
         # Front surface (blue)
-        if abs(r1) > 0.1:
+        if r1_abs > 0.1:
             rho = R
-            r1_abs = abs(r1)
             # Ensure rho doesn't exceed radius of curvature
             rho_safe = np.minimum(rho, r1_abs * 0.999)
             # Standard convention: R > 0 curves outward (downwards from 0)
@@ -4102,26 +4110,26 @@ class _3DVisualizationWidget(QWidget):
             # Convex (R > 0): z = - (r1 - sqrt(r1^2 - rho^2))
             # Concave (R < 0): z = + (r1_abs - sqrt(r1_abs^2 - rho^2))
             if r1 > 0:
-                Z_front = -(r1 - np.sqrt(r1**2 - rho_safe**2))
+                Z_front = (r1_abs - np.sqrt(r1**2 - rho_safe**2))
             else:
-                Z_front = (r1_abs - np.sqrt(r1_abs**2 - rho_safe**2))
+                Z_front = - (r1_abs - np.sqrt(r1_abs**2 - rho_safe**2))
+
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_front, alpha=0.5, color='blue', rstride=2, cstride=2)
-        
+
         # Back surface (green)
-        if abs(r2) > 0.1:
+        if r2_abs > 0.1:
             rho = R
-            r2_abs = abs(r2)
             # Ensure rho doesn't exceed radius of curvature
             rho_safe = np.minimum(rho, r2_abs * 0.999)
             # Standard convention: R < 0 curves outward (upwards from thickness)
             # Convex (R < 0): z = thickness + (r2_abs - sqrt(r2_abs^2 - rho^2))
             # Concave (R > 0): z = thickness - (r2 - sqrt(r2^2 - rho^2))
             if r2 < 0:
-                Z_back = thickness + (r2_abs - np.sqrt(r2_abs**2 - rho_safe**2))
+                Z_back = thickness - (r2_abs - np.sqrt(r2_abs**2 - rho_safe**2))
             else:
-                Z_back = thickness - (r2 - np.sqrt(r2**2 - rho_safe**2))
+                Z_back = thickness + (r2_abs - np.sqrt(r2_abs**2 - rho_safe**2))
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color='green', rstride=2, cstride=2)

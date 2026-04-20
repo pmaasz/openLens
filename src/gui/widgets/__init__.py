@@ -1,18 +1,16 @@
-# Stub modules - full implementations remain in openlens.py
-# These files provide the package structure
+"""
+OpenLens PySide6 Widgets
+Lens visualization and editor widgets for the modern GUI
+"""
 
-from .assembly_viz import AssemblyVisualizationWidget
 from .lens_editor import LensEditorWidget
 from .lens_viz_2d import _2DVisualizationWidget
 from .lens_viz_3d import _3DVisualizationWidget
 from .lens_viz_container import LensVisualizationWidget
-from .dialogs import StartupDialog
 
 __all__ = [
-    'AssemblyVisualizationWidget',
     'LensEditorWidget',
-    '_2DVisualizationWidget',
+    '_2DVisualizationWidget', 
     '_3DVisualizationWidget',
     'LensVisualizationWidget',
-    'StartupDialog',
 ]
