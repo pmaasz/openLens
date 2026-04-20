@@ -4048,6 +4048,7 @@ class _3DVisualizationWidget(QWidget):
                 self._ax_coords.set_zlim([-max_dim/2, thickness + max_dim/2])
         
         r1, r2 = lens.radius_of_curvature_1, lens.radius_of_curvature_2
+        r1_abs, r2_abs = abs(r1), abs(r2)
         thickness, diameter = lens.thickness, lens.diameter
         max_r = diameter / 2.0
         
