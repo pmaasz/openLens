@@ -1056,12 +1056,22 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
                 sag = r_a - math.sqrt(max(0, r_a**2 - y_safe**2))
                 return sag if r > 0 else -sag
             
-            # Front surface at z=z_offset
-            x_front = z_offset + np.array([get_sag(r1, y) for y in y_pts])
+            # Surface 1 at z=z_offset
+            sag1_edge = get_sag(r1, h)
+            x1_vertex = z_offset
+            x1_edge = x1_vertex + sag1_edge
+            
+            # Surface 2 at z=z_offset + t
+            sag2_edge = get_sag(r2, h)
+            x2_edge = x1_edge + t
+            x2_vertex = x2_edge - sag2_edge
+
+            # Draw Front Surface
+            x_front = np.array([x1_vertex + get_sag(r1, y) for y in y_pts])
             ax.plot(x_front, y_pts, 'w-', linewidth=1.5, alpha=0.8)
             
-            # Back surface at z=z_offset+t
-            x_back = z_offset + t + np.array([get_sag(r2, y) for y in y_pts])
+            # Draw Back Surface
+            x_back = np.array([x2_vertex + get_sag(r2, y) for y in y_pts])
             ax.plot(x_back, y_pts, 'w-', linewidth=1.5, alpha=0.8)
             
             # Edge lines
@@ -4055,42 +4065,33 @@ class _3DVisualizationWidget(QWidget):
         # Create circles at top and bottom edges
         theta = np.linspace(0, 2*np.pi, 36)
         
-        # Front face Z position (vertex)
-        z1_vertex = 0
+        # Helper for sag
+        def get_sag(r, y):
+            if abs(r) < 1e-6: return 0
+            r_a = abs(r)
+            y_safe = np.minimum(y, r_a)
+            sag = r_a - np.sqrt(np.maximum(0, r_a**2 - y_safe**2))
+            return sag if r > 0 else -sag
+
+        # Calculate geometry (same as 2D)
+        sag1_edge = get_sag(r1, max_r)
+        x1_vertex = 0
+        x1_edge = x1_vertex + sag1_edge
         
-        # Back face Z position (vertex)
-        z2_vertex = thickness
-        
+        x2_edge = x1_edge + thickness
+        sag2_edge = get_sag(r2, max_r)
+        x2_vertex = x2_edge - sag2_edge
+
         # Circle at front edge
         x_front = max_r * np.cos(theta)
         y_front = max_r * np.sin(theta)
-        # Calculate sag at the edge to find actual edge Z position
-        z_front_edge = 0
-        # Helper for edge sag
-        def get_sag_edge(r, y):
-            if abs(r) < 1e-6: return 0
-            r_a = abs(r)
-            y_safe = min(y, r_a)
-            sag = r_a - np.sqrt(max(0, r_a**2 - y_safe**2))
-            return sag if r > 0 else -sag
-
-        # Front edge circle at z=0 (curves per get_sag)
-        if r1_abs > 0.1:
-            z_front_edge = get_sag_edge(r1, max_r)
-        else:
-            z_front_edge = 0
-        z_front = np.full_like(theta, z_front_edge)
+        z_front = np.full_like(theta, x1_edge)
         self._ax.plot(x_front, y_front, z_front, color='blue', linewidth=2)
         
-        # Back edge circle at z=thickness
+        # Circle at back edge  
         x_back = max_r * np.cos(theta)
         y_back = max_r * np.sin(theta)
-        if r2_abs > 0.1:
-            z_back_edge = thickness + get_sag_edge(r2, max_r)
-        else:
-            z_back_edge = thickness
-            
-        z_back = np.full_like(theta, z_back_edge)
+        z_back = np.full_like(theta, x2_edge)
         self._ax.plot(x_back, y_back, z_back, color='green', linewidth=2)
         
         # Connect edges with vertical lines (cylinder wall)
@@ -4105,37 +4106,28 @@ class _3DVisualizationWidget(QWidget):
         theta_vals = np.linspace(0, 2*np.pi, 25)
         R, THETA = np.meshgrid(r_vals, theta_vals)
 
-        # Helper to get sag at radial distance 
-        def get_sag(r, rho):
-            if abs(r) < 1e-6: return 0
-            r_a = abs(r)
-            rho_safe = np.minimum(rho, r_a)
-            sag = r_a - np.sqrt(np.maximum(0, r_a**2 - rho_safe**2))
-            # sag is always positive magnitude
-            # For convex surface (r>0): curve OUTWARD = negative Z direction
-            # For concave surface (r<0): curve OUTWARD = positive Z direction  
-            return -sag if r > 0 else sag
-
-        # Front surface at z=0
+        # Front surface (blue)
         if r1_abs > 0.1:
-            Z_front = get_sag(r1, R)
+            Z_front = x1_vertex + get_sag(r1, R)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_front, alpha=0.5, color='blue', rstride=2, cstride=2)
 
-        # Back surface at z=thickness
+        # Back surface (green)
         if r2_abs > 0.1:
-            Z_back = thickness + get_sag(r2, R)
+            Z_back = x2_vertex + get_sag(r2, R)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color='green', rstride=2, cstride=2)
         
         # Set axis limits on lens axis only
+        z_min = min(x1_vertex + (sag1_edge if r1 < 0 else 0), x2_vertex + (sag2_edge if r2 > 0 else 0))
+        z_max = max(x1_vertex + (sag1_edge if r1 > 0 else 0), x2_vertex + (sag2_edge if r2 > 0 else 0))
         padding = max(diameter, thickness) * 0.3
         limit = max(diameter, thickness) / 2 + padding
         self._ax.set_xlim([-limit, limit])
         self._ax.set_ylim([-limit, limit])
-        self._ax.set_zlim([min(z_front_edge, z_back_edge) - padding, max(z_front_edge, z_back_edge) + padding])
+        self._ax.set_zlim([z_min - padding, z_max + padding])
         
         self._ax.view_init(elev=20, azim=45)
         
