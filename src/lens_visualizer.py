@@ -342,24 +342,24 @@ class LensVisualizer:
             x = r * np.outer(np.sin(np.arccos(1 - v)), np.cos(u))
             y = r * np.outer(np.sin(np.arccos(1 - v)), np.sin(u))
             z = r * (1 - np.outer(np.cos(np.arccos(1 - v)), np.ones(np.size(u))))
-            # Convex front surface (R1 > 0) vertex at 0, center at +R1.
-            # Surfaces are defined as z(r) = R - sqrt(R^2 - r^2) = sag.
-            # This 'z' is already 'sag' (positive).
+            # Convex surfaces (R > 0) curve OUTWARD from the lens body.
+            # In our system: 
+            # Front surface (vertex 0): curve "out" (-Z direction in coordinate space, away from body)
+            # Back surface (vertex thickness): curve "out" (+Z direction in coordinate space, away from body)
             if is_front:
-                pass  # z = sag (convex front curves right)
+                z = -z # curves away from body (downwards from 0)
             else:
-                z = z  # z = sag (convex back curves right from its vertex)
+                pass # curves away from body (upwards from thickness)
         else:  # Concave (curving inward)
             x = r * np.outer(np.sin(np.arccos(1 - v)), np.cos(u))
             y = r * np.outer(np.sin(np.arccos(1 - v)), np.sin(u))
             z = -r * (1 - np.outer(np.cos(np.arccos(1 - v)), np.ones(np.size(u))))
-            # Concave front surface (R1 < 0) vertex at 0, center at -|R1|.
-            # z = -sag (concave front curves left).
-            # This 'z' is already -sag.
+            # Concave surfaces (R < 0) curve INWARD to the lens body.
+            # R < 0 gives z = -sag initially.
             if is_front:
-                pass 
+                z = -z # curves into body (becomes +sag, upwards from 0)
             else:
-                z = z # z = -sag (concave back curves left from its vertex)
+                pass # curves into body (remains -sag, downwards from thickness)
         
         # Limit to lens diameter
         mask = x**2 + y**2 <= (diameter/2)**2
@@ -522,10 +522,10 @@ class LensVisualizer:
             r2_abs = abs(r2)
             h_edge = diameter / 2
             # Back surface centered at thickness + R2, vertex at thickness.
-            # R2 > 0 (convex): Center is at t+R2. x = (t+R2) - sqrt(R2^2 - h^2) = t + sag
-            # R2 < 0 (concave): Center is at t+R2. x = (t+R2) + sqrt(R2^2 - h^2) = t - sag
+            # Surfaces are calculated as z = sag (if R>0) or -sag (if R<0) from their vertex.
+            # For the back surface, we flipped the sign: z = -sag (if R>0) or +sag (if R<0).
             sag_back = r2_abs - math.sqrt(r2_abs**2 - h_edge**2)
-            z_back_edge = thickness + sag_back if r2 > 0 else thickness - sag_back
+            z_back_edge = thickness - sag_back if r2 > 0 else thickness + sag_back
         else:
             z_back_edge = thickness
         z_back_edge += z_offset

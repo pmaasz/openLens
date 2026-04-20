@@ -3847,8 +3847,10 @@ class _2DVisualizationWidget(QWidget):
         def get_sag(r, y):
             if abs(r) < 1e-6: return 0
             r_a = abs(r)
-            if y > r_a: return r_a
-            sag = r_a - (r_a**2 - y**2)**0.5
+            # Ensure y doesn't exceed radius of curvature to avoid NaN
+            # Use a slightly more robust clamping
+            y_safe = min(y, r_a)
+            sag = r_a - math.sqrt(max(0, r_a**2 - y_safe**2))
             return sag if r > 0 else -sag
 
         # X positions
@@ -3859,6 +3861,12 @@ class _2DVisualizationWidget(QWidget):
         x2_edge = x1_edge + thickness * scale
         sag2_edge = get_sag(r2, half_d)
         x2_vertex = x2_edge - sag2_edge * scale
+
+        # Safety check: if x2_vertex or x1_vertex is NaN, use defaults to prevent crash
+        if math.isnan(x1_vertex): x1_vertex = cx
+        if math.isnan(x2_vertex): x2_vertex = cx + thickness * scale
+        if math.isnan(x1_edge): x1_edge = x1_vertex
+        if math.isnan(x2_edge): x2_edge = x1_edge + thickness * scale
 
         # Clear handles
         self._handles = {}
@@ -4023,28 +4031,40 @@ class _3DVisualizationWidget(QWidget):
         # Create circles at top and bottom edges
         theta = np.linspace(0, 2*np.pi, 36)
         
-        # Front face Z position
-        z1_center = 0
-        if abs(r1) > 0.1:
-            sag = max_r**2 / (2 * r1) if r1 > 0 else -max_r**2 / (2 * abs(r1))
-            z1_center = sag
+        # Front face Z position (vertex)
+        z1_vertex = 0
         
-        # Back face Z position
-        z2_center = thickness
-        if abs(r2) > 0.1:
-            sag = max_r**2 / (2 * r2) if r2 > 0 else -max_r**2 / (2 * abs(r2))
-            z2_center = thickness - sag
+        # Back face Z position (vertex)
+        z2_vertex = thickness
         
         # Circle at front edge
         x_front = max_r * np.cos(theta)
         y_front = max_r * np.sin(theta)
-        z_front = np.full_like(theta, z1_center)
+        # Calculate sag at the edge to find actual edge Z position
+        z_front_edge = 0
+        r1_abs = abs(r1)
+        if r1_abs > 0.1:
+            # Clamp max_r to ensure it doesn't exceed r1_abs for the edge calculation
+            max_r_clamped = min(max_r, r1_abs * 0.999)
+            sag_front = r1_abs - np.sqrt(r1_abs**2 - max_r_clamped**2)
+            z_front_edge = -sag_front if r1 > 0 else sag_front
+            
+        z_front = np.full_like(theta, z_front_edge)
         self._ax.plot(x_front, y_front, z_front, color='blue', linewidth=2)
         
         # Circle at back edge  
         x_back = max_r * np.cos(theta)
         y_back = max_r * np.sin(theta)
-        z_back = np.full_like(theta, z2_center)
+        # Calculate sag at the edge to find actual edge Z position
+        z_back_edge = thickness
+        r2_abs = abs(r2)
+        if r2_abs > 0.1:
+            # Clamp max_r to ensure it doesn't exceed r2_abs for the edge calculation
+            max_r_clamped = min(max_r, r2_abs * 0.999)
+            sag_back = r2_abs - np.sqrt(r2_abs**2 - max_r_clamped**2)
+            z_back_edge = thickness + sag_back if r2 < 0 else thickness - sag_back
+            
+        z_back = np.full_like(theta, z_back_edge)
         self._ax.plot(x_back, y_back, z_back, color='green', linewidth=2)
         
         # Connect edges with vertical lines (cylinder wall)
@@ -4062,10 +4082,17 @@ class _3DVisualizationWidget(QWidget):
         # Front surface (blue)
         if abs(r1) > 0.1:
             rho = R
+            r1_abs = abs(r1)
+            # Ensure rho doesn't exceed radius of curvature
+            rho_safe = np.minimum(rho, r1_abs * 0.999)
+            # Standard convention: R > 0 curves outward (downwards from 0)
+            # Sag formula: z = r - sqrt(r^2 - rho^2)
+            # Convex (R > 0): z = - (r1 - sqrt(r1^2 - rho^2))
+            # Concave (R < 0): z = + (r1_abs - sqrt(r1_abs^2 - rho^2))
             if r1 > 0:
-                Z_front = r1 - np.sqrt(np.maximum(0, r1**2 - rho**2))
+                Z_front = -(r1 - np.sqrt(r1**2 - rho_safe**2))
             else:
-                Z_front = -abs(r1) + np.sqrt(np.maximum(0, r1**2 - rho**2))
+                Z_front = (r1_abs - np.sqrt(r1_abs**2 - rho_safe**2))
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_front, alpha=0.5, color='blue', rstride=2, cstride=2)
@@ -4073,10 +4100,16 @@ class _3DVisualizationWidget(QWidget):
         # Back surface (green)
         if abs(r2) > 0.1:
             rho = R
-            if r2 > 0:
-                Z_back = thickness + r2 - np.sqrt(np.maximum(0, r2**2 - rho**2))
+            r2_abs = abs(r2)
+            # Ensure rho doesn't exceed radius of curvature
+            rho_safe = np.minimum(rho, r2_abs * 0.999)
+            # Standard convention: R < 0 curves outward (upwards from thickness)
+            # Convex (R < 0): z = thickness + (r2_abs - sqrt(r2_abs^2 - rho^2))
+            # Concave (R > 0): z = thickness - (r2 - sqrt(r2^2 - rho^2))
+            if r2 < 0:
+                Z_back = thickness + (r2_abs - np.sqrt(r2_abs**2 - rho_safe**2))
             else:
-                Z_back = thickness - abs(r2) + np.sqrt(np.maximum(0, r2**2 - rho**2))
+                Z_back = thickness - (r2 - np.sqrt(r2**2 - rho_safe**2))
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color='green', rstride=2, cstride=2)
@@ -4086,7 +4119,7 @@ class _3DVisualizationWidget(QWidget):
         limit = max(diameter, thickness) / 2 + padding
         self._ax.set_xlim([-limit, limit])
         self._ax.set_ylim([-limit, limit])
-        self._ax.set_zlim([min(z1_center, z2_center) - padding, max(z1_center, z2_center) + padding])
+        self._ax.set_zlim([min(z_front_edge, z_back_edge) - padding, max(z_front_edge, z_back_edge) + padding])
         
         self._ax.view_init(elev=20, azim=45)
         
