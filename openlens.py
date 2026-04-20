@@ -1035,7 +1035,7 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate field curves: {e}")
     
     def _draw_system_2d_on_axes(self, ax, system):
-        """Helper to draw a multi-element system on Matplotlib axes"""
+        """Helper to draw a multi-element system on Matplotlib axes (using same logic as 2D viz)"""
         import numpy as np
         for element in system.elements:
             lens = element.lens
@@ -1048,30 +1048,20 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             
             y_pts = np.linspace(-h, h, 100)
             
-            # Front surface - curves outward for convex (r1 > 0)
-            if abs(r1) > 1e-9 and abs(r1) < 1e5:
-                # Convex (R>0): curves left (backward from vertex)
-                # Concave (R<0): curves right (forward from vertex)
-                r1_abs = abs(r1)
-                sag = r1_abs - np.sqrt(r1_abs**2 - y_pts**2)
-                if r1 > 0:
-                    x_front = z_offset - sag  # curve left
-                else:
-                    x_front = z_offset + sag  # curve right
-            else:
-                x_front = np.full_like(y_pts, z_offset)
+            # Helper to get sag at y (same as _2DVisualizationWidget)
+            def get_sag(r, y):
+                if abs(r) < 1e-6: return 0
+                r_a = abs(r)
+                y_safe = min(abs(y), r_a)
+                sag = r_a - math.sqrt(max(0, r_a**2 - y_safe**2))
+                return sag if r > 0 else -sag
+            
+            # Front surface
+            x_front = z_offset + np.array([get_sag(r1, y) for y in y_pts])
             ax.plot(x_front, y_pts, 'w-', linewidth=1.5, alpha=0.8)
             
-            # Back surface - curves outward for concave (r2 < 0)
-            if abs(r2) > 1e-9 and abs(r2) < 1e5:
-                r2_abs = abs(r2)
-                sag = r2_abs - np.sqrt(r2_abs**2 - y_pts**2)
-                if r2 < 0:
-                    x_back = z_offset + t - sag  # curve left (into lens body)
-                else:
-                    x_back = z_offset + t + sag  # curve right (into lens body)
-            else:
-                x_back = np.full_like(y_pts, z_offset + t)
+            # Back surface
+            x_back = z_offset + t + np.array([get_sag(r2, y) for y in y_pts])
             ax.plot(x_back, y_pts, 'w-', linewidth=1.5, alpha=0.8)
             
             # Edge lines
