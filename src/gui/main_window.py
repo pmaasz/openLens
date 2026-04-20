@@ -4,7 +4,7 @@ Main window for lens editing application
 """
 
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, 
-                           QLabel, QStatusBar, QMenuBar, QMenu)
+                           QLabel, QStatusBar, QMenuBar, QMenu, QScrollArea)
 from PySide6.QtCore import Qt, Slot, Signal
 from PySide6.QtGui import QKeySequence
 
@@ -31,6 +31,7 @@ class OpenLensWindow(QMainWindow):
         
         # Current lens data
         self._current_lens = None
+        self._current_assembly = None
         self._lens_list = []
         
         self._setup_ui()
@@ -62,11 +63,20 @@ class OpenLensWindow(QMainWindow):
         
         self._main_layout.addWidget(self._tabs)
         
-        # Editor tab (placeholder - actual widget comes from openlens.py)
-        self._editor_tab = QWidget()
+        # Try to use extracted widget, fallback to placeholder
+        try:
+            self._editor_tab = LensEditorWidget(self)
+        except Exception as e:
+            print(f"Using placeholder editor: {e}")
+            self._editor_tab = self._create_editor_placeholder()
+        
         self._tabs.addTab(self._editor_tab, "Lens Editor")
         
-        # Add more tabs placeholder
+        # Assembly tab
+        self._assembly_tab = QWidget()
+        self._tabs.addTab(self._assembly_tab, "Assembly Editor")
+        
+        # Sim tab placeholder  
         self._sim_tab = QWidget()
         self._tabs.addTab(self._sim_tab, "Simulation")
         
@@ -78,6 +88,21 @@ class OpenLensWindow(QMainWindow):
         
         self._tol_tab = QWidget()
         self._tabs.addTab(self._tol_tab, "Tolerancing")
+        
+        # Export tab
+        self._export_tab = QWidget()
+        self._tabs.addTab(self._export_tab, "Export")
+    
+    def _create_editor_placeholder(self):
+        """Fallback editor widget if import fails"""
+        from PySide6.QtWidgets import QLabel
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        
+        label = QLabel("Lens Editor\n\nUse openlens.py for full editor functionality")
+        label.setStyleSheet("color: #888; padding: 50px; font-size: 16px;")
+        scroll.setWidget(label)
+        return scroll
     
     def _create_menus(self):
         """Create menu bar"""
