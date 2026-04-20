@@ -1048,16 +1048,28 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             
             y_pts = np.linspace(-h, h, 100)
             
-            # Front surface
+            # Front surface - curves outward for convex (r1 > 0)
             if abs(r1) > 1e-9 and abs(r1) < 1e5:
-                x_front = z_offset + r1 - np.sign(r1) * np.sqrt(r1**2 - y_pts**2)
+                # Convex (R>0): curves left (backward from vertex)
+                # Concave (R<0): curves right (forward from vertex)
+                r1_abs = abs(r1)
+                sag = r1_abs - np.sqrt(r1_abs**2 - y_pts**2)
+                if r1 > 0:
+                    x_front = z_offset - sag  # curve left
+                else:
+                    x_front = z_offset + sag  # curve right
             else:
                 x_front = np.full_like(y_pts, z_offset)
             ax.plot(x_front, y_pts, 'w-', linewidth=1.5, alpha=0.8)
             
-            # Back surface
+            # Back surface - curves outward for concave (r2 < 0)
             if abs(r2) > 1e-9 and abs(r2) < 1e5:
-                x_back = z_offset + t + r2 - np.sign(r2) * np.sqrt(r2**2 - y_pts**2)
+                r2_abs = abs(r2)
+                sag = r2_abs - np.sqrt(r2_abs**2 - y_pts**2)
+                if r2 < 0:
+                    x_back = z_offset + t - sag  # curve left (into lens body)
+                else:
+                    x_back = z_offset + t + sag  # curve right (into lens body)
             else:
                 x_back = np.full_like(y_pts, z_offset + t)
             ax.plot(x_back, y_pts, 'w-', linewidth=1.5, alpha=0.8)
