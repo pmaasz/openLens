@@ -1048,7 +1048,7 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             
             y_pts = np.linspace(-h, h, 100)
             
-            # Helper to get sag at y (same as _2DVisualizationWidget)
+            # Helper to get sag at y (same as 2D Editor)
             def get_sag(r, y):
                 if abs(r) < 1e-6: return 0
                 r_a = abs(r)
@@ -1056,11 +1056,11 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
                 sag = r_a - math.sqrt(max(0, r_a**2 - y_safe**2))
                 return sag if r > 0 else -sag
             
-            # Front surface
+            # Front surface at z=z_offset
             x_front = z_offset + np.array([get_sag(r1, y) for y in y_pts])
             ax.plot(x_front, y_pts, 'w-', linewidth=1.5, alpha=0.8)
             
-            # Back surface
+            # Back surface at z=z_offset+t
             x_back = z_offset + t + np.array([get_sag(r2, y) for y in y_pts])
             ax.plot(x_back, y_pts, 'w-', linewidth=1.5, alpha=0.8)
             
@@ -3872,9 +3872,7 @@ class _2DVisualizationWidget(QWidget):
         def get_sag(r, y):
             if abs(r) < 1e-6: return 0
             r_a = abs(r)
-            # Ensure y doesn't exceed radius of curvature to avoid NaN
-            # Use a slightly more robust clamping
-            y_safe = min(y, r_a)
+            y_safe = min(abs(y), r_a)
             sag = r_a - math.sqrt(max(0, r_a**2 - y_safe**2))
             return sag if r > 0 else -sag
 
