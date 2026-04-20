@@ -3381,6 +3381,14 @@ class LensEditorWidget(QWidget):
         self._name_input.textChanged.connect(self._on_name_changed)
         layout.addWidget(name_group)
         
+        # Classification (read-only display)
+        class_group = QGroupBox("Classification")
+        class_layout = QFormLayout(class_group)
+        self._class_type_label = QLabel("Biconvex")
+        self._class_type_label.setStyleSheet("color: #4fc3f7; font-weight: bold;")
+        class_layout.addRow("Type:", self._class_type_label)
+        layout.addWidget(class_group)
+        
         # Dimensions
         dim_group = QGroupBox("Dimensions")
         dim_layout = QFormLayout(dim_group)
@@ -3512,6 +3520,9 @@ class LensEditorWidget(QWidget):
             self._update_calculated()
             self._viz_widget.update_lens(self._lens)
             
+            # Update classification display
+            self._class_type_label.setText(self._lens.classify_lens_type())
+            
             # Auto-save to database
             if self._parent and hasattr(self._parent, '_save_to_database'):
                 self._parent._save_to_database()
@@ -3631,6 +3642,7 @@ class LensEditorWidget(QWidget):
         self._n_input.setValue(lens.refractive_index)
         self._update_calculated()
         self._viz_widget.update_lens(lens)
+        self._class_type_label.setText(lens.classify_lens_type())
 
 
 class LensVisualizationWidget(QWidget):
