@@ -1,14 +1,7 @@
-"""
-OpenLens PySide6 2D Lens Visualization Widget
-Interactive 2D visualization for lens geometry with drag-to-edit
-"""
-
-import math
 from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QPoint, Signal
 from PySide6.QtGui import QColor, QPainter, QPen, QPainterPath, QBrush
-from PySide6.QtCore import QPoint
-
+import math
 
 class _2DVisualizationWidget(QWidget):
     """2D lens visualization"""
@@ -69,24 +62,31 @@ class _2DVisualizationWidget(QWidget):
             dy = (pos.y() - self._last_mouse_pos.y()) / self._scale
             
             if self._active_handle == 'r1':
+                # Dragging R1 vertex horizontally
                 new_r1 = self._lens.radius_of_curvature_1 + dx
+                # Snap to flat if close to zero
                 if abs(new_r1) < 1.0: new_r1 = 0.0
                 self.property_changed.emit('r1', new_r1)
             elif self._active_handle == 'r2':
+                # Dragging R2 vertex horizontally
                 new_r2 = self._lens.radius_of_curvature_2 + dx
+                # Snap to flat if close to zero
                 if abs(new_r2) < 1.0: new_r2 = 0.0
                 self.property_changed.emit('r2', new_r2)
             elif self._active_handle == 'thickness':
+                # Dragging right edge
                 new_t = self._lens.thickness + dx
                 if new_t < 0.1: new_t = 0.1
                 self.property_changed.emit('thickness', new_t)
             elif self._active_handle == 'diameter':
-                new_d = self._lens.diameter - 2 * dy
+                # Dragging top/bottom edge
+                new_d = self._lens.diameter - 2 * dy # Screen Y is inverted
                 if new_d < 1.0: new_d = 1.0
                 self.property_changed.emit('diameter', new_d)
                 
             self._last_mouse_pos = pos
         else:
+            # Update cursor if hovering over a handle
             hovering = False
             for h_pos in self._handles.values():
                 dx = pos.x() - h_pos.x()
@@ -132,8 +132,9 @@ class _2DVisualizationWidget(QWidget):
         # Draw grid
         grid_color = QColor("#333333")
         painter.setPen(QPen(grid_color, 1))
-        grid_spacing = 10 * scale
+        grid_spacing = 10 * scale  # 10mm grid
         
+        # Draw grid lines relative to center
         start_x = cx % grid_spacing
         while start_x < w:
             painter.drawLine(start_x, 0, start_x, h)
@@ -157,7 +158,7 @@ class _2DVisualizationWidget(QWidget):
         def get_sag(r, y):
             if abs(r) < 1e-6: return 0
             r_a = abs(r)
-            y_safe = min(y, r_a)
+            y_safe = min(abs(y), r_a)
             sag = r_a - math.sqrt(max(0, r_a**2 - y_safe**2))
             return sag if r > 0 else -sag
 
@@ -170,7 +171,7 @@ class _2DVisualizationWidget(QWidget):
         sag2_edge = get_sag(r2, half_d)
         x2_vertex = x2_edge - sag2_edge * scale
 
-        # Safety check for NaN
+        # Safety check: if x2_vertex or x1_vertex is NaN, use defaults to prevent crash
         if math.isnan(x1_vertex): x1_vertex = cx
         if math.isnan(x2_vertex): x2_vertex = cx + thickness * scale
         if math.isnan(x1_edge): x1_edge = x1_vertex
@@ -228,7 +229,7 @@ class _2DVisualizationWidget(QWidget):
         painter.setPen(QPen(self._r2_color, 2))
         painter.drawPath(path_r2)
 
-        # Draw handles
+        # Draw handles (spaced out to avoid crowding)
         def draw_handle(p, name, pos, label=""):
             self._handles[name] = pos
             if self._active_handle == name:

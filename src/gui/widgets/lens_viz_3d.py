@@ -1,12 +1,6 @@
-"""
-OpenLens PySide6 3D Lens Visualization Widget
-3D matplotlib-based visualization for lens geometry
-"""
-
-import math
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout
 from PySide6.QtCore import Qt
-
+import numpy as np
 
 class _3DVisualizationWidget(QWidget):
     """3D lens visualization using matplotlib"""
@@ -65,6 +59,7 @@ class _3DVisualizationWidget(QWidget):
             self._ax_coords.zaxis.pane.set_alpha(0.9)
             
         except ImportError:
+            from PySide6.QtWidgets import QLabel
             layout = QVBoxLayout(self)
             lbl = QLabel("Install matplotlib\nfor 3D view")
             lbl.setStyleSheet("color: #888; padding: 50px;")
@@ -89,6 +84,7 @@ class _3DVisualizationWidget(QWidget):
                 self._ax_coords.set_zlim([-max_dim/2, thickness + max_dim/2])
         
         r1, r2 = lens.radius_of_curvature_1, lens.radius_of_curvature_2
+        r1_abs, r2_abs = abs(r1), abs(r2)
         thickness, diameter = lens.thickness, lens.diameter
         max_r = diameter / 2.0
         
@@ -97,26 +93,22 @@ class _3DVisualizationWidget(QWidget):
         # Create circles at top and bottom edges
         theta = np.linspace(0, 2*np.pi, 36)
         
-        # Front face Z position (vertex)
-        z1_vertex = 0
-        
-        # Calculate sag at the edge to find actual edge Z position
-        r1_abs = abs(r1)
-        sag1_edge = 0
-        if r1_abs > 0.1:
-            max_r_clamped = min(max_r, r1_abs * 0.999)
-            sag1_edge = r1_abs - np.sqrt(r1_abs**2 - max_r_clamped**2)
-            
-        r2_abs = abs(r2)
-        sag2_edge = 0
-        if r2_abs > 0.1:
-            max_r_clamped = min(max_r, r2_abs * 0.999)
-            sag2_edge = r2_abs - np.sqrt(r2_abs**2 - max_r_clamped**2)
+        # Helper for sag
+        def get_sag(r, y):
+            if abs(r) < 1e-6: return 0
+            r_a = abs(r)
+            y_safe = np.minimum(y, r_a)
+            sag = r_a - np.sqrt(np.maximum(0, r_a**2 - y_safe**2))
+            return sag if r > 0 else -sag
 
+        # Calculate geometry (same as 2D)
+        sag1_edge = get_sag(r1, max_r)
         x1_vertex = 0
-        x1_edge = x1_vertex + (sag1_edge if r1 > 0 else 0)
+        x1_edge = x1_vertex + sag1_edge
+        
         x2_edge = x1_edge + thickness
-        x2_vertex = x2_edge - (sag2_edge if r2 < 0 else 0)
+        sag2_edge = get_sag(r2, max_r)
+        x2_vertex = x2_edge - sag2_edge
 
         # Circle at front edge
         x_front = max_r * np.cos(theta)
@@ -144,35 +136,26 @@ class _3DVisualizationWidget(QWidget):
 
         # Front surface (blue)
         if r1_abs > 0.1:
-            rho = R
-            rho_safe = np.minimum(rho, r1_abs * 0.999)
-            sag1 = r1_abs - np.sqrt(r1_abs**2 - rho_safe**2)
-            Z_front = x1_vertex + (sag1 if r1 > 0 else -sag1)
-
+            Z_front = x1_vertex + get_sag(r1, R)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_front, alpha=0.5, color='blue', rstride=2, cstride=2)
 
         # Back surface (green)
         if r2_abs > 0.1:
-            rho = R
-            rho_safe = np.minimum(rho, r2_abs * 0.999)
-            sag2 = r2_abs - np.sqrt(r2_abs**2 - rho_safe**2)
-            Z_back = x2_vertex + (sag2 if r2 > 0 else -sag2)
-            
+            Z_back = x2_vertex + get_sag(r2, R)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color='green', rstride=2, cstride=2)
         
         # Set axis limits on lens axis only
-        z_min = min(x1_vertex + (-sag1_edge if r1 < 0 else 0), x2_vertex + (-sag2_edge if r2 < 0 else 0))
+        z_min = min(x1_vertex + (sag1_edge if r1 < 0 else 0), x2_vertex + (sag2_edge if r2 > 0 else 0))
         z_max = max(x1_vertex + (sag1_edge if r1 > 0 else 0), x2_vertex + (sag2_edge if r2 > 0 else 0))
         padding = max(diameter, thickness) * 0.3
         limit = max(diameter, thickness) / 2 + padding
         self._ax.set_xlim([-limit, limit])
         self._ax.set_ylim([-limit, limit])
         self._ax.set_zlim([z_min - padding, z_max + padding])
-
         
         self._ax.view_init(elev=20, azim=45)
         

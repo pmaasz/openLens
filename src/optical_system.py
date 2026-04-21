@@ -53,6 +53,9 @@ class AirGap:
     thickness: float  # mm
     position: float = 0.0
 
+    def __format__(self, format_spec):
+        return format(self.thickness, format_spec)
+
 
 class OpticalSystem:
     """Multi-element optical system"""

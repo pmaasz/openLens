@@ -83,18 +83,19 @@ class TestOpenLensGUI(unittest.TestCase):
         """Test the assembly builder: adding a lens to a system"""
         self.window._on_new_assembly()
         # Mock lens list selection
-        self.window._assembly_lens_list.setCurrentRow(0)
-        self.window._on_add_lens_to_system()
+        tab = self.window._assembly_tab_widget
+        tab._assembly_lens_list.setCurrentRow(0)
+        tab._on_add_lens_to_system()
         
-        self.assertEqual(len(self.window._optical_system.elements), 1)
-        self.assertEqual(self.window._system_list.count(), 1)
+        self.assertEqual(len(tab._optical_system.elements), 1)
+        self.assertEqual(tab._system_list.count(), 1)
 
     def test_simulation_run(self):
         """Test running a simulation updates the viz widget"""
         self.window._editor_tabs.setCurrentIndex(2) # Simulation tab
         QApplication.processEvents()
         
-        viz = self.window._sim_viz
+        viz = self.window._sim_tab._sim_viz
         # Force a simulation run with direct params if the UI bound one is failing in headless
         active_system = self.window._current_assembly if self.window._current_assembly else self.window._current_lens
         viz.run_simulation(active_system, num_rays=5)

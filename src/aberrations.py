@@ -5,7 +5,7 @@ Calculates primary optical aberrations for single lens elements
 """
 
 import math
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
 
 # Import ray tracer for exact calculations
 try:
@@ -245,6 +245,68 @@ class AberrationsCalculator:
         """Calculate third-order Seidel distortion for a single lens"""
         # Placeholders for single lens Seidel approximation
         return 0.0
+
+    def calculate_ray_fan(self, 
+                          field_angle: float = 0.0, 
+                          wavelength: float = 550.0,
+                          num_points: int = 21,
+                          pupil_axis: str = 'y') -> Dict[str, Any]:
+        """
+        Interface for calculating ray fan.
+        """
+        from .analysis.geometric import GeometricTraceAnalysis
+        from .optical_system import OpticalSystem
+        
+        if self.is_system:
+            system = self.target
+        else:
+            system = OpticalSystem(name=self.lens.name)
+            system.add_lens(self.lens)
+            
+        analysis = GeometricTraceAnalysis(system)
+        return analysis.calculate_ray_fan(field_angle=field_angle, wavelength=wavelength, num_points=num_points, pupil_axis=pupil_axis)
+
+    def calculate_field_curvature(self, 
+                                  max_field_angle: float = 20.0, 
+                                  num_points: int = 11,
+                                  wavelength: float = 550.0) -> Tuple[List[float], List[float], List[float]]:
+        """
+        Interface for field curvature calculation.
+        Returns (angles, sag, tan)
+        """
+        from .analysis.geometric import GeometricTraceAnalysis
+        from .optical_system import OpticalSystem
+        
+        if self.is_system:
+            system = self.target
+        else:
+            system = OpticalSystem(name=self.lens.name)
+            system.add_lens(self.lens)
+            
+        analysis = GeometricTraceAnalysis(system)
+        data = analysis.calculate_field_curvature_distortion(max_field_angle=max_field_angle, num_points=num_points, wavelength=wavelength)
+        return data['field_angles'], data['sag_focus_shift'], data['tan_focus_shift']
+
+    def calculate_distortion_curve(self, 
+                                   max_field_angle: float = 20.0, 
+                                   num_points: int = 11,
+                                   wavelength: float = 550.0) -> Tuple[List[float], List[float]]:
+        """
+        Interface for distortion curve calculation.
+        Returns (angles, distortion_pct)
+        """
+        from .analysis.geometric import GeometricTraceAnalysis
+        from .optical_system import OpticalSystem
+        
+        if self.is_system:
+            system = self.target
+        else:
+            system = OpticalSystem(name=self.lens.name)
+            system.add_lens(self.lens)
+            
+        analysis = GeometricTraceAnalysis(system)
+        data = analysis.calculate_field_curvature_distortion(max_field_angle=max_field_angle, num_points=num_points, wavelength=wavelength)
+        return data['field_angles'], data['distortion_pct']
     
     def _calculate_strehl_ratio(self, focal_length: float) -> float:
         """Estimate Strehl ratio from wavefront error/spot size"""
