@@ -182,7 +182,7 @@ class StartupDialog(QDialog):
                 font-size: 14px;
             }
             QListWidget::item {
-                padding: 8px;
+                padding: 4px;
             }
             QListWidget::item:selected {
                 background-color: #333333;
@@ -206,7 +206,7 @@ class StartupDialog(QDialog):
 
         # Open Selected button in the center
         open_btn = QPushButton("Open Selected")
-        open_btn.setFixedWidth(150)
+        open_btn.setFixedWidth(125)
         open_btn.setStyleSheet("""
             QPushButton {
                 background-color: #2a2a2a;
@@ -238,7 +238,6 @@ class StartupDialog(QDialog):
             QPushButton {
                 background-color: #333333;
                 border: 1px solid #555555;
-                qproperty-icon: url(none); /* Clear existing */
             }
             QPushButton:hover {
                 background-color: #444444;
