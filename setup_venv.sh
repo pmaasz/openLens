@@ -52,18 +52,45 @@ echo "✓ Virtual environment created"
 echo ""
 
 # Activate and verify
-echo "🔍 Verifying installation..."
+echo "🔍 Installing dependencies..."
 source venv/bin/activate
 
+# Upgrade pip
+python -m pip install --upgrade pip
+
+# Install dependencies from requirements.txt
+if [ -f "requirements.txt" ]; then
+    echo "⬇️  Installing from requirements.txt..."
+    pip install -r requirements.txt
+    echo "✓ Dependencies installed"
+else
+    echo "⚠️  requirements.txt not found, skipping dependency installation"
+fi
+
+echo ""
+echo "🔍 Verifying installation..."
 VENV_PYTHON=$(which python)
 echo "✓ Virtual environment Python: $VENV_PYTHON"
 
-# Check tkinter
-if python -c "import tkinter" 2>/dev/null; then
-    echo "✓ tkinter is available (GUI will work)"
+# Check PySide6 (Primary GUI)
+if python -c "import PySide6" 2>/dev/null; then
+    echo "✓ PySide6 is available (Primary GUI will work)"
 else
-    echo "⚠️  tkinter is not available (GUI will not work)"
-    echo "   Install with: sudo apt-get install python3-tk (Ubuntu/Debian)"
+    echo "⚠️  PySide6 is not available"
+fi
+
+# Check scientific stack
+if python -c "import numpy, matplotlib" 2>/dev/null; then
+    echo "✓ numpy and matplotlib are available"
+else
+    echo "⚠️  Scientific stack (numpy/matplotlib) missing"
+fi
+
+# Check optional advanced features
+if python -c "import scipy, PIL" 2>/dev/null; then
+    echo "✓ scipy and Pillow are available (Advanced features enabled)"
+else
+    echo "ℹ️  scipy or Pillow missing (Advanced features will be disabled)"
 fi
 
 deactivate
@@ -77,8 +104,8 @@ echo "To activate the virtual environment:"
 echo "  $ source venv/bin/activate"
 echo ""
 echo "To run the application:"
-echo "  $ python lens_editor_gui.py    # GUI version"
-echo "  $ python lens_editor.py        # CLI version"
+echo "  $ python openlens.py           # GUI version"
+echo "  $ python -m src.lens_editor    # CLI version"
 echo ""
 echo "To run tests:"
 echo "  $ python tests/run_all_tests.py"

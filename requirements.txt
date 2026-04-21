@@ -8,8 +8,7 @@ PySide6>=6.2.0
 numpy>=1.19.0
 matplotlib>=3.3.0
 
-# Advanced Features (Optional)
-# Uncomment these if you need advanced image simulation and diffraction analysis
+# Advanced Features (Recommended for full functionality)
 scipy>=1.5.0
 Pillow>=8.0.0
 
