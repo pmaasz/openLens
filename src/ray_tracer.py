@@ -609,6 +609,11 @@ class SystemRayTracer:
         
         return rays
         
+    def trace_ray(self, ray: Ray) -> Ray:
+        """Trace a single ray through all elements"""
+        self._trace_ray_through_system(ray)
+        return ray
+
     def _trace_ray_through_system(self, ray: Ray) -> None:
         """Trace a single ray through all elements"""
         

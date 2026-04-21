@@ -294,5 +294,83 @@ class TestValidationErrors(unittest.TestCase):
         self.assertTrue(issubclass(ValidationError, Exception))
 
 
+class TestSchemaValidation(unittest.TestCase):
+    """Test JSON/Dictionary schema validation"""
+    
+    def test_validate_lens_data_schema_valid(self):
+        """Test that valid lens data passes validation"""
+        from validation import validate_lens_data_schema
+        valid_data = {
+            'name': 'Test Lens',
+            'radius_of_curvature_1': 100.0,
+            'radius_of_curvature_2': -100.0,
+            'thickness': 5.0,
+            'diameter': 50.0,
+            'refractive_index': 1.5168,
+            'type': 'Biconvex',
+            'material': 'BK7'
+        }
+        result = validate_lens_data_schema(valid_data)
+        self.assertEqual(result, valid_data)
+    
+    def test_validate_lens_data_schema_missing_field(self):
+        """Test detection of missing required fields"""
+        from validation import validate_lens_data_schema
+        invalid_data = {
+            'name': 'Test Lens',
+            # Missing radius_of_curvature_1
+            'radius_of_curvature_2': -100.0,
+            'thickness': 5.0,
+            'diameter': 50.0,
+            'refractive_index': 1.5168
+        }
+        with self.assertRaises(ValidationError):
+            validate_lens_data_schema(invalid_data)
+            
+    def test_validate_lens_data_schema_wrong_type(self):
+        """Test detection of wrong value types"""
+        from validation import validate_lens_data_schema
+        invalid_data = {
+            'name': 'Test Lens',
+            'radius_of_curvature_1': "not a number",
+            'radius_of_curvature_2': -100.0,
+            'thickness': 5.0,
+            'diameter': 50.0,
+            'refractive_index': 1.5168
+        }
+        with self.assertRaises(ValidationError):
+            validate_lens_data_schema(invalid_data)
+
+    def test_validate_lenses_json_schema_valid(self):
+        """Test validation of lenses array"""
+        from validation import validate_lenses_json_schema
+        valid_array = [
+            {
+                'name': 'Lens 1',
+                'radius_of_curvature_1': 100.0,
+                'radius_of_curvature_2': -100.0,
+                'thickness': 5.0,
+                'diameter': 50.0,
+                'refractive_index': 1.5168
+            },
+            {
+                'name': 'Lens 2',
+                'radius_of_curvature_1': 200.0,
+                'radius_of_curvature_2': -200.0,
+                'thickness': 3.0,
+                'diameter': 25.0,
+                'refractive_index': 1.6
+            }
+        ]
+        result = validate_lenses_json_schema(valid_array)
+        self.assertEqual(result, valid_array)
+
+    def test_validate_lenses_json_schema_not_array(self):
+        """Test rejection of non-array root"""
+        from validation import validate_lenses_json_schema
+        with self.assertRaises(ValidationError):
+            validate_lenses_json_schema({'not': 'an array'})
+
+
 if __name__ == '__main__':
     unittest.main()

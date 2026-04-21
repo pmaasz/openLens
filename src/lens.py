@@ -313,14 +313,14 @@ class Lens:
             return "Plano-Concave" if r2 > 0 else "Plano-Convex"
         elif r2_flat:
             return "Plano-Convex" if r1 > 0 else "Plano-Concave"
-        elif r1 > 0 and r2 > 0:
-            return "Biconcave"
-        elif r1 < 0 and r2 < 0:
-            return "Biconvex"
         elif r1 > 0 and r2 < 0:
-            return "Meniscus Convex" if abs(r1) != abs(r2) else "Biconvex"
+            return "Biconvex"
         elif r1 < 0 and r2 > 0:
-            return "Meniscus Concave" if abs(r1) != abs(r2) else "Biconcave"
+            return "Biconcave"
+        elif r1 > 0 and r2 > 0:
+            return "Meniscus Convex" if r1 < r2 else "Meniscus Concave"
+        elif r1 < 0 and r2 < 0:
+            return "Meniscus Concave" if abs(r1) < abs(r2) else "Meniscus Convex"
         else:
             return "Unknown"
     

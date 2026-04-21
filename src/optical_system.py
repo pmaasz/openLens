@@ -53,6 +53,9 @@ class AirGap:
     thickness: float  # mm
     position: float = 0.0
 
+    def __format__(self, format_spec):
+        return format(self.thickness, format_spec)
+
 
 class OpticalSystem:
     """Multi-element optical system"""
@@ -73,6 +76,10 @@ class OpticalSystem:
         last_pos = 0.0
         last_thick = 0.0
         
+        # Ensure flat list is up to date before adding
+        if not self.elements and len(self.root.children) > 0:
+             self._rebuild_from_tree()
+
         # Use existing elements list (which is up to date) to find last position
         if self.elements:
             last_elem = self.elements[-1]
@@ -216,6 +223,13 @@ class OpticalSystem:
         last_element = self.elements[-1]
         return last_element.position + last_element.thickness
     
+    def calculate_optical_power(self) -> Optional[float]:
+        """Calculate the total optical power of the system in diopters."""
+        efl = self.get_system_focal_length()
+        if efl is None or abs(efl) < 1e-10:
+            return 0.0
+        return 1000.0 / efl
+
     def get_system_focal_length(self) -> Optional[float]:
         """
         Calculate system focal length using thin lens approximation
@@ -316,19 +330,21 @@ class OpticalSystem:
         
         # Load elements
         system.elements = []
-        for e_data in data.get("elements", []):
+        # Clear default root children to avoid duplication if any
+        system.root.children = []
+        
+        gaps_data = data.get("air_gaps", [])
+        
+        for i, e_data in enumerate(data.get("elements", [])):
             lens_data = e_data.get("lens")
             lens = Lens.from_dict(lens_data)
-            le = LensElement(lens=lens, position=e_data.get("position", 0.0), 
-                             lens_id=e_data.get("lens_id"))
-            system.elements.append(le)
             
-        # Load air gaps
-        system.air_gaps = []
-        for g_data in data.get("air_gaps", []):
-            gap = AirGap(thickness=g_data.get("thickness", 0.0), 
-                         position=g_data.get("position", 0.0))
-            system.air_gaps.append(gap)
+            # Use gap logic consistent with add_lens
+            gap_before = 0.0
+            if i > 0 and i-1 < len(gaps_data):
+                gap_before = gaps_data[i-1].get('thickness', 0.0)
+            
+            system.add_lens(lens, air_gap_before=gap_before)
             
         return system
 
@@ -344,12 +360,42 @@ class OpticalSystem:
             return None
 
     def calculate_chromatic_aberration(self) -> Dict[str, Any]:
-        """Calculate system chromatic aberration (simplified)"""
-        # Placeholder for real calculation
-        return {
-            "longitudinal": 0.5, # mm
-            "corrected": True
+        """Calculate system longitudinal chromatic aberration using standard F, d, C lines."""
+        # Standard Fraunhofer lines in nm
+        lines = {
+            'F': 486.1,  # Blue
+            'd': 587.6,  # Yellow (Reference)
+            'C': 656.3   # Red
         }
+        
+        bfls = {}
+        original_states = []
+        
+        # Save original wavelengths
+        for element in self.elements:
+            original_states.append(element.lens.wavelength)
+            
+        try:
+            for line, wl in lines.items():
+                for element in self.elements:
+                    element.lens.update_refractive_index(wavelength=wl)
+                bfls[line] = self.calculate_back_focal_length()
+            
+            if bfls['F'] is not None and bfls['C'] is not None:
+                longitudinal = bfls['C'] - bfls['F']
+                return {
+                    "longitudinal": longitudinal,
+                    "bfl_F": bfls['F'],
+                    "bfl_d": bfls['d'],
+                    "bfl_C": bfls['C'],
+                    "corrected": abs(longitudinal) < 0.1
+                }
+            return {"longitudinal": 0.0, "corrected": False}
+                
+        finally:
+            # Restore original wavelengths
+            for i, element in enumerate(self.elements):
+                element.lens.update_refractive_index(wavelength=original_states[i])
 
     def _calculate_system_matrix(self) -> Optional[Tuple[float, float, float, float]]:
         """Calculate system ray-transfer (ABCD) matrix"""

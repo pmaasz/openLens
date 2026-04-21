@@ -503,18 +503,31 @@ class LensEditorController:
             ttk.Label(parent, text=label_text).grid(row=i, column=0, sticky=tk.W, pady=PADDING_SMALL)
             
             if key == "lens_type":
-                # Read-only field showing lens type classification
                 type_label = ttk.Label(parent, text=default, font=('Arial', 10, 'bold'), anchor='w')
                 type_label.grid(row=i, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
                 self.entry_fields[key] = type_label
+            elif key in ('radius1', 'radius2'):
+                container = ttk.Frame(parent)
+                container.grid(row=i, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
+                
+                entry = ttk.Entry(container, width=12)
+                entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                entry.insert(0, default)
+                entry.bind('<KeyRelease>', self._on_entry_changed)
+                
+                scale = ttk.Scale(container, from_=-500, to_=500, orient=tk.HORIZONTAL)
+                scale.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                scale.bind('<Motion>', lambda e, k=key, s=scale: self._on_scale_drag(e, k, s))
+                scale.bind('<ButtonRelease-1>', lambda e, k=key: self._on_scale_release(e, k))
+                
+                self.entry_fields[key] = entry
+                self.entry_fields[f'{key}_scale'] = scale
+                self._slider_dragging = False
             else:
                 entry = ttk.Entry(parent, width=20)
                 entry.grid(row=i, column=1, sticky="ew", padx=PADDING_SMALL, pady=PADDING_SMALL)
                 entry.insert(0, default)
-                
-                # Bind auto-calculate (now for all fields including name)
                 entry.bind('<KeyRelease>', self.on_field_changed)
-                
                 self.entry_fields[key] = entry
         
         parent.columnconfigure(1, weight=1)
@@ -1413,6 +1426,43 @@ class LensEditorController:
         if self.on_lens_updated_callback:
             self.on_lens_updated_callback(system)
     
+    def _on_entry_changed(self, event):
+        """Handle entry changes - sync slider value"""
+        if hasattr(self, 'entry_fields') and hasattr(self, '_slider_dragging'):
+            if self._slider_dragging:
+                return
+            entry = event.widget
+            key = None
+            for k in ('radius1', 'radius2'):
+                if self.entry_fields.get(k) is entry:
+                    key = k
+                    break
+            if key and f'{key}_scale' in self.entry_fields:
+                try:
+                    val = float(entry.get())
+                    self.entry_fields[f'{key}_scale'].set(val)
+                except ValueError:
+                    pass
+        self.on_field_changed(event)
+    
+    def _on_scale_drag(self, event, key, scale):
+        """Handle slider dragging - update entry without triggering recalc"""
+        if hasattr(self, '_slider_dragging'):
+            self._slider_dragging = True
+            try:
+                val = scale.get()
+                entry = self.entry_fields.get(key)
+                if entry:
+                    entry.delete(0, tk.END)
+                    entry.insert(0, f"{val:.1f}")
+            except (ValueError, tk.TclError):
+                pass
+            self._slider_dragging = False
+    
+    def _on_scale_release(self, event, key):
+        """Handle slider release - trigger recalculation"""
+        self.on_field_changed()
+    
     def on_field_changed(self, event=None):
         """Handle input field changes by updating results and scheduling autosave"""
         # Result labels must exist before we can update them
@@ -1791,12 +1841,12 @@ class SimulationController:
                 from matplotlib.figure import Figure
                 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
                 
-                self.sim_figure = Figure(figsize=(12, 6), dpi=100, facecolor=COLOR_BG_DARK)
+                self.sim_figure = Figure(figsize=(14, 8), dpi=120, facecolor=COLOR_BG_DARK)
                 self.sim_figure.subplots_adjust(left=0.08, right=0.95, top=0.93, bottom=0.10)
                 self.sim_ax = self.sim_figure.add_subplot(111, facecolor=COLOR_BG_DARK)
                 
                 # Configure axes
-                self.sim_ax.set_xlim(-100, 150)
+                self.sim_ax.set_xlim(-5, 15)
                 self.sim_ax.set_ylim(-30, 30)
                 self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
                 self.sim_ax.set_xlabel('Position (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
@@ -2251,6 +2301,10 @@ class SimulationController:
         # Clear previous simulation state but keep geometry
         self.sim_ax.clear()
         
+        # Set axis limits for zoomed-in view
+        self.sim_ax.set_xlim(-5, 15)
+        self.sim_ax.set_ylim(-30, 30)
+        
         # Redraw the lens/system geometry
         if hasattr(self.current_lens, 'elements'):
             self._draw_system()
@@ -2325,6 +2379,10 @@ class SimulationController:
             
         # Clear previous rays but keep lenses
         self.sim_ax.clear()
+        
+        # Set axis limits for zoomed-in view
+        self.sim_ax.set_xlim(-5, 15)
+        self.sim_ax.set_ylim(-30, 30)
         
         # Draw system/lens first
         is_system = hasattr(self.current_lens, 'elements')
@@ -2534,7 +2592,7 @@ class SimulationController:
             COLOR_BG_DARK, COLOR_BG_LIGHT, COLOR_FG = '#2b2b2b', '#3f3f3f', '#e0e0e0'
             FONT_SIZE_NORMAL = 10
         
-        self.sim_ax.set_xlim(-100, 150)
+        self.sim_ax.set_xlim(-5, 15)
         self.sim_ax.set_ylim(-30, 30)
         self.sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
         self.sim_ax.set_xlabel('Position (mm)', fontsize=FONT_SIZE_NORMAL, color=COLOR_FG)
@@ -2681,8 +2739,6 @@ class PerformanceController:
                   command=self.show_mtf).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(btn_frame2, text="Wavefront Map", 
                   command=self.show_wavefront_map).pack(side=tk.LEFT, padx=PADDING_SMALL)
-        ttk.Button(btn_frame2, text="Image Simulation", 
-                  command=self.show_image_simulation).pack(side=tk.LEFT, padx=PADDING_SMALL)
         ttk.Button(btn_frame2, text="Export Report", 
                   command=self.export_report).pack(side=tk.LEFT, padx=PADDING_SMALL)
     

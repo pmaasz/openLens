@@ -37,6 +37,23 @@ class ImageQualityAnalyzer:
         self.spot_analyzer = SpotDiagram(system)
         self.wavefront_sensor = WavefrontSensor(system)
         
+    def calculate_spot_diagram(self, 
+                               field_angle: float = 0.0, 
+                               wavelength: float = 550.0,
+                               num_rings: int = 6,
+                               focus_shift: float = 0.0) -> List[Tuple[float, float]]:
+        """
+        Wrapper for calculate_spot in SpotDiagram for backward compatibility/consistency.
+        Returns a list of (y, z) coordinates in mm.
+        """
+        res = self.spot_analyzer.trace_spot(
+            field_angle_y=field_angle,
+            wavelength=wavelength,
+            focus_shift=focus_shift,
+            num_rings=num_rings
+        )
+        return res['points']
+
     def calculate_psf(self, 
                       field_angle: float = 0.0, 
                       wavelength: float = 550.0,
