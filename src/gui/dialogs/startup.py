@@ -49,11 +49,11 @@ class StartupDialog(QDialog):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(15)
+        layout.setSpacing(10)
         layout.setContentsMargins(40, 40, 40, 40)
         
         title = QLabel("Welcome to OpenLens")
-        title.setStyleSheet("font-size: 26px; font-weight: bold; color: #ffffff; margin-bottom: 20px;")
+        title.setStyleSheet("font-size: 26px; font-weight: bold; color: #ffffff; margin-bottom: 10px;")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
         
@@ -63,7 +63,7 @@ class StartupDialog(QDialog):
                 background-color: #333333;
                 color: #ffffff;
                 border: 1px solid #555555;
-                padding: 10px;
+                padding: 8px;
                 font-size: 14px;
                 border-radius: 0px;
             }
@@ -172,7 +172,7 @@ class StartupDialog(QDialog):
 
         # List widget
         list_widget = QListWidget()
-        list_widget.setMinimumHeight(400)
+        list_widget.setMinimumHeight(450)
         list_widget.setStyleSheet("""
             QListWidget {
                 background-color: transparent;
