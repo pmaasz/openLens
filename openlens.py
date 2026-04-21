@@ -1011,6 +1011,16 @@ Ctrl+6         Tolerancing
             dialog = AnalysisPlotDialog("PSF Analysis", self)
             ax = dialog.get_axes()
             
+            # Apply dark theme to axes if needed
+            if getattr(self, '_theme', 'dark') == 'dark':
+                ax.set_facecolor('#1e1e1e')
+                ax.tick_params(colors='#e0e0e0')
+                ax.xaxis.label.set_color('#e0e0e0')
+                ax.yaxis.label.set_color('#e0e0e0')
+                ax.title.set_color('#e0e0e0')
+                for spine in ax.spines.values():
+                    spine.set_edgecolor('#3f3f3f')
+
             img = psf_data['image']
             extent = [
                 psf_data['z_axis'][0], psf_data['z_axis'][-1],

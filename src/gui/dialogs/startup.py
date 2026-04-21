@@ -101,6 +101,12 @@ class StartupDialog(QDialog):
         open_asm_btn.clicked.connect(lambda: self._show_list("assembly"))
         layout.addWidget(open_asm_btn, alignment=Qt.AlignCenter)
         
+        # Area for title and list
+        self.list_header_label = QLabel("")
+        self.list_header_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff; margin-top: 10px;")
+        self.list_header_label.setVisible(False)
+        layout.addWidget(self.list_header_label)
+
         # Container for the dynamic list view
         self.list_scroll = QScrollArea()
         self.list_scroll.setWidgetResizable(True)
@@ -109,14 +115,22 @@ class StartupDialog(QDialog):
         
         self.list_container = QWidget()
         self.list_layout = QVBoxLayout(self.list_container)
-        self.list_layout.setContentsMargins(0, 20, 0, 0)
+        self.list_layout.setContentsMargins(0, 0, 0, 0)
         self.list_scroll.setWidget(self.list_container)
         layout.addWidget(self.list_scroll)
+        
+        # Bottom controls area (fixed at bottom, outside scroll)
+        self.bottom_controls = QWidget()
+        self.bottom_controls.setFixedHeight(60)
+        self.bottom_controls_layout = QHBoxLayout(self.bottom_controls)
+        self.bottom_controls_layout.setContentsMargins(0, 0, 0, 10)
+        self.bottom_controls.setVisible(False)
+        layout.addWidget(self.bottom_controls)
         
         layout.addStretch()
 
     def _show_list(self, list_type):
-        """Show list of items with overlay +/- buttons at bottom right"""
+        """Show list of items matching the visual design in the image"""
         # Clear existing list UI
         while self.list_layout.count():
             item = self.list_layout.takeAt(0)
@@ -124,127 +138,159 @@ class StartupDialog(QDialog):
                 item.widget().deleteLater()
             elif item.layout():
                 self._clear_layout(item.layout())
+        
+        # Clear existing bottom controls
+        while self.bottom_controls_layout.count():
+            item = self.bottom_controls_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                self._clear_layout(item.layout())
 
         if list_type == "lens":
-            title = "Stored Lenses"
+            title = "Available Lenses"
             from src.lens import Lens as TypeClass
         else:
-            title = "Stored Assemblies"
+            title = "Available Assemblies"
             from src.optical_system import OpticalSystem as TypeClass
 
-        # List Title
-        title_label = QLabel(title)
-        title_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #aaaaaa; margin-bottom: 5px;")
-        self.list_layout.addWidget(title_label)
+        # Update and show header
+        self.list_header_label.setText(title)
+        self.list_header_label.setVisible(True)
         
-        # Create a container for list + buttons
-        list_wrapper = QWidget()
-        wrapper_layout = QVBoxLayout(list_wrapper)
-        wrapper_layout.setContentsMargins(0, 0, 0, 0)
-        wrapper_layout.setSpacing(0)
-        
+        # Main container for list (inside scroll area)
+        container = QFrame()
+        container.setStyleSheet("""
+            QFrame {
+                border: 1px solid #333333;
+                background-color: transparent;
+            }
+        """)
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(1, 1, 1, 1)
+        container_layout.setSpacing(0)
+
         # List widget
         list_widget = QListWidget()
-        list_widget.setMinimumHeight(250)
+        list_widget.setMinimumHeight(400)
         list_widget.setStyleSheet("""
             QListWidget {
-                background-color: #1e1e1e;
+                background-color: transparent;
                 color: #e0e0e0;
-                border: 1px solid #333333;
-                padding: 2px;
-                font-size: 13px;
+                border: none;
+                padding: 10px;
+                font-size: 14px;
             }
             QListWidget::item {
                 padding: 8px;
-                border-bottom: 1px solid #252525;
             }
             QListWidget::item:selected {
-                background-color: #0078d4;
+                background-color: #333333;
                 color: #ffffff;
             }
         """)
         
-        # Filter items by type
+        # Filter items
         items = [item for item in self._all_items if isinstance(item, TypeClass)]
         for item in items:
             list_widget.addItem(getattr(item, 'name', 'Unnamed'))
             
-        wrapper_layout.addWidget(list_widget)
-        
-        # Floating-style buttons at bottom right of the list area
-        buttons_container = QWidget(list_widget)
-        btn_layout = QHBoxLayout(buttons_container)
-        btn_layout.setContentsMargins(0, 0, 10, 10)
-        btn_layout.setSpacing(5)
-        
-        # Minus (-) button for delete
-        delete_btn = QPushButton("-")
-        delete_btn.setToolTip(f"Delete selected {list_type}")
-        delete_btn.setFixedSize(26, 26)
-        delete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2a2a2a;
-                color: #e0e0e0;
-                border: 1px solid #444444;
-                font-size: 18px;
-                font-family: 'Courier New', Courier, monospace;
-                font-weight: bold;
-                border-radius: 0px;
-                line-height: 26px;
-                padding-bottom: 2px;
-            }
-            QPushButton:hover {
-                background-color: #442222;
-                color: #ff5555;
-                border: 1px solid #ff5555;
-            }
-        """)
-        delete_btn.clicked.connect(lambda: self._on_delete(list_widget, items, list_type))
-        
-        # Plus (+) button for import
-        import_btn = QPushButton("+")
-        import_btn.setToolTip(f"Import {list_type} from file")
-        import_btn.setFixedSize(26, 26)
-        import_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2a2a2a;
-                color: #e0e0e0;
-                border: 1px solid #444444;
-                font-size: 18px;
-                font-family: 'Courier New', Courier, monospace;
-                font-weight: bold;
-                border-radius: 0px;
-                line-height: 26px;
-                padding-bottom: 2px;
-            }
-            QPushButton:hover {
-                background-color: #224422;
-                color: #55ff55;
-                border: 1px solid #55ff55;
-            }
-        """)
-        import_btn.clicked.connect(lambda: self._on_import(list_type))
-        
-        btn_layout.addStretch()
-        btn_layout.addWidget(delete_btn)
-        btn_layout.addWidget(import_btn)
-        
-        # Position buttons at the bottom right of the list_widget
-        def update_button_pos():
-            buttons_container.resize(list_widget.width(), 40)
-            buttons_container.move(0, list_widget.height() - 40)
-        
-        list_widget.resized = update_button_pos
-        # Note: In PySide6 we'd typically override resizeEvent, but for this dynamic layout:
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(10, update_button_pos)
+        container_layout.addWidget(list_widget)
+        self.list_layout.addWidget(container)
 
-        self.list_layout.addWidget(list_wrapper)
+        # Rebuild fixed bottom controls
+        self.bottom_controls.setVisible(True)
+        
+        # Spacer to push buttons
+        self.bottom_controls_layout.addStretch(1)
+
+        # Open Selected button in the center
+        open_btn = QPushButton("Open Selected")
+        open_btn.setFixedWidth(150)
+        open_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2a2a2a;
+                color: #ffffff;
+                border: 1px solid #444444;
+                padding: 8px;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #333333;
+                border: 1px solid #555555;
+            }
+        """)
+        open_btn.clicked.connect(lambda: self._open_selected(list_widget, items, list_type))
+        self.bottom_controls_layout.addWidget(open_btn)
+
+        self.bottom_controls_layout.addStretch(1)
+
+        # +/- Buttons at the right
+        action_btns = QWidget()
+        action_layout = QHBoxLayout(action_btns)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(10)
+
+        plus_btn = QPushButton()
+        plus_btn.setFixedSize(36, 36)
+        plus_btn.setToolTip("Import from file")
+        plus_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #333333;
+                border: 1px solid #555555;
+                qproperty-icon: url(none); /* Clear existing */
+            }
+            QPushButton:hover {
+                background-color: #444444;
+            }
+        """)
+        # Create a simple SVG-like icon using a painter or just better styling
+        from PySide6.QtGui import QIcon, QPainter, QPen, QPixmap, QColor
+        def create_icon(icon_type):
+            pixmap = QPixmap(32, 32)
+            pixmap.fill(Qt.transparent)
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.Antialiasing)
+            pen = QPen(QColor("#ffffff"), 3)
+            painter.setPen(pen)
+            if icon_type == "plus":
+                painter.drawLine(16, 8, 16, 24)
+                painter.drawLine(8, 16, 24, 16)
+            else:
+                painter.drawLine(8, 16, 24, 16)
+            painter.end()
+            return QIcon(pixmap)
+
+        plus_btn.setIcon(create_icon("plus"))
+        plus_btn.clicked.connect(lambda: self._on_import(list_type))
+
+        minus_btn = QPushButton()
+        minus_btn.setFixedSize(36, 36)
+        minus_btn.setToolTip("Delete selected")
+        minus_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #333333;
+                border: 1px solid #555555;
+            }
+            QPushButton:hover {
+                background-color: #444444;
+            }
+        """)
+        minus_btn.setIcon(create_icon("minus"))
+        minus_btn.clicked.connect(lambda: self._on_delete(list_widget, items, list_type))
+
+        action_layout.addWidget(plus_btn)
+        action_layout.addWidget(minus_btn)
+        self.bottom_controls_layout.addWidget(action_btns)
         
         # Double-click to open
         list_widget.itemDoubleClicked.connect(lambda item: self._open_selected(list_widget, items, list_type))
         
-        # Adjust dialog size and recenter if needed
+        self._recenter()
+        
+        # Double-click to open
+        list_widget.itemDoubleClicked.connect(lambda item: self._open_selected(list_widget, items, list_type))
+        
         self._recenter()
 
     def _clear_layout(self, layout):
