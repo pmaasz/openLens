@@ -41,6 +41,18 @@ class TestLensClassification(unittest.TestCase):
         self.lens.radius_of_curvature_2 = 0
         self.assertIn("Plano-Concave", self.lens.classify_lens_type())
 
+    def test_meniscus_convex_classification(self):
+        """Meniscus convex lens should have R1 > 0, R2 > 0 and R1 < R2"""
+        self.lens.radius_of_curvature_1 = 50
+        self.lens.radius_of_curvature_2 = 100
+        self.assertEqual(self.lens.classify_lens_type(), "Meniscus Convex")
+
+    def test_meniscus_concave_classification(self):
+        """Meniscus concave lens should have R1 > 0, R2 > 0 and R1 > R2"""
+        self.lens.radius_of_curvature_1 = 100
+        self.lens.radius_of_curvature_2 = 50
+        self.assertEqual(self.lens.classify_lens_type(), "Meniscus Concave")
+
 
 class TestLensCalculation(unittest.TestCase):
     """Test lens optical calculations"""
