@@ -1,45 +1,21 @@
 # openlens Requirements
 # Python 3.6+ required
 
-# Core dependencies: None!
-# All core functionality uses Python standard library only:
-# - tkinter (GUI) - included with most Python installations
-# - json (data storage) - standard library
-# - datetime (timestamps) - standard library
-# - os (file operations) - standard library
-# - unittest (testing) - standard library
+# GUI Framework (Required for new GUI)
+PySide6>=6.2.0
 
-# Optional: 3D Visualization and Ray Tracing (recommended)
-matplotlib>=3.3.0
+# Scientific Computing & Visualization (Highly Recommended)
 numpy>=1.19.0
+matplotlib>=3.3.0
 
-# Optional: Advanced Features
-# Uncomment if you need these features:
-# scipy>=1.5.0  # For advanced image simulation, diffraction calculations with Bessel functions
-# Pillow>=8.0.0  # For image loading in image simulator
+# Advanced Features (Optional)
+# Uncomment these if you need advanced image simulation and diffraction analysis
+scipy>=1.5.0
+Pillow>=8.0.0
 
-# Features requiring scipy:
-# - Diffraction calculations (DiffractionCalculator) - uses Bessel functions
-# - Image simulation with aberrations (ImageSimulator) - uses gaussian filters
-# - Advanced image processing (zoom, sobel edge detection)
-# Note: These modules gracefully degrade if scipy is not available
-
-# Optional: Development tools (not required for application use)
-# These are suggestions if you want additional development tools
-
-# Code formatting
+# Development tools (Optional)
 # black>=22.0.0
-
-# Linting
-# pylint>=2.12.0
 # flake8>=4.0.0
-
-# Type checking
-# mypy>=0.950
-
-# Testing enhancements
 # pytest>=7.0.0
 # pytest-cov>=3.0.0
-
-# Documentation generation
 # sphinx>=4.5.0
