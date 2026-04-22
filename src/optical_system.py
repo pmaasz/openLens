@@ -299,7 +299,7 @@ class OpticalSystem:
             return False
             
     def to_dict(self) -> Dict[str, Any]:
-        """Convert system to dictionary for serialization."""
+        """Convert system to dictionary for serialization"""
         return {
             'id': self.id,
             'name': self.name,
