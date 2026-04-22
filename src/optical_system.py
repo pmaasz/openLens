@@ -299,53 +299,60 @@ class OpticalSystem:
             return False
             
     def to_dict(self) -> Dict[str, Any]:
-        """Convert system to dictionary for serialization"""
+        """Convert system to dictionary for serialization."""
         return {
-            "id": self.id,
-            "name": self.name,
-            "created_at": self.created_at,
-            "modified_at": self.modified_at,
-            "elements": [
+            'id': self.id,
+            'name': self.name,
+            'type': 'OpticalSystem',
+            'created_at': self.created_at,
+            'modified_at': self.modified_at,
+            'elements': [
                 {
-                    "lens": e.lens.to_dict(),
-                    "position": e.position,
-                    "lens_id": e.lens_id
-                } for e in self.elements
+                    'lens': e.lens.to_dict(),
+                    'lens_id': e.lens_id or getattr(e.lens, 'id', None),
+                    'position': e.position,
+                }
+                for e in self.elements
             ],
-            "air_gaps": [
-                {
-                    "thickness": g.thickness,
-                    "position": g.position
-                } for g in self.air_gaps
-            ]
+            'air_gaps': [
+                {'thickness': g.thickness, 'position': g.position}
+                for g in self.air_gaps
+            ],
         }
-        
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'OpticalSystem':
-        """Create optical system from dictionary"""
-        system = cls(name=data.get("name", "Unnamed System"))
-        system.id = data.get("id", system.id)
-        system.created_at = data.get("created_at", system.created_at)
-        system.modified_at = data.get("modified_at", system.modified_at)
-        
-        # Load elements
+    def from_dict(cls, data: Dict[str, Any],
+                  lens_lookup: Optional[dict] = None) -> 'OpticalSystem':
+        """Create optical system from dictionary.
+
+        If ``lens_lookup`` is provided, elements with a matching ``lens_id``
+        reuse the shared Lens instance instead of deserializing a fresh copy.
+        """
+        system = cls(name=data.get('name', 'Optical System'))
+        system.id = data.get('id', system.id)
+        system.created_at = data.get('created_at', system.created_at)
+        system.modified_at = data.get('modified_at', system.modified_at)
+
+        # Clear default tree/flat state to avoid duplication.
         system.elements = []
-        # Clear default root children to avoid duplication if any
         system.root.children = []
-        
-        gaps_data = data.get("air_gaps", [])
-        
-        for i, e_data in enumerate(data.get("elements", [])):
-            lens_data = e_data.get("lens")
-            lens = Lens.from_dict(lens_data)
-            
-            # Use gap logic consistent with add_lens
+
+        elements_data = data.get('elements', [])
+        gaps_data = data.get('air_gaps', [])
+
+        for i, elem_data in enumerate(elements_data):
+            lens_id = elem_data.get('lens_id')
+            if lens_lookup and lens_id in lens_lookup:
+                lens = lens_lookup[lens_id]
+            else:
+                lens = Lens.from_dict(elem_data['lens'])
+
             gap_before = 0.0
-            if i > 0 and i-1 < len(gaps_data):
-                gap_before = gaps_data[i-1].get('thickness', 0.0)
-            
+            if i > 0 and i - 1 < len(gaps_data):
+                gap_before = gaps_data[i - 1].get('thickness', 0.0)
+
             system.add_lens(lens, air_gap_before=gap_before)
-            
+
         return system
 
     @staticmethod
@@ -398,34 +405,48 @@ class OpticalSystem:
                 element.lens.update_refractive_index(wavelength=original_states[i])
 
     def _calculate_system_matrix(self) -> Optional[Tuple[float, float, float, float]]:
-        """Calculate system ray-transfer (ABCD) matrix"""
+        """Calculate the system ray-transfer (ABCD) matrix surface-by-surface.
+
+        Treats each surface and thickness individually (thick-lens model):
+        for each element, apply refraction at the first surface, propagation
+        through the glass at the reduced thickness d/n, refraction at the
+        second surface, then propagation through the following air gap.
+        """
         if not self.elements:
             return None
-            
-        # Identity matrix
+
+        # Ray vector [y, u]; M = [[A, B], [C, D]], start at identity.
         A, B, C, D = 1.0, 0.0, 0.0, 1.0
-        
+        n_current = 1.0  # start in air
+
         for i, element in enumerate(self.elements):
-            # Matrix for thin lens (simplified)
-            # This should ideally be the thick lens matrix for accuracy
-            f = element.lens.calculate_focal_length()
-            if f:
-                P = -1.0 / f
-                # Lens matrix: [1 0; P 1]
-                A_l, B_l, C_l, D_l = 1.0, 0.0, P, 1.0
-                # Multiply current matrix by lens matrix
-                A, B, C, D = (A_l*A + B_l*C, A_l*B + B_l*D, 
-                              C_l*A + D_l*C, C_l*B + D_l*D)
-            
-            # Gap to next lens
-            if i < len(self.elements) - 1:
-                d = self.air_gaps[i].thickness
-                # Propagation matrix: [1 d; 0 1]
-                A_p, B_p, C_p, D_p = 1.0, d, 0.0, 1.0
-                # Multiply by propagation matrix
-                A, B, C, D = (A_p*A + B_p*C, A_p*B + B_p*D, 
-                              C_p*A + D_p*C, C_p*B + D_p*D)
-                
+            lens = element.lens
+            n_lens = lens.refractive_index
+
+            # Refraction at first surface (n_current → n_lens).
+            # Standard paraxial refraction matrix is [[1, 0], [-P, 1]].
+            R1 = lens.radius_of_curvature_1
+            if R1 != 0 and math.isfinite(R1):
+                P1 = (n_lens - n_current) / R1
+                A, B, C, D = (A, B, C - P1 * A, D - P1 * B)
+
+            # Propagation inside the glass: reduced thickness d/n.
+            d = lens.thickness / n_lens if n_lens else lens.thickness
+            A, B, C, D = (A + d * C, B + d * D, C, D)
+
+            # Refraction at second surface (n_lens → air).
+            R2 = lens.radius_of_curvature_2
+            if R2 != 0 and math.isfinite(R2):
+                P2 = (1.0 - n_lens) / R2
+                A, B, C, D = (A, B, C - P2 * A, D - P2 * B)
+
+            n_current = 1.0
+
+            # Air gap to next element
+            if i < len(self.elements) - 1 and i < len(self.air_gaps):
+                d_gap = self.air_gaps[i].thickness
+                A, B, C, D = (A + d_gap * C, B + d_gap * D, C, D)
+
         return A, B, C, D
     
     def calculate_back_focal_length(self) -> Optional[float]:
@@ -460,217 +481,10 @@ class OpticalSystem:
             return None
         return abs(f) / entrance_pupil
 
-class AchromaticDoubletDesigner:
-    """Designer for achromatic doublets"""
-    pass
-
-def create_doublet(focal_length: float = 100, diameter: float = 50) -> OpticalSystem:
-    """Helper to create a doublet"""
-    sys = OpticalSystem(name="Doublet")
-    l1 = Lens(name="Crown", radius_of_curvature_1=60, radius_of_curvature_2=-60, 
-              thickness=5, diameter=diameter, material="BK7")
-    l2 = Lens(name="Flint", radius_of_curvature_1=-60, radius_of_curvature_2=-100000, 
-              thickness=3, diameter=diameter, material="SF11")
-    sys.add_lens(l1)
-    sys.add_lens(l2, air_gap_before=0.1)
-    return sys
-
-def create_triplet(focal_length: float = 100, diameter: float = 50) -> OpticalSystem:
-    """Helper to create a triplet"""
-    sys = OpticalSystem(name="Triplet")
-    l1 = Lens(name="Outer 1", radius_of_curvature_1=100, radius_of_curvature_2=-100, 
-              thickness=5, diameter=diameter, material="BK7")
-    l2 = Lens(name="Inner", radius_of_curvature_1=-80, radius_of_curvature_2=80, 
-              thickness=3, diameter=diameter, material="SF11")
-    l3 = Lens(name="Outer 2", radius_of_curvature_1=100, radius_of_curvature_2=-100, 
-              thickness=5, diameter=diameter, material="BK7")
-    sys.add_lens(l1)
-    sys.add_lens(l2, air_gap_before=5.0)
-    sys.add_lens(l3, air_gap_before=5.0)
-    return sys
-
-    def calculate_back_focal_length(self) -> Optional[float]:
-        """
-        Calculate Back Focal Length (BFL) of the system.
-        BFL is the distance from the last surface to the back focal point.
-        """
-        matrix = self._calculate_system_matrix()
-        if not matrix:
-            return None
-            
-        A, B, C, D = matrix
-        
-        if abs(C) < 1e-10:
-            return None # Infinite focal length
-            
-        return -A / C
-
-    def _calculate_system_matrix(self) -> Optional[Tuple[float, float, float, float]]:
-        """
-        Calculate system ray transfer matrix [A, B; C, D].
-        Treats each surface and thickness individually (thick lens model).
-        """
-        if not self.elements:
-            return None
-
-        # Matrix for ray vector [y, u] (height, angle)
-        # M = [[A, B], [C, D]]
-        # Initial matrix is identity
-        A, B, C, D = 1.0, 0.0, 0.0, 1.0
-        
-        # Current refractive index (starts in air)
-        n_current = 1.0
-        
-        for i, element in enumerate(self.elements):
-            lens = element.lens
-            n_lens = lens.refractive_index
-            
-            # Refraction at first surface (air to lens)
-            R1 = lens.radius_of_curvature_1
-            if R1 != 0:
-                # Surface power: (n2 - n1) / R
-                P1 = (n_lens - n_current) / R1
-                # Refraction matrix: [1 0; P 1]
-                A_s, B_s, C_s, D_s = 1.0, 0.0, P1, 1.0
-                A, B, C, D = (A_s*A + B_s*C, A_s*B + B_s*D, 
-                            C_s*A + D_s*C, C_s*B + D_s*D)
-            
-            # Propagation through lens thickness
-            d = lens.thickness / n_lens  # Effective thickness
-            A_p, B_p, C_p, D_p = 1.0, d, 0.0, 1.0
-            A, B, C, D = (A_p*A + B_p*C, A_p*B + B_p*D, 
-                          C_p*A + D_p*C, C_p*B + D_p*D)
-            
-            # Refraction at second surface (lens to air)
-            R2 = lens.radius_of_curvature_2
-            if R2 != 0:
-                P2 = (1.0 - n_lens) / R2
-                A_s, B_s, C_s, D_s = 1.0, 0.0, P2, 1.0
-                A, B, C, D = (A_s*A + B_s*C, A_s*B + B_s*D, 
-                            C_s*A + D_s*C, C_s*B + D_s*D)
-            
-            n_current = 1.0
-            
-            # Air gap propagation
-            if i < len(self.air_gaps):
-                d = self.air_gaps[i].thickness
-                A_p, B_p, C_p, D_p = 1.0, d, 0.0, 1.0
-                A, B, C, D = (A_p*A + B_p*C, A_p*B + B_p*D, 
-                              C_p*A + D_p*C, C_p*B + D_p*D)
-        
-        return A, B, C, D
-    
-    def get_numerical_aperture(self) -> float:
-        """Calculate system numerical aperture (based on first lens)"""
-        if not self.elements:
-            return 0.0
-        
-        first_lens = self.elements[0].lens
-        f = first_lens.calculate_focal_length()
-        if f is None or f == 0:
-            return 0.0
-        
-        return first_lens.diameter / (2 * abs(f))
-    
-    def calculate_chromatic_aberration(self) -> dict:
-        """Calculate chromatic aberration for the system"""
-        if not self.elements:
-            return {'longitudinal': 0.0, 'corrected': False}
-        
-        # Calculate for C (656nm) and F (486nm) lines
-        wavelengths = [486.1, 587.6, 656.3]  # F, d, C lines
-        focal_lengths = []
-        
-        for wl in wavelengths:
-            # Update all lenses for this wavelength
-            temp_focal = []
-            for element in self.elements:
-                lens = element.lens
-                original_wl = lens.wavelength
-                lens.update_refractive_index(wavelength=wl)
-                f = lens.calculate_focal_length()
-                temp_focal.append(f)
-                lens.update_refractive_index(wavelength=original_wl)  # Restore
-            
-            # System focal length at this wavelength
-            f_system = self.get_system_focal_length()
-            focal_lengths.append(f_system)
-        
-        if None in focal_lengths:
-            return {'longitudinal': 0.0, 'corrected': False}
-        
-        # Longitudinal chromatic aberration
-        lca = abs(focal_lengths[2] - focal_lengths[0])  # f_C - f_F
-        
-        # Well-corrected if LCA < 0.1% of focal length
-        corrected = lca < abs(focal_lengths[1] * 0.001) if focal_lengths[1] else False
-        
-        return {
-            'longitudinal': lca,
-            'f_F': focal_lengths[0],
-            'f_d': focal_lengths[1],
-            'f_C': focal_lengths[2],
-            'corrected': corrected
-        }
-    
     def is_achromatic(self) -> bool:
-        """Check if system is achromatic (corrected for chromatic aberration)"""
+        """True if the system is corrected for longitudinal chromatic aberration."""
         chrom = self.calculate_chromatic_aberration()
-        return chrom['corrected']
-    
-    def to_dict(self) -> dict:
-        """Export system to dictionary"""
-        return {
-            'id': self.id,
-            'name': self.name,
-            'type': 'OpticalSystem',
-            'created_at': self.created_at,
-            'modified_at': self.modified_at,
-            'elements': [
-                {
-                    'lens': elem.lens.to_dict(),
-                    'lens_id': elem.lens_id or (elem.id if hasattr(elem, 'id') else None),
-                    'position': elem.position
-                }
-                for elem in self.elements
-            ],
-            'air_gaps': [
-                {
-                    'thickness': gap.thickness,
-                    'position': gap.position
-                }
-                for gap in self.air_gaps
-            ]
-        }
-    
-    @classmethod
-    def from_dict(cls, data: dict, lens_lookup: Optional[dict] = None):
-        """Import system from dictionary"""
-        system = cls(name=data.get('name', 'Optical System'))
-        system.id = data.get('id', system.id)
-        system.created_at = data.get('created_at', system.created_at)
-        system.modified_at = data.get('modified_at', system.modified_at)
-        
-        elements_data = data.get('elements', [])
-        gaps_data = data.get('air_gaps', [])
-        
-        for i, elem_data in enumerate(elements_data):
-            lens_id = elem_data.get('lens_id')
-            if lens_lookup and lens_id in lens_lookup:
-                lens = lens_lookup[lens_id]
-            else:
-                lens = Lens.from_dict(elem_data['lens'])
-                
-            # Gap logic: 
-            # If adding the first lens (i=0), gap_before is 0.
-            # If adding subsequent lenses (i>0), gap_before is the gap stored at index i-1.
-            air_gap = 0.0
-            if i > 0 and i-1 < len(gaps_data):
-                air_gap = gaps_data[i-1]['thickness']
-                
-            system.add_lens(lens, air_gap_before=air_gap)
-        
-        return system
+        return bool(chrom.get('corrected', False))
 
 
 class AchromaticDoubletDesigner:
