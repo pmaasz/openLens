@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
                                QListWidget, QListWidgetItem)
 from src.gui.tabs.base_tab import BaseTab
 from src.gui.widgets.assembly_viz import AssemblyVisualizationWidget
-from src.optical_system import OpticalSystem
+from src.optical_system import OpticalSystem, AirGap
 
 
 class AssemblyTab(BaseTab):
@@ -44,11 +44,23 @@ class AssemblyTab(BaseTab):
         self._air_gap_group = QGroupBox("Air Gap (Before Selected Element)")
         self._air_gap_group.setEnabled(False)
         ag_layout = QFormLayout(self._air_gap_group)
+        
+        input_row = QHBoxLayout()
         self._air_gap_input = QDoubleSpinBox()
         self._air_gap_input.setRange(0, 1000)
+        self._air_gap_input.setDecimals(3)
+        self._air_gap_input.setSingleStep(0.1)
         self._air_gap_input.setSuffix(" mm")
-        self._air_gap_input.valueChanged.connect(self._on_air_gap_changed)
-        ag_layout.addRow("Thickness:", self._air_gap_input)
+        # Removed the direct valueChanged connection to prevent jumping during typing
+        
+        self._apply_gap_btn = QPushButton("Set")
+        self._apply_gap_btn.setFixedWidth(60)
+        self._apply_gap_btn.clicked.connect(self._on_apply_gap_clicked)
+        
+        input_row.addWidget(self._air_gap_input)
+        input_row.addWidget(self._apply_gap_btn)
+        
+        ag_layout.addRow("Thickness:", input_row)
         sys_layout.addWidget(self._air_gap_group)
         
         btn_row = QHBoxLayout()
@@ -85,8 +97,14 @@ class AssemblyTab(BaseTab):
         """Update the system list widget from the optical system model"""
         self._system_list.clear()
         for i, element in enumerate(self._optical_system.elements):
-            gap = self._optical_system.air_gaps[i] if i < len(self._optical_system.air_gaps) else 0.0
-            item = QListWidgetItem(f"{i+1}: {element.lens.name} (Gap: {gap:.1f}mm)")
+            # Air gap before element i is at index i-1
+            gap_str = ""
+            if i > 0 and i - 1 < len(self._optical_system.air_gaps):
+                gap = self._optical_system.air_gaps[i-1]
+                gap_value = gap.thickness if isinstance(gap, AirGap) else gap
+                gap_str = f" (Gap: {gap_value:.3f}mm)"
+            
+            item = QListWidgetItem(f"{i+1}: {element.lens.name}{gap_str}")
             self._system_list.addItem(item)
 
     def _on_add_lens_to_system(self):
@@ -94,7 +112,9 @@ class AssemblyTab(BaseTab):
         current = self._assembly_lens_list.currentRow()
         if current >= 0 and current < len(self._parent._lenses):
             lens = self._parent._lenses[current]
-            self._optical_system.add_lens(lens, air_gap_before=5.0)
+            # Default gap 5.0mm if not the first element
+            gap = 5.0 if self._optical_system.elements else 0.0
+            self._optical_system.add_lens(lens, air_gap_before=gap)
             self._update_system_list()
             self._assembly_viz.update_system(self._optical_system)
             self._on_assembly_changed()
@@ -130,23 +150,44 @@ class AssemblyTab(BaseTab):
 
     def _on_system_item_selected(self, index):
         """Handle system item selection"""
-        if index >= 0:
+        if index > 0:
             self._air_gap_group.setEnabled(True)
-            gap = self._optical_system.air_gaps[index] if index < len(self._optical_system.air_gaps) else 0.0
-            self._air_gap_input.blockSignals(True)
-            self._air_gap_input.setValue(gap)
-            self._air_gap_input.blockSignals(False)
+            # The gap before the element at 'index' is at index-1 in the air_gaps list
+            gap_index = index - 1
+            if gap_index < len(self._optical_system.air_gaps):
+                gap_obj = self._optical_system.air_gaps[gap_index]
+                gap_value = gap_obj.thickness if isinstance(gap_obj, AirGap) else gap_obj
+                self._air_gap_input.blockSignals(True)
+                self._air_gap_input.setValue(gap_value)
+                self._air_gap_input.blockSignals(False)
+            else:
+                self._air_gap_group.setEnabled(False)
         else:
             self._air_gap_group.setEnabled(False)
+
+    def _on_apply_gap_clicked(self):
+        """Apply the current air gap value to the system"""
+        self._on_air_gap_changed(self._air_gap_input.value())
 
     def _on_air_gap_changed(self, value):
         """Update air gap for selected element"""
         current = self._system_list.currentRow()
-        if current >= 0 and current < len(self._optical_system.air_gaps):
-            self._optical_system.air_gaps[current] = value
-            self._update_system_list()
-            self._assembly_viz.update_system(self._optical_system)
-            self._on_assembly_changed()
+        if current >= 0:
+            # The gap before the i-th element is at index i-1 in self.air_gaps
+            gap_index = current - 1
+            if gap_index >= 0 and gap_index < len(self._optical_system.air_gaps):
+                gap_obj = self._optical_system.air_gaps[gap_index]
+                if isinstance(gap_obj, AirGap):
+                    gap_obj.thickness = value
+                else:
+                    self._optical_system.air_gaps[gap_index] = value
+                
+                # Update positions in the optical system
+                self._optical_system._update_positions()
+                
+                self._update_system_list()
+                self._assembly_viz.update_system(self._optical_system)
+                self._on_assembly_changed()
 
     def _on_assembly_changed(self):
         """Notify parent window of assembly changes"""
