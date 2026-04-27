@@ -66,7 +66,7 @@ autodoc_default_options = {
     'show-inheritance': True,
 }
 autodoc_typehints = 'description'
-autodoc_mock_imports = ['tkinter', 'matplotlib', 'numpy', 'scipy', 'PIL']
+autodoc_mock_imports = ['matplotlib', 'numpy', 'scipy', 'PIL']
 
 # Autosummary settings
 autosummary_generate = True
