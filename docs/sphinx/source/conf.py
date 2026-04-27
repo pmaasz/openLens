@@ -13,11 +13,21 @@ sys.path.insert(0, os.path.abspath('../../../src'))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
+def get_version():
+    """Extract version from src/__init__.py."""
+    conf_dir = os.path.dirname(__file__)
+    init_path = os.path.abspath(os.path.join(conf_dir, '../../../src/__init__.py'))
+    with open(init_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.startswith('__version__'):
+                return line.split('=')[1].strip().strip('"').strip("'")
+    return "0.1.0"
+
 project = 'OpenLens'
 copyright = '2024, OpenLens Contributors'
 author = 'OpenLens Contributors'
-release = '1.0.0'
-version = '1.0'
+release = get_version()
+version = '.'.join(release.split('.')[:2])
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
