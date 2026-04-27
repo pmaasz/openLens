@@ -100,9 +100,8 @@ class Ray:
         sin_ratio = (n1 / n2) * sin_incident
         
         # Check for total internal reflection
-        # TIR occurs when |sin(theta2)| >= 1
-        # Use (1.0 - EPSILON) to handle floating-point edge cases at critical angle
-        if abs(sin_ratio) >= (1.0 - EPSILON):
+        # TIR occurs when |sin(theta2)| > 1
+        if abs(sin_ratio) > 1.0:
             # Total internal reflection - reflect instead of refract
             self.angle = 2 * surface_normal_angle - self.angle
             return False
