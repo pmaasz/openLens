@@ -12,9 +12,17 @@ def read_file(filename):
     with open(os.path.join(os.path.dirname(__file__), filename), encoding='utf-8') as f:
         return f.read()
 
+def get_version():
+    """Extract version from src/__init__.py."""
+    init_py = read_file(os.path.join('src', '__init__.py'))
+    for line in init_py.splitlines():
+        if line.startswith('__version__'):
+            return line.split('=')[1].strip().strip('"').strip("'")
+    return "0.1.0"
+
 setup(
     name='openlens',
-    version='0.3.0',
+    version=get_version(),
     description='An interactive optical lens design and simulation tool (PySide6-based)',
     long_description=read_file('README.md'),
     long_description_content_type='text/markdown',
