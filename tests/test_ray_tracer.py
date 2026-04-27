@@ -80,15 +80,31 @@ class TestRay(unittest.TestCase):
     
     def test_ray_total_internal_reflection(self):
         """Test total internal reflection"""
-        # Ray from glass to air at steep angle
-        ray = Ray(x=0, y=0, angle=math.radians(80))
+        # Ray from glass (BK7, n=1.5168) to air (n=1.0)
+        # Critical angle is arcsin(1/1.5168) ≈ 41.26°
+        # Surface normal is at 0° (pointing right)
+        n1 = 1.5168
+        n2 = 1.0
+        critical_angle_rad = math.asin(n2 / n1)
         
-        # This should cause total internal reflection
-        success = ray.refract(n1=1.5, n2=1.0, surface_normal_angle=0)
+        # 1. Just below critical angle (should refract)
+        angle_below = critical_angle_rad - 0.001
+        ray = Ray(x=0, y=0, angle=angle_below)
+        success = ray.refract(n1=n1, n2=n2, surface_normal_angle=0)
+        self.assertTrue(success, "Should refract just below critical angle")
         
-        # Depending on angle, might reflect
-        # Just check it doesn't crash and returns boolean
-        self.assertIsInstance(success, bool)
+        # 2. Exactly at critical angle (should refract/grazing)
+        # Due to floating point precision, we test very close to it
+        ray = Ray(x=0, y=0, angle=critical_angle_rad)
+        success = ray.refract(n1=n1, n2=n2, surface_normal_angle=0)
+        self.assertTrue(success, "Should refract at critical angle (grazing transmission)")
+        
+        # 3. Just above critical angle (should reflect)
+        angle_above = critical_angle_rad + 0.001
+        ray = Ray(x=0, y=0, angle=angle_above)
+        success = ray.refract(n1=n1, n2=n2, surface_normal_angle=0)
+        self.assertFalse(success, "Should reflect just above critical angle")
+        self.assertAlmostEqual(ray.angle, -angle_above, places=5)
 
 
 class TestLensRayTracer(unittest.TestCase):
