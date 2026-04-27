@@ -198,7 +198,6 @@ class OpticalSystem:
     def _update_positions(self) -> None:
         """Update positions of all elements"""
         current_pos = 0.0
-        gap_idx = 0
         
         for i, element in enumerate(self.elements):
             element.position = current_pos
@@ -210,10 +209,9 @@ class OpticalSystem:
             
             current_pos += element.thickness
             
-            if gap_idx < len(self.air_gaps):
-                self.air_gaps[gap_idx].position = current_pos
-                current_pos += self.air_gaps[gap_idx].thickness
-                gap_idx += 1
+            if i < len(self.air_gaps):
+                self.air_gaps[i].position = current_pos
+                current_pos += self.air_gaps[i].thickness
     
     def get_total_length(self) -> float:
         """Get total system length"""
