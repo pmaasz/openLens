@@ -107,11 +107,13 @@ class AberrationsCalculator:
         if focal_length is None:
             return {
                 'focal_length': None,
+                'spherical': None,
                 'spherical_aberration': None,
                 'coma': None,
                 'astigmatism': None,
                 'field_curvature': None,
                 'distortion': None,
+                'chromatic': None,
                 'chromatic_aberration': None,
                 'error': 'Cannot calculate focal length (zero optical power)'
             }
@@ -127,11 +129,13 @@ class AberrationsCalculator:
                 'numerical_aperture': na,
                 'f_number': self._calculate_f_number(focal_length),
                 'spherical': self._calculate_spherical_aberration(focal_length),
+                'spherical_aberration': self._calculate_spherical_aberration(focal_length),
                 'coma': field_data['coma'],
                 'astigmatism': field_data['astigmatism'],
                 'field_curvature': field_data['field_curvature'],
                 'distortion': field_data['distortion'],
                 'chromatic': self._calculate_chromatic_aberration(focal_length),
+                'chromatic_aberration': self._calculate_chromatic_aberration(focal_length),
                 'airy_disk_diameter': self._calculate_airy_disk(focal_length),
                 'spot_rms': self._calculate_spot_rms() if self.is_system else 0,
                 'strehl': self._calculate_strehl_ratio(focal_length),
@@ -143,11 +147,13 @@ class AberrationsCalculator:
             'numerical_aperture': na,
             'f_number': self._calculate_f_number(focal_length),
             'spherical': self._calculate_spherical_aberration(focal_length),
+            'spherical_aberration': self._calculate_spherical_aberration(focal_length),
             'coma': self._calculate_coma(focal_length, field_angle),
             'astigmatism': self._calculate_astigmatism(focal_length, field_angle),
             'field_curvature': self._calculate_field_curvature(focal_length),
             'distortion': self._calculate_distortion(focal_length, field_angle),
             'chromatic': self._calculate_chromatic_aberration(focal_length),
+            'chromatic_aberration': self._calculate_chromatic_aberration(focal_length),
             'airy_disk_diameter': self._calculate_airy_disk(focal_length),
             'strehl': self._calculate_strehl_ratio(focal_length),
             'mtf_cutoff': self._calculate_mtf_cutoff(focal_length)
@@ -229,21 +235,38 @@ class AberrationsCalculator:
         return coma
 
     def _calculate_astigmatism(self, focal_length: float, field_angle_deg: float) -> float:
-        """Calculate third-order Seidel astigmatism for a single lens"""
-        if field_angle_deg == 0:
+        """
+        Calculate third-order Seidel astigmatism for a single lens.
+        
+        For a single thin lens with the stop at the lens, the Seidel coefficient S3
+        depends only on the field angle and the optical power.
+        
+        Transverse Astigmatism (AS) = (y * field_angle^2) / 2
+        Longitudinal Astigmatism (L-AS) = f * field_angle^2
+        """
+        if abs(field_angle_deg) < EPSILON:
             return 0.0
-        # Longitudinal astigmatism ~= h^2 / f (Simplified)
-        h = focal_length * math.tan(math.radians(field_angle_deg))
-        return (h**2) / focal_length
+            
+        field_angle_rad = math.radians(field_angle_deg)
+        
+        # Longitudinal astigmatism for a thin lens at the stop is simply f * theta^2
+        # according to the Seidel contribution S_III = h_p^2 * phi.
+        # Shift in focus: delta_L = f * theta^2
+        return focal_length * (field_angle_rad**2)
 
     def _calculate_field_curvature(self, focal_length: float) -> float:
         """Calculate Petzval field curvature for a single lens"""
-        # Petzval Radius R_p = n * f
+        # Petzval Radius R_p = n * f (for a single thin lens)
         return self.n * focal_length
 
     def _calculate_distortion(self, focal_length: float, field_angle_deg: float) -> float:
-        """Calculate third-order Seidel distortion for a single lens"""
-        # Placeholders for single lens Seidel approximation
+        """
+        Calculate third-order Seidel distortion for a single lens.
+        
+        For a single thin lens with the stop AT the lens, the Seidel distortion 
+        coefficient S5 is zero. Distortion typically arises when the stop is 
+        shifted away from the lens.
+        """
         return 0.0
 
     def calculate_ray_fan(self, 
@@ -533,7 +556,7 @@ class AberrationsCalculator:
 ╠═══════════════════════════════════════════════════════════════╣
 ║ PRIMARY ABERRATIONS (Seidel)                                  ║
 ╠═══════════════════════════════════════════════════════════════╣
-║ Spherical Aberration:  {results['spherical_aberration']:>10.4f} mm (longitudinal)      ║
+║ Spherical Aberration:  {results['spherical']:>10.4f} mm (longitudinal)      ║
 ║ Coma (@ {field_angle}°):         {results['coma']:>10.4f} (relative)              ║
 ║ Astigmatism (@ {field_angle}°):  {results['astigmatism']:>10.4f} mm                       ║
 ║ Field Curvature:       {results['field_curvature']:>10.2f} mm (Petzval radius)     ║
@@ -541,15 +564,15 @@ class AberrationsCalculator:
 ╠═══════════════════════════════════════════════════════════════╣
 ║ CHROMATIC ABERRATION                                          ║
 ╠═══════════════════════════════════════════════════════════════╣
-║ Longitudinal CA:       {results['chromatic_aberration']:>10.4f} mm (focal shift)        ║
+║ Longitudinal CA:       {results['chromatic']:>10.4f} mm (focal shift)        ║
 ╚═══════════════════════════════════════════════════════════════╝
 
 INTERPRETATION:
-• Spherical Aberration: {'Negligible' if abs(results['spherical_aberration']) < 0.001 else 'Moderate' if abs(results['spherical_aberration']) < 0.01 else 'Significant'}
-  ({abs(results['spherical_aberration']):.4f} mm - {'rays focus at different points' if results['spherical_aberration'] != 0 else 'well corrected'})
+• Spherical Aberration: {'Negligible' if abs(results['spherical']) < 0.001 else 'Moderate' if abs(results['spherical']) < 0.01 else 'Significant'}
+  ({abs(results['spherical']):.4f} mm - {'rays focus at different points' if results['spherical'] != 0 else 'well corrected'})
 
-• Chromatic Aberration: {'Negligible' if results['chromatic_aberration'] < 0.1 else 'Moderate' if results['chromatic_aberration'] < 0.5 else 'Significant'}
-  ({results['chromatic_aberration']:.4f} mm - {'color fringing minimal' if results['chromatic_aberration'] < 0.1 else 'visible color fringing'})
+• Chromatic Aberration: {'Negligible' if results['chromatic'] < 0.1 else 'Moderate' if results['chromatic'] < 0.5 else 'Significant'}
+  ({results['chromatic']:.4f} mm - {'color fringing minimal' if results['chromatic'] < 0.1 else 'visible color fringing'})
 
 • Distortion: {'None' if abs(results['distortion']) < 0.1 else 'Barrel' if results['distortion'] < 0 else 'Pincushion'}
   ({abs(results['distortion']):.2f}% - {'straight lines appear' + (' curved inward' if results['distortion'] < 0 else ' curved outward') if abs(results['distortion']) > 0.1 else 'minimal'})
@@ -603,30 +626,31 @@ def analyze_lens_quality(lens: Any, field_angle: float = 5.0) -> Dict[str, Any]:
     score = 100
     
     # Evaluate spherical aberration
-    sa = abs(results['spherical_aberration'])
+    sa = abs(results['spherical'])
     if sa > SPHERICAL_ABERRATION_EXCELLENT:
         issues.append(f"High spherical aberration ({sa:.4f} mm)")
-        score -= 20  # Major SA penalty
+        score -= 40  # Major SA penalty
     elif sa > (SPHERICAL_ABERRATION_EXCELLENT / 10):
         issues.append(f"Moderate spherical aberration ({sa:.4f} mm)")
-        score -= 10  # Minor SA penalty
+        score -= 20  # Minor SA penalty
     
     # Evaluate chromatic aberration
-    ca = results['chromatic_aberration']
+    ca = results['chromatic']
     if ca > 0.5:  # Significant chromatic aberration
         issues.append(f"High chromatic aberration ({ca:.4f} mm)")
-        score -= 20  # Major SA penalty
+        score -= 40  # Major SA penalty
     elif ca > 0.1:
         issues.append(f"Moderate chromatic aberration ({ca:.4f} mm)")
-        score -= 10  # Minor SA penalty
+        score -= 20  # Minor SA penalty
     
     # Evaluate distortion
-    dist = abs(results['distortion'])
-    if dist > 5:
-        issues.append(f"High distortion ({dist:.2f}%)")
-        score -= 15  # Astigmatism penalty
-    elif dist > 1:
-        issues.append(f"Moderate distortion ({dist:.2f}%)")
+    dist = results['distortion']
+    dist_abs = abs(dist)
+    if dist_abs > 5:
+        issues.append(f"High distortion ({dist_abs:.2f}%)")
+        score -= 15
+    elif dist_abs > 1:
+        issues.append(f"Moderate distortion ({dist_abs:.2f}%)")
         score -= 5
     
     # Evaluate astigmatism

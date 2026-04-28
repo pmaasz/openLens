@@ -181,6 +181,16 @@ class TestAberrationsCalculator(unittest.TestCase):
         ast_on_axis = calc._calculate_astigmatism(focal_length, field_angle_deg=0.0)
         self.assertEqual(ast_on_axis, 0)
     
+    def test_astigmatism_increases_with_field_angle(self):
+        """Test that astigmatism increases with field angle"""
+        calc = AberrationsCalculator(self.biconvex)
+        focal_length = self.biconvex.calculate_focal_length()
+        
+        ast_5deg = abs(calc._calculate_astigmatism(focal_length, field_angle_deg=5.0))
+        ast_10deg = abs(calc._calculate_astigmatism(focal_length, field_angle_deg=10.0))
+        
+        self.assertGreater(ast_10deg, ast_5deg)
+    
     def test_field_curvature_calculation(self):
         """Test field curvature (Petzval) calculation"""
         calc = AberrationsCalculator(self.biconvex)
@@ -315,7 +325,7 @@ class TestAberrationsBehavior(unittest.TestCase):
         focal_length = biconvex.calculate_focal_length()
         distortion = calc._calculate_distortion(focal_length, field_angle_deg=10.0)
         
-        # For symmetric biconvex, shape factor is 0, so distortion should be 0
+        # For a single thin lens with stop AT the lens, distortion is 0
         self.assertAlmostEqual(distortion, 0.0, places=5)
     
     def test_aberrations_scale_correctly_with_parameters(self):
@@ -373,20 +383,20 @@ class TestAberrationsBehavior(unittest.TestCase):
     
     def test_quality_score_decreases_with_aberrations(self):
         """Test that quality score properly reflects aberration levels"""
-        # Create a good lens (moderate aperture, symmetric design)
-        good_lens = Lens(name="Good", radius_of_curvature_1=100.0,
-                        radius_of_curvature_2=-100.0, thickness=5.0,
-                        diameter=25.0, refractive_index=1.5168, material="Custom")
+        # Create a good lens (tiny aperture, very long focal length)
+        good_lens = Lens(name="Good", radius_of_curvature_1=1000.0,
+                        radius_of_curvature_2=-1000.0, thickness=2.0,
+                        diameter=1.0, refractive_index=1.5, material="BK7")
         
         # Create a poor lens (very large aperture, asymmetric, high aberrations)
-        poor_lens = Lens(name="Poor", radius_of_curvature_1=30.0,
-                        radius_of_curvature_2=-20.0, thickness=8.0,
-                        diameter=100.0, refractive_index=1.78, material="Custom")
+        poor_lens = Lens(name="Poor", radius_of_curvature_1=5.0,
+                        radius_of_curvature_2=-2.0, thickness=25.0,
+                        diameter=250.0, refractive_index=1.9, material="SF11")
         
         quality_good = analyze_lens_quality(good_lens, field_angle=2.0)
-        quality_poor = analyze_lens_quality(poor_lens, field_angle=15.0)
+        quality_poor = analyze_lens_quality(poor_lens, field_angle=2.0)
         
-        # Good lens should have higher quality score
+        # Good lens should have higher quality score than poor lens
         self.assertGreater(quality_good['quality_score'], quality_poor['quality_score'])
         
         # Poor lens should have more issues
