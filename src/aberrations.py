@@ -234,34 +234,40 @@ class AberrationsCalculator:
         coma = ( (self.D/2.0)**3 * math.radians(field_angle_deg) / focal_length**2 ) * factor
         return coma
 
-    def _calculate_astigmatism(self, focal_length: float, field_angle_deg: float) -> Optional[float]:
-        """Calculate third-order Seidel astigmatism for a single lens"""
+    def _calculate_astigmatism(self, focal_length: float, field_angle_deg: float) -> float:
+        """
+        Calculate third-order Seidel astigmatism for a single lens.
+        
+        For a single thin lens with the stop at the lens, the Seidel coefficient S3
+        depends only on the field angle and the optical power.
+        
+        Transverse Astigmatism (AS) = (y * field_angle^2) / 2
+        Longitudinal Astigmatism (L-AS) = f * field_angle^2
+        """
         if abs(field_angle_deg) < EPSILON:
             return 0.0
             
-        # Third-order Seidel Astigmatism (S3) for a thin lens at the stop (simplified)
-        # S3 = y_p^2 * phi / 2  (for a single surface or thin lens)
-        # However, a more robust approximation for a single lens element:
-        # astigmatism = (h^2 / (2 * f)) * (Seidel factors)
+        field_angle_rad = math.radians(field_angle_deg)
         
-        # For now, return None as the single lens Seidel approximation is not fully implemented
-        return None
+        # Longitudinal astigmatism for a thin lens at the stop is simply f * theta^2
+        # according to the Seidel contribution S_III = h_p^2 * phi.
+        # Shift in focus: delta_L = f * theta^2
+        return focal_length * (field_angle_rad**2)
 
     def _calculate_field_curvature(self, focal_length: float) -> float:
         """Calculate Petzval field curvature for a single lens"""
         # Petzval Radius R_p = n * f (for a single thin lens)
-        # The Petzval sum for a single thin lens is 1 / (n * f)
-        # The Petzval radius of curvature is -n * f
         return self.n * focal_length
 
-    def _calculate_distortion(self, focal_length: float, field_angle_deg: float) -> Optional[float]:
-        """Calculate third-order Seidel distortion for a single lens"""
-        # Distortion for a single lens with stop at the lens is theoretically zero
-        # in the third-order thin-lens approximation. However, real lenses have
-        # non-zero distortion due to thickness and stop position.
+    def _calculate_distortion(self, focal_length: float, field_angle_deg: float) -> float:
+        """
+        Calculate third-order Seidel distortion for a single lens.
         
-        # Return None to indicate it's not implemented/calculated for single lens
-        return None
+        For a single thin lens with the stop AT the lens, the Seidel distortion 
+        coefficient S5 is zero. Distortion typically arises when the stop is 
+        shifted away from the lens.
+        """
+        return 0.0
 
     def calculate_ray_fan(self, 
                           field_angle: float = 0.0, 
@@ -552,9 +558,9 @@ class AberrationsCalculator:
 ╠═══════════════════════════════════════════════════════════════╣
 ║ Spherical Aberration:  {results['spherical']:>10.4f} mm (longitudinal)      ║
 ║ Coma (@ {field_angle}°):         {results['coma']:>10.4f} (relative)              ║
-║ Astigmatism (@ {field_angle}°):  {str(results['astigmatism'])[:10] if results['astigmatism'] is not None else 'N/A':>10} mm                       ║
+║ Astigmatism (@ {field_angle}°):  {results['astigmatism']:>10.4f} mm                       ║
 ║ Field Curvature:       {results['field_curvature']:>10.2f} mm (Petzval radius)     ║
-║ Distortion (@ {field_angle}°):   {str(results['distortion'])[:10] if results['distortion'] is not None else 'N/A':>10} %                        ║
+║ Distortion (@ {field_angle}°):   {results['distortion']:>10.4f} %                        ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║ CHROMATIC ABERRATION                                          ║
 ╠═══════════════════════════════════════════════════════════════╣
@@ -568,8 +574,8 @@ INTERPRETATION:
 • Chromatic Aberration: {'Negligible' if results['chromatic'] < 0.1 else 'Moderate' if results['chromatic'] < 0.5 else 'Significant'}
   ({results['chromatic']:.4f} mm - {'color fringing minimal' if results['chromatic'] < 0.1 else 'visible color fringing'})
 
-• Distortion: {'N/A' if results['distortion'] is None else 'None' if abs(results['distortion']) < 0.1 else 'Barrel' if results['distortion'] < 0 else 'Pincushion'}
-  ({f"{abs(results['distortion']):.2f}%" if results['distortion'] is not None else 'N/A'} - {('straight lines appear' + (' curved inward' if results['distortion'] < 0 else ' curved outward')) if (results['distortion'] is not None and abs(results['distortion']) > 0.1) else 'minimal or N/A'})
+• Distortion: {'None' if abs(results['distortion']) < 0.1 else 'Barrel' if results['distortion'] < 0 else 'Pincushion'}
+  ({abs(results['distortion']):.2f}% - {'straight lines appear' + (' curved inward' if results['distortion'] < 0 else ' curved outward') if abs(results['distortion']) > 0.1 else 'minimal'})
 
 • Resolution Limit: {results['airy_disk_diameter']*1000:.2f} μm (diffraction-limited spot size)
 """
@@ -639,24 +645,22 @@ def analyze_lens_quality(lens: Any, field_angle: float = 5.0) -> Dict[str, Any]:
     
     # Evaluate distortion
     dist = results['distortion']
-    if dist is not None:
-        dist_abs = abs(dist)
-        if dist_abs > 5:
-            issues.append(f"High distortion ({dist_abs:.2f}%)")
-            score -= 15
-        elif dist_abs > 1:
-            issues.append(f"Moderate distortion ({dist_abs:.2f}%)")
-            score -= 5
+    dist_abs = abs(dist)
+    if dist_abs > 5:
+        issues.append(f"High distortion ({dist_abs:.2f}%)")
+        score -= 15
+    elif dist_abs > 1:
+        issues.append(f"Moderate distortion ({dist_abs:.2f}%)")
+        score -= 5
     
     # Evaluate astigmatism
     ast = results['astigmatism']
-    if ast is not None:
-        if ast > 1.0:  # Large astigmatism
-            issues.append(f"High astigmatism ({ast:.4f} mm)")
-            score -= 15  # Astigmatism penalty
-        elif ast > 0.1:  # Moderate astigmatism
-            issues.append(f"Moderate astigmatism ({ast:.4f} mm)")
-            score -= 5
+    if ast > 1.0:  # Large astigmatism
+        issues.append(f"High astigmatism ({ast:.4f} mm)")
+        score -= 15  # Astigmatism penalty
+    elif ast > 0.1:  # Moderate astigmatism
+        issues.append(f"Moderate astigmatism ({ast:.4f} mm)")
+        score -= 5
     
     # Determine rating
     if score >= (QUALITY_EXCELLENT_THRESHOLD + 5):  # 90

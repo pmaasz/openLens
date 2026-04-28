@@ -77,11 +77,7 @@ class TestAberrationsCalculator(unittest.TestCase):
         
         for key in expected_keys:
             self.assertIn(key, results)
-            # Astigmatism and distortion are now None for single lenses
-            if key not in ['astigmatism', 'distortion']:
-                self.assertIsNotNone(results[key])
-            else:
-                self.assertIsNone(results[key])
+            self.assertIsNotNone(results[key])
     
     def test_f_number_calculation(self):
         """Test f-number calculation"""
@@ -184,14 +180,16 @@ class TestAberrationsCalculator(unittest.TestCase):
         
         ast_on_axis = calc._calculate_astigmatism(focal_length, field_angle_deg=0.0)
         self.assertEqual(ast_on_axis, 0)
-        
-    def test_astigmatism_is_none_off_axis(self):
-        """Test that astigmatism is None off-axis (not implemented)"""
+    
+    def test_astigmatism_increases_with_field_angle(self):
+        """Test that astigmatism increases with field angle"""
         calc = AberrationsCalculator(self.biconvex)
         focal_length = self.biconvex.calculate_focal_length()
         
-        ast_off_axis = calc._calculate_astigmatism(focal_length, field_angle_deg=5.0)
-        self.assertIsNone(ast_off_axis)
+        ast_5deg = abs(calc._calculate_astigmatism(focal_length, field_angle_deg=5.0))
+        ast_10deg = abs(calc._calculate_astigmatism(focal_length, field_angle_deg=10.0))
+        
+        self.assertGreater(ast_10deg, ast_5deg)
     
     def test_field_curvature_calculation(self):
         """Test field curvature (Petzval) calculation"""
@@ -311,7 +309,8 @@ class TestAberrationsBehavior(unittest.TestCase):
     """Functional tests for expected aberration behaviors"""
     
     def test_distortion_sign_convention(self):
-        """Test that distortion is None (not implemented)"""
+        """Test that distortion sign indicates barrel vs pincushion correctly"""
+        # Biconvex should have pincushion distortion (positive)
         biconvex = Lens(
             name="Biconvex",
             radius_of_curvature_1=100.0,
@@ -326,7 +325,8 @@ class TestAberrationsBehavior(unittest.TestCase):
         focal_length = biconvex.calculate_focal_length()
         distortion = calc._calculate_distortion(focal_length, field_angle_deg=10.0)
         
-        self.assertIsNone(distortion)
+        # For a single thin lens with stop AT the lens, distortion is 0
+        self.assertAlmostEqual(distortion, 0.0, places=5)
     
     def test_aberrations_scale_correctly_with_parameters(self):
         """Test that aberrations scale as expected with lens parameters"""
@@ -493,15 +493,13 @@ class TestAberrationsBehavior(unittest.TestCase):
         # Test at 0 degrees (on-axis)
         results_0 = calc.calculate_all_aberrations(field_angle=0.0)
         self.assertEqual(results_0['coma'], 0)
-        # On-axis astigmatism and distortion are 0.0, off-axis they are None
-        self.assertEqual(results_0['astigmatism'], 0.0)
-        self.assertIsNone(results_0['distortion'])
+        self.assertEqual(results_0['astigmatism'], 0)
+        self.assertEqual(results_0['distortion'], 0)
         
         # Test at wide field angle
         results_wide = calc.calculate_all_aberrations(field_angle=20.0)
         self.assertGreater(abs(results_wide['coma']), 0)
-        self.assertIsNone(results_wide['astigmatism'])
-        self.assertIsNone(results_wide['distortion'])
+        self.assertGreater(results_wide['astigmatism'], 0)
 
 
 if __name__ == '__main__':
