@@ -107,11 +107,13 @@ class AberrationsCalculator:
         if focal_length is None:
             return {
                 'focal_length': None,
+                'spherical': None,
                 'spherical_aberration': None,
                 'coma': None,
                 'astigmatism': None,
                 'field_curvature': None,
                 'distortion': None,
+                'chromatic': None,
                 'chromatic_aberration': None,
                 'error': 'Cannot calculate focal length (zero optical power)'
             }
@@ -127,11 +129,13 @@ class AberrationsCalculator:
                 'numerical_aperture': na,
                 'f_number': self._calculate_f_number(focal_length),
                 'spherical': self._calculate_spherical_aberration(focal_length),
+                'spherical_aberration': self._calculate_spherical_aberration(focal_length),
                 'coma': field_data['coma'],
                 'astigmatism': field_data['astigmatism'],
                 'field_curvature': field_data['field_curvature'],
                 'distortion': field_data['distortion'],
                 'chromatic': self._calculate_chromatic_aberration(focal_length),
+                'chromatic_aberration': self._calculate_chromatic_aberration(focal_length),
                 'airy_disk_diameter': self._calculate_airy_disk(focal_length),
                 'spot_rms': self._calculate_spot_rms() if self.is_system else 0,
                 'strehl': self._calculate_strehl_ratio(focal_length),
@@ -143,11 +147,13 @@ class AberrationsCalculator:
             'numerical_aperture': na,
             'f_number': self._calculate_f_number(focal_length),
             'spherical': self._calculate_spherical_aberration(focal_length),
+            'spherical_aberration': self._calculate_spherical_aberration(focal_length),
             'coma': self._calculate_coma(focal_length, field_angle),
             'astigmatism': self._calculate_astigmatism(focal_length, field_angle),
             'field_curvature': self._calculate_field_curvature(focal_length),
             'distortion': self._calculate_distortion(focal_length, field_angle),
             'chromatic': self._calculate_chromatic_aberration(focal_length),
+            'chromatic_aberration': self._calculate_chromatic_aberration(focal_length),
             'airy_disk_diameter': self._calculate_airy_disk(focal_length),
             'strehl': self._calculate_strehl_ratio(focal_length),
             'mtf_cutoff': self._calculate_mtf_cutoff(focal_length)
@@ -614,22 +620,22 @@ def analyze_lens_quality(lens: Any, field_angle: float = 5.0) -> Dict[str, Any]:
     score = 100
     
     # Evaluate spherical aberration
-    sa = abs(results['spherical_aberration'])
+    sa = abs(results['spherical'])
     if sa > SPHERICAL_ABERRATION_EXCELLENT:
         issues.append(f"High spherical aberration ({sa:.4f} mm)")
-        score -= 20  # Major SA penalty
+        score -= 40  # Major SA penalty
     elif sa > (SPHERICAL_ABERRATION_EXCELLENT / 10):
         issues.append(f"Moderate spherical aberration ({sa:.4f} mm)")
-        score -= 10  # Minor SA penalty
+        score -= 20  # Minor SA penalty
     
     # Evaluate chromatic aberration
-    ca = results['chromatic_aberration']
+    ca = results['chromatic']
     if ca > 0.5:  # Significant chromatic aberration
         issues.append(f"High chromatic aberration ({ca:.4f} mm)")
-        score -= 20  # Major SA penalty
+        score -= 40  # Major SA penalty
     elif ca > 0.1:
         issues.append(f"Moderate chromatic aberration ({ca:.4f} mm)")
-        score -= 10  # Minor SA penalty
+        score -= 20  # Minor SA penalty
     
     # Evaluate distortion
     dist = results['distortion']
