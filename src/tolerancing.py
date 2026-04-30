@@ -65,6 +65,52 @@ class MonteCarloAnalyzer:
         self.nominal_system = system
         self.tolerances = tolerances
         self.results: List[Dict[str, Any]] = []
+
+    def _get_system_state(self, system: OpticalSystem) -> List[Dict[str, Any]]:
+        """Get a capture of the current system parameters for restoration."""
+        state = []
+        nodes = system.root.get_flat_list()
+        for node, _ in nodes:
+            node_state = {
+                'position': vec3(node.position.x, node.position.y, node.position.z),
+                'rotation': vec3(node.rotation.x, node.rotation.y, node.rotation.z),
+            }
+            if getattr(node, 'is_element', False):
+                lens = getattr(node, 'element_model', None)
+                if lens:
+                    node_state['lens'] = {
+                        'r1': lens.radius_of_curvature_1,
+                        'r2': lens.radius_of_curvature_2,
+                        'thickness': lens.thickness,
+                        'nd': lens.model_nd if lens.model_glass_mode else lens.refractive_index,
+                        'vd': lens.model_vd if lens.model_glass_mode else 0,
+                        'glass_mode': lens.model_glass_mode
+                    }
+            state.append(node_state)
+        return state
+
+    def _set_system_state(self, system: OpticalSystem, state: List[Dict[str, Any]]):
+        """Restore system to a previously captured state."""
+        nodes = system.root.get_flat_list()
+        for i, (node, _) in enumerate(nodes):
+            if i >= len(state): break
+            node_state = state[i]
+            node.position = vec3(node_state['position'].x, node_state['position'].y, node_state['position'].z)
+            node.rotation = vec3(node_state['rotation'].x, node_state['rotation'].y, node_state['rotation'].z)
+            
+            if 'lens' in node_state and getattr(node, 'is_element', False):
+                lens = getattr(node, 'element_model', None)
+                if lens:
+                    ls = node_state['lens']
+                    lens.radius_of_curvature_1 = ls['r1']
+                    lens.radius_of_curvature_2 = ls['r2']
+                    lens.thickness = ls['thickness']
+                    lens.model_glass_mode = ls['glass_mode']
+                    if lens.model_glass_mode:
+                        lens.model_nd = ls['nd']
+                        lens.model_vd = ls['vd']
+                    lens.update_refractive_index()
+        system._update_positions()
         
     def _apply_tolerances(self, system: OpticalSystem) -> Dict[str, float]:
         """
@@ -165,24 +211,16 @@ class MonteCarloAnalyzer:
         spot_nom = SpotDiagram(self.nominal_system)
         res_nom = spot_nom.trace_spot()
         nominal_val = res_nom['rms_radius']
+
+        # Save nominal state for restoration instead of deepcopying
+        nominal_state = self._get_system_state(self.nominal_system)
         
         for i in range(num_trials):
-            # Deep copy the system
-            # Note: deepcopying complex objects can be tricky.
-            # OpticalSystem -> Elements -> Lens
-            # Let's try standard deepcopy.
-            perturbed_system = copy.deepcopy(self.nominal_system)
-            
-            # Apply tolerances
-            perturbations = self._apply_tolerances(perturbed_system)
+            # Apply tolerances directly to the system
+            perturbations = self._apply_tolerances(self.nominal_system)
             
             # Analyze
-            spot = SpotDiagram(perturbed_system)
-            # Use same settings as nominal (e.g., image plane might shift if we allow compensators)
-            # For now, assume fixed image plane or paraxial focus?
-            # Standard MC allows a compensator (usually back focal distance).
-            # SpotDiagram.trace_spot() automatically finds best focus if image_plane_x is None.
-            # This acts as a compensator.
+            spot = SpotDiagram(self.nominal_system)
             results = spot.trace_spot()
             
             val = results['rms_radius']
@@ -196,6 +234,9 @@ class MonteCarloAnalyzer:
                 'value': val,
                 'passed': passed
             })
+
+            # Restore nominal state
+            self._set_system_state(self.nominal_system, nominal_state)
             
         # Statistics
         values = [r['value'] for r in self.results]
@@ -225,6 +266,52 @@ class InverseSensitivityAnalyzer:
         self.system = system
         self.tolerances = tolerances
 
+    def _get_system_state(self, system: OpticalSystem) -> List[Dict[str, Any]]:
+        """Get a capture of the current system parameters for restoration."""
+        state = []
+        nodes = system.root.get_flat_list()
+        for node, _ in nodes:
+            node_state = {
+                'position': vec3(node.position.x, node.position.y, node.position.z),
+                'rotation': vec3(node.rotation.x, node.rotation.y, node.rotation.z),
+            }
+            if getattr(node, 'is_element', False):
+                lens = getattr(node, 'element_model', None)
+                if lens:
+                    node_state['lens'] = {
+                        'r1': lens.radius_of_curvature_1,
+                        'r2': lens.radius_of_curvature_2,
+                        'thickness': lens.thickness,
+                        'nd': lens.model_nd if lens.model_glass_mode else lens.refractive_index,
+                        'vd': lens.model_vd if lens.model_glass_mode else 0,
+                        'glass_mode': lens.model_glass_mode
+                    }
+            state.append(node_state)
+        return state
+
+    def _set_system_state(self, system: OpticalSystem, state: List[Dict[str, Any]]):
+        """Restore system to a previously captured state."""
+        nodes = system.root.get_flat_list()
+        for i, (node, _) in enumerate(nodes):
+            if i >= len(state): break
+            node_state = state[i]
+            node.position = vec3(node_state['position'].x, node_state['position'].y, node_state['position'].z)
+            node.rotation = vec3(node_state['rotation'].x, node_state['rotation'].y, node_state['rotation'].z)
+            
+            if 'lens' in node_state and getattr(node, 'is_element', False):
+                lens = getattr(node, 'element_model', None)
+                if lens:
+                    ls = node_state['lens']
+                    lens.radius_of_curvature_1 = ls['r1']
+                    lens.radius_of_curvature_2 = ls['r2']
+                    lens.thickness = ls['thickness']
+                    lens.model_glass_mode = ls['glass_mode']
+                    if lens.model_glass_mode:
+                        lens.model_nd = ls['nd']
+                        lens.model_vd = ls['vd']
+                    lens.update_refractive_index()
+        system._update_positions()
+
     def calculate_sensitivities(self, criterion: str = 'rms_spot_radius') -> List[Dict[str, Any]]:
         """
         Calculate sensitivity of each operand.
@@ -239,17 +326,21 @@ class InverseSensitivityAnalyzer:
         
         for i, tol in enumerate(self.tolerances):
             # Test at max value
-            # We use a simplified version of apply_tolerances that only applies ONE tolerance
-            perturbed_system = copy.deepcopy(self.system)
-            
             # Apply single tolerance at max value
             delta = tol.max_val
-            self._apply_single_tolerance(perturbed_system, tol, delta)
+            
+            # Save state
+            original_state = self._get_system_state(self.system)
+            
+            self._apply_single_tolerance(self.system, tol, delta)
             
             # Analyze
-            spot = SpotDiagram(perturbed_system)
+            spot = SpotDiagram(self.system)
             res = spot.trace_spot()
             val = res['rms_radius']
+            
+            # Restore state
+            self._set_system_state(self.system, original_state)
             
             change = val - nominal_val
             # Sensitivity = change / tolerance_value
@@ -318,6 +409,52 @@ class InverseSensitivityAnalyzer:
         elif tol.param_type == ToleranceType.TILT_X:
             node.rotation.x += value
             
+        system._update_positions()
+
+    def _get_system_state(self, system: OpticalSystem) -> List[Dict[str, Any]]:
+        """Get a capture of the current system parameters for restoration."""
+        state = []
+        nodes = system.root.get_flat_list()
+        for node, _ in nodes:
+            node_state = {
+                'position': vec3(node.position.x, node.position.y, node.position.z),
+                'rotation': vec3(node.rotation.x, node.rotation.y, node.rotation.z),
+            }
+            if getattr(node, 'is_element', False):
+                lens = getattr(node, 'element_model', None)
+                if lens:
+                    node_state['lens'] = {
+                        'r1': lens.radius_of_curvature_1,
+                        'r2': lens.radius_of_curvature_2,
+                        'thickness': lens.thickness,
+                        'nd': lens.model_nd if lens.model_glass_mode else lens.refractive_index,
+                        'vd': lens.model_vd if lens.model_glass_mode else 0,
+                        'glass_mode': lens.model_glass_mode
+                    }
+            state.append(node_state)
+        return state
+
+    def _set_system_state(self, system: OpticalSystem, state: List[Dict[str, Any]]):
+        """Restore system to a previously captured state."""
+        nodes = system.root.get_flat_list()
+        for i, (node, _) in enumerate(nodes):
+            if i >= len(state): break
+            node_state = state[i]
+            node.position = vec3(node_state['position'].x, node_state['position'].y, node_state['position'].z)
+            node.rotation = vec3(node_state['rotation'].x, node_state['rotation'].y, node_state['rotation'].z)
+            
+            if 'lens' in node_state and getattr(node, 'is_element', False):
+                lens = getattr(node, 'element_model', None)
+                if lens:
+                    ls = node_state['lens']
+                    lens.radius_of_curvature_1 = ls['r1']
+                    lens.radius_of_curvature_2 = ls['r2']
+                    lens.thickness = ls['thickness']
+                    lens.model_glass_mode = ls['glass_mode']
+                    if lens.model_glass_mode:
+                        lens.model_nd = ls['nd']
+                        lens.model_vd = ls['vd']
+                    lens.update_refractive_index()
         system._update_positions()
 
     def optimize_limits(self, target_yield_criterion: float, method: str = 'rss') -> List[ToleranceOperand]:

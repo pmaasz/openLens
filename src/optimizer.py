@@ -9,6 +9,7 @@ import random
 from typing import List, Dict, Tuple, Callable, Optional
 from dataclasses import dataclass, field
 import copy
+from concurrent.futures import ProcessPoolExecutor
 
 try:
     from .lens_editor import Lens
@@ -339,6 +340,7 @@ class LensOptimizer:
         self.variables = variables
         self.targets = targets
         self.merit_function = MeritFunction(system, targets, constraints)
+        self._merit_cache = {}
     
     def optimize(self, max_iterations: int = 100, tolerance: float = 1e-6, 
                  callback: Optional[Callable[[int, float, List[float]], None]] = None) -> OptimizationResult:
@@ -540,27 +542,44 @@ class LensOptimizer:
         )
     
     def _calculate_gradient(self, values: List[float]) -> List[float]:
-        """Calculate numerical gradient using finite differences"""
-        gradient = []
+        """Calculate numerical gradient using finite differences with optional parallelism"""
         epsilon = 1e-5
+        n_vars = len(values)
         
-        f0 = self._evaluate_design(values)
-        
-        for i in range(len(values)):
+        # Prepare all perturbed designs
+        perturbed_designs = []
+        for i in range(n_vars):
             values_plus = values.copy()
             values_plus[i] += epsilon
             values_plus[i] = self.variables[i].clamp(values_plus[i])
+            perturbed_designs.append(values_plus)
             
-            f_plus = self._evaluate_design(values_plus)
-            grad = (f_plus - f0) / epsilon
-            gradient.append(grad)
+        # Evaluate f0 (might already be cached)
+        f0 = self._evaluate_design(values)
         
+        # Evaluate all perturbations
+        # If we have many variables, use parallel execution
+        if n_vars > 4:
+            with ProcessPoolExecutor() as executor:
+                f_plus_list = list(executor.map(self._evaluate_design, perturbed_designs))
+        else:
+            f_plus_list = [self._evaluate_design(v) for v in perturbed_designs]
+            
+        gradient = [(f_plus - f0) / epsilon for f_plus in f_plus_list]
         return gradient
     
     def _evaluate_design(self, values: List[float]) -> float:
-        """Evaluate merit function for given variable values"""
+        """Evaluate merit function for given variable values with caching"""
+        # Create a cache key from the values (rounded to avoid precision issues)
+        cache_key = tuple(round(v, 10) for v in values)
+        if cache_key in self._merit_cache:
+            return self._merit_cache[cache_key]
+            
         system = self._apply_variables(values)
-        return self.merit_function.evaluate(system)
+        merit = self.merit_function.evaluate(system)
+        
+        self._merit_cache[cache_key] = merit
+        return merit
     
     def _apply_variables(self, values: List[float]) -> OpticalSystem:
         """Create a system with variables applied"""
