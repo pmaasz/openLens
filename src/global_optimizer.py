@@ -10,20 +10,27 @@ from typing import List, Dict, Optional, Tuple, Callable
 from dataclasses import dataclass
 
 try:
-    from .optimizer import OptimizationVariable, OptimizationResult, LensOptimizer, MeritFunction
+    from .optimizer import OptimizationVariable, OptimizationResult, LensOptimizer, MeritFunction, OptimizationTarget
     from .optical_system import OpticalSystem
 except (ImportError, ValueError):
     import sys
     import os
     # Fix import path if running directly
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from src.optimizer import OptimizationVariable, OptimizationResult, LensOptimizer, MeritFunction
+    from src.optimizer import OptimizationVariable, OptimizationResult, LensOptimizer, MeritFunction, OptimizationTarget
     from src.optical_system import OpticalSystem
 
 class GlobalOptimizer(LensOptimizer):
     """
     Extends LensOptimizer with global search capabilities.
     """
+
+    def __init__(self, system: OpticalSystem, variables: List[OptimizationVariable],
+                 targets: List[OptimizationTarget], constraints: Optional[Dict[str, float]] = None,
+                 seed: Optional[int] = None):
+        super().__init__(system, variables, targets, constraints)
+        if seed is not None:
+            random.seed(seed)
 
     def optimize_simulated_annealing(self, 
                                      max_iterations: int = 1000, 

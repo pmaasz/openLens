@@ -36,7 +36,7 @@ class TestGlobalOptimizer(unittest.TestCase):
 
     def test_simulated_annealing(self):
         """Test Simulated Annealing convergence"""
-        optimizer = GlobalOptimizer(self.system, self.variables, self.targets)
+        optimizer = GlobalOptimizer(self.system, self.variables, self.targets, seed=42)
         
         # Run SA
         result = optimizer.optimize_simulated_annealing(

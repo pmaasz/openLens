@@ -15,6 +15,8 @@ class LensEditorWidget(QWidget):
     
     # Signal emitted when lens properties change
     lens_updated = Signal()
+    # Signal emitted when lens model is modified and needs saving/refreshing
+    lens_modified = Signal(object) # Using object for Lens class to avoid circularity if any
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -195,12 +197,7 @@ class LensEditorWidget(QWidget):
         """Handle name change"""
         if self._lens:
             self._lens.name = name
-            
-            if self._parent and hasattr(self._parent, '_update_lens_list'):
-                self._parent._update_lens_list()
-            
-            if self._parent and hasattr(self._parent, '_save_to_database'):
-                self._parent._save_to_database()
+            self.lens_modified.emit(self._lens)
 
     def _on_property_changed(self):
         """Handle property changes with auto-save"""
@@ -215,14 +212,7 @@ class LensEditorWidget(QWidget):
             
             self._class_type_label.setText(self._lens.classify_lens_type())
             
-            if self._parent and hasattr(self._parent, '_save_to_database'):
-                self._parent._save_to_database()
-            
-            if self._parent and hasattr(self._parent, '_update_all_tabs'):
-                self._parent._update_all_tabs()
-            if self._parent and hasattr(self._parent, '_update_status'):
-                self._parent._update_status(f"Updated: {self._lens.name}")
-            
+            self.lens_modified.emit(self._lens)
             self.lens_updated.emit()
     
     def _on_material_changed(self, material):

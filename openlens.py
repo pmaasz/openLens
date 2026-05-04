@@ -246,6 +246,7 @@ class OpenLensWindow(QMainWindow):
         
         # Lens Editor tab (always visible)
         self._lens_editor = LensEditorWidget(self)
+        self._lens_editor.lens_modified.connect(self._on_lens_modified)
         self._editor_tabs.addTab(self._lens_editor, "Lens Editor")
         
         # Assembly Editor tab (initially hidden - only shown when editing assembly)
@@ -268,6 +269,13 @@ class OpenLensWindow(QMainWindow):
         
         return self._editor_tabs
     
+    def _on_lens_modified(self, lens):
+        """Handle lens modification from editor widget"""
+        self._update_lens_list()
+        self._save_to_database()
+        self._update_all_tabs()
+        self._update_status(f"Updated: {lens.name}")
+
     def _show_assembly_editor(self, show=True):
         """Show/hide assembly editor tab"""
         if hasattr(self, '_assembly_tab_index'):
