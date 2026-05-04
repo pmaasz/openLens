@@ -40,10 +40,6 @@ from src.services import LensService
 class OpenLensWindow(QMainWindow):
     """Main application window"""
     
-    # Define custom signals for thread-safe UI updates
-    opt_finished = Signal(object, list)
-    opt_failed = Signal(str)
-    
     def __init__(self, action=None, data=None):
         super().__init__()
         
@@ -60,10 +56,6 @@ class OpenLensWindow(QMainWindow):
         
         self._setup_ui()
         self._create_menu()
-        
-        # Connect signals
-        self.opt_finished.connect(self._on_optimization_finished)
-        self.opt_failed.connect(self._on_optimization_failed)
         
         self._handle_startup(action, data)
     
@@ -222,6 +214,7 @@ class OpenLensWindow(QMainWindow):
         self._tol_operands = []
         
         self._update_status("Welcome to OpenLens")
+
     
     def _create_editor_area(self):
         """Create the main editor area with tabs"""
@@ -1120,12 +1113,7 @@ Ctrl+6         Tolerancing
             QMessageBox.critical(self, "Analysis Error", f"Failed to analyze wavefront: {e}")
 
     def _refresh_lens_menu(self):
-        pass
-
-    def _on_optimization_finished(self, result, logs):
-        pass
-
-    def _on_optimization_failed(self, error):
+        """Refresh the lens menu with current lenses and assemblies"""
         pass
 
     def _load_default_lens(self):
