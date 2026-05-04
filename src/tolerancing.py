@@ -61,10 +61,12 @@ class MonteCarloAnalyzer:
     """
     Performs Monte Carlo analysis to estimate production yield.
     """
-    def __init__(self, system: OpticalSystem, tolerances: List[ToleranceOperand]):
+    def __init__(self, system: OpticalSystem, tolerances: List[ToleranceOperand], seed: Optional[int] = None):
         self.nominal_system = system
         self.tolerances = tolerances
         self.results: List[Dict[str, Any]] = []
+        if seed is not None:
+            random.seed(seed)
 
     def _get_system_state(self, system: OpticalSystem) -> List[Dict[str, Any]]:
         """Get a capture of the current system parameters for restoration."""

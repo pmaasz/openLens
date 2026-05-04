@@ -36,7 +36,7 @@ class TestTolerancing(unittest.TestCase):
             ToleranceOperand(0, ToleranceType.THICKNESS, -0.1, 0.1) # +/- 0.1mm on Thickness
         ]
         
-        mc = MonteCarloAnalyzer(self.sys, tols)
+        mc = MonteCarloAnalyzer(self.sys, tols, seed=42)
         
         # Run small MC
         stats = mc.run(num_trials=10, criterion='rms_spot_radius', criterion_limit=1.0)
