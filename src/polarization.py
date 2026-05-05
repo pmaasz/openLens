@@ -270,8 +270,13 @@ class PolarizationCalculator:
         R_p = np.abs(coeffs['r_p'])**2
         
         # Transmittance (power with angle correction)
-        T_s = (n2 * np.cos(theta2)) / (n1 * np.cos(theta1)) * np.abs(coeffs['t_s'])**2
-        T_p = (n2 * np.cos(theta2)) / (n1 * np.cos(theta1)) * np.abs(coeffs['t_p'])**2
+        # Avoid division by zero at grazing incidence (theta1 = 90 deg)
+        if np.abs(np.cos(theta1)) < 1e-10:
+            T_s = 0.0
+            T_p = 0.0
+        else:
+            T_s = (n2 * np.cos(theta2)) / (n1 * np.cos(theta1)) * np.abs(coeffs['t_s'])**2
+            T_p = (n2 * np.cos(theta2)) / (n1 * np.cos(theta1)) * np.abs(coeffs['t_p'])**2
         
         return {
             'R_s': R_s,

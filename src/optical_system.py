@@ -463,7 +463,7 @@ class OpticalSystem:
             return 0.0
         first_lens = self.elements[0].lens
         f = first_lens.calculate_focal_length()
-        if f is None or f == 0:
+        if f is None or f == 0 or first_lens.diameter <= 0:
             return 0.0
         return first_lens.diameter / (2 * abs(f))
     

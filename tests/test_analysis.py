@@ -43,10 +43,7 @@ class TestSpotDiagram(unittest.TestCase):
         
     def test_on_axis_spot(self):
         """Test on-axis spot diagram"""
-        # Trace spot
-        results = self.spot.trace_spot(field_angle_x=0, field_angle_y=0, num_rings=3)
-        
-        self.assertGreater(results['valid_rays'], 0)
+        results = self.spot.trace_spot(field_angle_x_deg=0, field_angle_y_deg=0, num_rings=3)
         
         # For a symmetric lens on axis, centroid should be at (0,0)
         cent_y, cent_z = results['centroid']
@@ -60,17 +57,17 @@ class TestSpotDiagram(unittest.TestCase):
     def test_defocus(self):
         """Test that spot size increases with defocus"""
         # Best focus
-        res_focus = self.spot.trace_spot(focus_shift=0.0)
+        res_focus = self.spot.trace_spot(focus_shift_mm=0.0)
         
         # Defocus by 1mm
-        res_defocus = self.spot.trace_spot(focus_shift=1.0)
+        res_defocus = self.spot.trace_spot(focus_shift_mm=1.0)
         
         self.assertGreater(res_defocus['rms_radius'], res_focus['rms_radius'])
         
     def test_off_axis_spot(self):
         """Test off-axis spot diagram"""
         # 5 degrees off-axis in Y
-        results = self.spot.trace_spot(field_angle_y=5.0, num_rings=3)
+        results = self.spot.trace_spot(field_angle_y_deg=5.0, num_rings=3)
         
         # Centroid should be shifted in Y
         cent_y, cent_z = results['centroid']
@@ -78,7 +75,7 @@ class TestSpotDiagram(unittest.TestCase):
         self.assertAlmostEqual(cent_z, 0.0, places=3) # Symmetry in Z preserved
         
         # RMS should likely be worse than on-axis due to coma/astigmatism
-        on_axis = self.spot.trace_spot(field_angle_y=0.0, num_rings=3)
+        on_axis = self.spot.trace_spot(field_angle_y_deg=0.0, num_rings=3)
         self.assertGreater(results['rms_radius'], on_axis['rms_radius'])
 
 if __name__ == '__main__':

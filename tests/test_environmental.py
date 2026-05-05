@@ -29,17 +29,17 @@ class TestEnvironmental(unittest.TestCase):
         # Test Edlen equation
         # STP: 20C, 1atm (approx STP for optics)
         # 587.6 nm (d-line)
-        n_air = EnvironmentalAnalyzer.calculate_air_index(587.6, 20.0, 1.0)
+        n_air = EnvironmentalAnalyzer.calculate_air_index(587.6, temperature_c=20.0, pressure_atm=1.0)
         
         # Expect ~1.00027
         self.assertAlmostEqual(n_air, 1.00027, places=4)
         
         # Test Temperature dependence (Hotter -> Less dense -> Lower index)
-        n_hot = EnvironmentalAnalyzer.calculate_air_index(587.6, 100.0, 1.0)
+        n_hot = EnvironmentalAnalyzer.calculate_air_index(587.6, temperature_c=100.0, pressure_atm=1.0)
         self.assertLess(n_hot, n_air)
         
         # Test Pressure dependence (Higher P -> More dense -> Higher index)
-        n_high_p = EnvironmentalAnalyzer.calculate_air_index(587.6, 20.0, 2.0)
+        n_high_p = EnvironmentalAnalyzer.calculate_air_index(587.6, temperature_c=20.0, pressure_atm=2.0)
         self.assertGreater(n_high_p, n_air)
 
     def test_thermal_expansion(self):
@@ -47,7 +47,7 @@ class TestEnvironmental(unittest.TestCase):
         # BK7 CTE = 7.1e-6
         # Scaling = 1 + 7.1e-6 * 100 = 1 + 7.1e-4 = 1.00071
         
-        new_sys = EnvironmentalAnalyzer.apply_environment(self.sys, temperature=120.0, pressure=1.0)
+        new_sys = EnvironmentalAnalyzer.apply_environment(self.sys, temperature_c=120.0, pressure_atm=1.0)
         new_lens = new_sys.elements[0].lens
         
         expected_scaling = 1.0 + 7.1e-6 * 100
@@ -61,12 +61,12 @@ class TestEnvironmental(unittest.TestCase):
         # Glass index (relative) should decrease because air index increases
         # n_glass_rel = n_glass_abs / n_air_abs
         
-        new_sys = EnvironmentalAnalyzer.apply_environment(self.sys, temperature=20.0, pressure=2.0)
+        new_sys = EnvironmentalAnalyzer.apply_environment(self.sys, temperature_c=20.0, pressure_atm=2.0)
         new_lens = new_sys.elements[0].lens
         
         # Calculate expected change
-        n_air_1 = EnvironmentalAnalyzer.calculate_air_index(587.6, 20.0, 1.0)
-        n_air_2 = EnvironmentalAnalyzer.calculate_air_index(587.6, 20.0, 2.0)
+        n_air_1 = EnvironmentalAnalyzer.calculate_air_index(587.6, temperature_c=20.0, pressure_atm=1.0)
+        n_air_2 = EnvironmentalAnalyzer.calculate_air_index(587.6, temperature_c=20.0, pressure_atm=2.0)
         
         # Original index (relative to 1atm air)
         # BK7 nd = 1.5168
@@ -99,7 +99,7 @@ class TestEnvironmental(unittest.TestCase):
         # Housing CTE assumed ~23.6e-6 (Aluminum)
         # Scaling = 1 + 23.6e-6 * 100 = 1.00236
         
-        new_sys = EnvironmentalAnalyzer.apply_environment(self.sys, temperature=120.0, pressure=1.0)
+        new_sys = EnvironmentalAnalyzer.apply_environment(self.sys, temperature_c=120.0, pressure_atm=1.0)
         
         # Check gap
         gap = new_sys.air_gaps[0]

@@ -129,7 +129,7 @@ class OpenLensWindow(QMainWindow):
             self._on_new_lens()
             self._update_status("New lens created")
         elif action == "create_assembly":
-            self._on_new_lens()
+            self._on_new_assembly()
             self._update_status("New assembly created")
         elif action == "open_lens" and data:
             self._load_lens_from_data(data)
@@ -252,6 +252,7 @@ class OpenLensWindow(QMainWindow):
         
         # Assembly Editor tab (initially hidden - only shown when editing assembly)
         self._assembly_tab_widget = AssemblyTab(self)
+        self._assembly_tab_widget.data_updated.connect(self._on_assembly_modified)
         self._assembly_tab_index = self._editor_tabs.addTab(self._assembly_tab_widget, "Assembly Editor")
         self._editor_tabs.setTabVisible(self._assembly_tab_index, False)
         
@@ -276,6 +277,14 @@ class OpenLensWindow(QMainWindow):
         self._save_to_database()
         self._update_all_tabs()
         self._update_status(f"Updated: {lens.name}")
+
+    def _on_assembly_modified(self):
+        """Handle assembly modification from assembly tab"""
+        # Ensure we are saving the actual modified system
+        self._current_assembly = self._assembly_tab_widget._optical_system
+        self._save_to_database()
+        self._update_all_tabs()
+        self._update_status(f"Assembly updated: {self._current_assembly.name if self._current_assembly else 'Unknown'}")
 
     def _show_assembly_editor(self, show=True):
         """Show/hide assembly editor tab"""
@@ -493,6 +502,9 @@ class OpenLensWindow(QMainWindow):
     
     def _on_save(self):
         """Save to database"""
+        if self._editor_tabs.currentIndex() == self._assembly_tab_index:
+             # Force sync from assembly tab state before saving
+             self._current_assembly = self._assembly_tab_widget._optical_system
         self._save_to_database()
         self._update_status("Saved to database")
     

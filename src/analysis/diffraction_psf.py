@@ -35,8 +35,8 @@ class WavefrontSensor:
         self.system = system
         self.tracer = SystemRayTracer3D(system)
 
-    def get_pupil_wavefront(self, field_angle: float = 0.0, 
-                           wavelength: float = WAVELENGTH_GREEN * NM_TO_MM,
+    def get_pupil_wavefront(self, field_angle_deg: float = 0.0, 
+                           wavelength_nm: float = 550.0,
                            grid_size: int = 64) -> WavefrontError:
         """
         Calculate wavefront error map at the exit pupil.
@@ -44,6 +44,9 @@ class WavefrontSensor:
         Returns:
             WavefrontError object containing Y, Z grids (pupil coords) and W (wavefront error in waves)
         """
+        # Convert wavelength from nm to mm for tracer
+        wavelength_mm = wavelength_nm * 1e-6
+
         # 1. Define Pupil Grid
         # Get entrance pupil diameter (approx first lens D)
         if not self.system.elements:
@@ -61,8 +64,8 @@ class WavefrontSensor:
         # Through center of pupil
         ref_ray = Ray3D(
             origin=vec3(self.system.elements[0].position - 20, 0, 0),
-            direction=vec3(math.cos(math.radians(field_angle)), math.sin(math.radians(field_angle)), 0),
-            wavelength=wavelength
+            direction=vec3(math.cos(math.radians(field_angle_deg)), math.sin(math.radians(field_angle_deg)), 0),
+            wavelength=wavelength_mm
         )
         self.tracer.trace_ray(ref_ray)
         ref_opl = ref_ray.optical_path_length
@@ -74,7 +77,7 @@ class WavefrontSensor:
         start_x = self.system.elements[0].position - 20
         
         # Direction vector
-        angle_rad = math.radians(field_angle)
+        angle_rad = math.radians(field_angle_deg)
         dx = math.cos(angle_rad)
         dy = math.sin(angle_rad)
         dz = 0
@@ -97,7 +100,7 @@ class WavefrontSensor:
                 # Ray should hit (pupil_x, py, pz)
                 origin = vec3(pupil_x, py, pz) - direction * (dist / dx)
                 
-                ray = Ray3D(origin, direction, wavelength=wavelength)
+                ray = Ray3D(origin, direction, wavelength=wavelength_mm)
                 self.tracer.trace_ray(ray)
                 
                 if ray.terminated and len(ray.path) < len(self.system.elements):
@@ -118,7 +121,7 @@ class WavefrontSensor:
                         
                         # OPD = OPL_ray - OPL_ref
                         # W = OPD / wavelength
-                        W[i, j] = (ray.optical_path_length - ref_opl) / wavelength
+                        W[i, j] = (ray.optical_path_length - ref_opl) / wavelength_mm
                         valid_mask[i, j] = True
 
         # Remove Piston (mean) and Tilt (linear terms) if desired
