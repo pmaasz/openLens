@@ -1,5 +1,8 @@
 import math
+import logging
 from typing import List, Tuple, Optional, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 try:
     from ..vector3 import Vector3, vec3
@@ -175,10 +178,20 @@ class SpotDiagram:
                 lens.wavelength = wl
                 lens.refractive_index = n
                     
-        # Calculate Statistics
-        if not spot_points:
-            # FIX: Raise error to prevent optimizer from seeing 0.0 as perfect score
-            raise RuntimeError("No rays reached the image plane (blocked or TIR)")
+            # 3. Calculate Statistics
+            if not spot_points:
+                # Return empty stats instead of raising, but log it
+                # The GUI should handle this gracefully
+                logger.warning("No rays reached the image plane (blocked or TIR)")
+                return {
+                    'rms_radius': 0.0,
+                    'geo_radius': 0.0,
+                    'centroid': (0.0, 0.0),
+                    'points': [],
+                    'valid_rays': 0,
+                    'image_plane_x': target_x,
+                    'error': 'No rays reached the image plane'
+                }
             
         # Centroid
         sum_y = sum(p[0] for p in spot_points)

@@ -298,7 +298,7 @@ class BeamSynthesisPropagator:
         self.system = system
         self.tracer = SystemRayTracer3D(system)
 
-    def propagate_to_image(self, wavelength: float = WAVELENGTH_GREEN * NM_TO_MM, 
+    def propagate_to_image(self, wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM, 
                           grid_size: int = 32, image_plane_x: Optional[float] = None,
                           detector_size: float = 0.1, detector_pixels: int = 64) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -326,7 +326,7 @@ class BeamSynthesisPropagator:
         # 1/q = 1/R - i * lambda / (pi * w0^2)
         # R = inf -> 1/q = -i * lambda / (pi * w0^2)
         # q = i * (pi * w0^2 / lambda) = i * zR
-        zR = math.pi * w0**2 / wavelength
+        zR = math.pi * w0**2 / wavelength_mm
         q0 = complex(0, zR)
         
         beamlets = []
@@ -348,10 +348,10 @@ class BeamSynthesisPropagator:
                 
                 # Create ray
                 origin = vec3(pupil_x, py, pz) - direction * dist
-                ray = Ray3D(origin, direction, wavelength=wavelength)
+                ray = Ray3D(origin, direction, wavelength=wavelength_mm)
                 
                 # Create beamlet
-                beam = GaussianBeam(wavelength, q0, q0, ray)
+                beam = GaussianBeam(wavelength_mm, q0, q0, ray)
                 
                 # Manual trace loop:
                 self._trace_beamlet(beam)

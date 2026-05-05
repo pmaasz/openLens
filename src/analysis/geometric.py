@@ -28,7 +28,7 @@ class GeometricTraceAnalysis:
         step = (stop - start) / (num - 1)
         return [start + i * step for i in range(num)]
 
-    def _get_image_plane_x(self, wavelength: float = WAVELENGTH_GREEN) -> float:
+    def _get_image_plane_x(self, wavelength_nm: float = WAVELENGTH_GREEN) -> float:
         """
         Determine the image plane position (paraxial focus) for the system.
         """
@@ -37,12 +37,12 @@ class GeometricTraceAnalysis:
         for element in self.system.elements:
             lens = element.lens
             original_states.append((lens, lens.wavelength))
-            lens.update_refractive_index(wavelength_nm=wavelength)
+            lens.update_refractive_index(wavelength_nm=wavelength_nm)
             
         try:
             # Trace paraxial ray
             start_x = self.system.elements[0].position - 10.0
-            para_ray = Ray3D(vec3(start_x, 0.001, 0), vec3(1, 0, 0), wavelength=wavelength * NM_TO_MM)
+            para_ray = Ray3D(vec3(start_x, 0.001, 0), vec3(1, 0, 0), wavelength=wavelength_nm * NM_TO_MM)
             self.tracer.trace_ray(para_ray)
             
             if len(para_ray.path) >= 2:

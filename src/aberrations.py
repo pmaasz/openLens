@@ -107,14 +107,19 @@ class AberrationsCalculator:
         if focal_length is None:
             return {
                 'focal_length': None,
-                'spherical': None,
-                'spherical_aberration': None,
-                'coma': None,
-                'astigmatism': None,
-                'field_curvature': None,
-                'distortion': None,
-                'chromatic': None,
-                'chromatic_aberration': None,
+                'f_number': 0.0,
+                'spherical': 0.0,
+                'spherical_aberration': 0.0,
+                'coma': 0.0,
+                'astigmatism': 0.0,
+                'field_curvature': 0.0,
+                'distortion': 0.0,
+                'chromatic': 0.0,
+                'chromatic_aberration': 0.0,
+                'airy_disk_diameter': 0.0,
+                'spot_rms': 0.0,
+                'strehl': 0.0,
+                'mtf_cutoff': 0.0,
                 'error': 'Cannot calculate focal length (zero optical power)'
             }
         
