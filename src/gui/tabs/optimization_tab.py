@@ -4,12 +4,11 @@ Tab for lens and system optimization
 """
 
 import logging
-import threading
 import copy
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
                                QFormLayout, QCheckBox, QDoubleSpinBox, 
                                QComboBox, QTextEdit, QPushButton, QScrollArea, QLabel)
-from PySide6.QtCore import Slot, Signal, Qt
+from PySide6.QtCore import Slot, Signal, Qt, QThread
 
 try:
     from .base_tab import BaseTab
@@ -26,6 +25,53 @@ except ImportError:
 from src.optimizer import LensOptimizer, OptimizationVariable, OptimizationTarget
 
 logger = logging.getLogger(__name__)
+
+class OptimizationWorker(QThread):
+    finished = Signal(object, list)
+    failed = Signal(str)
+
+    def __init__(self, active_target, variables, targets, constraints, algorithm):
+        super().__init__()
+        self.active_target = active_target
+        self.variables = variables
+        self.targets = targets
+        self.constraints = constraints
+        self.algorithm = algorithm
+
+    def run(self):
+        try:
+            from src.optical_system import OpticalSystem
+            try:
+                from src.global_optimizer import GlobalOptimizer
+            except ImportError:
+                from src.optimizer import LensOptimizer as GlobalOptimizer
+            
+            # Setup system
+            if isinstance(self.active_target, OpticalSystem):
+                system = copy.deepcopy(self.active_target)
+            else:
+                system = OpticalSystem(name="Optimization")
+                system.add_lens(copy.deepcopy(self.active_target))
+            
+            optimizer = GlobalOptimizer(system, self.variables, self.targets, constraints=self.constraints)
+            
+            # Run optimization based on algorithm selection
+            if "Simplex" in self.algorithm:
+                result = optimizer.optimize(max_iterations=100)
+            elif "Simulated" in self.algorithm:
+                result = optimizer.optimize_simulated_annealing(max_iterations=500)
+            elif "Genetic" in self.algorithm:
+                result = optimizer.optimize_genetic(population_size=30, generations=30)
+            else:
+                result = optimizer.optimize(max_iterations=100)
+            
+            self.finished.emit(result, self.variables)
+                                   
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            logger.error(f"Optimization error:\n{error_details}")
+            self.failed.emit(str(e))
 
 class OptimizationTab(BaseTab):
     """Tab for lens and system optimization"""
@@ -173,10 +219,10 @@ class OptimizationTab(BaseTab):
         # Variables map for dynamic checkboxes
         self._opt_check_vars = {} # key -> QCheckBox
 
-        # Connect signals from parent if needed
-        if self._parent:
-            self._parent.opt_finished.connect(self._on_optimization_finished)
-            self._parent.opt_failed.connect(self._on_optimization_failed)
+        # Connect signals from parent if needed (Deprecated: using local worker signals)
+        # if self._parent:
+        #     self._parent.opt_finished.connect(self._on_optimization_finished)
+        #     self._parent.opt_failed.connect(self._on_optimization_failed)
 
     def refresh(self):
         """Update the variables list based on current selection (Lens or Assembly)"""
@@ -343,41 +389,16 @@ class OptimizationTab(BaseTab):
         
         self._opt_results_text.setPlainText("Optimizing...")
         
-        def run_optimization_thread():
-            try:
-                from src.optical_system import OpticalSystem
-                
-                # Setup system
-                if isinstance(active_target, OpticalSystem):
-                    system = copy.deepcopy(active_target)
-                else:
-                    system = OpticalSystem(name="Optimization")
-                    system.add_lens(copy.deepcopy(active_target))
-                
-                optimizer = GlobalOptimizer(system, variables, targets, constraints=constraints)
-                
-                # Run optimization based on algorithm selection
-                algorithm = self._opt_algorithm.currentText()
-                if "Simplex" in algorithm:
-                    result = optimizer.optimize(max_iterations=100)
-                elif "Simulated" in algorithm:
-                    result = optimizer.optimize_simulated_annealing(max_iterations=500)
-                elif "Genetic" in algorithm:
-                    result = optimizer.optimize_genetic(population_size=30, generations=30)
-                else:
-                    result = optimizer.optimize(max_iterations=100)
-                
-                # Emit signals through parent
-                self._parent.opt_finished.emit(result, variables)
-                                       
-            except Exception as e:
-                import traceback
-                error_details = traceback.format_exc()
-                logger.error(f"Optimization error:\n{error_details}")
-                self._parent.opt_failed.emit(str(e))
-
-        thread = threading.Thread(target=run_optimization_thread, daemon=True)
-        thread.start()
+        self._opt_worker = OptimizationWorker(
+            active_target,
+            variables,
+            targets,
+            constraints,
+            self._opt_algorithm.currentText()
+        )
+        self._opt_worker.finished.connect(self._on_optimization_finished)
+        self._opt_worker.failed.connect(self._on_optimization_failed)
+        self._opt_worker.start()
 
     @Slot(object, list)
     def _on_optimization_finished(self, result, variables):

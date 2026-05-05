@@ -4,14 +4,13 @@ Tab for tolerancing and yield analysis
 """
 
 import logging
-import threading
 import copy
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
                                QFormLayout, QCheckBox, QDoubleSpinBox, QSpinBox,
                                QComboBox, QTextEdit, QPushButton, QScrollArea, 
                                QLabel, QTableWidget, QTableWidgetItem, QHeaderView,
                                QProgressBar, QMessageBox, QDialog)
-from PySide6.QtCore import Slot, Signal, Qt, QMetaObject, Q_ARG
+from PySide6.QtCore import Slot, Signal, Qt, QMetaObject, Q_ARG, QThread
 
 try:
     from .base_tab import BaseTab
@@ -26,6 +25,79 @@ except ImportError:
 from src.tolerancing import MonteCarloAnalyzer, InverseSensitivityAnalyzer, ToleranceOperand, ToleranceType
 
 logger = logging.getLogger(__name__)
+
+class MonteCarloWorker(QThread):
+    finished = Signal(str, dict)
+    failed = Signal(str)
+
+    def __init__(self, current_lens, tol_operands, num_trials, criterion):
+        super().__init__()
+        self.current_lens = current_lens
+        self.tol_operands = tol_operands
+        self.num_trials = num_trials
+        self.criterion = criterion
+
+    def run(self):
+        from src.optical_system import OpticalSystem
+        try:
+            system = OpticalSystem(name="Tolerancing")
+            system.add_lens(copy.deepcopy(self.current_lens))
+            
+            analyzer = MonteCarloAnalyzer(system, self.tol_operands)
+            
+            results = analyzer.run(num_trials=self.num_trials, criterion='rms_spot_radius', criterion_limit=self.criterion)
+            
+            text = f"=== MONTE CARLO RESULTS ===\n\n"
+            text += f"Total Trials: {results['trials']}\n"
+            text += f"Passed (Yield): {results['yield']:.1f}%\n"
+            text += f"Nominal RMS: {results['nominal']:.4f} mm\n"
+            text += f"Mean Performance: {results['mean']:.4f} mm\n"
+            text += f"Std Dev: {results['std_dev']:.4f} mm\n"
+            text += f"90th Percentile: {results['90th_percentile']:.4f} mm\n"
+            text += f"Worst Case (Max): {results['max']:.4f} mm\n"
+            
+            self.finished.emit(text, results)
+            
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            self.failed.emit(f"Monte Carlo Error: {e}\n{error_details}")
+
+class InverseSensitivityWorker(QThread):
+    finished = Signal(str, dict)
+    failed = Signal(str)
+
+    def __init__(self, current_lens, tol_operands, criterion):
+        super().__init__()
+        self.current_lens = current_lens
+        self.tol_operands = tol_operands
+        self.criterion = criterion
+
+    def run(self):
+        from src.optical_system import OpticalSystem
+        try:
+            system = OpticalSystem(name="Tolerancing")
+            system.add_lens(copy.deepcopy(self.current_lens))
+            
+            analyzer = InverseSensitivityAnalyzer(system, self.tol_operands)
+            
+            results = analyzer.optimize_limits(target_yield_criterion=self.criterion, method='rss')
+            
+            text = f"=== INVERSE SENSITIVITY RESULTS ===\n\n"
+            text += f"Target Yield Criterion: {self.criterion} mm RMS\n\n"
+            text += "Suggested Limits (RSS budget):\n"
+            text += "-" * 55 + "\n"
+            text += f"{'Elem':<5} | {'Type':<20} | {'Limit (+/-)':<10}\n"
+            text += "-" * 55 + "\n"
+            for op in results:
+                text += f"{op.element_index:<5} | {op.param_type.value:<20} | {op.max_val:10.4f}\n"
+            
+            self.finished.emit(text, {})
+                                   
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            self.failed.emit(f"Inverse Sensitivity Error: {e}\n{error_details}")
 
 class TolerancingTab(BaseTab):
     """Tab for tolerancing and yield analysis"""
@@ -314,77 +386,18 @@ class TolerancingTab(BaseTab):
         self._tol_results_text.setPlainText(f"Starting Monte Carlo analysis ({self._tol_num_trials.value()} trials)...")
         self._tol_progress.setVisible(True)
         self._tol_progress.setValue(0)
+        self._tol_progress.setMinimum(0)
+        self._tol_progress.setMaximum(0)
         
-        thread = threading.Thread(target=self._run_mc_worker, daemon=True)
-        thread.start()
-
-    def _run_mc_worker(self):
-        """Worker thread for Monte Carlo analysis"""
-        from src.optical_system import OpticalSystem
-        try:
-            system = OpticalSystem(name="Tolerancing")
-            system.add_lens(copy.deepcopy(self._parent._current_lens))
-            
-            analyzer = MonteCarloAnalyzer(system, self._parent._tol_operands)
-            num_trials = self._tol_num_trials.value()
-            criterion = self._tol_criterion.value()
-            
-            results = analyzer.run_monte_carlo(num_trials=num_trials, criterion=criterion)
-            
-            text = f"=== MONTE CARLO RESULTS ===\n\n"
-            text += f"Total Trials: {results['total_trials']}\n"
-            text += f"Passed (Yield): {results['passed_trials']} ({results['yield_percent']:.1f}%)\n"
-            text += f"Failed: {results['failed_trials']}\n"
-            text += f"RMS Spot Size - Mean: {results['mean_rms']:.4f} mm\n"
-            text += f"RMS Spot Size - Std Dev: {results['std_rms']:.4f} mm\n"
-            text += f"RMS Spot Size - Max: {results['max_rms']:.4f} mm\n"
-            text += f"RMS Spot Size - Min: {results['min_rms']:.4f} mm\n"
-            
-            QMetaObject.invokeMethod(self, "_on_analysis_finished", 
-                                   Qt.QueuedConnection,
-                                   Q_ARG(str, text),
-                                   Q_ARG(dict, results))
-            
-        except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            QMetaObject.invokeMethod(self, "_on_analysis_failed",
-                                   Qt.QueuedConnection,
-                                   Q_ARG(str, f"Monte Carlo Error: {e}\n{error_details}"))
-
-    @Slot(str, dict)
-    def _on_analysis_finished(self, text, results):
-        """Callback for finished analysis"""
-        self._tol_results_text.setPlainText(text)
-        self._tol_progress.setValue(100)
-        self._tol_progress.setVisible(False)
-        
-        if not results: return
-
-        # Show histogram
-        num_trials = results.get('total_trials', 100)
-        criterion = self._tol_criterion.value()
-        
-        dialog = AnalysisPlotDialog(f"Monte Carlo Distribution - {self._parent._current_lens.name}", self)
-        ax = dialog.get_axes()
-        
-        all_rms = results.get('all_rms', [])
-        if all_rms:
-            import numpy as np
-            ax.hist(all_rms, bins=max(10, num_trials // 10), color='skyblue', edgecolor='black', alpha=0.7)
-            ax.axvline(criterion, color='red', linestyle='--', label=f'Criterion ({criterion})')
-            ax.axvline(results['mean_rms'], color='green', linestyle='-', label=f'Mean ({results["mean_rms"]:.4f})')
-            ax.set_xlabel("RMS Spot Size (mm)")
-            ax.set_ylabel("Frequency")
-            ax.set_title("Monte Carlo Yield Distribution")
-            ax.legend()
-            ax.grid(True, linestyle='--', alpha=0.3)
-            dialog.exec()
-
-    @Slot(str)
-    def _on_analysis_failed(self, error_msg):
-        self._tol_results_text.setPlainText(error_msg)
-        self._tol_progress.setVisible(False)
+        self._mc_worker = MonteCarloWorker(
+            self._parent._current_lens,
+            self._parent._tol_operands,
+            self._tol_num_trials.value(),
+            self._tol_criterion.value()
+        )
+        self._mc_worker.finished.connect(self._on_analysis_finished)
+        self._mc_worker.failed.connect(self._on_analysis_failed)
+        self._mc_worker.start()
 
     def _on_run_inverse_sensitivity(self):
         """Run Inverse Sensitivity analysis"""
@@ -401,38 +414,11 @@ class TolerancingTab(BaseTab):
         self._tol_progress.setMinimum(0)
         self._tol_progress.setMaximum(0)
         
-        thread = threading.Thread(target=self._run_inv_worker, daemon=True)
-        thread.start()
-
-    def _run_inv_worker(self):
-        """Worker thread for Inverse Sensitivity"""
-        from src.optical_system import OpticalSystem
-        try:
-            system = OpticalSystem(name="Tolerancing")
-            system.add_lens(copy.deepcopy(self._parent._current_lens))
-            
-            analyzer = InverseSensitivityAnalyzer(system, self._parent._tol_operands)
-            criterion = self._tol_criterion.value()
-            
-            results = analyzer.optimize_limits(target_yield_criterion=criterion, method='rss')
-            
-            text = f"=== INVERSE SENSITIVITY RESULTS ===\n\n"
-            text += f"Target Yield Criterion: {criterion} mm RMS\n\n"
-            text += "Suggested Limits (RSS budget):\n"
-            text += "-" * 55 + "\n"
-            text += f"{'Elem':<5} | {'Type':<20} | {'Limit (+/-)':<10}\n"
-            text += "-" * 55 + "\n"
-            for op in results:
-                text += f"{op.element_index:<5} | {op.param_type.value:<20} | {op.max_val:10.4f}\n"
-            
-            QMetaObject.invokeMethod(self, "_on_analysis_finished", 
-                                   Qt.QueuedConnection,
-                                   Q_ARG(str, text),
-                                   Q_ARG(dict, {}))
-                                   
-        except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            QMetaObject.invokeMethod(self, "_on_analysis_failed",
-                                   Qt.QueuedConnection,
-                                   Q_ARG(str, f"Inverse Sensitivity Error: {e}\n{error_details}"))
+        self._inv_worker = InverseSensitivityWorker(
+            self._parent._current_lens,
+            self._parent._tol_operands,
+            self._tol_criterion.value()
+        )
+        self._inv_worker.finished.connect(self._on_analysis_finished)
+        self._inv_worker.failed.connect(self._on_analysis_failed)
+        self._inv_worker.start()
