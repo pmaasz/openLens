@@ -186,7 +186,7 @@ class AberrationsCalculator:
             )
             
             # 2. Coma (from Ray Fan)
-            fan_data = analysis.calculate_ray_fan(field_angle=field_angle)
+            fan_data = analysis.calculate_ray_fan(field_angle_deg=field_angle)
             
             # Extract metrics at the requested field_angle
             # fc_data['tan_focus_shift'] etc are lists, we want the last element if we sampled up to field_angle
