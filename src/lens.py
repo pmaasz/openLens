@@ -5,7 +5,7 @@ import math
 try:
     from .constants import (
         DEFAULT_RADIUS_1, DEFAULT_RADIUS_2, DEFAULT_THICKNESS, DEFAULT_DIAMETER,
-        REFRACTIVE_INDEX_BK7, EPSILON
+        REFRACTIVE_INDEX_BK7, EPSILON, LARGE_NUMBER
     )
 except ImportError:
     # Fallback constants if constants module not found
@@ -15,6 +15,7 @@ except ImportError:
     DEFAULT_DIAMETER = 50.0
     REFRACTIVE_INDEX_BK7 = 1.5168
     EPSILON = 1e-10
+    LARGE_NUMBER = 1e10
 
 # Try to import material database (optional)
 get_material_database = None
@@ -303,8 +304,8 @@ class Lens:
         r2 = self.radius_of_curvature_2
         
         # Handle flat surfaces (radius = 0 or infinity)
-        r1_flat = r1 == 0 or abs(r1) > 1e10 if r1 else True
-        r2_flat = r2 == 0 or abs(r2) > 1e10 if r2 else True
+        r1_flat = r1 == 0 or not math.isfinite(r1) or abs(r1) > LARGE_NUMBER if r1 else True
+        r2_flat = r2 == 0 or not math.isfinite(r2) or abs(r2) > LARGE_NUMBER if r2 else True
         
         # Determine type based on radii
         if r1_flat and r2_flat:
