@@ -16,74 +16,84 @@ class DatabaseManager:
         
     def _get_connection(self):
         conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.isolation_level = None  # Disable auto-commit for explicit transaction control
         conn.execute('PRAGMA journal_mode=WAL')
         conn.execute('PRAGMA synchronous=NORMAL')
+        conn.execute('PRAGMA foreign_keys=ON')  # Ensure foreign keys are enforced
         return conn
-        
+
     def _initialize_db(self):
-        """Create tables if they don't exist."""
+        """Create tables if they don't exist and handle migrations."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
-            # Lenses table
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS lenses (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    radius1 REAL NOT NULL,
-                    radius2 REAL NOT NULL,
-                    thickness REAL NOT NULL,
-                    material TEXT NOT NULL,
-                    refractive_index REAL,
-                    diameter REAL,
-                    created_at TEXT,
-                    modified_at TEXT,
-                    metadata TEXT
-                )
-            ''')
+            # Check version
+            cursor.execute('PRAGMA user_version')
+            version = cursor.fetchone()[0]
             
-            # Assemblies table
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS assemblies (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    created_at TEXT,
-                    modified_at TEXT,
-                    metadata TEXT
-                )
-            ''')
-            
-            # Assembly Elements table (junction table)
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS assembly_elements (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    assembly_id TEXT NOT NULL,
-                    lens_id TEXT NOT NULL,
-                    position REAL NOT NULL,
-                    order_index INTEGER NOT NULL,
-                    FOREIGN KEY (assembly_id) REFERENCES assemblies (id) ON DELETE CASCADE,
-                    FOREIGN KEY (lens_id) REFERENCES lenses (id)
-                )
-            ''')
-            
-            # Assembly Air Gaps table
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS assembly_air_gaps (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    assembly_id TEXT NOT NULL,
-                    thickness REAL NOT NULL,
-                    position REAL NOT NULL,
-                    order_index INTEGER NOT NULL,
-                    FOREIGN KEY (assembly_id) REFERENCES assemblies (id) ON DELETE CASCADE
-                )
-            ''')
-            
-            conn.commit()
+            if version == 0:
+                # Lenses table
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS lenses (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        radius1 REAL NOT NULL,
+                        radius2 REAL NOT NULL,
+                        thickness REAL NOT NULL,
+                        material TEXT NOT NULL,
+                        refractive_index REAL,
+                        diameter REAL,
+                        created_at TEXT,
+                        modified_at TEXT,
+                        metadata TEXT
+                    )
+                ''')
+                
+                # Assemblies table
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS assemblies (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        created_at TEXT,
+                        modified_at TEXT,
+                        metadata TEXT
+                    )
+                ''')
+                
+                # Assembly Elements table (junction table)
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS assembly_elements (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        assembly_id TEXT NOT NULL,
+                        lens_id TEXT NOT NULL,
+                        position REAL NOT NULL,
+                        order_index INTEGER NOT NULL,
+                        FOREIGN KEY (assembly_id) REFERENCES assemblies (id) ON DELETE CASCADE,
+                        FOREIGN KEY (lens_id) REFERENCES lenses (id)
+                    )
+                ''')
+                
+                # Assembly Air Gaps table
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS assembly_air_gaps (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        assembly_id TEXT NOT NULL,
+                        thickness REAL NOT NULL,
+                        position REAL NOT NULL,
+                        order_index INTEGER NOT NULL,
+                        FOREIGN KEY (assembly_id) REFERENCES assemblies (id) ON DELETE CASCADE
+                    )
+                ''')
+                
+                cursor.execute('PRAGMA user_version = 1')
+                conn.commit()
 
     def save_lens(self, lens_dict: Dict[str, Any]):
         """Save or update a single lens."""
-        with self._get_connection() as conn:
+        conn = self._get_connection()
+        try:
             cursor = conn.cursor()
+            cursor.execute('BEGIN IMMEDIATE')
             cursor.execute('''
                 INSERT OR REPLACE INTO lenses 
                 (id, name, radius1, radius2, thickness, material, refractive_index, diameter, created_at, modified_at, metadata)
@@ -102,12 +112,20 @@ class DatabaseManager:
                 json.dumps({k: v for k, v in lens_dict.items() if k not in ['id', 'name', 'radius_of_curvature_1', 'radius_of_curvature_2', 'radius1', 'radius2', 'thickness', 'material', 'refractive_index', 'diameter', 'created_at', 'modified_at']})
             ))
             conn.commit()
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to save lens: {e}")
+            raise
+        finally:
+            conn.close()
 
     def save_assembly(self, assembly_dict: Dict[str, Any]):
         """Save or update an optical system assembly."""
         assembly_id = assembly_dict.get('id')
-        with self._get_connection() as conn:
+        conn = self._get_connection()
+        try:
             cursor = conn.cursor()
+            cursor.execute('BEGIN IMMEDIATE')
             
             # 1. Save assembly metadata
             cursor.execute('''
@@ -160,6 +178,12 @@ class DatabaseManager:
                 ''', (assembly_id, gap.get('thickness'), gap.get('position'), i))
                 
             conn.commit()
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to save assembly: {e}")
+            raise
+        finally:
+            conn.close()
 
     def load_all(self) -> List[Dict[str, Any]]:
         """Load all standalone lenses and assemblies."""
