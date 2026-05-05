@@ -277,7 +277,7 @@ class MeritFunction:
                     if 'SpotDiagram' in globals():
                         spot_cls = globals()['SpotDiagram']
                         spot = spot_cls(system)
-                        results = spot.trace_spot(field_angle_x=0, field_angle_y=0)
+                        results = spot.trace_spot(field_angle_x_deg=0, field_angle_y_deg=0)
                         value = results.get('rms_radius', 0.0)
                         
                         if target.target_type == "minimize":

@@ -31,7 +31,7 @@ class TestAnalysisTools(unittest.TestCase):
         analyzer = GeometricTraceAnalysis(self.system)
         
         # Test Tangential Fan
-        fan_data = analyzer.calculate_ray_fan(field_angle=0.0, pupil_axis='y')
+        fan_data = analyzer.calculate_ray_fan(field_angle_deg=0.0, pupil_axis='y')
         self.assertIn('pupil_coords', fan_data)
         self.assertIn('ray_errors', fan_data)
         self.assertEqual(len(fan_data['pupil_coords']), len(fan_data['ray_errors']))

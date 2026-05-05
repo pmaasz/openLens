@@ -298,7 +298,7 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             
             for i, field in enumerate(fields):
                 # Request 6 rings for a clear spot without overcrowding (~37 rays)
-                spot_data = analyzer.calculate_spot_diagram(field_angle=field, wavelength=wavelength, num_rings=6)
+                spot_data = analyzer.calculate_spot_diagram(field_angle_deg=field, wavelength_nm=wavelength, num_rings=6)
                 # Spot points are (y, z) - usually we plot Y vs Z or vice versa
                 z_pts = [p[1] * 1000 for p in spot_data] # Sagittal (Z)
                 y_pts = [p[0] * 1000 for p in spot_data] # Tangential (Y)
@@ -352,21 +352,22 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
                 max_field = math.degrees(math.atan((sensor_size / 2.0) / fl))
             
             fields = [0, max_field * 0.7, max_field]
+            colors = ['#ffffff', '#00ff00', '#ff0000']
             styles = ['-', '--', ':']
             
             for i, field in enumerate(fields):
-                fan_data = calculator.calculate_ray_fan(field_angle=field, wavelength=wavelength)
-                pupil_coords = fan_data['pupil_coords']
-                aberrations = fan_data['ray_errors']
-                ax.plot(pupil_coords, aberrations, styles[i], color='#0078d4', label=f"Field {field:.1f}°")
+                fan_data = calculator.calculate_ray_fan(field_angle_deg=field, wavelength_nm=wavelength)
+                py = fan_data['pupil_coords']
+                dy = fan_data['transverse_aberration']
+                ax.plot(py, dy, color=colors[i], linestyle=styles[i], label=f"Field {field:.1f}°")
             
-            ax.set_xlabel("Normalized Pupil Coordinate")
+            ax.set_xlabel("Pupil Coordinate (Normalized)")
             ax.set_ylabel("Transverse Aberration (mm)")
-            ax.set_title(f"Ray Fan Plot ({wavelength}nm)")
-            ax.legend(fontsize='small')
-            ax.grid(True, linestyle='--', alpha=0.3)
+            ax.set_title(f"Ray Fan - Tangential ({wavelength}nm)")
             ax.axhline(0, color='white', linewidth=0.5, alpha=0.5)
             ax.axvline(0, color='white', linewidth=0.5, alpha=0.5)
+            ax.legend(fontsize='small')
+            ax.grid(True, linestyle='--', alpha=0.3)
             
             dialog.exec()
             
@@ -394,15 +395,12 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
                 
             calculator = AberrationsCalculator(system)
             
-            fl = system.get_system_focal_length()
-            sensor_size = self._perf_sensor_size.value()
-            max_field = 20.0
-            if fl and fl > 0:
-                max_field = math.degrees(math.atan((sensor_size / 2.0) / fl))
+            wavelengths = [400, 450, 550, 650, 700]
+            wavelength = wavelengths[self._perf_wavelength.currentIndex()]
             
-            dialog = AnalysisPlotDialog(f"Field Curves & Distortion - {system.name}", self._parent)
+            dialog = AnalysisPlotDialog(f"Field Curves - {system.name}", self._parent)
             
-            # Subplot 1: Field Curvature (Sagittal and Tangential)
+            # Subplot 1: Field Curvature
             ax1 = dialog.figure.add_subplot(121)
             if self._parent._theme == 'dark':
                 ax1.set_facecolor('#1e1e1e')
@@ -413,7 +411,9 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
                 for spine in ax1.spines.values():
                     spine.set_edgecolor('#3f3f3f')
             
-            angles, sag, tan = calculator.calculate_field_curvature(max_field_angle=max_field)
+            # Field curves
+            max_field = 20.0 # Default
+            angles, sag, tan = calculator.calculate_field_curvature(max_field_angle_deg=max_field, wavelength_nm=wavelength)
             ax1.plot(sag, angles, 'b-', label='Sagittal')
             ax1.plot(tan, angles, 'r--', label='Tangential')
             ax1.set_ylabel("Field Angle (deg)")
@@ -433,7 +433,7 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
                 for spine in ax2.spines.values():
                     spine.set_edgecolor('#3f3f3f')
                     
-            angles, dist = calculator.calculate_distortion_curve(max_field_angle=max_field)
+            angles, dist = calculator.calculate_distortion_curve(max_field_angle_deg=max_field, wavelength_nm=wavelength)
             ax2.plot(dist, angles, 'g-')
             ax2.set_ylabel("Field Angle (deg)")
             ax2.set_xlabel("Distortion (%)")

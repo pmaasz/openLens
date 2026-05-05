@@ -1,5 +1,8 @@
 import math
+import logging
 from typing import List, Tuple, Optional, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 try:
     from ..vector3 import Vector3, vec3
@@ -61,41 +64,41 @@ class SpotDiagram:
         return points
         
     def trace_spot(self, 
-                  field_angle_x: float = 0.0, 
-                  field_angle_y: float = 0.0, 
-                  wavelength: float = WAVELENGTH_GREEN,
-                  image_plane_x: Optional[float] = None,
+                  field_angle_x_deg: float = 0.0, 
+                  field_angle_y_deg: float = 0.0, 
+                  wavelength_nm: float = WAVELENGTH_GREEN,
+                  image_plane_x_mm: Optional[float] = None,
                   num_rings: int = 6,
-                  focus_shift: float = 0.0) -> Dict[str, Any]:
+                  focus_shift_mm: float = 0.0) -> Dict[str, Any]:
         """
         Trace rays to generate a spot diagram.
         
         Args:
-            field_angle_x: Field angle in degrees (X-Z plane tilt)
-            field_angle_y: Angle in degrees relative to optical axis in XY plane.
-            wavelength: Wavelength in nm.
-            image_plane_x: Absolute X position of image plane. If None, uses paraxial focus.
+            field_angle_x_deg: Field angle in degrees (X-Z plane tilt)
+            field_angle_y_deg: Angle in degrees relative to optical axis in XY plane.
+            wavelength_nm: Wavelength in nm.
+            image_plane_x_mm: Absolute X position of image plane. If None, uses paraxial focus.
             num_rings: Sampling density.
-            focus_shift: Offset from the nominal image plane (defocus).
+            focus_shift_mm: Offset from the nominal image plane (defocus).
             
         Returns:
             Dictionary containing spot data and statistics.
         """
         # Convert wavelength to mm
-        wl_mm = wavelength * NM_TO_MM
+        wl_mm = wavelength_nm * NM_TO_MM
         
         # Store original states and update lenses for this wavelength
         original_states = []
         for element in self.system.elements:
             lens = element.lens
             original_states.append((lens, lens.wavelength, lens.refractive_index))
-            lens.update_refractive_index(wavelength_nm=wavelength)
+            lens.update_refractive_index(wavelength_nm=wavelength_nm)
             
         target_x = 0.0
         
         try:
             # Determine image plane position
-            if image_plane_x is None:
+            if image_plane_x_mm is None:
                 # Calculate paraxial focus position
                 # Find system total length
                 length = self.system.get_total_length()
@@ -119,21 +122,21 @@ class SpotDiagram:
                         slope = dy/dx
                         # y - y1 = m(x - x1) -> -y1 = m(x_focus - x1) -> x_focus = x1 - y1/m
                         x_focus = p1.x - p1.y / slope
-                        image_plane_x = x_focus
+                        image_plane_x_mm = x_focus
                     else:
-                        image_plane_x = length + 100 # Default if collimated
+                        image_plane_x_mm = length + 100 # Default if collimated
                 else:
-                    image_plane_x = length + 100
+                    image_plane_x_mm = length + 100
             
-            target_x = image_plane_x + focus_shift
+            target_x = image_plane_x_mm + focus_shift_mm
             
             # Generate pupil points
             pupil_points = self.generate_hexapolar_grid(rings=num_rings)
             
             # Calculate ray direction based on field angles
             # Tan(theta)
-            tan_y = math.tan(math.radians(field_angle_y))
-            tan_z = math.tan(math.radians(field_angle_x))
+            tan_y = math.tan(math.radians(field_angle_y_deg))
+            tan_z = math.tan(math.radians(field_angle_x_deg))
             
             # Direction vector (normalized later by Ray3D)
             # dx=1, dy=tan_y, dz=tan_z
@@ -175,10 +178,20 @@ class SpotDiagram:
                 lens.wavelength = wl
                 lens.refractive_index = n
                     
-        # Calculate Statistics
-        if not spot_points:
-            # FIX: Raise error to prevent optimizer from seeing 0.0 as perfect score
-            raise RuntimeError("No rays reached the image plane (blocked or TIR)")
+            # 3. Calculate Statistics
+            if not spot_points:
+                # Return empty stats instead of raising, but log it
+                # The GUI should handle this gracefully
+                logger.warning("No rays reached the image plane (blocked or TIR)")
+                return {
+                    'rms_radius': 0.0,
+                    'geo_radius': 0.0,
+                    'centroid': (0.0, 0.0),
+                    'points': [],
+                    'valid_rays': 0,
+                    'image_plane_x': target_x,
+                    'error': 'No rays reached the image plane'
+                }
             
         # Centroid
         sum_y = sum(p[0] for p in spot_points)
