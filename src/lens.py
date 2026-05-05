@@ -218,7 +218,7 @@ class Lens:
             refractive_index=data.get("refractive_index", REFRACTIVE_INDEX_BK7),
             lens_type=lens_type,
             material=data.get("material", "BK7"),
-            wavelength=data.get("wavelength", 587.6),
+            wavelength_nm=data.get("wavelength_nm", data.get("wavelength", 587.6)),
             temperature=data.get("temperature", 20.0),
             is_fresnel=data.get("is_fresnel", False),
             groove_pitch=data.get("groove_pitch", DEFAULT_THICKNESS),

@@ -49,7 +49,7 @@ class Vector3:
 
     def normalize(self) -> 'Vector3':
         mag = self.magnitude()
-        if mag == 0:
+        if mag < 1e-15:
             return Vector3(0, 0, 0)
         return self / mag
 
