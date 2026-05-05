@@ -86,6 +86,9 @@ class OpenLensWindow(QMainWindow):
             logger.info(f"Loaded {len(self._lenses)} lenses and {len(self._assemblies)} assemblies from database")
             self._update_status(f"Loaded library: {len(self._lenses)} lenses, {len(self._assemblies)} assemblies")
             
+            # Update tabs that depend on the loaded library
+            self._update_all_tabs()
+            
         except Exception as e:
             logger.error(f"Failed to load from database: {e}")
             self._lenses = []

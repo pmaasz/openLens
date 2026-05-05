@@ -92,6 +92,12 @@ class AssemblyTab(BaseTab):
         if hasattr(self._parent, '_lenses'):
             for lens in self._parent._lenses:
                 self._assembly_lens_list.addItem(lens.name)
+        
+        # If the list is still empty, try to refresh it again in 100ms
+        # This handles cases where the database load is still in progress
+        if self._assembly_lens_list.count() == 0:
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(100, self.refresh_lens_list)
 
     def _update_system_list(self):
         """Update the system list widget from the optical system model"""
