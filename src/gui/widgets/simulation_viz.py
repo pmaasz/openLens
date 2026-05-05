@@ -164,7 +164,7 @@ class SimulationVisualizationWidget(QWidget):
                 else:
                     h = -diameter/2 + diameter * i / (num_rays - 1)
                 
-                ray = Ray(-100, h + source_height, angle=angle_rad)
+                ray = Ray(-100, h + source_height, angle_rad=angle_rad)
                 tracer.trace_ray(ray)
                 self._rays.append(ray)
             

@@ -50,7 +50,7 @@ class LensService:
     def create_lens(self, name: str, radius1: float, radius2: float,
                    thickness: float, diameter: float, 
                    material: str = "BK7", 
-                   wavelength: float = 587.6,
+                   wavelength_nm: float = 587.6,
                    temperature: float = 20.0) -> 'Lens':
         """
         Create a new lens with proper material database integration.
@@ -62,7 +62,7 @@ class LensService:
             thickness: Center thickness (mm)
             diameter: Lens diameter (mm)
             material: Material name
-            wavelength: Design wavelength (nm)
+            wavelength_nm: Design wavelength (nm)
             temperature: Operating temperature (°C)
         
         Returns:
@@ -78,7 +78,7 @@ class LensService:
             mat = self.material_db.get_material(material)
             if mat:
                 refractive_index = self.material_db.get_refractive_index(
-                    material, wavelength, temperature
+                    material, wavelength_nm, temperature
                 )
             else:
                 # Fallback to default values
@@ -94,7 +94,7 @@ class LensService:
             diameter=diameter,
             refractive_index=refractive_index,
             material=material,
-            wavelength=wavelength,
+            wavelength_nm=wavelength_nm,
             temperature=temperature
         )
         
@@ -159,7 +159,7 @@ class LensService:
                 if mat is not None:
                     lens.refractive_index = self.material_db.get_refractive_index(
                         kwargs['material'],
-                        lens.wavelength,
+                        lens.wavelength_nm,
                         lens.temperature
                     )
             
@@ -287,14 +287,14 @@ class CalculationService:
     
     def calculate_aberrations(self, lens: 'Lens', 
                             aperture: Optional[float] = None,
-                            field_angle: float = 0.0) -> Optional[Dict[str, float]]:
+                            field_angle_deg: float = 0.0) -> Optional[Dict[str, float]]:
         """
         Calculate aberrations for a lens.
         
         Args:
             lens: Lens to analyze
             aperture: Optional semi-aperture (default: diameter/2)
-            field_angle: Field angle in degrees
+            field_angle_deg: Field angle in degrees
         
         Returns:
             Dict with aberration values or None if not available
@@ -309,9 +309,9 @@ class CalculationService:
                 aperture = lens.diameter / 2.0
             
             # AberrationsCalculator only takes lens as constructor argument
-            # field_angle and object_distance are passed to calculate_all_aberrations()
+            # field_angle_deg and object_distance are passed to calculate_all_aberrations()
             calc = AberrationsCalculator(lens)
-            return calc.calculate_all_aberrations(field_angle=field_angle)
+            return calc.calculate_all_aberrations(field_angle_deg=field_angle_deg)
         except Exception as e:
             logger.error("Error calculating aberrations: %s", e)
             return None
@@ -355,14 +355,14 @@ class CalculationService:
 
     def trace_system_rays(self, system: 'OpticalSystem', 
                          num_rays: int = 11,
-                         angle: float = 0.0) -> Optional[List]:
+                         angle_deg: float = 0.0) -> Optional[List]:
         """
         Trace rays through an optical system.
         
         Args:
             system: Optical system to trace through
             num_rays: Number of rays to trace
-            angle: Angle of parallel beam
+            angle_deg: Angle of parallel beam (degrees)
             
         Returns:
             List of traced rays or None if not available
@@ -374,7 +374,7 @@ class CalculationService:
             from .ray_tracer import SystemRayTracer
             
             tracer = SystemRayTracer(system)
-            return tracer.trace_parallel_rays(num_rays=num_rays, angle=angle)
+            return tracer.trace_parallel_rays(num_rays=num_rays, angle_deg=angle_deg)
         except Exception as e:
             logger.error("Error tracing system rays: %s", e)
             return None
@@ -453,14 +453,14 @@ class MaterialDatabaseService:
             ]
     
     def get_refractive_index(self, material: str, 
-                           wavelength: float = 587.6,
+                           wavelength_nm: float = 587.6,
                            temperature: float = 20.0) -> float:
         """
         Get refractive index for a material.
         
         Args:
             material: Material name
-            wavelength: Wavelength in nm
+            wavelength_nm: Wavelength in nm
             temperature: Temperature in °C
         
         Returns:
@@ -468,7 +468,7 @@ class MaterialDatabaseService:
         """
         if self._available and self.db:
             try:
-                return self.db.get_refractive_index(material, wavelength, temperature)
+                return self.db.get_refractive_index(material, wavelength_nm, temperature)
             except (KeyError, ValueError, TypeError) as e:
                 logger.debug(f"Material lookup failed for {material}: {e}")
         

@@ -383,7 +383,7 @@ class OpticalSystem:
         try:
             for line, wl in lines.items():
                 for element in self.elements:
-                    element.lens.update_refractive_index(wavelength=wl)
+                    element.lens.update_refractive_index(wavelength_nm=wl)
                 bfls[line] = self.calculate_back_focal_length()
             
             if bfls['F'] is not None and bfls['C'] is not None:
@@ -400,7 +400,7 @@ class OpticalSystem:
         finally:
             # Restore original wavelengths
             for i, element in enumerate(self.elements):
-                element.lens.update_refractive_index(wavelength=original_states[i])
+                element.lens.update_refractive_index(wavelength_nm=original_states[i])
 
     def _calculate_system_matrix(self) -> Optional[Tuple[float, float, float, float]]:
         """Calculate the system ray-transfer (ABCD) matrix surface-by-surface.

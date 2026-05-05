@@ -71,58 +71,58 @@ except ImportError:
 class DiffractionCalculator:
     """Calculate diffraction effects for optical systems"""
     
-    def __init__(self, wavelength: float = 550e-9):
+    def __init__(self, wavelength_m: float = 550e-9):
         """
         Initialize diffraction calculator
         
         Args:
-            wavelength: Light wavelength in meters (default: 550nm green light)
+            wavelength_m: Light wavelength in meters (default: 550nm green light)
         """
-        self.wavelength = wavelength
+        self.wavelength_m = wavelength_m
     
-    def airy_disk_radius(self, focal_length: float, aperture_diameter: float) -> float:
+    def airy_disk_radius_um(self, focal_length_mm: float, aperture_diameter_mm: float) -> float:
         """
         Calculate Airy disk radius (first zero of Airy pattern)
         
         Args:
-            focal_length: Focal length in mm
-            aperture_diameter: Aperture diameter in mm
+            focal_length_mm: Focal length in mm
+            aperture_diameter_mm: Aperture diameter in mm
         
         Returns:
             Airy disk radius in micrometers
         """
         # Convert to meters
-        f = focal_length / 1000.0
-        D = aperture_diameter / 1000.0
+        f = focal_length_mm / 1000.0
+        D = aperture_diameter_mm / 1000.0
         
         # Airy disk radius: r = 1.22 * λ * f / D
-        radius = 1.22 * self.wavelength * f / D
+        radius = 1.22 * self.wavelength_m * f / D
         
         # Convert to micrometers
         return radius * 1e6
     
-    def rayleigh_criterion(self, aperture_diameter: float) -> float:
+    def rayleigh_criterion_arcsec(self, aperture_diameter_mm: float) -> float:
         """
         Calculate Rayleigh diffraction limit (angular resolution)
         
         Args:
-            aperture_diameter: Aperture diameter in mm
+            aperture_diameter_mm: Aperture diameter in mm
         
         Returns:
             Angular resolution in arcseconds
         """
         # Convert to meters
-        D = aperture_diameter / 1000.0
+        D = aperture_diameter_mm / 1000.0
         
         # θ = 1.22 * λ / D (in radians)
-        theta_rad = 1.22 * self.wavelength / D
+        theta_rad = 1.22 * self.wavelength_m / D
         
         # Convert to arcseconds
         theta_arcsec = theta_rad * 206265
         
         return theta_arcsec
     
-    def diffraction_limited_spot_size(self, f_number: float) -> float:
+    def diffraction_limited_spot_size_um(self, f_number: float) -> float:
         """
         Calculate diffraction-limited spot size
         
@@ -133,12 +133,12 @@ class DiffractionCalculator:
             Spot diameter in micrometers
         """
         # Spot diameter ≈ 2.44 * λ * f/#
-        diameter = 2.44 * self.wavelength * f_number
+        diameter = 2.44 * self.wavelength_m * f_number
         
         # Convert to micrometers
         return diameter * 1e6
     
-    def numerical_aperture_resolution(self, numerical_aperture: float) -> float:
+    def numerical_aperture_resolution_um(self, numerical_aperture: float) -> float:
         """
         Calculate resolution limit based on numerical aperture
         
@@ -149,35 +149,35 @@ class DiffractionCalculator:
             Resolution limit in micrometers
         """
         # Resolution = 0.61 * λ / NA
-        resolution = 0.61 * self.wavelength / numerical_aperture
+        resolution = 0.61 * self.wavelength_m / numerical_aperture
         
         # Convert to micrometers
         return resolution * 1e6
     
-    def airy_pattern(self, radius: float, focal_length: float, 
-                     aperture_diameter: float, num_points: int = 1000) -> Tuple[np.ndarray, np.ndarray]:
+    def airy_pattern(self, radius_um: float, focal_length_mm: float, 
+                     aperture_diameter_mm: float, num_points: int = 1000) -> Tuple[np.ndarray, np.ndarray]:
         """
         Calculate Airy diffraction pattern intensity
         
         Args:
-            radius: Maximum radius to calculate (in micrometers)
-            focal_length: Focal length in mm
-            aperture_diameter: Aperture diameter in mm
+            radius_um: Maximum radius to calculate (in micrometers)
+            focal_length_mm: Focal length in mm
+            aperture_diameter_mm: Aperture diameter in mm
             num_points: Number of points to calculate
         
         Returns:
-            Tuple of (radii, intensities)
+            Tuple of (radii_um, intensities)
         """
         # Convert to meters
-        f = focal_length / 1000.0
-        D = aperture_diameter / 1000.0
-        r_max = radius * 1e-6
+        f = focal_length_mm / 1000.0
+        D = aperture_diameter_mm / 1000.0
+        r_max = radius_um * 1e-6
         
         # Create radial coordinates
         r = np.linspace(0, r_max, num_points)
         
         # Calculate dimensionless parameter v = π * D * r / (λ * f)
-        v = np.pi * D * r / (self.wavelength * f)
+        v = np.pi * D * r / (self.wavelength_m * f)
         
         # Avoid division by zero at center
         v[0] = 1e-10
@@ -193,24 +193,24 @@ class DiffractionCalculator:
         
         return r_um, intensity
     
-    def point_spread_function_2d(self, size: float, focal_length: float,
-                                  aperture_diameter: float, pixels: int = 256) -> np.ndarray:
+    def point_spread_function_2d(self, size_um: float, focal_length_mm: float,
+                                  aperture_diameter_mm: float, pixels: int = 256) -> np.ndarray:
         """
         Calculate 2D point spread function
         
         Args:
-            size: Size of PSF region (in micrometers)
-            focal_length: Focal length in mm
-            aperture_diameter: Aperture diameter in mm
+            size_um: Size of PSF region (in micrometers)
+            focal_length_mm: Focal length in mm
+            aperture_diameter_mm: Aperture diameter in mm
             pixels: Number of pixels per side
         
         Returns:
             2D array of PSF intensities
         """
         # Convert to meters
-        f = focal_length / 1000.0
-        D = aperture_diameter / 1000.0
-        size_m = size * 1e-6
+        f = focal_length_mm / 1000.0
+        D = aperture_diameter_mm / 1000.0
+        size_m = size_um * 1e-6
         
         # Create coordinate grid
         x = np.linspace(-size_m/2, size_m/2, pixels)
@@ -221,7 +221,7 @@ class DiffractionCalculator:
         R = np.sqrt(X**2 + Y**2)
         
         # Calculate dimensionless parameter
-        v = np.pi * D * R / (self.wavelength * f)
+        v = np.pi * D * R / (self.wavelength_m * f)
         
         # Avoid division by zero
         v[v == 0] = 1e-10
@@ -234,26 +234,26 @@ class DiffractionCalculator:
         
         return psf
     
-    def encircled_energy(self, focal_length: float, aperture_diameter: float,
-                         max_radius: float = None, num_points: int = 100) -> Tuple[np.ndarray, np.ndarray]:
+    def encircled_energy(self, focal_length_mm: float, aperture_diameter_mm: float,
+                         max_radius_um: float = None, num_points: int = 100) -> Tuple[np.ndarray, np.ndarray]:
         """
         Calculate encircled energy as function of radius
         
         Args:
-            focal_length: Focal length in mm
-            aperture_diameter: Aperture diameter in mm
-            max_radius: Maximum radius in micrometers (default: 5x Airy disk)
+            focal_length_mm: Focal length in mm
+            aperture_diameter_mm: Aperture diameter in mm
+            max_radius_um: Maximum radius in micrometers (default: 5x Airy disk)
             num_points: Number of points to calculate
         
         Returns:
-            Tuple of (radii, encircled_energy_fraction)
+            Tuple of (radii_um, encircled_energy_fraction)
         """
-        if max_radius is None:
-            airy_r = self.airy_disk_radius(focal_length, aperture_diameter)
-            max_radius = 5 * airy_r
+        if max_radius_um is None:
+            airy_r = self.airy_disk_radius_um(focal_length_mm, aperture_diameter_mm)
+            max_radius_um = 5 * airy_r
         
         # Get Airy pattern
-        r, intensity = self.airy_pattern(max_radius, focal_length, aperture_diameter, num_points=1000)
+        r, intensity = self.airy_pattern(max_radius_um, focal_length_mm, aperture_diameter_mm, num_points=1000)
         
         # Calculate encircled energy using cumulative integration
         # Energy at radius R = ∫∫ I(r) r dr dθ = 2π ∫ I(r) r dr
@@ -267,25 +267,25 @@ class DiffractionCalculator:
         
         return r, encircled
     
-    def calculate_metrics(self, focal_length: float, aperture_diameter: float) -> Dict:
+    def calculate_metrics(self, focal_length_mm: float, aperture_diameter_mm: float) -> Dict:
         """
         Calculate comprehensive diffraction metrics
         
         Args:
-            focal_length: Focal length in mm
-            aperture_diameter: Aperture diameter in mm
+            focal_length_mm: Focal length in mm
+            aperture_diameter_mm: Aperture diameter in mm
         
         Returns:
             Dictionary of diffraction metrics
         """
-        f_number = focal_length / aperture_diameter
+        f_number = focal_length_mm / aperture_diameter_mm
         
         metrics = {
-            'airy_disk_radius_um': self.airy_disk_radius(focal_length, aperture_diameter),
-            'rayleigh_limit_arcsec': self.rayleigh_criterion(aperture_diameter),
-            'diffraction_spot_um': self.diffraction_limited_spot_size(f_number),
+            'airy_disk_radius_um': self.airy_disk_radius_um(focal_length_mm, aperture_diameter_mm),
+            'rayleigh_limit_arcsec': self.rayleigh_criterion_arcsec(aperture_diameter_mm),
+            'diffraction_spot_um': self.diffraction_limited_spot_size_um(f_number),
             'f_number': f_number,
-            'wavelength_nm': self.wavelength * 1e9
+            'wavelength_nm': self.wavelength_m * 1e9
         }
         
         return metrics

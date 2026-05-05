@@ -35,24 +35,21 @@ class TestSpotDiagramChromatic(unittest.TestCase):
 
     def test_chromatic_update(self):
         """Test that trace_spot updates lens indices for different wavelengths"""
-        if not HAS_DB:
-            print("Skipping chromatic test: Material Database not available")
-            return
-            
-        print(f"Initial Index: {self.lens.refractive_index}")
-        self.lens.update_refractive_index(wavelength=WAVELENGTH_F_LINE)
-        print(f"Index at F ({WAVELENGTH_F_LINE}): {self.lens.refractive_index}")
-        self.lens.update_refractive_index(wavelength=WAVELENGTH_C_LINE)
-        print(f"Index at C ({WAVELENGTH_C_LINE}): {self.lens.refractive_index}")
+        # Manually update to F-line (blue)
+        self.lens.update_refractive_index(wavelength_nm=WAVELENGTH_F_LINE)
+        n_F = self.lens.refractive_index
         
-        # Restore
-        self.lens.update_refractive_index(wavelength=WAVELENGTH_D_LINE)
-
-        # Trace for F line (Blue)
-        res_F = self.analyzer.trace_spot(wavelength=WAVELENGTH_F_LINE, num_rings=3)
+        self.lens.update_refractive_index(wavelength_nm=WAVELENGTH_C_LINE)
+        n_C = self.lens.refractive_index
         
-        # Trace for C line (Red)
-        res_C = self.analyzer.trace_spot(wavelength=WAVELENGTH_C_LINE, num_rings=3)
+        self.assertNotAlmostEqual(n_F, n_C)
+        
+        # Reset to green
+        self.lens.update_refractive_index(wavelength_nm=WAVELENGTH_D_LINE)
+        
+        # Now trace through analyzer and check if results differ by wavelength
+        res_F = self.analyzer.trace_spot(wavelength_nm=WAVELENGTH_F_LINE, num_rings=3)
+        res_C = self.analyzer.trace_spot(wavelength_nm=WAVELENGTH_C_LINE, num_rings=3)
         
         # If dispersion is working, the focal points (and thus spot sizes at a fixed plane) should differ
         # Or specifically, the rays should have different paths.

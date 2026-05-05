@@ -37,7 +37,7 @@ class GeometricTraceAnalysis:
         for element in self.system.elements:
             lens = element.lens
             original_states.append((lens, lens.wavelength))
-            lens.update_refractive_index(wavelength=wavelength)
+            lens.update_refractive_index(wavelength_nm=wavelength)
             
         try:
             # Trace paraxial ray
@@ -61,34 +61,34 @@ class GeometricTraceAnalysis:
             # Restore state
             for lens, wl in original_states:
                 lens.wavelength = wl
-                lens.update_refractive_index(wavelength=wl)
+                lens.update_refractive_index(wavelength_nm=wl)
 
     def calculate_ray_fan(self, 
-                          field_angle: float = 0.0, 
-                          wavelength: float = WAVELENGTH_GREEN,
+                          field_angle_deg: float = 0.0, 
+                          wavelength_nm: float = WAVELENGTH_GREEN,
                           num_points: int = 21,
                           pupil_axis: str = 'y') -> Dict[str, Any]:
         """
         Calculate Ray Fan (Transverse Ray Aberration).
         
         Args:
-            field_angle: Field angle in degrees.
-            wavelength: Wavelength in nm.
+            field_angle_deg: Field angle in degrees.
+            wavelength_nm: Wavelength in nm.
             num_points: Number of points across the pupil diameter.
             pupil_axis: 'y' for Tangential (Meridional) fan, 'z' for Sagittal fan.
             
         Returns:
-            Dictionary with 'pupil_coords' (normalized -1 to 1) and 'ray_errors' (mm).
+            Dictionary with 'pupil_coords' (normalized -1 to 1) and 'ray_errors_mm' (mm).
         """
-        wl_mm = wavelength * NM_TO_MM
-        image_plane_x = self._get_image_plane_x(wavelength)
+        wl_mm = wavelength_nm * NM_TO_MM
+        image_plane_x = self._get_image_plane_x(wavelength_nm)
         
         # Entrance Pupil Diameter (approximate as first lens diameter)
         ep_diam = self.system.elements[0].lens.diameter if self.system.elements else 1.0
         max_r = ep_diam / 2.0
         
         # Ray direction based on field angle (Tangential plane tilt)
-        tan_theta = math.tan(math.radians(field_angle))
+        tan_theta = math.tan(math.radians(field_angle_deg))
         direction = vec3(1.0, tan_theta, 0.0).normalize()
         
         # Determine Chief Ray intersection (reference point)
@@ -112,7 +112,7 @@ class GeometricTraceAnalysis:
              ref_z = chief_ray.origin.z + t * chief_ray.direction.z
         
         pupil_coords = self._linspace(-1.0, 1.0, num_points)
-        ray_errors = []
+        ray_errors_mm = []
         valid_coords = []
         
         for p in pupil_coords:
@@ -153,38 +153,38 @@ class GeometricTraceAnalysis:
             
             if not math.isnan(error):
                 valid_coords.append(p)
-                ray_errors.append(error)
+                ray_errors_mm.append(error)
                 
         return {
             'pupil_coords': valid_coords,
-            'ray_errors': ray_errors,
+            'ray_errors_mm': ray_errors_mm,
             'axis': pupil_axis,
-            'field_angle': field_angle,
-            'wavelength': wavelength
+            'field_angle_deg': field_angle_deg,
+            'wavelength_nm': wavelength_nm
         }
 
     def calculate_field_curvature_distortion(self, 
-                                           max_field_angle: float = 20.0, 
+                                           max_field_angle_deg: float = 20.0, 
                                            num_points: int = 11,
-                                           wavelength: float = WAVELENGTH_GREEN) -> Dict[str, Any]:
+                                           wavelength_nm: float = WAVELENGTH_GREEN) -> Dict[str, Any]:
         """
         Calculate Field Curvature and Distortion.
         
         Args:
-            max_field_angle: Maximum semi-field angle in degrees.
+            max_field_angle_deg: Maximum semi-field angle in degrees.
             num_points: Number of field points to sample.
-            wavelength: Wavelength in nm.
+            wavelength_nm: Wavelength in nm.
             
         Returns:
             Dictionary with arrays for field angles, tangential/sagittal focus shift, and distortion %.
         """
-        wl_mm = wavelength * NM_TO_MM
-        image_plane_x = self._get_image_plane_x(wavelength)
+        wl_mm = wavelength_nm * NM_TO_MM
+        image_plane_x = self._get_image_plane_x(wavelength_nm)
         
-        angles = self._linspace(0, max_field_angle, num_points)
+        angles = self._linspace(0, max_field_angle_deg, num_points)
         
-        tan_focus_shifts = []
-        sag_focus_shifts = []
+        tan_focus_shifts_mm = []
+        sag_focus_shifts_mm = []
         distortion_pcts = []
         
         ep_diam = self.system.elements[0].lens.diameter if self.system.elements else 1.0
@@ -205,8 +205,8 @@ class GeometricTraceAnalysis:
             self.tracer.trace_ray(chief_ray)
             
             if chief_ray.terminated:
-                tan_focus_shifts.append(float('nan'))
-                sag_focus_shifts.append(float('nan'))
+                tan_focus_shifts_mm.append(float('nan'))
+                sag_focus_shifts_mm.append(float('nan'))
                 distortion_pcts.append(float('nan'))
                 continue
                 
@@ -243,11 +243,11 @@ class GeometricTraceAnalysis:
                 
                 if abs(m2 - m1) > 1e-9:
                     x_tan_focus = (ray_tan.origin.y - chief_ray.origin.y - ray_tan.origin.x*m1 + chief_ray.origin.x*m2) / (m2 - m1)
-                    tan_focus_shifts.append(x_tan_focus - image_plane_x)
+                    tan_focus_shifts_mm.append(x_tan_focus - image_plane_x)
                 else:
-                    tan_focus_shifts.append(0.0) 
+                    tan_focus_shifts_mm.append(0.0) 
             else:
-                tan_focus_shifts.append(float('nan'))
+                tan_focus_shifts_mm.append(float('nan'))
 
             # 3. Sagittal Focus
             offset_z = delta
@@ -262,16 +262,16 @@ class GeometricTraceAnalysis:
                 if abs(ray_sag.direction.z) > 1e-9:
                     u = -ray_sag.origin.z / ray_sag.direction.z
                     x_sag_focus = ray_sag.origin.x + u * ray_sag.direction.x
-                    sag_focus_shifts.append(x_sag_focus - image_plane_x)
+                    sag_focus_shifts_mm.append(x_sag_focus - image_plane_x)
                 else:
-                    sag_focus_shifts.append(0.0)
+                    sag_focus_shifts_mm.append(0.0)
             else:
-                sag_focus_shifts.append(float('nan'))
+                sag_focus_shifts_mm.append(float('nan'))
                 
         return {
-            'field_angles': angles,
-            'tan_focus_shift': tan_focus_shifts,
-            'sag_focus_shift': sag_focus_shifts,
+            'field_angles_deg': angles,
+            'tan_focus_shift_mm': tan_focus_shifts_mm,
+            'sag_focus_shift_mm': sag_focus_shifts_mm,
             'distortion_pct': distortion_pcts,
-            'image_plane_x': image_plane_x
+            'image_plane_x_mm': image_plane_x
         }

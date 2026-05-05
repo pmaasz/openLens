@@ -57,11 +57,11 @@ class Matrix4x4:
         return mat
 
     @staticmethod
-    def from_euler(rx: float, ry: float, rz: float) -> 'Matrix4x4':
+    def from_euler(rx_deg: float, ry_deg: float, rz_deg: float) -> 'Matrix4x4':
         """Creates a rotation matrix from Euler angles (in degrees). Order: Z * Y * X"""
-        rad_x = math.radians(rx)
-        rad_y = math.radians(ry)
-        rad_z = math.radians(rz)
+        rad_x = math.radians(rx_deg)
+        rad_y = math.radians(ry_deg)
+        rad_z = math.radians(rz_deg)
 
         cx, sx = math.cos(rad_x), math.sin(rad_x)
         cy, sy = math.cos(rad_y), math.sin(rad_y)

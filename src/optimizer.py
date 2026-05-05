@@ -226,7 +226,7 @@ class MeritFunction:
                     calc = AberrationsCalculator(system.elements[0].lens)
                     # Use a default field angle if not specified, say 5 degrees
                     # Or get from target? For now hardcode or use generic
-                    results = calc.calculate_all_aberrations(field_angle=5.0)
+                    results = calc.calculate_all_aberrations(field_angle_deg=5.0)
                     if results.get('coma') is not None:
                          value = abs(results['coma'])
                          if target.target_type == "minimize":
@@ -235,7 +235,7 @@ class MeritFunction:
             elif target.name == "astigmatism":
                 if system.elements:
                     calc = AberrationsCalculator(system.elements[0].lens)
-                    results = calc.calculate_all_aberrations(field_angle=5.0)
+                    results = calc.calculate_all_aberrations(field_angle_deg=5.0)
                     if results.get('astigmatism') is not None:
                          value = abs(results['astigmatism'])
                          if target.target_type == "minimize":

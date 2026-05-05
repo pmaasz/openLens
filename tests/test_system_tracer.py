@@ -39,7 +39,7 @@ class TestSystemRayTracer(unittest.TestCase):
 
     def test_trace_parallel_rays(self):
         """Test tracing parallel rays through system"""
-        rays = self.tracer.trace_parallel_rays(num_rays=3, angle=0.0)
+        rays = self.tracer.trace_parallel_rays(num_rays=3, angle_deg=0.0)
         
         self.assertEqual(len(rays), 3)
         
