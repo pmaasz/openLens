@@ -52,26 +52,30 @@ class OpenLensWindow(QMainWindow):
         
         # Initialize database
         self._db_path = "openlens.db"
-        self._load_from_database()
+        self._lenses = []
+        self._assemblies = []
+        self._current_lens = None
+        self._current_assembly = None
         
         self._setup_ui()
         self._create_menu()
+        
+        # Defer database loading to keep startup responsive
+        QTimer.singleShot(0, self._load_from_database)
         
         self._handle_startup(action, data)
     
     def _load_from_database(self):
         """Load lenses and assemblies from SQLite database"""
         from src.gui.storage import LensStorage
-        from src.database import DatabaseManager
         
+        self._update_status("Loading library...")
         try:
             storage = LensStorage(self._db_path, lambda x: None)
             all_items = storage.load_lenses()
             
             self._lenses = []
             self._assemblies = []
-            self._current_lens = None
-            self._current_assembly = None
             
             for item in all_items:
                 if hasattr(item, 'elements') and hasattr(item, 'air_gaps'):
@@ -80,6 +84,10 @@ class OpenLensWindow(QMainWindow):
                     self._lenses.append(item)
             
             logger.info(f"Loaded {len(self._lenses)} lenses and {len(self._assemblies)} assemblies from database")
+            self._update_status(f"Loaded library: {len(self._lenses)} lenses, {len(self._assemblies)} assemblies")
+            
+            # Update tabs that depend on the loaded library
+            self._update_all_tabs()
             
         except Exception as e:
             logger.error(f"Failed to load from database: {e}")
