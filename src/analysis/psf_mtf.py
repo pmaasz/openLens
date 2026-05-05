@@ -150,18 +150,18 @@ class ImageQualityAnalyzer:
         }
 
     def calculate_mtf(self, 
-                      field_angle: float = 0.0, 
-                      wavelength: float = 550.0,
-                      focus_shift: float = 0.0,
+                      field_angle_deg: float = 0.0, 
+                      wavelength_nm: float = 550.0,
+                      focus_shift_mm: float = 0.0,
                       max_freq: float = 100.0,
                       use_diffraction: bool = False) -> Dict[str, Any]:
         """
         Calculate the Modulation Transfer Function (MTF).
         
         Args:
-            field_angle: Field angle in degrees
-            wavelength: Wavelength in nm
-            focus_shift: Defocus in mm
+            field_angle_deg: Field angle in degrees
+            wavelength_nm: Wavelength in nm
+            focus_shift_mm: Defocus in mm
             max_freq: Maximum spatial frequency to return (lp/mm)
             use_diffraction: If True, uses FFT of Pupil Function.
             
@@ -179,8 +179,8 @@ class ImageQualityAnalyzer:
             # 1. Get Wavefront
             pupil_grid_size = 64
             wf = self.wavefront_sensor.get_pupil_wavefront(
-                field_angle=field_angle,
-                wavelength=wavelength * 1e-6,
+                field_angle_deg=field_angle_deg,
+                wavelength_nm=wavelength_nm,
                 grid_size=pupil_grid_size
             )
             
@@ -238,7 +238,7 @@ class ImageQualityAnalyzer:
             L_grid = ep_diam # We used +/- max_r = ep_diam/2
             
             # Sampling frequency in MTF domain
-            # Fs = L_grid / (wavelength * 1e-6 * efl)
+            # Fs = L_grid / (wavelength_nm * 1e-6 * efl)
             # This assumes the PSF calculation uses the standard FFT scaling.
             # Yes, if we pad to M, the spatial extent of PSF is lambda*f/dx_pupil.
             # dx_pupil = L_grid / N.
@@ -252,25 +252,12 @@ class ImageQualityAnalyzer:
             # Total Spatial Range (FOV of PSF) = M * dx_psf.
             # dx_psf = (lambda * f) / (M * dx_pupil).
             # FOV = (lambda * f) / dx_pupil.
-            # So df = dx_pupil / (lambda * f).
-            # dx_pupil = L_grid / N_pupil.
-            # So df = L_grid / (N_pupil * lambda * f).
-            
-            # This means the frequency step depends only on pupil sampling and physical parameters.
-            # Padding (M) just interpolates the MTF?
-            # No, padding in Pupil domain (N -> M) interpolates the PSF.
-            # We are calculating MTF from PSF.
-            # If we calculated PSF with padding factor P (size M = P*N).
-            # The PSF has M points.
-            # Taking FFT of PSF (size M) gives MTF (size M).
-            # The frequency step df is 1 / (M * dx_psf).
-            # dx_psf = (lambda * f) / (M * dx_pupil).
             # So df = 1 / ( (lambda*f)/dx_pupil ) = dx_pupil / (lambda * f).
             # This is consistent.
             
             grid_size = wf.W.shape[0] # N
             dx_pupil = L_grid / grid_size
-            df = dx_pupil / (wavelength * 1e-6 * efl)
+            df = dx_pupil / (wavelength_nm * 1e-6 * efl)
             
             freqs = np.arange(len(mtf_tan)) * df
             
@@ -282,6 +269,125 @@ class ImageQualityAnalyzer:
                 'mtf_tan': mtf_tan[mask],
                 'mtf_sag': mtf_sag[mask]
             }
+
+        # 1. Calculate PSF with sufficient resolution
+        # Resolution requirement: 
+        # Max freq = 100 lp/mm -> period = 0.01 mm
+        # Sampling theorem: need pixel size < 0.005 mm (5 microns)
+        # Let's use 2 microns (0.002 mm).
+        # Sensor size: needs to cover the spot. Say 0.2 mm.
+        # Pixels = 0.2 / 0.002 = 100 pixels.
+        
+        pixel_size_mm = 0.002 # 2 microns
+        window_size_mm = 0.256 # 256 microns, power of 2 roughly
+        num_pixels = 128
+        
+        psf_data = self.calculate_psf(
+            field_angle_deg=field_angle_deg,
+            wavelength_nm=wavelength_nm,
+            focus_shift_mm=focus_shift_mm,
+            sensor_size_mm=window_size_mm,
+            pixels=num_pixels
+        )
+            
+        # 2. Calculate PSF (high res)
+        pad_factor = 4
+        psf_raw = DiffractionPSFCalculator.calculate_psf(wf, pad_factor=pad_factor)
+        
+        # 3. Calculate MTF from PSF
+        mtf_2d = DiffractionPSFCalculator.calculate_mtf(psf_raw)
+        
+        # 4. Extract Profiles
+        center_y, center_x = mtf_2d.shape[0] // 2, mtf_2d.shape[1] // 2
+        
+        # Tangential (along Y axis in frequency domain) -> Corresponds to spatial Y modulation?
+        # Wait. MTF(fy, fz).
+        # Tangential MTF is usually defined for modulation along the tangential direction (Y).
+        # This corresponds to frequency fy? Yes.
+        # Sagittal MTF -> fz.
+        
+        # Extract slices from 2D MTF
+        # Positive frequencies only
+        n_half = mtf_2d.shape[0] // 2
+        
+        # Slice along axes
+        mtf_tan_full = mtf_2d[:, center_x]
+        mtf_sag_full = mtf_2d[center_y, :]
+        
+        mtf_tan = mtf_tan_full[center_y:] # From DC to max freq
+        mtf_sag = mtf_sag_full[center_x:]
+            
+        # 5. Frequency Scale
+        # Max frequency (cutoff) = 1 / (lambda * F/#)
+        # The FFT frequency scale is determined by the spatial sampling.
+        # dx (spatial sampling of PSF) = (lambda * f) / (N_pupil * dx_pupil) * (something)
+        # Actually, simpler:
+        # Max Frequency in MTF corresponds to the cutoff frequency of the system.
+        # Cutoff = D / (lambda * f).
+        # The MTF array spans from -Cutoff to +Cutoff?
+        # No. The MTF array spans -Fs/2 to Fs/2 where Fs = 1/dx_psf.
+        # dx_psf = (lambda * f) / L_pupil_grid.
+        # So Fs = L_pupil_grid / (lambda * f).
+        # This makes sense. The max frequency we can resolve is limited by the pupil size.
+        # The MTF array has size M (padded size).
+        # So frequency step df = Fs / M = L_pupil_grid / (lambda * f * M).
+        # The cutoff frequency is D / (lambda * f).
+        # D is approx L_pupil_grid.
+        # So the cutoff is at index M * (D/L) ?
+        # If L_pupil_grid is exactly D (which we try to set), then Fs = Cutoff * (something).
+        
+        # Let's use physical parameters.
+        ep_diam = self.system.elements[0].lens.diameter if self.system.elements else 1.0
+        efl = self.system.get_system_focal_length() or 100.0
+        
+        # Pupil Grid physical size L = ep_diam (approx, based on get_pupil_wavefront range)
+        L_grid = ep_diam # We used +/- max_r = ep_diam/2
+        
+        # Sampling frequency in MTF domain
+        # Fs = L_grid / (wavelength * 1e-6 * efl)
+        # This assumes the PSF calculation uses the standard FFT scaling.
+        # Yes, if we pad to M, the spatial extent of PSF is lambda*f/dx_pupil.
+        # dx_pupil = L_grid / N.
+        # So Extent = lambda*f*N/L_grid.
+        # Fs = 1 / (Extent/M) = M / Extent = M * L_grid / (lambda*f*N).
+        # Wait, frequency resolution df = 1/Extent.
+        # df = L_grid / (lambda * f * N) ? No. 1/Extent = (dx_pupil) / (lambda * f).
+        
+        # Let's re-verify:
+        # df = 1 / (Total Spatial Range).
+        # Total Spatial Range (FOV of PSF) = M * dx_psf.
+        # dx_psf = (lambda * f) / (M * dx_pupil).
+        # FOV = (lambda * f) / dx_pupil.
+        # So df = dx_pupil / (lambda * f).
+        # dx_pupil = L_grid / N_pupil.
+        # So df = L_grid / (N_pupil * lambda * f).
+        
+        # This means the frequency step depends only on pupil sampling and physical parameters.
+        # Padding (M) just interpolates the MTF?
+        # No, padding in Pupil domain (N -> M) interpolates the PSF.
+        # We are calculating MTF from PSF.
+        # If we calculated PSF with padding factor P (size M = P*N).
+        # The PSF has M points.
+        # Taking FFT of PSF (size M) gives MTF (size M).
+        # The frequency step df is 1 / (M * dx_psf).
+        # dx_psf = (lambda * f) / (M * dx_pupil).
+        # So df = 1 / ( (lambda*f)/dx_pupil ) = dx_pupil / (lambda * f).
+        # This is consistent.
+        
+        grid_size = wf.W.shape[0] # N
+        dx_pupil = L_grid / grid_size
+        df = dx_pupil / (wavelength_nm * 1e-6 * efl)
+        
+        freqs = np.arange(len(mtf_tan)) * df
+        
+        # Filter
+        mask = freqs <= max_freq
+        
+        return {
+            'freq': freqs[mask],
+            'mtf_tan': mtf_tan[mask],
+            'mtf_sag': mtf_sag[mask]
+        }
 
         # 1. Calculate PSF with sufficient resolution
         # Resolution requirement: 

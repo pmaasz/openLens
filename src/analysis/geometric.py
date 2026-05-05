@@ -158,6 +158,7 @@ class GeometricTraceAnalysis:
         return {
             'pupil_coords': valid_coords,
             'ray_errors_mm': ray_errors_mm,
+            'transverse_aberration': ray_errors_mm, # Added for compatibility
             'axis': pupil_axis,
             'field_angle_deg': field_angle_deg,
             'wavelength_nm': wavelength_nm
