@@ -56,20 +56,20 @@ class Ray:
         path: List of (x, y) points along the ray path
     """
     
-    def __init__(self, x: float, y: float, angle: float, 
-                 wavelength: float = WAVELENGTH_GREEN * NM_TO_MM, n: float = REFRACTIVE_INDEX_AIR) -> None:
-        self.x = x
-        self.y = y
-        self.angle = angle
-        self.wavelength = wavelength
+    def __init__(self, x_mm: float, y_mm: float, angle_rad: float, 
+                 wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM, n: float = REFRACTIVE_INDEX_AIR) -> None:
+        self.x = x_mm
+        self.y = y_mm
+        self.angle = angle_rad
+        self.wavelength = wavelength_mm
         self.n = n
-        self.path: List[Tuple[float, float]] = [(x, y)]
+        self.path: List[Tuple[float, float]] = [(x_mm, y_mm)]
         self.terminated = False
     
-    def propagate(self, distance: float) -> None:
+    def propagate(self, distance_mm: float) -> None:
         """Propagate ray in current direction"""
-        self.x += distance * math.cos(self.angle)
-        self.y += distance * math.sin(self.angle)
+        self.x += distance_mm * math.cos(self.angle)
+        self.y += distance_mm * math.sin(self.angle)
         self.path.append((self.x, self.y))
     
     def refract(self, n1: float, n2: float, surface_normal_angle: float) -> bool:
@@ -440,8 +440,8 @@ class LensRayTracer:
     
     def trace_parallel_rays(self, num_rays: int = DEFAULT_NUM_RAYS, 
                            ray_height_range: Optional[Tuple[float, float]] = None, 
-                           wavelength: float = WAVELENGTH_GREEN * NM_TO_MM,
-                           angle: float = 0.0) -> List[Ray]:
+                           wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM,
+                           angle_deg: float = 0.0) -> List[Ray]:
         """Trace parallel rays (collimated beam) through the lens."""
         if ray_height_range is None:
             max_height = self.D / 2 * 0.95  # Use 95% of aperture
@@ -449,7 +449,7 @@ class LensRayTracer:
         
         rays = []
         min_h, max_h = ray_height_range
-        angle_rad = math.radians(angle)
+        angle_rad = math.radians(angle_deg)
         
         # Starting position (before lens) - rays start at x=-100 to visualize the beam
         start_x = -100.0
@@ -465,18 +465,18 @@ class LensRayTracer:
             
             y_start = height - (lens_x - start_x) * math.tan(angle_rad)
             
-            ray = Ray(start_x, y_start, angle=angle_rad, wavelength=wavelength)
+            ray = Ray(start_x, y_start, angle_rad, wavelength_mm=wavelength_mm)
             self.trace_ray(ray)
             rays.append(ray)
         
         return rays
     
     def trace_point_source_rays(self, source_x: float, source_y: float, 
-                               num_rays: int = DEFAULT_NUM_RAYS, max_angle: float = DEFAULT_ANGLE_RANGE[1], 
-                               wavelength: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray]:
+                               num_rays: int = DEFAULT_NUM_RAYS, max_angle_deg: float = DEFAULT_ANGLE_RANGE[1], 
+                               wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray]:
         """Trace rays from a point source."""
         rays = []
-        max_angle_rad = math.radians(max_angle)
+        max_angle_rad = math.radians(max_angle_deg)
         
         for i in range(num_rays):
             if num_rays == 1:
@@ -484,7 +484,7 @@ class LensRayTracer:
             else:
                 angle = -max_angle_rad + 2 * max_angle_rad * i / (num_rays - 1)
             
-            ray = Ray(source_x, source_y, angle, wavelength=wavelength)
+            ray = Ray(source_x, source_y, angle, wavelength_mm=wavelength_mm)
             self.trace_ray(ray)
             rays.append(ray)
         
@@ -572,8 +572,8 @@ class SystemRayTracer:
         self.system = optical_system
     
     def trace_parallel_rays(self, num_rays: int = DEFAULT_NUM_RAYS, 
-                           angle: float = 0.0,
-                           wavelength: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray]:
+                           angle_deg: float = 0.0,
+                           wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray]:
         """Trace parallel rays through the entire optical system."""
         if not self.system.elements:
             return []
@@ -584,7 +584,7 @@ class SystemRayTracer:
         min_h, max_h = -max_height, max_height
         
         rays = []
-        angle_rad = math.radians(angle)
+        angle_rad = math.radians(angle_deg)
         
         # Determine start position (well before first element)
         first_pos = self.system.elements[0].position
@@ -599,7 +599,7 @@ class SystemRayTracer:
             y_start = height - (first_pos - start_x) * math.tan(angle_rad)
             
             # Create ray
-            ray = Ray(start_x, y_start, angle=angle_rad, wavelength=wavelength)
+            ray = Ray(start_x, y_start, angle_rad, wavelength_mm=wavelength_mm)
             
             # Trace through system
             self._trace_ray_through_system(ray)

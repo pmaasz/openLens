@@ -65,7 +65,7 @@ class TestAberrationsCalculator(unittest.TestCase):
     def test_calculate_all_aberrations(self):
         """Test that all aberrations are calculated"""
         calc = AberrationsCalculator(self.biconvex)
-        results = calc.calculate_all_aberrations(field_angle=5.0)
+        results = calc.calculate_all_aberrations(field_angle_deg=5.0)
         
         # Check that all expected keys are present
         expected_keys = [
@@ -216,7 +216,7 @@ class TestAberrationsCalculator(unittest.TestCase):
     def test_aberration_summary_generation(self):
         """Test that summary string is generated"""
         calc = AberrationsCalculator(self.biconvex)
-        summary = calc.get_aberration_summary(field_angle=5.0)
+        summary = calc.get_aberration_summary(field_angle_deg=5.0)
         
         # Check that summary contains key information
         self.assertIn("ABERRATIONS ANALYSIS", summary)
@@ -226,7 +226,7 @@ class TestAberrationsCalculator(unittest.TestCase):
     
     def test_lens_quality_analysis(self):
         """Test lens quality analysis function"""
-        quality = analyze_lens_quality(self.biconvex, field_angle=5.0)
+        quality = analyze_lens_quality(self.biconvex, field_angle_deg=5.0)
         
         # Check that quality assessment contains required keys
         self.assertIn('quality_score', quality)
@@ -342,8 +342,8 @@ class TestAberrationsBehavior(unittest.TestCase):
         calc_small = AberrationsCalculator(small)
         calc_large = AberrationsCalculator(large)
         
-        results_small = calc_small.calculate_all_aberrations(field_angle=5.0)
-        results_large = calc_large.calculate_all_aberrations(field_angle=5.0)
+        results_small = calc_small.calculate_all_aberrations(field_angle_deg=5.0)
+        results_large = calc_large.calculate_all_aberrations(field_angle_deg=5.0)
         
         # Spherical aberration (LSA) scales roughly quadratically with aperture diameter (∝ D^2) for LSA.
         # (Transverse SA scales with D^3, Wavefront error with D^4)
@@ -393,8 +393,8 @@ class TestAberrationsBehavior(unittest.TestCase):
                         radius_of_curvature_2=-2.0, thickness=25.0,
                         diameter=250.0, refractive_index=1.9, material="SF11")
         
-        quality_good = analyze_lens_quality(good_lens, field_angle=2.0)
-        quality_poor = analyze_lens_quality(poor_lens, field_angle=2.0)
+        quality_good = analyze_lens_quality(good_lens, field_angle_deg=2.0)
+        quality_poor = analyze_lens_quality(poor_lens, field_angle_deg=2.0)
         
         # Good lens should have higher quality score than poor lens
         self.assertGreater(quality_good['quality_score'], quality_poor['quality_score'])
@@ -444,7 +444,7 @@ class TestAberrationsBehavior(unittest.TestCase):
                    diameter=50.0, refractive_index=1.5168, material="BK7")
         
         calc = AberrationsCalculator(lens)
-        summary = calc.get_aberration_summary(field_angle=5.0)
+        summary = calc.get_aberration_summary(field_angle_deg=5.0)
         
         # Check for essential sections
         self.assertIn("LENS ABERRATIONS ANALYSIS", summary)
@@ -491,13 +491,13 @@ class TestAberrationsBehavior(unittest.TestCase):
         calc = AberrationsCalculator(lens)
         
         # Test at 0 degrees (on-axis)
-        results_0 = calc.calculate_all_aberrations(field_angle=0.0)
+        results_0 = calc.calculate_all_aberrations(field_angle_deg=0.0)
         self.assertEqual(results_0['coma'], 0)
         self.assertEqual(results_0['astigmatism'], 0)
         self.assertEqual(results_0['distortion'], 0)
         
         # Test at wide field angle
-        results_wide = calc.calculate_all_aberrations(field_angle=20.0)
+        results_wide = calc.calculate_all_aberrations(field_angle_deg=20.0)
         self.assertGreater(abs(results_wide['coma']), 0)
         self.assertGreater(results_wide['astigmatism'], 0)
 

@@ -14,7 +14,7 @@ class TestTolerancing(unittest.TestCase):
     def setUp(self):
         # Create a simple system
         self.sys = OpticalSystem("Test System")
-        self.l1 = Lens("L1", radius_of_curvature_1=100.0, radius_of_curvature_2=-100.0, thickness=5.0, diameter=25.0, material="BK7", wavelength=0.5876)
+        self.l1 = Lens("L1", radius_of_curvature_1=100.0, radius_of_curvature_2=-100.0, thickness=5.0, diameter=25.0, material="BK7", wavelength_nm=587.6)
         self.sys.add_lens(self.l1)
         
     def test_tolerance_generation(self):
@@ -66,7 +66,7 @@ class TestInverseSensitivity(unittest.TestCase):
         # Create a simple system
         self.sys = OpticalSystem("Test System")
         # Use a biconvex lens where changing R1 definitely affects spot size
-        self.l1 = Lens("L1", radius_of_curvature_1=50.0, radius_of_curvature_2=-50.0, thickness=5.0, diameter=25.0, material="BK7", wavelength=0.5876)
+        self.l1 = Lens("L1", radius_of_curvature_1=50.0, radius_of_curvature_2=-50.0, thickness=5.0, diameter=25.0, material="BK7", wavelength_nm=587.6)
         self.sys.add_lens(self.l1)
 
     def test_sensitivity_calculation(self):

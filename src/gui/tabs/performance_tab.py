@@ -198,7 +198,7 @@ class PerformanceTab(BaseTab):
             if fl and fl > 0:
                 field_angle = math.degrees(math.atan((sensor_size / 2.0) / fl))
             
-            results = calculator.calculate_all_aberrations(field_angle=field_angle)
+            results = calculator.calculate_all_aberrations(field_angle_deg=field_angle)
             
             # Calculate chromatic focal shift if it's an assembly
             chromatic_text = ""

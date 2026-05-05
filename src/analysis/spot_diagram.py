@@ -89,7 +89,7 @@ class SpotDiagram:
         for element in self.system.elements:
             lens = element.lens
             original_states.append((lens, lens.wavelength, lens.refractive_index))
-            lens.update_refractive_index(wavelength=wavelength)
+            lens.update_refractive_index(wavelength_nm=wavelength)
             
         target_x = 0.0
         

@@ -26,7 +26,7 @@ class TestRayTracer3D(unittest.TestCase):
 
     def test_on_axis_ray_agreement(self):
         # 2D Trace
-        ray2d = Ray(x=-20, y=0, angle=0)
+        ray2d = Ray(x_mm=-20, y_mm=0, angle_rad=0)
         self.tracer2d.trace_ray(ray2d)
         
         # 3D Trace
@@ -46,15 +46,15 @@ class TestRayTracer3D(unittest.TestCase):
         # Check angle/direction
         # 2D angle should match 3D direction angle
         # 3D direction is (cos(theta), sin(theta), 0)
-        self.assertAlmostEqual(math.cos(ray2d.angle), ray3d.direction.x, places=4)
-        self.assertAlmostEqual(math.sin(ray2d.angle), ray3d.direction.y, places=4)
+        self.assertAlmostEqual(math.cos(ray2d.angle_rad), ray3d.direction.x, places=4)
+        self.assertAlmostEqual(math.sin(ray2d.angle_rad), ray3d.direction.y, places=4)
 
     def test_off_axis_meridional_ray(self):
         # Ray at height 10mm
         h = 10.0
         
         # 2D Trace
-        ray2d = Ray(x=-20, y=h, angle=0)
+        ray2d = Ray(x_mm=-20, y_mm=h, angle_rad=0)
         self.tracer2d.trace_ray(ray2d)
         
         # 3D Trace
@@ -69,8 +69,8 @@ class TestRayTracer3D(unittest.TestCase):
         self.assertAlmostEqual(0, last3d.z, places=4)
         
         # Check exit direction
-        self.assertAlmostEqual(math.cos(ray2d.angle), ray3d.direction.x, places=4)
-        self.assertAlmostEqual(math.sin(ray2d.angle), ray3d.direction.y, places=4)
+        self.assertAlmostEqual(math.cos(ray2d.angle_rad), ray3d.direction.x, places=4)
+        self.assertAlmostEqual(math.sin(ray2d.angle_rad), ray3d.direction.y, places=4)
 
     def test_skew_ray_symmetry(self):
         # Trace two rays symmetric about the optical axis in the YZ plane

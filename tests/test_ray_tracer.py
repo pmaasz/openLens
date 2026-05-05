@@ -19,17 +19,17 @@ class TestRay(unittest.TestCase):
     
     def test_ray_initialization(self):
         """Test that ray initializes correctly"""
-        ray = Ray(x=0, y=10, angle=0.5)
+        ray = Ray(x=0, y=10, angle_rad=0.5)
         self.assertEqual(ray.x, 0)
         self.assertEqual(ray.y, 10)
-        self.assertEqual(ray.angle, 0.5)
+        self.assertEqual(ray.angle_rad, 0.5)
         self.assertEqual(len(ray.path), 1)
         self.assertEqual(ray.path[0], (0, 10))
         self.assertFalse(ray.terminated)
     
     def test_ray_propagation(self):
         """Test ray propagation in straight line"""
-        ray = Ray(x=0, y=0, angle=0)  # Horizontal ray
+        ray = Ray(x=0, y=0, angle_rad=0)  # Horizontal ray
         ray.propagate(10.0)
         
         self.assertAlmostEqual(ray.x, 10.0, places=5)
@@ -38,7 +38,7 @@ class TestRay(unittest.TestCase):
     
     def test_ray_propagation_angled(self):
         """Test ray propagation at an angle"""
-        ray = Ray(x=0, y=0, angle=math.pi/4)  # 45 degree angle
+        ray = Ray(x=0, y=0, angle_rad=math.pi/4)  # 45 degree angle
         ray.propagate(10.0)
         
         expected_x = 10.0 * math.cos(math.pi/4)
@@ -50,22 +50,22 @@ class TestRay(unittest.TestCase):
     def test_ray_refraction_normal_incidence(self):
         """Test refraction at normal incidence (no bending)"""
         # Ray perpendicular to surface (ray angle = normal angle)
-        ray = Ray(x=0, y=0, angle=math.pi/2)
+        ray = Ray(x=0, y=0, angle_rad=math.pi/2)
         
         # Ray hitting surface with normal at 90° - ray is perpendicular to surface
-        success = ray.refract(n1=1.0, n2=1.5, surface_normal_angle=math.pi/2)
+        success = ray.refract(n1=1.0, n2=1.5, surface_normal_angle_rad=math.pi/2)
         
         self.assertTrue(success)
         # At normal incidence, ray should not change direction
-        self.assertAlmostEqual(ray.angle, math.pi/2, places=5)
+        self.assertAlmostEqual(ray.angle_rad, math.pi/2, places=5)
     
     def test_ray_refraction_snells_law(self):
         """Test that Snell's law is correctly applied"""
-        ray = Ray(x=0, y=0, angle=math.radians(30))
+        ray = Ray(x=0, y=0, angle_rad=math.radians(30))
         
         # Refraction from air (n=1) to glass (n=1.5)
         # Surface normal pointing up (90 degrees)
-        success = ray.refract(n1=1.0, n2=1.5, surface_normal_angle=math.pi/2)
+        success = ray.refract(n1=1.0, n2=1.5, surface_normal_angle_rad=math.pi/2)
         
         self.assertTrue(success)
         
@@ -76,7 +76,7 @@ class TestRay(unittest.TestCase):
         expected_refracted = math.asin(sin_refracted)
         expected_ray_angle = math.pi/2 + expected_refracted
         
-        self.assertAlmostEqual(ray.angle, expected_ray_angle, places=4)
+        self.assertAlmostEqual(ray.angle_rad, expected_ray_angle, places=4)
     
     def test_ray_total_internal_reflection(self):
         """Test total internal reflection"""
@@ -89,22 +89,22 @@ class TestRay(unittest.TestCase):
         
         # 1. Just below critical angle (should refract)
         angle_below = critical_angle_rad - 0.001
-        ray = Ray(x=0, y=0, angle=angle_below)
-        success = ray.refract(n1=n1, n2=n2, surface_normal_angle=0)
+        ray = Ray(x=0, y=0, angle_rad=angle_below)
+        success = ray.refract(n1=n1, n2=n2, surface_normal_angle_rad=0)
         self.assertTrue(success, "Should refract just below critical angle")
         
         # 2. Exactly at critical angle (should refract/grazing)
         # Due to floating point precision, we test very close to it
-        ray = Ray(x=0, y=0, angle=critical_angle_rad)
-        success = ray.refract(n1=n1, n2=n2, surface_normal_angle=0)
+        ray = Ray(x=0, y=0, angle_rad=critical_angle_rad)
+        success = ray.refract(n1=n1, n2=n2, surface_normal_angle_rad=0)
         self.assertTrue(success, "Should refract at critical angle (grazing transmission)")
         
         # 3. Just above critical angle (should reflect)
         angle_above = critical_angle_rad + 0.001
-        ray = Ray(x=0, y=0, angle=angle_above)
-        success = ray.refract(n1=n1, n2=n2, surface_normal_angle=0)
+        ray = Ray(x=0, y=0, angle_rad=angle_above)
+        success = ray.refract(n1=n1, n2=n2, surface_normal_angle_rad=0)
         self.assertFalse(success, "Should reflect just above critical angle")
-        self.assertAlmostEqual(ray.angle, -angle_above, places=5)
+        self.assertAlmostEqual(ray.angle_rad, -angle_above, places=5)
 
 
 class TestLensRayTracer(unittest.TestCase):
@@ -172,7 +172,7 @@ class TestLensRayTracer(unittest.TestCase):
         tracer = LensRayTracer(self.biconvex)
         # Trace rays with 10 degree angle
         angle_deg = 10.0
-        rays = tracer.trace_parallel_rays(num_rays=5, angle=angle_deg)
+        rays = tracer.trace_parallel_rays(num_rays=5, angle_deg=angle_deg)
         
         self.assertEqual(len(rays), 5)
         
@@ -224,15 +224,15 @@ class TestLensRayTracer(unittest.TestCase):
         tracer = LensRayTracer(self.biconvex)
         
         # On-axis ray
-        ray_center = Ray(-50, 0, angle=0)
+        ray_center = Ray(-50, 0, angle_rad=0)
         tracer.trace_ray(ray_center)
         
         # Off-axis ray
-        ray_edge = Ray(-50, 20, angle=0)
+        ray_edge = Ray(-50, 20, angle_rad=0)
         tracer.trace_ray(ray_edge)
         
         # Rays should have different final angles (spherical aberration)
-        self.assertNotAlmostEqual(ray_center.angle, ray_edge.angle, places=3)
+        self.assertNotAlmostEqual(ray_center.angle_rad, ray_edge.angle_rad, places=3)
     
     def test_point_source_rays(self):
         """Test tracing rays from a point source"""
@@ -243,7 +243,7 @@ class TestLensRayTracer(unittest.TestCase):
             source_x=-100, 
             source_y=0, 
             num_rays=7,
-            max_angle=15.0
+            max_angle_deg=15.0
         )
         
         self.assertEqual(len(rays), 7)
@@ -284,7 +284,7 @@ class TestLensRayTracer(unittest.TestCase):
         tracer = LensRayTracer(self.biconvex)
         
         # Ray well above the lens
-        ray = Ray(x=-50, y=100, angle=0)  # Way above lens diameter
+        ray = Ray(x=-50, y=100, angle_rad=0)  # Way above lens diameter
         tracer.trace_ray(ray)
         
         # Ray should be marked as terminated
@@ -294,17 +294,17 @@ class TestLensRayTracer(unittest.TestCase):
         """Test that different wavelengths can be traced"""
         tracer = LensRayTracer(self.biconvex)
         
-        # Red and blue light (different wavelengths)
-        rays_red = tracer.trace_parallel_rays(num_rays=3, wavelength=0.000650)
-        rays_blue = tracer.trace_parallel_rays(num_rays=3, wavelength=0.000450)
+        # Red and blue light (different wavelengths in mm)
+        rays_red = tracer.trace_parallel_rays(num_rays=3, wavelength_mm=0.000650)
+        rays_blue = tracer.trace_parallel_rays(num_rays=3, wavelength_mm=0.000450)
         
         # Both should trace successfully
         self.assertEqual(len(rays_red), 3)
         self.assertEqual(len(rays_blue), 3)
         
         # Wavelengths should be stored
-        self.assertAlmostEqual(rays_red[0].wavelength, 0.000650, places=6)
-        self.assertAlmostEqual(rays_blue[0].wavelength, 0.000450, places=6)
+        self.assertAlmostEqual(rays_red[0].wavelength_mm, 0.000650, places=6)
+        self.assertAlmostEqual(rays_blue[0].wavelength_mm, 0.000450, places=6)
     
     def test_geometry_calculation(self):
         """Test lens geometry calculations"""
@@ -365,7 +365,7 @@ class TestRayTracingPhysics(unittest.TestCase):
         tracer = LensRayTracer(lens)
         
         # Trace ray forward
-        ray_forward = Ray(x=-30, y=10, angle=0.1)
+        ray_forward = Ray(x=-30, y=10, angle_rad=0.1)
         tracer.trace_ray(ray_forward, propagate_distance=50)
         
         # Check that path exists
@@ -384,7 +384,7 @@ class TestRayTracingPhysics(unittest.TestCase):
         )
         
         tracer = LensRayTracer(lens)
-        ray = Ray(x=-50, y=0, angle=0)
+        ray = Ray(x=-50, y=0, angle_rad=0)
         tracer.trace_ray(ray)
         
         # All path points should have y ≈ 0

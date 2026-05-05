@@ -48,7 +48,7 @@ class Lens:
                  refractive_index: float = REFRACTIVE_INDEX_BK7,
                  lens_type: str = "Biconvex",
                  material: str = "BK7",
-                 wavelength: float = 587.6,
+                 wavelength_nm: float = 587.6,
                  temperature: float = 20.0,
                  is_fresnel: bool = False,
                  groove_pitch: float = DEFAULT_THICKNESS,
@@ -64,7 +64,7 @@ class Lens:
         self.thickness = thickness
         self.diameter = diameter
         self.material = material
-        self.wavelength = wavelength  # Design wavelength in nm
+        self.wavelength = wavelength_nm  # Design wavelength in nm
         self.temperature = temperature  # Operating temperature in °C
         
         # Model Glass Properties
@@ -141,13 +141,13 @@ class Lens:
             self._radius_of_curvature_2 = value
     
     def update_refractive_index(self, 
-                                 wavelength: Optional[float] = None,
+                                 wavelength_nm: Optional[float] = None,
                                  temperature: Optional[float] = None) -> None:
         """
         Update refractive index for new wavelength/temperature.
         """
-        if wavelength is not None:
-            self.wavelength = wavelength
+        if wavelength_nm is not None:
+            self.wavelength = wavelength_nm
         if temperature is not None:
             self.temperature = temperature
         

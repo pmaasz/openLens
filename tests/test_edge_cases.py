@@ -127,41 +127,41 @@ class TestBoundaryConditions(unittest.TestCase):
     
     def test_ray_perpendicular_to_surface(self):
         """Test ray hitting surface perpendicularly"""
-        ray = Ray(x=0, y=0, angle=math.pi/2)
-        success = ray.refract(n1=1.0, n2=1.5, surface_normal_angle=math.pi/2)
+        ray = Ray(x_mm=0, y_mm=0, angle_rad=math.pi/2)
+        success = ray.refract(n1=1.0, n2=1.5, surface_normal_angle_rad=math.pi/2)
         self.assertTrue(success)
         # Should pass through with no bending at normal incidence
-        self.assertAlmostEqual(ray.angle, math.pi/2, places=5)
+        self.assertAlmostEqual(ray.angle_rad, math.pi/2, places=5)
     
     def test_ray_parallel_to_surface(self):
         """Test ray parallel to surface (grazing incidence)"""
-        ray = Ray(x=0, y=0, angle=0)
-        success = ray.refract(n1=1.0, n2=1.5, surface_normal_angle=math.pi/2)
+        ray = Ray(x_mm=0, y_mm=0, angle_rad=0)
+        success = ray.refract(n1=1.0, n2=1.5, surface_normal_angle_rad=math.pi/2)
         # Should refract but at extreme angle
         self.assertTrue(success)
     
     def test_total_internal_reflection(self):
         """Test total internal reflection"""
-        ray = Ray(x=0, y=0, angle=math.pi/4)
+        ray = Ray(x_mm=0, y_mm=0, angle_rad=math.pi/4)
         # Going from glass to air at steep angle
-        success = ray.refract(n1=1.5, n2=1.0, surface_normal_angle=0)
+        success = ray.refract(n1=1.5, n2=1.0, surface_normal_angle_rad=0)
         # May fail or reflect depending on angle
         self.assertIsNotNone(success)
     
     def test_same_refractive_indices(self):
         """Test refraction with same refractive index on both sides"""
-        ray = Ray(x=0, y=0, angle=math.pi/4)
-        initial_angle = ray.angle
-        success = ray.refract(n1=1.5, n2=1.5, surface_normal_angle=0)
+        ray = Ray(x_mm=0, y_mm=0, angle_rad=math.pi/4)
+        initial_angle = ray.angle_rad
+        success = ray.refract(n1=1.5, n2=1.5, surface_normal_angle_rad=0)
         self.assertTrue(success)
         # Angle should not change
-        self.assertAlmostEqual(ray.angle, initial_angle, places=10)
+        self.assertAlmostEqual(ray.angle_rad, initial_angle, places=10)
     
     def test_aberrations_on_axis(self):
         """Test that off-axis aberrations are zero on-axis"""
         lens = Lens(material="Custom")
         calc = AberrationsCalculator(lens)
-        results = calc.calculate_all_aberrations(field_angle=0.0)
+        results = calc.calculate_all_aberrations(field_angle_deg=0.0)
         
         # On-axis: no coma, astigmatism, or distortion
         self.assertEqual(results['coma'], 0)
@@ -179,7 +179,7 @@ class TestBoundaryConditions(unittest.TestCase):
         calc = AberrationsCalculator(lens)
         
         # Test at extreme field angle
-        results = calc.calculate_all_aberrations(field_angle=45.0)
+        results = calc.calculate_all_aberrations(field_angle_deg=45.0)
         
         # Should calculate without error
         self.assertIsNotNone(results)
@@ -268,7 +268,7 @@ class TestNumericalStability(unittest.TestCase):
         tracer = LensRayTracer(lens)
         
         # Ray at edge of lens
-        ray = Ray(x=-50, y=24.9, angle=0)  # Just inside edge
+        ray = Ray(x_mm=-50, y_mm=24.9, angle_rad=0)  # Just inside edge
         tracer.trace_ray(ray)
         
         # Should trace without error

@@ -83,16 +83,16 @@ class AberrationsCalculator:
             self.D = target.diameter
         
     def calculate_all_aberrations(self, 
-                                   object_distance: Optional[float] = None,
-                                   field_angle: float = 0.0,
-                                   wavelength: float = 550.0) -> Dict[str, Any]:
+                                   object_distance_mm: Optional[float] = None,
+                                   field_angle_deg: float = 0.0,
+                                   wavelength_nm: float = 550.0) -> Dict[str, Any]:
         """
         Calculate all primary aberrations.
         
         Args:
-            object_distance: Distance to object in mm. None for infinity (collimated light)
-            field_angle: Off-axis angle in degrees (for coma, astigmatism, distortion)
-            wavelength: Wavelength in nm (for chromatic aberrations)
+            object_distance_mm: Distance to object in mm. None for infinity (collimated light)
+            field_angle_deg: Off-axis angle in degrees (for coma, astigmatism, distortion)
+            wavelength_nm: Wavelength in nm (for chromatic aberrations)
             
         Returns:
             Dictionary with aberration values and optical parameters
@@ -123,7 +123,7 @@ class AberrationsCalculator:
         
         if self.is_system:
             # For systems, we primarily rely on exact calculations where possible
-            field_data = self._calculate_field_metrics_system(field_angle)
+            field_data = self._calculate_field_metrics_system(field_angle_deg)
             return {
                 'focal_length': focal_length,
                 'numerical_aperture': na,
@@ -148,10 +148,10 @@ class AberrationsCalculator:
             'f_number': self._calculate_f_number(focal_length),
             'spherical': self._calculate_spherical_aberration(focal_length),
             'spherical_aberration': self._calculate_spherical_aberration(focal_length),
-            'coma': self._calculate_coma(focal_length, field_angle),
-            'astigmatism': self._calculate_astigmatism(focal_length, field_angle),
+            'coma': self._calculate_coma(focal_length, field_angle_deg),
+            'astigmatism': self._calculate_astigmatism(focal_length, field_angle_deg),
             'field_curvature': self._calculate_field_curvature(focal_length),
-            'distortion': self._calculate_distortion(focal_length, field_angle),
+            'distortion': self._calculate_distortion(focal_length, field_angle_deg),
             'chromatic': self._calculate_chromatic_aberration(focal_length),
             'chromatic_aberration': self._calculate_chromatic_aberration(focal_length),
             'airy_disk_diameter': self._calculate_airy_disk(focal_length),
@@ -270,8 +270,8 @@ class AberrationsCalculator:
         return 0.0
 
     def calculate_ray_fan(self, 
-                          field_angle: float = 0.0, 
-                          wavelength: float = 550.0,
+                          field_angle_deg: float = 0.0, 
+                          wavelength_nm: float = 550.0,
                           num_points: int = 21,
                           pupil_axis: str = 'y') -> Dict[str, Any]:
         """
@@ -287,15 +287,15 @@ class AberrationsCalculator:
             system.add_lens(self.lens)
             
         analysis = GeometricTraceAnalysis(system)
-        return analysis.calculate_ray_fan(field_angle=field_angle, wavelength=wavelength, num_points=num_points, pupil_axis=pupil_axis)
+        return analysis.calculate_ray_fan(field_angle_deg=field_angle_deg, wavelength_nm=wavelength_nm, num_points=num_points, pupil_axis=pupil_axis)
 
     def calculate_field_curvature(self, 
-                                  max_field_angle: float = 20.0, 
+                                  max_field_angle_deg: float = 20.0, 
                                   num_points: int = 11,
-                                  wavelength: float = 550.0) -> Tuple[List[float], List[float], List[float]]:
+                                  wavelength_nm: float = 550.0) -> Tuple[List[float], List[float], List[float]]:
         """
         Interface for field curvature calculation.
-        Returns (angles, sag, tan)
+        Returns (angles_deg, sag_shift_mm, tan_shift_mm)
         """
         from .analysis.geometric import GeometricTraceAnalysis
         from .optical_system import OpticalSystem
@@ -307,16 +307,16 @@ class AberrationsCalculator:
             system.add_lens(self.lens)
             
         analysis = GeometricTraceAnalysis(system)
-        data = analysis.calculate_field_curvature_distortion(max_field_angle=max_field_angle, num_points=num_points, wavelength=wavelength)
-        return data['field_angles'], data['sag_focus_shift'], data['tan_focus_shift']
+        data = analysis.calculate_field_curvature_distortion(max_field_angle_deg=max_field_angle_deg, num_points=num_points, wavelength_nm=wavelength_nm)
+        return data['field_angles_deg'], data['sag_focus_shift_mm'], data['tan_focus_shift_mm']
 
     def calculate_distortion_curve(self, 
-                                   max_field_angle: float = 20.0, 
+                                   max_field_angle_deg: float = 20.0, 
                                    num_points: int = 11,
-                                   wavelength: float = 550.0) -> Tuple[List[float], List[float]]:
+                                   wavelength_nm: float = 550.0) -> Tuple[List[float], List[float]]:
         """
         Interface for distortion curve calculation.
-        Returns (angles, distortion_pct)
+        Returns (angles_deg, distortion_pct)
         """
         from .analysis.geometric import GeometricTraceAnalysis
         from .optical_system import OpticalSystem
@@ -328,8 +328,8 @@ class AberrationsCalculator:
             system.add_lens(self.lens)
             
         analysis = GeometricTraceAnalysis(system)
-        data = analysis.calculate_field_curvature_distortion(max_field_angle=max_field_angle, num_points=num_points, wavelength=wavelength)
-        return data['field_angles'], data['distortion_pct']
+        data = analysis.calculate_field_curvature_distortion(max_field_angle_deg=max_field_angle_deg, num_points=num_points, wavelength_nm=wavelength_nm)
+        return data['field_angles_deg'], data['distortion_pct']
     
     def _calculate_strehl_ratio(self, focal_length: float) -> float:
         """Estimate Strehl ratio from wavefront error/spot size"""
@@ -427,19 +427,19 @@ class AberrationsCalculator:
                 
                 # Trace Marginal Ray
                 y_marginal = self.D / 2.0 * 0.99
-                ray_m = Ray(self.target.elements[0].position - 10, y_marginal, angle=0.0)
+                ray_m = Ray(self.target.elements[0].position - 10, y_marginal, angle_rad=0.0)
                 tracer._trace_ray_through_system(ray_m)
                 
-                if ray_m.terminated or abs(math.tan(ray_m.angle)) < 1e-9: return None
-                m_focus = ray_m.x - ray_m.y / math.tan(ray_m.angle)
+                if ray_m.terminated or abs(math.tan(ray_m.angle_rad)) < 1e-9: return None
+                m_focus = ray_m.x - ray_m.y / math.tan(ray_m.angle_rad)
                 
                 # Trace Paraxial Ray
                 y_paraxial = self.D / 2.0 * 0.01
-                ray_p = Ray(self.target.elements[0].position - 10, y_paraxial, angle=0.0)
+                ray_p = Ray(self.target.elements[0].position - 10, y_paraxial, angle_rad=0.0)
                 tracer._trace_ray_through_system(ray_p)
                 
-                if ray_p.terminated or abs(math.tan(ray_p.angle)) < 1e-9: return None
-                p_focus = ray_p.x - ray_p.y / math.tan(ray_p.angle)
+                if ray_p.terminated or abs(math.tan(ray_p.angle_rad)) < 1e-9: return None
+                p_focus = ray_p.x - ray_p.y / math.tan(ray_p.angle_rad)
                 
                 return m_focus - p_focus
             else:
@@ -447,16 +447,16 @@ class AberrationsCalculator:
                 tracer = LensRayTracer(self.lens)
                 start_x = -10.0 - self.d
                 y_marginal = self.D / 2.0
-                ray_marginal = Ray(start_x, y_marginal, angle=0.0)
+                ray_marginal = Ray(start_x, y_marginal, angle_rad=0.0)
                 tracer.trace_ray(ray_marginal)
-                if ray_marginal.terminated or abs(math.tan(ray_marginal.angle)) < 1e-9: return None
-                marginal_focus = ray_marginal.x - ray_marginal.y / math.tan(ray_marginal.angle)
+                if ray_marginal.terminated or abs(math.tan(ray_marginal.angle_rad)) < 1e-9: return None
+                marginal_focus = ray_marginal.x - ray_marginal.y / math.tan(ray_marginal.angle_rad)
                 
                 y_paraxial = self.D / 2.0 * 0.01
-                ray_paraxial = Ray(start_x, y_paraxial, angle=0.0)
+                ray_paraxial = Ray(start_x, y_paraxial, angle_rad=0.0)
                 tracer.trace_ray(ray_paraxial)
-                if abs(math.tan(ray_paraxial.angle)) < 1e-9: return None
-                paraxial_focus = ray_paraxial.x - ray_paraxial.y / math.tan(ray_paraxial.angle)
+                if abs(math.tan(ray_paraxial.angle_rad)) < 1e-9: return None
+                paraxial_focus = ray_paraxial.x - ray_paraxial.y / math.tan(ray_paraxial.angle_rad)
                 
                 return marginal_focus - paraxial_focus
         except Exception:

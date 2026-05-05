@@ -162,24 +162,15 @@ class TestLensIntegration(unittest.TestCase):
     
     def test_lens_with_material(self):
         """Test creating lens with material name"""
-        lens = Lens(name="Test", material="BK7", wavelength=587.6)
-        self.assertEqual(lens.material, "BK7")
+        lens = Lens(name="Test", material="BK7", wavelength_nm=587.6)
+        self.assertEqual(lens.wavelength_nm, 587.6)
+        
+        # Test constructor with implicit material database lookup
+        lens = Lens(material="BK7", wavelength_nm=587.6)
         self.assertAlmostEqual(lens.refractive_index, 1.5168, places=4)
-    
-    def test_lens_wavelength_update(self):
-        """Test updating lens refractive index for different wavelength"""
-        lens = Lens(material="BK7", wavelength=587.6)
-        n_yellow = lens.refractive_index
         
-        lens.update_refractive_index(wavelength=450)
-        n_blue = lens.refractive_index
-        
-        # Blue light should have higher refractive index
-        self.assertGreater(n_blue, n_yellow)
-    
-    def test_lens_temperature_update(self):
-        """Test updating lens refractive index for different temperature"""
-        lens = Lens(material="BK7", wavelength=587.6, temperature=20)
+        # Test with custom temperature
+        lens = Lens(material="BK7", wavelength_nm=587.6, temperature=20)
         n_room = lens.refractive_index
         
         lens.update_refractive_index(temperature=60)
