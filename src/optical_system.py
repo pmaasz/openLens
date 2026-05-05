@@ -550,9 +550,7 @@ class AchromaticDoubletDesigner:
         inv_R2 = (1.0 / R1_flint) - term
         
         if abs(inv_R2) < 1e-10:
-             R2_flint = 0.0 # Planar? Or infinite?
-             # For this codebase, let's use a very large number for infinity
-             R2_flint = 1e10
+             R2_flint = float('inf') # Planar? Or infinite?
         else:
              R2_flint = 1.0 / inv_R2
         

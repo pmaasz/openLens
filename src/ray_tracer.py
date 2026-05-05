@@ -33,13 +33,13 @@ try:
     from .constants import (
         WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR, REFRACTIVE_INDEX_VACUUM,
         DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_RADIUS_1, DEFAULT_THICKNESS,
-        EPSILON, MESH_RESOLUTION_HIGH,
+        EPSILON, MESH_RESOLUTION_HIGH, LARGE_NUMBER
     )
 except ImportError:
     from constants import (
         WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR, REFRACTIVE_INDEX_VACUUM,
         DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_RADIUS_1, DEFAULT_THICKNESS,
-        EPSILON, MESH_RESOLUTION_HIGH,
+        EPSILON, MESH_RESOLUTION_HIGH, LARGE_NUMBER
     )
 
 
@@ -158,7 +158,7 @@ class LensRayTracer:
         # Cx = Vertex + R
         
         # Front surface (R1)
-        if abs(self.R1) > 1e6 or abs(self.R1) < EPSILON:  # Essentially flat or zero radius
+        if abs(self.R1) > LARGE_NUMBER or not math.isfinite(self.R1) or abs(self.R1) < EPSILON:  # Essentially flat or zero radius
             self.front_center_x = self.front_vertex_x
             self.front_is_flat = True
         else:
@@ -166,7 +166,7 @@ class LensRayTracer:
             self.front_is_flat = False
         
         # Back surface (R2)
-        if abs(self.R2) > 1e6 or abs(self.R2) < EPSILON:  # Essentially flat or zero radius
+        if abs(self.R2) > LARGE_NUMBER or not math.isfinite(self.R2) or abs(self.R2) < EPSILON:  # Essentially flat or zero radius
             self.back_center_x = self.back_vertex_x
             self.back_is_flat = True
         else:
@@ -914,7 +914,7 @@ class LensRayTracer3D:
         self.back_vertex = self.transform.multiply_point(v1)
         
         # Front Center
-        if abs(self.R1) > 1e6 or abs(self.R1) < EPSILON:
+        if abs(self.R1) > LARGE_NUMBER or not math.isfinite(self.R1) or abs(self.R1) < EPSILON:
             self.front_center = self.front_vertex
             self.front_is_flat = True
         else:
@@ -922,7 +922,7 @@ class LensRayTracer3D:
             self.front_is_flat = False
         
         # Back Center
-        if abs(self.R2) > 1e6 or abs(self.R2) < EPSILON:
+        if abs(self.R2) > LARGE_NUMBER or not math.isfinite(self.R2) or abs(self.R2) < EPSILON:
             self.back_center = self.back_vertex
             self.back_is_flat = True
         else:
