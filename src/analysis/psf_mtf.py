@@ -38,37 +38,37 @@ class ImageQualityAnalyzer:
         self.wavefront_sensor = WavefrontSensor(system)
         
     def calculate_spot_diagram(self, 
-                               field_angle: float = 0.0, 
-                               wavelength: float = 550.0,
+                               field_angle_deg: float = 0.0, 
+                               wavelength_nm: float = 550.0,
                                num_rings: int = 6,
-                               focus_shift: float = 0.0) -> List[Tuple[float, float]]:
+                               focus_shift_mm: float = 0.0) -> List[Tuple[float, float]]:
         """
         Wrapper for calculate_spot in SpotDiagram for backward compatibility/consistency.
         Returns a list of (y, z) coordinates in mm.
         """
         res = self.spot_analyzer.trace_spot(
-            field_angle_y=field_angle,
-            wavelength=wavelength,
-            focus_shift=focus_shift,
+            field_angle_y_deg=field_angle_deg,
+            wavelength_nm=wavelength_nm,
+            focus_shift_mm=focus_shift_mm,
             num_rings=num_rings
         )
         return res['points']
 
     def calculate_psf(self, 
-                      field_angle: float = 0.0, 
-                      wavelength: float = 550.0,
-                      focus_shift: float = 0.0,
-                      sensor_size: float = 0.1,  # mm (size of the window to compute PSF)
+                      field_angle_deg: float = 0.0, 
+                      wavelength_nm: float = 550.0,
+                      focus_shift_mm: float = 0.0,
+                      sensor_size_mm: float = 0.1,  # mm (size of the window to compute PSF)
                       pixels: int = 64,
                       use_diffraction: bool = False) -> Dict[str, Any]:
         """
         Calculate the Point Spread Function (PSF).
         
         Args:
-            field_angle: Field angle in Y direction (degrees)
-            wavelength: Wavelength in nm
-            focus_shift: Defocus in mm
-            sensor_size: Size of the square sensor area to bin rays (mm)
+            field_angle_deg: Field angle in Y direction (degrees)
+            wavelength_nm: Wavelength in nm
+            focus_shift_mm: Defocus in mm
+            sensor_size_mm: Size of the square sensor area to bin rays (mm)
             pixels: Number of pixels along one side of the sensor area
             use_diffraction: If True, uses FFT of Pupil Function (Wavefront). 
                              If False, uses Geometric Ray Spot Diagram.
@@ -82,14 +82,14 @@ class ImageQualityAnalyzer:
                 - step_size: pixel size in mm
         """
         if use_diffraction:
-            return self._calculate_diffraction_psf(field_angle, wavelength, focus_shift, sensor_size, pixels)
+            return self._calculate_diffraction_psf(field_angle_deg, wavelength_nm, focus_shift_mm, sensor_size_mm, pixels)
 
         # 1. Trace Rays (High density for good PSF)
         # Use a large number of rings for better statistics
         res = self.spot_analyzer.trace_spot(
-            field_angle_y=field_angle,
-            wavelength=wavelength,
-            focus_shift=focus_shift,
+            field_angle_y_deg=field_angle_deg,
+            wavelength_nm=wavelength_nm,
+            focus_shift_mm=focus_shift_mm,
             num_rings=25  # ~1000 rays
         )
         

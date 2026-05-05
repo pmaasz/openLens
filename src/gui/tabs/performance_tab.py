@@ -298,7 +298,7 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             
             for i, field in enumerate(fields):
                 # Request 6 rings for a clear spot without overcrowding (~37 rays)
-                spot_data = analyzer.calculate_spot_diagram(field_angle=field, wavelength=wavelength, num_rings=6)
+                spot_data = analyzer.calculate_spot_diagram(field_angle_deg=field, wavelength_nm=wavelength, num_rings=6)
                 # Spot points are (y, z) - usually we plot Y vs Z or vice versa
                 z_pts = [p[1] * 1000 for p in spot_data] # Sagittal (Z)
                 y_pts = [p[0] * 1000 for p in spot_data] # Tangential (Y)

@@ -74,7 +74,7 @@ class TestImageQualityAnalyzer(unittest.TestCase):
 
     def test_off_axis(self):
         """Test off-axis calculation runs without error."""
-        res = self.analyzer.calculate_psf(field_angle=5.0, pixels=32)
+        res = self.analyzer.calculate_psf(field_angle_deg=5.0, pixels=32)
         self.assertEqual(res['image'].shape, (32, 32))
 
 if __name__ == '__main__':
