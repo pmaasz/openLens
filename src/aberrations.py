@@ -85,7 +85,8 @@ class AberrationsCalculator:
     def calculate_all_aberrations(self, 
                                    object_distance_mm: Optional[float] = None,
                                    field_angle_deg: float = 0.0,
-                                   wavelength_nm: float = 550.0) -> Dict[str, Any]:
+                                   wavelength_nm: float = 550.0,
+                                   **kwargs) -> Dict[str, Any]:
         """
         Calculate all primary aberrations.
         
@@ -97,6 +98,10 @@ class AberrationsCalculator:
         Returns:
             Dictionary with aberration values and optical parameters
         """
+        # Handle backward compatibility for argument names
+        field_angle = kwargs.get('field_angle', field_angle_deg)
+        field_angle_deg = field_angle # Update for use in the function
+        
         # Note: Current simplified model uses primary wavelength for Seidel aberrations
         # Future enhancement: Update refractive indices based on wavelength parameter
         if self.is_system:
@@ -357,28 +362,28 @@ class AberrationsCalculator:
         """Calculate RMS spot size using ray tracing (System only)"""
         if not self.is_system: return 0
         try:
-            from .ray_tracer import SystemRayTracer
-            tracer = SystemRayTracer(self.target)
-            rays = tracer.trace_parallel_rays(num_rays=21)
+            from .ray_tracer import SystemRayTracer3D
+            tracer = SystemRayTracer3D(self.target)
+            
+            # Use trace_off_axis_rays for consistent bundle generation
+            rays = tracer.trace_off_axis_rays(field_angle_deg=0.0, num_rays=21)
             
             # Find best focus (minimum RMS)
-            # Simplified: calculate at paraxial focus
             f = self.target.get_system_focal_length()
             if not f: return 0
             
-            # Use back focal length or last element position + f
             bfl = self.target.calculate_back_focal_length()
-            if not bfl: return 0
+            if bfl is None: return 0
             
             last_elem = self.target.elements[-1]
             focus_x = last_elem.position + last_elem.thickness + bfl
             
             y_hits = []
             for ray in rays:
-                if not ray.terminated:
+                if not ray.terminated and abs(ray.direction.x) > 1e-9:
                     # Propagate to focus_x
-                    dist = focus_x - ray.x
-                    y_at_focus = ray.y + dist * math.tan(ray.angle)
+                    t = (focus_x - ray.origin.x) / ray.direction.x
+                    y_at_focus = ray.origin.y + t * ray.direction.y
                     y_hits.append(y_at_focus)
             
             if not y_hits: return 0
@@ -422,49 +427,48 @@ class AberrationsCalculator:
         Calculate LSA using exact ray tracing.
         Returns None if calculation fails (e.g. TIR, missing dependencies).
         """
-        if LensRayTracer is None or Ray is None:
-            return None
-            
         try:
             if self.is_system:
-                from .ray_tracer import SystemRayTracer
-                tracer = SystemRayTracer(self.target)
+                from .ray_tracer import SystemRayTracer3D
+                tracer = SystemRayTracer3D(self.target)
                 
-                # Trace Marginal Ray
-                y_marginal = self.D / 2.0 * 0.99
-                ray_m = Ray(self.target.elements[0].position - 10, y_marginal, angle_rad=0.0)
-                tracer._trace_ray_through_system(ray_m)
+                # Trace Marginal Ray (near edge of pupil)
+                rays_m = tracer.trace_off_axis_rays(field_angle_deg=0.0, num_rays=10)
+                ray_m = rays_m[-1] # Highest ray
                 
-                if ray_m.terminated or abs(math.tan(ray_m.angle_rad)) < 1e-9: return None
-                m_focus = ray_m.x - ray_m.y / math.tan(ray_m.angle_rad)
+                if ray_m.terminated or abs(ray_m.direction.y) < 1e-9: return None
+                m_focus = ray_m.origin.x - ray_m.origin.y * (ray_m.direction.x / ray_m.direction.y)
                 
-                # Trace Paraxial Ray
-                y_paraxial = self.D / 2.0 * 0.01
-                ray_p = Ray(self.target.elements[0].position - 10, y_paraxial, angle_rad=0.0)
-                tracer._trace_ray_through_system(ray_p)
+                # Trace Paraxial Ray (near axis)
+                ray_p = rays_m[len(rays_m)//2 + 1] # Slightly off center
                 
-                if ray_p.terminated or abs(math.tan(ray_p.angle_rad)) < 1e-9: return None
-                p_focus = ray_p.x - ray_p.y / math.tan(ray_p.angle_rad)
+                if ray_p.terminated or abs(ray_p.direction.y) < 1e-9: return None
+                p_focus = ray_p.origin.x - ray_p.origin.y * (ray_p.direction.x / ray_p.direction.y)
                 
                 return m_focus - p_focus
             else:
+                from .ray_tracer import LensRayTracer, Ray
+                if LensRayTracer is None or Ray is None:
+                    return None
+                    
                 # Original single lens logic
                 tracer = LensRayTracer(self.lens)
                 start_x = -10.0 - self.d
                 y_marginal = self.D / 2.0
                 ray_marginal = Ray(start_x, y_marginal, angle_rad=0.0)
                 tracer.trace_ray(ray_marginal)
-                if ray_marginal.terminated or abs(math.tan(ray_marginal.angle_rad)) < 1e-9: return None
-                marginal_focus = ray_marginal.x - ray_marginal.y / math.tan(ray_marginal.angle_rad)
+                if ray_marginal.terminated or abs(math.tan(ray_marginal.angle)) < 1e-9: return None
+                marginal_focus = ray_marginal.x - ray_marginal.y / math.tan(ray_marginal.angle)
                 
                 y_paraxial = self.D / 2.0 * 0.01
                 ray_paraxial = Ray(start_x, y_paraxial, angle_rad=0.0)
                 tracer.trace_ray(ray_paraxial)
-                if abs(math.tan(ray_paraxial.angle_rad)) < 1e-9: return None
-                paraxial_focus = ray_paraxial.x - ray_paraxial.y / math.tan(ray_paraxial.angle_rad)
+                if abs(math.tan(ray_paraxial.angle)) < 1e-9: return None
+                paraxial_focus = ray_paraxial.x - ray_paraxial.y / math.tan(ray_paraxial.angle)
                 
                 return marginal_focus - paraxial_focus
-        except Exception:
+        except Exception as e:
+            # logger.error("Performance calculation error: %s", e)
             return None
 
     def _calculate_chromatic_aberration(self, focal_length: float) -> Optional[float]:
@@ -527,7 +531,8 @@ class AberrationsCalculator:
     
     def get_aberration_summary(self,
                                object_distance: Optional[float] = None,
-                               field_angle: float = 5.0) -> str:
+                               field_angle: float = 5.0,
+                               **kwargs) -> str:
         """
         Get a formatted summary of all aberrations.
         
@@ -538,7 +543,10 @@ class AberrationsCalculator:
         Returns:
             Formatted string with aberration summary
         """
-        results = self.calculate_all_aberrations(object_distance, field_angle)
+        # Handle backward compatibility
+        field_angle_deg = kwargs.get('field_angle_deg', field_angle)
+        
+        results = self.calculate_all_aberrations(object_distance, field_angle_deg)
         
         if results.get('error'):
             return f"Error: {results['error']}"
@@ -610,7 +618,7 @@ INTERPRETATION:
         lsa = -(y**2 / (8.0 * focal_length**3)) * (term1 + term2 * term3) * focal_length**2
         return lsa
 
-def analyze_lens_quality(lens: Any, field_angle: float = 5.0) -> Dict[str, Any]:
+def analyze_lens_quality(lens: Any, field_angle: float = 5.0, **kwargs) -> Dict[str, Any]:
     """
     Convenience function to analyze lens quality.
     
@@ -621,6 +629,9 @@ def analyze_lens_quality(lens: Any, field_angle: float = 5.0) -> Dict[str, Any]:
     Returns:
         Dictionary with quality assessment
     """
+    # Handle backward compatibility
+    field_angle = kwargs.get('field_angle_deg', field_angle)
+    
     calc = AberrationsCalculator(lens)
     results = calc.calculate_all_aberrations(field_angle=field_angle)
     

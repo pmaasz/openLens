@@ -10,12 +10,14 @@ from datetime import datetime
 try:
     from ..optical_system import OpticalSystem
     from ..lens import Lens
+    from ..geometry import LensGeometry
 except (ImportError, ValueError):
     import sys
     import os
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
     from src.optical_system import OpticalSystem
     from src.lens import Lens
+    from src.geometry import LensGeometry
 
 class ISO10110Generator:
     """Generates ISO 10110 compliant SVG drawings."""
@@ -110,79 +112,21 @@ class ISO10110Generator:
 
     def _generate_lens_path(self, lens: Lens, x: float, y: float, scale: float) -> str:
         """Generate SVG path for a lens cross-section."""
-        r1 = lens.radius_of_curvature_1
-        r2 = lens.radius_of_curvature_2
-        thick = lens.thickness * scale
-        h = (lens.diameter / 2) * scale
+        # Use centralized geometry logic
+        polyline = LensGeometry.get_lens_polyline(lens)
         
-        # Vertex 1 is at (x, y)
-        # Vertex 2 is at (x + thick, y)
-        
-        path = []
-        
-        if abs(r1) > 10000:
-            # Flat
-            x1_edge = x
-            path.append(f"M {x1_edge} {y - h}")
-            path.append(f"L {x1_edge} {y + h}")
-        else:
-            r1_s = abs(r1) * scale
-            s1 = r1_s - math.sqrt(r1_s**2 - h**2)
+        path_cmds = []
+        for i, (z, r) in enumerate(polyline):
+            cmd = "M" if i == 0 else "L"
+            # Apply scale and translation
+            # z is axial position relative to lens vertex 1
+            # r is height from optical axis
+            svg_x = x + z * scale
+            svg_y = y - r * scale # Invert r because SVG Y is down
+            path_cmds.append(f"{cmd} {svg_x:.2f} {svg_y:.2f}")
             
-            if r1 > 0: # Convex (Center Right)
-                # Vertex at X. Edges at X + s1.
-                x1_edge = x + s1
-                # Move to Top Edge
-                path.append(f"M {x1_edge} {y - h}")
-                # Arc to Bottom Edge
-                # A rx ry x-axis-rotation large-arc-flag sweep-flag x y
-                # Sweep flag: 1 for "positive angle".
-                # Standard SVG coordinate system (Y down).
-                path.append(f"A {r1_s} {r1_s} 0 0 0 {x1_edge} {y + h}")
-            else: # Concave (Center Left)
-                # Vertex at X. Edges at X - s1?
-                # No, if Vertex at X, and Center Left, Arc bulges Right (into glass).
-                # That is Concave.
-                # Edges at X - s1.
-                x1_edge = x - s1
-                path.append(f"M {x1_edge} {y - h}")
-                path.append(f"A {r1_s} {r1_s} 0 0 1 {x1_edge} {y + h}")
-                
-        # Back Arc
-        # Vertex 2 at X + Thick
-        x2 = x + thick
-        
-        if abs(r2) > 10000:
-            # Flat
-            x2_edge = x2
-            path.append(f"L {x2_edge} {y + h}") # Connect from front bottom to back bottom?
-            # We are at Front Bottom.
-            # Draw line to Back Bottom.
-            path.append(f"L {x2_edge} {y + h}")
-            path.append(f"L {x2_edge} {y - h}")
-        else:
-            r2_s = abs(r2) * scale
-            s2 = r2_s - math.sqrt(r2_s**2 - h**2)
-            
-            # If R2 < 0 (Convex Back). Center Left.
-            # Bulges Right (into air).
-            # Vertex at X2. Edge at X2 - s2.
-            
-            if r2 < 0: # Convex Back
-                x2_edge = x2 - s2
-                path.append(f"L {x2_edge} {y + h}")
-                path.append(f"A {r2_s} {r2_s} 0 0 0 {x2_edge} {y - h}")
-            else: # Concave Back (Center Right)
-                # Bulges Left (into glass).
-                # Vertex at X2. Edge at X2 + s2.
-                x2_edge = x2 + s2
-                path.append(f"L {x2_edge} {y + h}")
-                path.append(f"A {r2_s} {r2_s} 0 0 1 {x2_edge} {y - h}")
-                
-        # Close path (Back Top to Front Top)
-        path.append("Z")
-        
-        return " ".join(path)
+        path_cmds.append("Z")
+        return " ".join(path_cmds)
 
     def _generate_iso_table(self, x: float, y: float, w: float, h: float) -> str:
         """Generate SVG table for system data."""

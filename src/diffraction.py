@@ -71,15 +71,30 @@ except ImportError:
 class DiffractionCalculator:
     """Calculate diffraction effects for optical systems"""
     
-    def __init__(self, wavelength_m: float = 550e-9):
+    def __init__(self, wavelength_m: float = 550e-9, **kwargs):
         """
         Initialize diffraction calculator
         
         Args:
             wavelength_m: Light wavelength in meters (default: 550nm green light)
         """
-        self.wavelength_m = wavelength_m
+        # Handle backward compatibility for argument names
+        wavelength = kwargs.get('wavelength', wavelength_m)
+        self.wavelength_m = wavelength
     
+    @property
+    def wavelength(self) -> float:
+        """Alias for wavelength_m for backward compatibility."""
+        return self.wavelength_m
+    
+    @wavelength.setter
+    def wavelength(self, value: float) -> None:
+        self.wavelength_m = value
+
+    def airy_disk_radius(self, focal_length: float, aperture_diameter: float) -> float:
+        """Alias for airy_disk_radius_um with backward compatibility for argument names."""
+        return self.airy_disk_radius_um(focal_length, aperture_diameter)
+
     def airy_disk_radius_um(self, focal_length_mm: float, aperture_diameter_mm: float) -> float:
         """
         Calculate Airy disk radius (first zero of Airy pattern)
@@ -306,7 +321,7 @@ class DiffractionCalculator:
         r, intensity = self.airy_pattern(max_radius, focal_length, aperture_diameter)
         
         plt.figure(figsize=(10, 6))
-        plt.plot(r, intensity, 'b-', linewidth=2)
+        plt.plot(r, np.real(intensity), 'b-', linewidth=2)
         plt.axvline(x=airy_r, color='r', linestyle='--', 
                    label=f'Airy disk radius = {airy_r:.2f} μm')
         plt.axhline(y=0.5, color='g', linestyle=':', alpha=0.5)
@@ -353,7 +368,7 @@ class DiffractionCalculator:
         center = psf.shape[0] // 2
         profile = psf[center, :]
         x_coords = np.linspace(-size/2, size/2, len(profile))
-        ax2.plot(x_coords, profile, 'b-', linewidth=2)
+        ax2.plot(x_coords, np.real(profile), 'b-', linewidth=2)
         ax2.axvline(x=airy_r, color='r', linestyle='--', 
                    label=f'Airy disk radius = {airy_r:.2f} μm')
         ax2.axvline(x=-airy_r, color='r', linestyle='--')
@@ -387,7 +402,7 @@ class DiffractionCalculator:
         airy_r = self.airy_disk_radius(focal_length, aperture_diameter)
         
         plt.figure(figsize=(10, 6))
-        plt.plot(r, encircled * 100, 'b-', linewidth=2)
+        plt.plot(r, np.real(encircled) * 100, 'b-', linewidth=2)
         plt.axvline(x=airy_r, color='r', linestyle='--', 
                    label=f'Airy disk radius = {airy_r:.2f} μm')
         

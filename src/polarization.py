@@ -339,18 +339,22 @@ class PolarizationCalculator:
         R_p = []
         
         for angle in angles:
-            rt = self.reflectance_transmittance(n1, n2, angle)
+            rt = self.reflectance_transmittance(n1, n2, float(angle))
             R_s.append(rt['R_s'])
             R_p.append(rt['R_p'])
         
-        brewster = self.brewster_angle(n1, n2)
+        # Convert lists to numpy arrays and ensure float dtype to avoid ComplexWarning
+        R_s_arr = np.array(R_s, dtype=float)
+        R_p_arr = np.array(R_p, dtype=float)
+        
+        brewster = float(self.brewster_angle(n1, n2))
         critical_angle = None
         if n1 > n2:
-            critical_angle = np.degrees(np.arcsin(n2 / n1))
+            critical_angle = float(np.degrees(np.arcsin(n2 / n1)))
         
         plt.figure(figsize=(10, 6))
-        plt.plot(angles, R_s, 'b-', linewidth=2, label='s-polarization (TE)')
-        plt.plot(angles, R_p, 'r-', linewidth=2, label='p-polarization (TM)')
+        plt.plot(angles, R_s_arr, 'b-', linewidth=2, label='s-polarization (TE)')
+        plt.plot(angles, R_p_arr, 'r-', linewidth=2, label='p-polarization (TM)')
         
         plt.axvline(x=brewster, color='g', linestyle='--', 
                    label=f'Brewster angle = {brewster:.2f}°')
