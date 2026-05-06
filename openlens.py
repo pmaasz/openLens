@@ -948,6 +948,7 @@ Ctrl+6         Tolerancing
             
         try:
             from src.analysis.psf_mtf import ImageQualityAnalyzer
+            from src.analysis.ghost import GhostAnalyzer
             from src.optical_system import OpticalSystem
             from src.gui.dialogs import AnalysisPlotDialog
             import numpy as np
@@ -994,11 +995,11 @@ Ctrl+6         Tolerancing
                 z2 = [current_z + t + get_sag(r2, y_val) for y_val in y]
                 
                 # Plot surfaces
-                ax.plot(z1, y, 'b-', alpha=0.5)
-                ax.plot(z2, y, 'b-', alpha=0.5)
+                ax.plot([np.real(val) for val in z1], [np.real(val) for val in y], 'b-', alpha=0.5)
+                ax.plot([np.real(val) for val in z2], [np.real(val) for val in y], 'b-', alpha=0.5)
                 # Plot edges
-                ax.plot([z1[0], z2[0]], [y[0], y[0]], 'b-', alpha=0.5)
-                ax.plot([z1[-1], z2[-1]], [y[-1], y[-1]], 'b-', alpha=0.5)
+                ax.plot([np.real(z1[0]), np.real(z2[0])], [np.real(y[0]), np.real(y[0])], 'b-', alpha=0.5)
+                ax.plot([np.real(z1[-1]), np.real(z2[-1])], [np.real(y[-1]), np.real(y[-1])], 'b-', alpha=0.5)
                 
                 if i < len(target_system.air_gaps):
                     current_z += t + target_system.air_gaps[i].thickness
@@ -1012,8 +1013,8 @@ Ctrl+6         Tolerancing
                     # ray.path is a list of Vector3? 
                     # Assuming we can access points
                     if hasattr(ray, 'path') and ray.path:
-                        zs = [p.x for p in ray.path]
-                        ys = [p.y for p in ray.path]
+                        zs = [np.real(p.x) for p in ray.path]
+                        ys = [np.real(p.y) for p in ray.path]
                         ax.plot(zs, ys, 'r--', alpha=0.3)
             
             ax.set_xlabel("Z (mm)")
@@ -1087,6 +1088,7 @@ Ctrl+6         Tolerancing
             from src.analysis.psf_mtf import ImageQualityAnalyzer
             from src.optical_system import OpticalSystem
             from src.gui.dialogs import AnalysisPlotDialog
+            import numpy as np
             
             if isinstance(target, Lens):
                 system = OpticalSystem(name=target.name)
@@ -1100,15 +1102,10 @@ Ctrl+6         Tolerancing
             dialog = AnalysisPlotDialog("MTF Analysis", self)
             ax = dialog.get_axes()
             
-            mtf_freq = mtf_data['freq']
-            mtf_tan = mtf_data['mtf_tan']
-            mtf_sag = mtf_data['mtf_sag']
+            mtf_freq = np.real(mtf_data['freq'])
+            mtf_tan = np.real(mtf_data['mtf_tan'])
+            mtf_sag = np.real(mtf_data['mtf_sag'])
             
-            if np.iscomplexobj(mtf_tan):
-                mtf_tan = np.real(mtf_tan)
-            if np.iscomplexobj(mtf_sag):
-                mtf_sag = np.real(mtf_sag)
-                
             ax.plot(mtf_freq, mtf_tan, 'r-', label="Tangential")
             ax.plot(mtf_freq, mtf_sag, 'b--', label="Sagittal")
             
