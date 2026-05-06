@@ -3,41 +3,68 @@ Interactive Ray Tracing Module
 Allows users to click and drag rays to see real-time propagation through optical systems.
 """
 
-import numpy as np
-from typing import List, Tuple, Optional, Dict, Any
+import math
+from typing import List, Tuple, Optional, Dict, Any, Union
 from dataclasses import dataclass
+
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    np = None
+    HAS_NUMPY = False
+
+try:
+    from .vector3 import Vector3, vec3
+    from .ray_tracer import Ray3D, SystemRayTracer3D
+except ImportError:
+    from vector3 import Vector3, vec3
+    from ray_tracer import Ray3D, SystemRayTracer3D
 
 
 @dataclass
 class InteractiveRay:
     """Represents an interactive ray that can be manipulated by user."""
-    origin: np.ndarray
-    direction: np.ndarray
+    origin: Union[Vector3, Any]  # Vector3 or numpy array if numpy is available
+    direction: Union[Vector3, Any]
     wavelength: float
     color: str
-    path_segments: List[Tuple[np.ndarray, np.ndarray]]  # List of (start, end) points
+    path_segments: List[Tuple[Any, Any]]  # List of (start, end) points
     
     def __post_init__(self):
-        self.origin = np.array(self.origin)
-        self.direction = np.array(self.direction)
-        # Normalize direction
-        self.direction = self.direction / np.linalg.norm(self.direction)
+        if HAS_NUMPY and isinstance(self.origin, (list, tuple, np.ndarray)):
+            self.origin = np.array(self.origin)
+            self.direction = np.array(self.direction)
+            self.direction = self.direction / np.linalg.norm(self.direction)
+        else:
+            if not isinstance(self.origin, Vector3):
+                self.origin = Vector3(*self.origin)
+            if not isinstance(self.direction, Vector3):
+                self.direction = Vector3(*self.direction)
+            self.direction = self.direction.normalize()
 
 
 class InteractiveRayTracer:
-    """Interactive ray tracing with real-time user manipulation."""
+    """Interactive ray tracing using the core SystemRayTracer3D."""
     
     def __init__(self, optical_system):
         self.optical_system = optical_system
         self.interactive_rays: List[InteractiveRay] = []
         self.selected_ray: Optional[InteractiveRay] = None
         self.ray_colors = ['red', 'blue', 'green', 'yellow', 'cyan', 'magenta']
+        self.core_tracer = SystemRayTracer3D(optical_system)
         
     def add_ray(self, origin: Tuple[float, float, float], 
                 direction: Tuple[float, float, float],
-                wavelength: float = 587.6) -> InteractiveRay:
+                wavelength: float = 0.0005876) -> InteractiveRay:
         """Add a new interactive ray."""
         color = self.ray_colors[len(self.interactive_rays) % len(self.ray_colors)]
+        
+        # Internal wavelength convention is mm
+        # 587.6 nm -> 0.0005876 mm
+        if wavelength > 1.0: # Likely nm
+            wavelength = wavelength * 1e-6
+
         ray = InteractiveRay(
             origin=origin,
             direction=direction,
@@ -64,157 +91,166 @@ class InteractiveRayTracer:
     def update_ray_origin(self, ray: InteractiveRay, 
                          new_origin: Tuple[float, float, float]):
         """Update ray origin and retrace."""
-        ray.origin = np.array(new_origin)
+        if HAS_NUMPY:
+            ray.origin = np.array(new_origin)
+        else:
+            ray.origin = Vector3(*new_origin)
         self._trace_ray(ray)
     
     def update_ray_direction(self, ray: InteractiveRay,
                             new_direction: Tuple[float, float, float]):
         """Update ray direction and retrace."""
-        ray.direction = np.array(new_direction)
-        ray.direction = ray.direction / np.linalg.norm(ray.direction)
+        if HAS_NUMPY:
+            ray.direction = np.array(new_direction)
+            ray.direction = ray.direction / np.linalg.norm(ray.direction)
+        else:
+            ray.direction = Vector3(*new_direction).normalize()
         self._trace_ray(ray)
     
     def update_ray_angle(self, ray: InteractiveRay, angle_degrees: float):
         """Update ray direction by angle (in XZ plane)."""
-        angle_rad = np.radians(angle_degrees)
-        new_direction = np.array([
-            np.cos(angle_rad),
-            0,
-            np.sin(angle_rad)
-        ])
-        self.update_ray_direction(ray, new_direction)
+        angle_rad = math.radians(angle_degrees)
+        new_dir = (math.cos(angle_rad), 0, math.sin(angle_rad))
+        self.update_ray_direction(ray, new_dir)
     
     def _trace_ray(self, ray: InteractiveRay):
-        """Trace a single ray through the optical system."""
+        """Trace a single ray using the core 3D ray tracer."""
         ray.path_segments.clear()
         
-        current_pos = ray.origin.copy()
-        current_dir = ray.direction.copy()
+        # Convert to Vector3 for core tracer
+        if HAS_NUMPY and isinstance(ray.origin, np.ndarray):
+            origin = Vector3(float(ray.origin[0]), float(ray.origin[1]), float(ray.origin[2]))
+            direction = Vector3(float(ray.direction[0]), float(ray.direction[1]), float(ray.direction[2]))
+        else:
+            origin = ray.origin
+            direction = ray.direction
+            
+        # Create core ray object
+        core_ray = Ray3D(origin, direction, wavelength=ray.wavelength)
         
         # Trace through system
-        for i in range(100):  # Max 100 bounces
-            # Find next intersection
-            intersection = self._find_next_intersection(current_pos, current_dir)
+        self.core_tracer.trace_ray(core_ray)
+        
+        # Convert path back to segments
+        for i in range(len(core_ray.path) - 1):
+            p1 = core_ray.path[i]
+            p2 = core_ray.path[i+1]
             
-            if intersection is None:
-                # Ray exits system - trace to boundary
-                end_pos = current_pos + current_dir * 50.0
-                ray.path_segments.append((current_pos.copy(), end_pos))
-                break
-            
-            surface, hit_point, surface_normal = intersection
-            
-            # Add segment to hit point
-            ray.path_segments.append((current_pos.copy(), hit_point.copy()))
-            
-            # Calculate refraction/reflection
-            new_dir = self._calculate_ray_interaction(
-                current_dir, surface_normal, surface, ray.wavelength
-            )
-            
-            if new_dir is None:
-                # Total internal reflection or absorbed
-                break
-            
-            # Continue from hit point
-            current_pos = hit_point + new_dir * 0.001  # Small offset
-            current_dir = new_dir
+            if HAS_NUMPY:
+                s1 = np.array([p1.x, p1.y, p1.z])
+                s2 = np.array([p2.x, p2.y, p2.z])
+            else:
+                s1 = p1
+                s2 = p2
+                
+            ray.path_segments.append((s1, s2))
     
-    def _find_next_intersection(self, pos: np.ndarray, direction: np.ndarray):
-        """Find next surface intersection along ray path."""
-        if not hasattr(self.optical_system, 'surfaces'):
-            return None
-        
-        closest_t = float('inf')
-        closest_intersection = None
-        
-        for surface in self.optical_system.surfaces:
-            t = self._intersect_surface(pos, direction, surface)
-            if t is not None and 0.001 < t < closest_t:
-                closest_t = t
-                hit_point = pos + direction * t
-                normal = self._calculate_surface_normal(surface, hit_point)
-                closest_intersection = (surface, hit_point, normal)
-        
-        return closest_intersection
-    
-    def _intersect_surface(self, pos: np.ndarray, direction: np.ndarray, 
-                          surface: Any) -> Optional[float]:
-        """Calculate ray-surface intersection parameter t."""
-        # Simplified sphere intersection
-        if hasattr(surface, 'radius') and hasattr(surface, 'center'):
-            oc = pos - surface.center
-            a = np.dot(direction, direction)
-            b = 2.0 * np.dot(oc, direction)
-            c = np.dot(oc, oc) - surface.radius ** 2
-            discriminant = b * b - 4 * a * c
-            
-            if discriminant < 0:
-                return None
-            
-            t = (-b - np.sqrt(discriminant)) / (2.0 * a)
-            if t > 0:
-                return t
-            
-            t = (-b + np.sqrt(discriminant)) / (2.0 * a)
-            if t > 0:
-                return t
-        
+    def _find_next_intersection(self, pos, direction):
+        # Legacy method, no longer used but kept for internal API if needed
         return None
     
-    def _calculate_surface_normal(self, surface: Any, point: np.ndarray) -> np.ndarray:
-        """Calculate surface normal at intersection point."""
-        if hasattr(surface, 'center'):
-            normal = point - surface.center
-            return normal / np.linalg.norm(normal)
-        return np.array([0, 0, 1])
+    def _intersect_surface(self, pos, direction, surface):
+        # Legacy method
+        return None
     
-    def _calculate_ray_interaction(self, incident: np.ndarray, normal: np.ndarray,
-                                   surface: Any, wavelength: float) -> Optional[np.ndarray]:
-        """Calculate refracted/reflected ray direction."""
-        # Get refractive indices
-        n1 = 1.0  # Air
-        n2 = 1.5  # Glass (simplified)
-        
-        if hasattr(surface, 'material'):
-            if hasattr(surface.material, 'get_refractive_index'):
-                n2 = surface.material.get_refractive_index(wavelength)
-        
-        # Snell's law
-        cos_i = -np.dot(incident, normal)
-        
-        if cos_i < 0:
-            # Ray exiting surface
-            normal = -normal
-            cos_i = -cos_i
-            n1, n2 = n2, n1
-        
-        eta = n1 / n2
-        k = 1.0 - eta * eta * (1.0 - cos_i * cos_i)
-        
-        if k < 0:
-            # Total internal reflection
-            return incident - 2 * np.dot(incident, normal) * normal
-        
-        # Refraction
-        refracted = eta * incident + (eta * cos_i - np.sqrt(k)) * normal
-        return refracted / np.linalg.norm(refracted)
+    def _calculate_surface_normal(self, surface, point):
+        # Legacy method
+        return Vector3(0, 0, 1)
+    
+    def _calculate_ray_interaction(self, incident, normal, surface, wavelength):
+        # Legacy method
+        return None
     
     def get_ray_info(self, ray: InteractiveRay) -> Dict[str, Any]:
         """Get detailed information about a ray."""
         total_path_length = 0.0
-        for start, end in ray.path_segments:
-            total_path_length += np.linalg.norm(end - start)
         
+        def get_norm(v):
+            if HAS_NUMPY and isinstance(v, np.ndarray):
+                return np.linalg.norm(v)
+            return v.magnitude()
+
+        for start, end in ray.path_segments:
+            total_path_length += get_norm(end - start)
+        
+        def to_list(v):
+            if HAS_NUMPY and isinstance(v, np.ndarray):
+                return v.tolist()
+            return [v.x, v.y, v.z]
+
         return {
-            'origin': ray.origin.tolist(),
-            'direction': ray.direction.tolist(),
+            'origin': to_list(ray.origin),
+            'direction': to_list(ray.direction),
             'wavelength': ray.wavelength,
             'color': ray.color,
             'num_segments': len(ray.path_segments),
             'total_path_length': total_path_length,
-            'final_position': ray.path_segments[-1][1].tolist() if ray.path_segments else None
+            'final_position': to_list(ray.path_segments[-1][1]) if ray.path_segments else None
         }
+    
+    def get_all_rays_data(self) -> List[Dict[str, Any]]:
+        """Get data for all interactive rays."""
+        return [self.get_ray_info(ray) for ray in self.interactive_rays]
+
+
+class RayManipulator:
+    """Handles user interaction for ray manipulation."""
+    
+    def __init__(self, interactive_tracer: InteractiveRayTracer):
+        self.tracer = interactive_tracer
+        self.drag_mode = None  # 'origin' or 'direction'
+        self.drag_start = None
+        
+    def start_drag(self, ray: InteractiveRay, mode: str, mouse_pos: Tuple[float, float]):
+        """Start dragging a ray."""
+        self.tracer.selected_ray = ray
+        self.drag_mode = mode
+        self.drag_start = mouse_pos
+    
+    def update_drag(self, mouse_pos: Tuple[float, float]):
+        """Update ray during drag."""
+        if self.tracer.selected_ray is None or self.drag_mode is None:
+            return
+        
+        ray = self.tracer.selected_ray
+        
+        if self.drag_mode == 'origin':
+            # Update origin (XZ plane)
+            new_origin = (mouse_pos[0], 0, mouse_pos[1])
+            self.tracer.update_ray_origin(ray, new_origin)
+        
+        elif self.drag_mode == 'direction':
+            # Calculate angle from origin to mouse
+            def get_coord(v, idx):
+                if HAS_NUMPY and isinstance(v, np.ndarray):
+                    return v[idx]
+                return [v.x, v.y, v.z][idx]
+
+            dx = mouse_pos[0] - get_coord(ray.origin, 0)
+            dz = mouse_pos[1] - get_coord(ray.origin, 2)
+            angle = math.degrees(math.atan2(dz, dx))
+            self.tracer.update_ray_angle(ray, angle)
+    
+    def end_drag(self):
+        """End dragging."""
+        self.drag_mode = None
+        self.drag_start = None
+    
+    def find_ray_at_position(self, pos: Tuple[float, float], 
+                            tolerance: float = 0.5) -> Optional[InteractiveRay]:
+        """Find ray near mouse position."""
+        for ray in self.tracer.interactive_rays:
+            # Check if near origin (XZ plane)
+            def get_coord(v, idx):
+                if HAS_NUMPY and isinstance(v, np.ndarray):
+                    return v[idx]
+                return [v.x, v.y, v.z][idx]
+
+            ox, oz = get_coord(ray.origin, 0), get_coord(ray.origin, 2)
+            dist = math.sqrt((pos[0] - ox)**2 + (pos[1] - oz)**2)
+            if dist < tolerance:
+                return ray
+        return None
     
     def get_all_rays_data(self) -> List[Dict[str, Any]]:
         """Get data for all interactive rays."""

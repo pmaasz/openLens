@@ -15,6 +15,93 @@ except ImportError:
     from vector3 import Vector3, vec3
     from transform import Matrix4x4
 
+
+class OpticalIntersector:
+    """Helper class for common optical intersection math."""
+
+    @staticmethod
+    def intersect_sphere(
+        origin_x: float,
+        origin_y: float,
+        origin_z: float,
+        dir_x: float,
+        dir_y: float,
+        dir_z: float,
+        center_x: float,
+        center_y: float,
+        center_z: float,
+        radius: float,
+    ) -> Optional[Tuple[float, float, float, float]]:
+        """
+        Intersect a ray with a sphere.
+        Returns (x, y, z, t) or None.
+        """
+        oc_x = origin_x - center_x
+        oc_y = origin_y - center_y
+        oc_z = origin_z - center_z
+
+        a = dir_x**2 + dir_y**2 + dir_z**2
+        b = 2.0 * (oc_x * dir_x + oc_y * dir_y + oc_z * dir_z)
+        c = oc_x**2 + oc_y**2 + oc_z**2 - radius**2
+
+        discriminant = b*b - 4*a*c
+        if discriminant < -1e-10:  # Use EPSILON-like tolerance
+            return None
+
+        discriminant = max(0, discriminant)
+        sqrt_disc = math.sqrt(discriminant)
+        t1 = (-b - sqrt_disc) / (2 * a)
+        t2 = (-b + sqrt_disc) / (2 * a)
+
+        # We return both solutions and let the caller decide
+        return (t1, t2)
+
+    @staticmethod
+    def apply_snell(
+        incident_dir: Tuple[float, float, float],
+        normal: Tuple[float, float, float],
+        n1: float,
+        n2: float,
+    ) -> Optional[Tuple[float, float, float, bool]]:
+        """
+        Apply Snell's law in 3D.
+        Returns (refracted_dir_x, refracted_dir_y, refracted_dir_z, is_tir).
+        """
+        ix, iy, iz = incident_dir
+        nx, ny, nz = normal
+
+        # Dot product
+        cos_i = -(ix * nx + iy * ny + iz * nz)
+        enx, eny, enz = nx, ny, nz
+
+        if cos_i < 0:
+            cos_i = -cos_i
+            enx, eny, enz = -nx, -ny, -nz
+
+        ratio = n1 / n2
+        sin2_t = ratio**2 * (1.0 - cos_i**2)
+
+        if sin2_t > 1.0:
+            # Total internal reflection
+            # Reflect: v - 2 * (v.n) * n
+            # v.en is -cos_i
+            dot = ix * enx + iy * eny + iz * enz
+            rx = ix - 2 * dot * enx
+            ry = iy - 2 * dot * eny
+            rz = iz - 2 * dot * enz
+            return (rx, ry, rz, True)
+
+        cos_t = math.sqrt(1.0 - sin2_t)
+        # Refract: (r * v) + (r * cos_i - cos_t) * n
+        factor = ratio * cos_i - cos_t
+        rx = ratio * ix + factor * enx
+        ry = ratio * iy + factor * eny
+        rz = ratio * iz + factor * enz
+
+        # Normalize
+        mag = math.sqrt(rx**2 + ry**2 + rz**2)
+        return (rx / mag, ry / mag, rz / mag, False)
+
 # Import numpy and polarization
 try:
     import numpy as np
@@ -84,35 +171,21 @@ class Ray:
         Returns:
             True if refraction occurred, False if total internal reflection
         """
-        # Check if ray opposes normal
-        # cos(theta) = dot product of ray and normal directions
-        incident_angle = self.angle - surface_normal_angle
+        # Use common Snell implementation
+        incident_dir = (math.cos(self.angle), math.sin(self.angle), 0.0)
+        normal = (math.cos(surface_normal_angle), math.sin(surface_normal_angle), 0.0)
         
-        # If ray is traveling opposite to normal (dot product < 0), 
-        # use the effective normal pointing into the new medium
-        effective_normal = surface_normal_angle
-        if math.cos(incident_angle) < 0:
-            effective_normal = surface_normal_angle + math.pi
-            incident_angle = self.angle - effective_normal
-            
-        # Snell's law: n1 * sin(theta1) = n2 * sin(theta2)
-        sin_incident = math.sin(incident_angle)
-        sin_ratio = (n1 / n2) * sin_incident
-        
-        # Check for total internal reflection
-        # TIR occurs when |sin(theta2)| > 1
-        if abs(sin_ratio) > 1.0:
-            # Total internal reflection - reflect instead of refract
-            self.angle = 2 * surface_normal_angle - self.angle
+        result = OpticalIntersector.apply_snell(incident_dir, normal, n1, n2)
+        if result is None:
             return False
         
-        # Calculate refracted angle
-        refracted_angle = math.asin(sin_ratio)
+        rx, ry, _, is_tir = result
+        self.angle = math.atan2(ry, rx)
         
-        # Update ray angle (relative to horizontal)
-        self.angle = effective_normal + refracted_angle
+        if is_tir:
+            return False
+            
         self.n = n2
-        
         return True
 
 
@@ -228,34 +301,23 @@ class LensRayTracer:
             dx = math.cos(ray.angle)
             dy = math.sin(ray.angle)
             
-            # Quadratic equation coefficients
-            a = dx*dx + dy*dy
-            b = 2 * ((ray.x - cx) * dx + ray.y * dy)
-            c = (ray.x - cx)**2 + ray.y**2 - R**2
+            # Use common sphere intersection helper
+            t_solutions = OpticalIntersector.intersect_sphere(
+                ray.x, ray.y, 0, dx, dy, 0, cx, 0, 0, R
+            )
             
-            discriminant = b*b - 4*a*c
+            if t_solutions is None:
+                return None
             
-            # Handle floating-point edge cases
-            if discriminant < -EPSILON:
-                return None  # Definitely no intersection
-            
-            # Clamp small negative discriminant to zero (tangent case)
-            discriminant = max(0, discriminant)
-            
-            # Two solutions - pick the one in front of the ray
-            sqrt_disc = math.sqrt(discriminant)
-            t1 = (-b - sqrt_disc) / (2*a)
-            t2 = (-b + sqrt_disc) / (2*a)
+            t1, t2 = t_solutions
             
             # Filter to only positive t values (intersections in front of ray)
             # Use EPSILON to avoid intersecting the surface we just left
             valid_ts = [t for t in [t1, t2] if t > EPSILON]
             if not valid_ts:
-                return None  # No valid intersection in front of ray
+                return None
             
             # Choose appropriate intersection based on surface curvature
-            # For front surface, if R1 > 0 (convex), we hit the left side of the sphere (min t)
-            # If R1 < 0 (concave), we hit the right side of the sphere (max t)
             if self.R1 > 0:
                 t = min(valid_ts)
             else:
@@ -266,9 +328,6 @@ class LensRayTracer:
             
             # Check if within lens diameter
             if abs(y) > self.D / 2:
-                # If we hit the sphere but outside the aperture, 
-                # we might still hit the sphere at the OTHER intersection point 
-                # (e.g. for a very concave surface where the ray passes the vertex)
                 if len(valid_ts) > 1:
                     t_other = max(valid_ts) if self.R1 > 0 else min(valid_ts)
                     x_other = ray.x + t_other * dx
@@ -278,6 +337,81 @@ class LensRayTracer:
                 return None
             
             return (x, y)
+    
+    def _intersect_back_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
+        """Find intersection point of ray with back surface."""
+        if self.back_is_flat:
+            # Flat surface at x=d
+            if abs(math.cos(ray.angle)) < EPSILON:
+                return None
+            
+            t = (self.back_vertex_x - ray.x) / math.cos(ray.angle)
+            if t < EPSILON:
+                return None
+            
+            y = ray.y + t * math.sin(ray.angle)
+            
+            if abs(y) > self.D / 2:
+                return None
+            
+            return (self.back_vertex_x, y)
+        
+        else:
+            # Spherical surface
+            cx = self.back_center_x
+            R = abs(self.R2)
+            
+            dx = math.cos(ray.angle)
+            dy = math.sin(ray.angle)
+            
+            # Use common sphere intersection helper
+            t_solutions = OpticalIntersector.intersect_sphere(
+                ray.x, ray.y, 0, dx, dy, 0, cx, 0, 0, R
+            )
+            
+            if t_solutions is None:
+                return None
+            
+            t1, t2 = t_solutions
+            
+            # Use EPSILON to avoid intersecting the surface we just left
+            valid_ts = [t for t in [t1, t2] if t > EPSILON]
+            if not valid_ts:
+                # Check if we are already past the surface
+                dist_sq = (ray.x - cx)**2 + ray.y**2
+                R_sq = R**2
+                
+                already_exited = False
+                if self.R2 < 0 and dist_sq > R_sq:
+                    already_exited = True
+                elif self.R2 > 0 and dist_sq < R_sq:
+                    already_exited = True
+                    
+                if already_exited:
+                    return (ray.x, ray.y)
+                
+                return None
+            
+            # Choose appropriate intersection based on surface curvature
+            if self.R2 < 0:
+                t = max(valid_ts)
+            else:
+                t = min(valid_ts)
+            
+            x = ray.x + t * dx
+            y = ray.y + t * dy
+            
+            if abs(y) > self.D / 2:
+                if len(valid_ts) > 1:
+                    t_other = min(valid_ts) if self.R2 < 0 else max(valid_ts)
+                    x_other = ray.x + t_other * dx
+                    y_other = ray.y + t_other * dy
+                    if abs(y_other) <= self.D / 2:
+                        return (x_other, y_other)
+                return None
+            
+            return (x, y)
+
     
     def _intersect_back_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
         """Find intersection point of ray with back surface."""
@@ -847,6 +981,36 @@ class Ray3D:
         """
         Apply Snell's law at an interface using vector math.
         """
+        if self.polarization_vector is not None and HAS_POLARIZATION:
+            # Polarization logic still uses its own update for now as it needs coeffs
+            # but we can at least unify the direction calculation if we want.
+            # For now, let's keep it as is to avoid breaking complex polarization math.
+            pass
+        else:
+            incident_dir = (self.direction.x, self.direction.y, self.direction.z)
+            normal_tuple = (normal.x, normal.y, normal.z)
+            
+            result = OpticalIntersector.apply_snell(incident_dir, normal_tuple, n1, n2)
+            if result:
+                rx, ry, rz, is_tir = result
+                new_direction = vec3(rx, ry, rz)
+                
+                if is_tir:
+                    self.direction = new_direction
+                    return False
+                
+                # Refraction
+                cos_i = abs(self.direction.dot(normal))
+                cos_t = abs(new_direction.dot(normal))
+                R = self._compute_fresnel_reflectance(n1, n2, cos_i, cos_t)
+                self.intensity *= (1.0 - R)
+                
+                self.direction = new_direction
+                self.n = n2
+                return True
+            return False
+
+        # Fallback to original implementation for polarization
         cos_i = -self.direction.dot(normal)
         effective_normal = normal
         
@@ -935,33 +1099,27 @@ class LensRayTracer3D:
 
     def _intersect_sphere(self, ray: Ray3D, center: Vector3, radius: float, is_convex: bool) -> Optional[Vector3]:
         """Intersect ray with a sphere."""
-        oc = ray.origin - center
-        a = ray.direction.magnitude_sq()
-        b = 2.0 * oc.dot(ray.direction)
-        c = oc.magnitude_sq() - radius**2
+        t_solutions = OpticalIntersector.intersect_sphere(
+            ray.origin.x, ray.origin.y, ray.origin.z,
+            ray.direction.x, ray.direction.y, ray.direction.z,
+            center.x, center.y, center.z,
+            radius
+        )
         
-        discriminant = b*b - 4*a*c
-        
-        if discriminant < 0:
+        if t_solutions is None:
             return None
         
-        sqrt_disc = math.sqrt(discriminant)
-        t1 = (-b - sqrt_disc) / (2*a)
-        t2 = (-b + sqrt_disc) / (2*a)
+        t1, t2 = t_solutions
         
         # Allow t roughly >= 0 to handle rays starting on the surface
         valid_ts = [t for t in [t1, t2] if t > -EPSILON]
         if not valid_ts:
             return None
 
-        # R > 0 (Convex) means center is further along axis.
-        # But this assumes we approach from "left" relative to the surface curvature.
-        # Since we are working in 3D global space, 'min' vs 'max' depends on whether we are inside or outside.
-        
         # Simple heuristic:
         # If we are outside the sphere (distance to center > radius), we hit the near side (min t).
         # If we are inside (distance < radius), we hit the far side (max t).
-        dist_sq = oc.magnitude_sq()
+        dist_sq = (ray.origin - center).magnitude_sq()
         is_inside = dist_sq < radius**2
         
         if is_inside:
@@ -1175,6 +1333,44 @@ class SystemRayTracer3D:
              ray.propagate(50.0)
              
         return ray
+
+    def trace_off_axis_rays(self, field_angle_deg: float, 
+                           num_rays: int = DEFAULT_NUM_RAYS,
+                           wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray3D]:
+        """
+        Trace a bundle of rays at a given field angle.
+        Rays are distributed across the entrance pupil.
+        """
+        if not self.system.elements:
+            return []
+            
+        first_lens = self.system.elements[0].lens
+        max_r = first_lens.diameter / 2.0
+        
+        # Entrance pupil position
+        ep_x = self.system.elements[0].position
+        start_x = ep_x - 50.0
+        
+        angle_rad = math.radians(field_angle_deg)
+        direction = vec3(math.cos(angle_rad), math.sin(angle_rad), 0.0)
+        
+        rays = []
+        for i in range(num_rays):
+            # Line across pupil
+            r = -max_r + 2.0 * max_r * i / (num_rays - 1) if num_rays > 1 else 0
+            
+            # Point in entrance pupil plane (perpendicular to optical axis)
+            p_ep = vec3(ep_x, r, 0)
+            
+            # Back-propagate to start_x
+            t = (ep_x - start_x) / direction.x
+            origin = p_ep - direction * t
+            
+            ray = Ray3D(origin, direction, wavelength=wavelength_mm)
+            self.trace_ray(ray)
+            rays.append(ray)
+            
+        return rays
 
     def trace_grid(self, size: float = 10.0, grid_points: int = 5, 
                    wavelength: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray3D]:
