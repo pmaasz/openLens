@@ -1058,6 +1058,8 @@ Ctrl+6         Tolerancing
                     spine.set_edgecolor('#3f3f3f')
 
             img = psf_data['image']
+            if np.iscomplexobj(img):
+                img = np.real(img)
             extent = [
                 psf_data['z_axis'][0], psf_data['z_axis'][-1],
                 psf_data['y_axis'][0], psf_data['y_axis'][-1]
@@ -1136,7 +1138,10 @@ Ctrl+6         Tolerancing
             ax = dialog.get_axes()
             
             # wf.W is 2D array of wavefront error in waves
-            im = ax.imshow(wf.W, cmap='RdBu', origin='lower')
+            wf_data = wf.W
+            if np.iscomplexobj(wf_data):
+                wf_data = np.real(wf_data)
+            im = ax.imshow(wf_data, cmap='RdBu', origin='lower')
             dialog.figure.colorbar(im, ax=ax, label="Wavefront Error (λ)")
             
             ax.set_title("Exit Pupil Wavefront Error")
