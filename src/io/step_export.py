@@ -8,6 +8,14 @@ import math
 from datetime import datetime
 from typing import List, Tuple, Any
 
+try:
+    from ..geometry import LensGeometry
+except (ImportError, ValueError):
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from src.geometry import LensGeometry
+
 class StepWriter:
     """Helper to generate STEP file content."""
     
@@ -169,34 +177,21 @@ class StepExporter:
         diam = lens.diameter
         h = diam / 2.0
         
-        # Calculate Edge Z-coordinates
-        # Sagitta 1
-        if abs(r1) > 10000: # Flat
-            z_edge1 = z_offset
-            sag1 = 0
-            is_flat1 = True
-        else:
-            is_flat1 = False
-            r1_abs = abs(r1)
-            sag1 = r1_abs - math.sqrt(r1_abs**2 - h**2)
-            if r1 > 0: # Convex (Center +Z)
-                z_edge1 = z_offset + sag1
-            else: # Concave (Center -Z)
-                z_edge1 = z_offset - sag1
+        # Calculate Edge Z-coordinates using centralized geometry logic
+        is_flat1 = abs(r1) < 1e-10 or abs(r1) > 1e10 or abs(r1) > 10000
+        is_flat2 = abs(r2) < 1e-10 or abs(r2) > 1e10 or abs(r2) > 10000
         
-        # Sagitta 2
-        if abs(r2) > 10000: # Flat
-            z_edge2 = z_offset + thick
-            sag2 = 0
-            is_flat2 = True
-        else:
-            is_flat2 = False
-            r2_abs = abs(r2)
-            sag2 = r2_abs - math.sqrt(r2_abs**2 - h**2)
-            if r2 < 0: # Convex (Center -Z relative to vertex)
-                z_edge2 = z_offset + thick - sag2
-            else: # Concave (Center +Z relative to vertex)
-                z_edge2 = z_offset + thick + sag2
+        # Use get_surface_profile to get the rim points (index 0 of the profile is r=h)
+        # We only need the z-coordinate at r=h
+        profile1 = LensGeometry.get_surface_profile(0 if is_flat1 else r1, diam, num_points=2)
+        z_edge1 = z_offset + profile1[0][0] # z of top rim
+        
+        profile2 = LensGeometry.get_surface_profile(0 if is_flat2 else r2, diam, num_points=2)
+        z_edge2 = z_offset + thick + profile2[0][0] # z of top rim relative to vertex 2
+        
+        # Original logic for sag calculation if needed elsewhere (kept for consistency)
+        sag1 = profile1[0][0]
+        sag2 = profile2[0][0]
 
         # --- Points ---
         # Vertex 1 (on axis)

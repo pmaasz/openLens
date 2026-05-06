@@ -144,13 +144,13 @@ class Ray:
     """
     
     def __init__(self, x: float = 0.0, y: float = 0.0, angle_rad: float = 0.0, 
-                 wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM, n: float = REFRACTIVE_INDEX_AIR) -> None:
-        self.x = x
-        self.y = y
-        self.angle_rad = angle_rad
-        self.wavelength = wavelength_mm
+                 wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM, n: float = REFRACTIVE_INDEX_AIR, **kwargs) -> None:
+        self.x = kwargs.get('x_mm', x)
+        self.y = kwargs.get('y_mm', y)
+        self.angle_rad = kwargs.get('angle_rad', angle_rad)
+        self.wavelength = kwargs.get('wavelength_mm', wavelength_mm)
         self.n = n
-        self.path: List[Tuple[float, float]] = [(x, y)]
+        self.path: List[Tuple[float, float]] = [(self.x, self.y)]
         self.terminated = False
 
     @property

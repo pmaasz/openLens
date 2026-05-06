@@ -10,11 +10,13 @@ from typing import List, Tuple, Optional, Any
 
 try:
     from .vector3 import Vector3, vec3
+    from .geometry import LensGeometry
 except ImportError:
     import sys
     import os
     sys.path.insert(0, os.path.dirname(__file__))
     from vector3 import Vector3, vec3
+    from geometry import LensGeometry
 
 class STLExporter:
     """Export lens geometry to STL format"""
@@ -24,129 +26,42 @@ class STLExporter:
     
     def calculate_surface_profile(self, radius: float, diameter: float, is_front: bool = True, resolution: int = 50) -> Optional[List[Tuple[float, float]]]:
         """Calculate points on a spherical surface"""
-        if abs(radius) > 10000:  # Treat as flat surface
-            return None
+        # Use centralized geometry logic
+        profile = LensGeometry.get_surface_profile(radius, diameter, resolution)
         
-        r = abs(radius)
+        # Original STL exporter used (y, z) format where y is radial and z is axial.
+        # LensGeometry returns (z, r) where r is radial.
+        # We need to adapt it. 
+        # Note: LensGeometry returns full profile (top to bottom). 
+        # STL exporter wants half-profile (0 to h).
+        
+        half_profile = []
+        # Profiles are returned top to bottom. Middle point (r=0) is at index resolution/2 if resolution is even.
+        # Let's just recalculate the half for clarity if needed, or filter.
+        # Actually, let's just use the logic from LensGeometry to get the half-profile.
+        
         h = diameter / 2.0
-        
-        if h >= r:
-            h = r * 0.99 # Slightly less than full hemisphere to avoid sqrt issues
-        
-        # Calculate sagitta at aperture
-        sag = r - math.sqrt(r**2 - h**2)
-        
-        # Create radial points
-        radial_points = []
         for i in range(resolution + 1):
-            y = (i / resolution) * h
+            y = (i / resolution) * h # 0 to h
+            # Re-use LensGeometry's stable sag calculation
+            if abs(radius) < 1e-10 or abs(radius) > 1e10:
+                z_sag = 0.0
+            else:
+                try:
+                    z_sag = (y**2) / (radius + math.copysign(math.sqrt(radius**2 - y**2), radius))
+                except (ValueError, ZeroDivisionError):
+                    z_sag = 0.0
             
-            # z coordinate relative to vertex
-            # For a sphere centered at (0, 0, R) or (0, 0, -R)
-            # Sag(y) = R - sqrt(R^2 - y^2)
-            
-            z_sag = r - math.sqrt(r**2 - y**2)
-            
-            # Sign convention: 
-            # If Front Surface (light comes from -Z):
-            #   Positive Radius (Convex): Center is at +Z. Vertex at 0. Surface bulges to -Z.
-            #   Wait, standard convention:
-            #   Front Convex (R>0): Center at +R. Surface at Z(y) = R - sqrt(R^2-y^2). 
-            #   At y=0, z=0. At y=h, z > 0? No, convex means it bulges towards incoming light (left).
-            #   Usually vertex is at 0.
-            #   If R>0 (Convex), center is at +R. Surface points satisfy (z-R)^2 + y^2 = R^2.
-            #   z = R - sqrt(R^2 - y^2). This yields z>0 for y>0. This curves "backwards" (away from light).
-            #   A "Biconvex" lens has Front R>0, Back R<0.
-            #   Front Surface (R>0): Vertex at 0. Bulges RIGHT? No, standard biconvex bulges OUT.
-            #   Let's check `Lens` class or ray tracer.
-            #   Ray Tracer: Center = (x + R, 0, 0).
-            #   Surface: (x - cx)^2 + ... = R^2
-            #   If R>0, cx = x0 + R. Vertex at x0.
-            #   (x - (x0+R))^2 + y^2 = R^2
-            #   x - x0 - R = -sqrt(R^2 - y^2)  (taking left hemisphere)
-            #   x = x0 + R - sqrt(R^2 - y^2)
-            #   At y=0, x=x0. At y=h, x > x0.
-            #   So R>0 is convex (bulges to right).
-            #   Wait, usually "Convex" front surface means it collects light.
-            #   If light travels +Z, and surface bulges to -Z, it's convex?
-            #   Standard convention: R>0 means center of curvature is to the right.
-            #   So a front surface with R>0 bulges to the right (away from object). That is CONCAVE for incoming light.
-            #   A standard biconvex lens has R1 > 0, R2 < 0?
-            #   Let's check `src/lens.py`.
-            #   Default: R1=100 (Convex), R2=-100 (Convex).
-            #   Wait, if R1=100, Center is at +100. Vertex at 0. Surface curve is to the right.
-            #   That means the glass is to the left? No, glass is to the right of front surface.
-            #   If glass is to right, and surface curves to right, then it is CONVEX.
-            #   Visual: ( object )   ( lens )
-            #            |          /      \
-            #   Front surface: /  (bulges left)
-            #   Center of curvature for / is to the Right. So R > 0.
-            #   Equation: (z - R)^2 + y^2 = R^2 => z = R - sqrt(R^2 - y^2).
-            #   At y=0, z=0. At y=h, z>0.
-            #   This surface bulges to the RIGHT.
-            #   If it bulges to the right, and glass is to the right, then it is CONCAVE.
-            #   
-            #   Let's re-verify the ray tracer logic.
-            #   `LensRayTracer.intersect_spherical`:
-            #   center = vector(lens.radius, 0, 0) (relative to vertex at 0)
-            #   Ray origin 0,0,0.
-            #   Collision with sphere.
-            
-            #   If R1=100. Center=(100,0,0). Vertex=0.
-            #   Surface is left hemisphere of sphere at x=100.
-            #   Points: x = 100 - sqrt(100^2 - y^2).
-            #   y=0 -> x=0.
-            #   y=10 -> x = 100 - 99.5 = 0.5.
-            #   So surface curves to the RIGHT (positive X).
-            #   If glass is in +X, this is a CONVEX surface.
-            #   Wait, "Convex" means "Bulging out".
-            #   If I hold a ball, the surface is convex.
-            #   If R1=100, the surface shape is ) (bulges left).
-            #   NO. Center is at +100.
-            #   Sphere is at +100.
-            #   Vertex is at 0.
-            #   The surface at 0 is the "left side" of the sphere.
-            #   The sphere is to the right.
-            #   So the surface shape is ( .
-            #   That looks convex from the outside (left).
-            #   So R1>0 is Convex. Correct.
-            
-            #   Implementation here:
-            #   z_sag = r - math.sqrt(r**2 - y**2) (always positive)
-            
+            # Apply STL exporter's specific sign logic
+            z = z_sag
             if is_front:
-                # If R>0 (Convex), surface moves +Z as y increases.
-                if radius > 0:
-                     z = z_sag
-                else:
-                    # R<0 (Concave). Center at -R.
-                    # Vertex at 0.
-                    # Surface is right hemisphere of sphere at -R.
-                    # x = -R + sqrt(R^2 - y^2).
-                    # y=0 -> x=0. y=h -> x < 0.
-                    # Surface moves -Z.
-                    z = -z_sag
-            else: # Back surface
-                # Vertex is at `thickness`. Glass is to the left ( < thickness).
-                # If R2 < 0 (Convex back). Center is at thickness + R2 (so left of thickness).
-                # Surface is right hemisphere.
-                # x = center + sqrt...
-                # x = (thick - |R2|) + sqrt(R2^2 - y^2).
-                # y=0 -> x=thick. y=h -> x < thick.
-                # So surface moves -Z (left).
-                
-                if radius < 0: # Convex back
-                    z = -z_sag
-                else: # Concave back (R2 > 0)
-                    # Center at thick + R.
-                    # x = thick + R - sqrt...
-                    # y=0 -> x=thick. y=h -> x > thick.
-                    # Surface moves +Z (right).
-                    z = z_sag
-                    
-            radial_points.append((y, z))
-        
-        return radial_points
+                if radius < 0: z = -z_sag
+            else:
+                if radius < 0: z = -z_sag
+            
+            half_profile.append((y, z))
+            
+        return half_profile
     
     def generate_surface_triangles(self, profile_points: List[Tuple[float, float]], z_offset: float, num_segments: int = 60):
         """Generate triangles for a surface of revolution"""
