@@ -179,7 +179,7 @@ class DiffractionPSFCalculator:
         psf_complex = np.fft.fftshift(np.fft.fft2(np.fft.ifftshift(padded_pupil)))
         
         # Intensity
-        psf = np.abs(psf_complex)**2
+        psf = np.real(psf_complex * np.conj(psf_complex))
         
         # Normalize
         if np.max(psf) > 0:
@@ -203,7 +203,7 @@ class DiffractionPSFCalculator:
         otf = np.fft.fftshift(np.fft.fft2(np.fft.ifftshift(psf)))
         
         # MTF is magnitude of OTF
-        mtf = np.abs(otf)
+        mtf = np.real(np.abs(otf))
         
         # Normalize DC component to 1.0
         # DC component is at the center after fftshift
