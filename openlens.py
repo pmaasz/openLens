@@ -118,8 +118,15 @@ class OpenLensWindow(QMainWindow):
 
             storage = LensStorage(self._db_path, lambda x: None)
             all_items = self._lenses + self._assemblies
-            storage.save_lenses(all_items)
-            logger.info(f"Saved {len(all_items)} items to database")
+            
+            # Ensure uniqueness by ID before saving to avoid duplicate keys or state conflicts
+            unique_items = {}
+            for item in all_items:
+                if hasattr(item, 'id'):
+                    unique_items[item.id] = item
+            
+            storage.save_lenses(list(unique_items.values()))
+            logger.info(f"Saved {len(unique_items)} unique items to database")
         except Exception as e:
             logger.error(f"Failed to save to database: {e}")
     
@@ -281,7 +288,15 @@ class OpenLensWindow(QMainWindow):
     def _on_assembly_modified(self):
         """Handle assembly modification from assembly tab"""
         # Ensure we are saving the actual modified system
-        self._current_assembly = self._assembly_tab_widget._optical_system
+        modified_system = self._assembly_tab_widget._optical_system
+        self._current_assembly = modified_system
+        
+        # Update the reference in self._assemblies to the new state
+        for i, asm in enumerate(self._assemblies):
+            if asm.id == modified_system.id:
+                self._assemblies[i] = modified_system
+                break
+                
         self._save_to_database()
         self._update_all_tabs()
         self._update_status(f"Assembly updated: {self._current_assembly.name if self._current_assembly else 'Unknown'}")
