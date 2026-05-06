@@ -85,7 +85,8 @@ class AberrationsCalculator:
     def calculate_all_aberrations(self, 
                                    object_distance_mm: Optional[float] = None,
                                    field_angle_deg: float = 0.0,
-                                   wavelength_nm: float = 550.0) -> Dict[str, Any]:
+                                   wavelength_nm: float = 550.0,
+                                   **kwargs) -> Dict[str, Any]:
         """
         Calculate all primary aberrations.
         
@@ -97,6 +98,10 @@ class AberrationsCalculator:
         Returns:
             Dictionary with aberration values and optical parameters
         """
+        # Handle backward compatibility for argument names
+        field_angle = kwargs.get('field_angle', field_angle_deg)
+        field_angle_deg = field_angle # Update for use in the function
+        
         # Note: Current simplified model uses primary wavelength for Seidel aberrations
         # Future enhancement: Update refractive indices based on wavelength parameter
         if self.is_system:
@@ -526,7 +531,8 @@ class AberrationsCalculator:
     
     def get_aberration_summary(self,
                                object_distance: Optional[float] = None,
-                               field_angle: float = 5.0) -> str:
+                               field_angle: float = 5.0,
+                               **kwargs) -> str:
         """
         Get a formatted summary of all aberrations.
         
@@ -537,7 +543,10 @@ class AberrationsCalculator:
         Returns:
             Formatted string with aberration summary
         """
-        results = self.calculate_all_aberrations(object_distance, field_angle)
+        # Handle backward compatibility
+        field_angle_deg = kwargs.get('field_angle_deg', field_angle)
+        
+        results = self.calculate_all_aberrations(object_distance, field_angle_deg)
         
         if results.get('error'):
             return f"Error: {results['error']}"
@@ -609,7 +618,7 @@ INTERPRETATION:
         lsa = -(y**2 / (8.0 * focal_length**3)) * (term1 + term2 * term3) * focal_length**2
         return lsa
 
-def analyze_lens_quality(lens: Any, field_angle: float = 5.0) -> Dict[str, Any]:
+def analyze_lens_quality(lens: Any, field_angle: float = 5.0, **kwargs) -> Dict[str, Any]:
     """
     Convenience function to analyze lens quality.
     
@@ -620,6 +629,9 @@ def analyze_lens_quality(lens: Any, field_angle: float = 5.0) -> Dict[str, Any]:
     Returns:
         Dictionary with quality assessment
     """
+    # Handle backward compatibility
+    field_angle = kwargs.get('field_angle_deg', field_angle)
+    
     calc = AberrationsCalculator(lens)
     results = calc.calculate_all_aberrations(field_angle=field_angle)
     

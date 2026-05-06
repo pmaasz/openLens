@@ -104,7 +104,12 @@ class TestRay(unittest.TestCase):
         ray = Ray(x=0, y=0, angle_rad=angle_above)
         success = ray.refract(n1=n1, n2=n2, surface_normal_angle_rad=0)
         self.assertFalse(success, "Should reflect just above critical angle")
-        self.assertAlmostEqual(ray.angle_rad, -angle_above, places=5)
+        
+        # In unified intersector, TIR angle is calculated by vector reflection.
+        # For a horizontal surface (normal angle 0), incident angle `angle_above`
+        # reflects to `pi - angle_above`.
+        expected_tir_angle = math.pi - angle_above
+        self.assertAlmostEqual(ray.angle_rad, expected_tir_angle, places=5)
 
 
 class TestLensRayTracer(unittest.TestCase):

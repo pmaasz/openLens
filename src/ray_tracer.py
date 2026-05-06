@@ -143,23 +143,41 @@ class Ray:
         path: List of (x, y) points along the ray path
     """
     
-    def __init__(self, x_mm: float, y_mm: float, angle_rad: float, 
+    def __init__(self, x: float = 0.0, y: float = 0.0, angle_rad: float = 0.0, 
                  wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM, n: float = REFRACTIVE_INDEX_AIR) -> None:
-        self.x = x_mm
-        self.y = y_mm
-        self.angle = angle_rad
+        self.x = x
+        self.y = y
+        self.angle_rad = angle_rad
         self.wavelength = wavelength_mm
         self.n = n
-        self.path: List[Tuple[float, float]] = [(x_mm, y_mm)]
+        self.path: List[Tuple[float, float]] = [(x, y)]
         self.terminated = False
+
+    @property
+    def angle(self) -> float:
+        """Alias for angle_rad for backward compatibility."""
+        return self.angle_rad
+    
+    @angle.setter
+    def angle(self, value: float) -> None:
+        self.angle_rad = value
+
+    @property
+    def wavelength_mm(self) -> float:
+        """Alias for wavelength for backward compatibility."""
+        return self.wavelength
+    
+    @wavelength_mm.setter
+    def wavelength_mm(self, value: float) -> None:
+        self.wavelength = value
     
     def propagate(self, distance_mm: float) -> None:
         """Propagate ray in current direction"""
-        self.x += distance_mm * math.cos(self.angle)
-        self.y += distance_mm * math.sin(self.angle)
+        self.x += distance_mm * math.cos(self.angle_rad)
+        self.y += distance_mm * math.sin(self.angle_rad)
         self.path.append((self.x, self.y))
     
-    def refract(self, n1: float, n2: float, surface_normal_angle: float) -> bool:
+    def refract(self, n1: float, n2: float, surface_normal_angle: float = 0.0, **kwargs) -> bool:
         """
         Apply Snell's law at an interface.
         
@@ -171,16 +189,19 @@ class Ray:
         Returns:
             True if refraction occurred, False if total internal reflection
         """
+        # Handle backward compatibility for surface_normal_angle_rad
+        sn_angle = kwargs.get('surface_normal_angle_rad', surface_normal_angle)
+        
         # Use common Snell implementation
-        incident_dir = (math.cos(self.angle), math.sin(self.angle), 0.0)
-        normal = (math.cos(surface_normal_angle), math.sin(surface_normal_angle), 0.0)
+        incident_dir = (math.cos(self.angle_rad), math.sin(self.angle_rad), 0.0)
+        normal = (math.cos(sn_angle), math.sin(sn_angle), 0.0)
         
         result = OpticalIntersector.apply_snell(incident_dir, normal, n1, n2)
         if result is None:
             return False
         
         rx, ry, _, is_tir = result
-        self.angle = math.atan2(ry, rx)
+        self.angle_rad = math.atan2(ry, rx)
         
         if is_tir:
             return False

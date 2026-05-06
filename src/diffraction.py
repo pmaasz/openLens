@@ -71,15 +71,30 @@ except ImportError:
 class DiffractionCalculator:
     """Calculate diffraction effects for optical systems"""
     
-    def __init__(self, wavelength_m: float = 550e-9):
+    def __init__(self, wavelength_m: float = 550e-9, **kwargs):
         """
         Initialize diffraction calculator
         
         Args:
             wavelength_m: Light wavelength in meters (default: 550nm green light)
         """
-        self.wavelength_m = wavelength_m
+        # Handle backward compatibility for argument names
+        wavelength = kwargs.get('wavelength', wavelength_m)
+        self.wavelength_m = wavelength
     
+    @property
+    def wavelength(self) -> float:
+        """Alias for wavelength_m for backward compatibility."""
+        return self.wavelength_m
+    
+    @wavelength.setter
+    def wavelength(self, value: float) -> None:
+        self.wavelength_m = value
+
+    def airy_disk_radius(self, focal_length: float, aperture_diameter: float) -> float:
+        """Alias for airy_disk_radius_um with backward compatibility for argument names."""
+        return self.airy_disk_radius_um(focal_length, aperture_diameter)
+
     def airy_disk_radius_um(self, focal_length_mm: float, aperture_diameter_mm: float) -> float:
         """
         Calculate Airy disk radius (first zero of Airy pattern)

@@ -49,6 +49,7 @@ class Lens:
                  lens_type: str = "Biconvex",
                  material: str = "BK7",
                  wavelength_nm: float = 587.6,
+                 wavelength: Optional[float] = None,
                  temperature: float = 20.0,
                  is_fresnel: bool = False,
                  groove_pitch: float = DEFAULT_THICKNESS,
@@ -64,7 +65,7 @@ class Lens:
         self.thickness = thickness
         self.diameter = diameter
         self.material = material
-        self.wavelength = wavelength_nm  # Design wavelength in nm
+        self.wavelength = wavelength if wavelength is not None else wavelength_nm  # Design wavelength in nm
         self.temperature = temperature  # Operating temperature in °C
         
         # Model Glass Properties
