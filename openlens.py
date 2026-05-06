@@ -1099,8 +1099,17 @@ Ctrl+6         Tolerancing
             dialog = AnalysisPlotDialog("MTF Analysis", self)
             ax = dialog.get_axes()
             
-            ax.plot(mtf_data['freq'], mtf_data['mtf_tan'], 'r-', label="Tangential")
-            ax.plot(mtf_data['freq'], mtf_data['mtf_sag'], 'b--', label="Sagittal")
+            mtf_freq = mtf_data['freq']
+            mtf_tan = mtf_data['mtf_tan']
+            mtf_sag = mtf_data['mtf_sag']
+            
+            if np.iscomplexobj(mtf_tan):
+                mtf_tan = np.real(mtf_tan)
+            if np.iscomplexobj(mtf_sag):
+                mtf_sag = np.real(mtf_sag)
+                
+            ax.plot(mtf_freq, mtf_tan, 'r-', label="Tangential")
+            ax.plot(mtf_freq, mtf_sag, 'b--', label="Sagittal")
             
             ax.set_ylim(0, 1.05)
             ax.set_title("Modulation Transfer Function")
