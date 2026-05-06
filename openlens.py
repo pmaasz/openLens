@@ -947,9 +947,10 @@ Ctrl+6         Tolerancing
             return
             
         try:
-            from src.analysis.ghost import GhostAnalyzer
+            from src.analysis.psf_mtf import ImageQualityAnalyzer
             from src.optical_system import OpticalSystem
             from src.gui.dialogs import AnalysisPlotDialog
+            import numpy as np
             
             if isinstance(target, Lens):
                 system = OpticalSystem(name=target.name)
