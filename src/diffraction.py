@@ -321,7 +321,7 @@ class DiffractionCalculator:
         r, intensity = self.airy_pattern(max_radius, focal_length, aperture_diameter)
         
         plt.figure(figsize=(10, 6))
-        plt.plot(r, intensity, 'b-', linewidth=2)
+        plt.plot(r, np.real(intensity), 'b-', linewidth=2)
         plt.axvline(x=airy_r, color='r', linestyle='--', 
                    label=f'Airy disk radius = {airy_r:.2f} μm')
         plt.axhline(y=0.5, color='g', linestyle=':', alpha=0.5)
@@ -368,7 +368,7 @@ class DiffractionCalculator:
         center = psf.shape[0] // 2
         profile = psf[center, :]
         x_coords = np.linspace(-size/2, size/2, len(profile))
-        ax2.plot(x_coords, profile, 'b-', linewidth=2)
+        ax2.plot(x_coords, np.real(profile), 'b-', linewidth=2)
         ax2.axvline(x=airy_r, color='r', linestyle='--', 
                    label=f'Airy disk radius = {airy_r:.2f} μm')
         ax2.axvline(x=-airy_r, color='r', linestyle='--')
@@ -402,7 +402,7 @@ class DiffractionCalculator:
         airy_r = self.airy_disk_radius(focal_length, aperture_diameter)
         
         plt.figure(figsize=(10, 6))
-        plt.plot(r, encircled * 100, 'b-', linewidth=2)
+        plt.plot(r, np.real(encircled) * 100, 'b-', linewidth=2)
         plt.axvline(x=airy_r, color='r', linestyle='--', 
                    label=f'Airy disk radius = {airy_r:.2f} μm')
         
