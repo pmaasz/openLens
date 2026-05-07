@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional, Dict, Any
 import math
+import uuid
 
 try:
     from .constants import (
@@ -58,7 +59,7 @@ class Lens:
                  model_nd: float = 1.5168,
                  model_vd: float = 64.17) -> None:
         
-        self.id = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        self.id = uuid.uuid4().hex
         self.name = name
         self.radius_of_curvature_1 = radius_of_curvature_1
         self.radius_of_curvature_2 = radius_of_curvature_2

@@ -8,6 +8,7 @@ from typing import List, Tuple, Optional, Dict, Any
 from dataclasses import dataclass, field
 import math
 import json
+import uuid
 from datetime import datetime
 
 try:
@@ -61,7 +62,7 @@ class OpticalSystem:
     """Multi-element optical system"""
     
     def __init__(self, name: str = "Optical System"):
-        self.id = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        self.id = uuid.uuid4().hex
         self.created_at = datetime.now().isoformat()
         self.modified_at = datetime.now().isoformat()
         self.name = name
