@@ -157,6 +157,7 @@ class LensEditorWidget(QWidget):
         self._groove_pitch_input.setRange(0.01, 10)
         self._groove_pitch_input.setValue(0.5)
         self._groove_pitch_input.setSuffix(" mm")
+        self._groove_pitch_input.valueChanged.connect(self._on_groove_pitch_changed)
         self._groove_pitch_input.hide()
         self._groove_pitch_label.hide()
         fresnel_layout.addRow(self._groove_pitch_label, self._groove_pitch_input)
@@ -228,9 +229,12 @@ class LensEditorWidget(QWidget):
         self._n_input.setValue(material_indices.get(material, 1.5))
         if self._lens:
             self._lens.refractive_index = self._n_input.value()
+            self._lens.material = material
             self._update_calculated()
             if self._viz_widget:
                 self._viz_widget.update_lens(self._lens)
+            self.lens_modified.emit(self._lens)
+            self.lens_updated.emit()
     
     def _on_fresnel_changed(self, state):
         """Handle Fresnel checkbox change"""
@@ -249,11 +253,24 @@ class LensEditorWidget(QWidget):
         
         if enabled and self._lens:
             self._lens.is_fresnel = True
+            self._lens.groove_pitch = self._groove_pitch_input.value()
             self._update_groove_count()
+            self.lens_modified.emit(self._lens)
+            self.lens_updated.emit()
         elif self._lens:
             self._lens.is_fresnel = False
             self._num_grooves_value.setText("0")
+            self.lens_modified.emit(self._lens)
+            self.lens_updated.emit()
     
+    def _on_groove_pitch_changed(self, value):
+        """Handle groove pitch change"""
+        if self._lens and getattr(self._lens, 'is_fresnel', False):
+            self._lens.groove_pitch = value
+            self._update_groove_count()
+            self.lens_modified.emit(self._lens)
+            self.lens_updated.emit()
+
     def _update_groove_count(self):
         """Calculate number of grooves"""
         if not self._lens or not hasattr(self._lens, 'is_fresnel') or not self._lens.is_fresnel:
