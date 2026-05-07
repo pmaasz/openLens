@@ -57,7 +57,8 @@ class Lens:
                  num_grooves: Optional[int] = None,
                  model_glass_mode: bool = False,
                  model_nd: float = 1.5168,
-                 model_vd: float = 64.17) -> None:
+                 model_vd: float = 64.17,
+                 use_type_defaults: bool = False) -> None:
         
         self.id = uuid.uuid4().hex
         self.name = name
@@ -101,11 +102,8 @@ class Lens:
             
         self.lens_type = lens_type
         
-        # Only update radii if using default values and lens_type differs from default
-        # This preserves custom radii while allowing lens_type to set defaults when appropriate
-        if (radius_of_curvature_1 == DEFAULT_RADIUS_1 and 
-            radius_of_curvature_2 == DEFAULT_RADIUS_2 and
-            lens_type != "Biconvex"):
+        # Only update radii if using type defaults
+        if use_type_defaults and lens_type != "Biconvex":
             self._update_radii_for_type()
         
         # Fresnel properties
@@ -227,12 +225,9 @@ class Lens:
             num_grooves=data.get("num_grooves", None),
             model_glass_mode=data.get("model_glass_mode", False),
             model_nd=data.get("model_nd", 1.5168),
-            model_vd=data.get("model_vd", 64.17)
+            model_vd=data.get("model_vd", 64.17),
+            use_type_defaults=data.get("use_type_defaults", False)
         )
-        
-        # Only update radii if they match defaults and lens_type is different
-        if (r1 == DEFAULT_RADIUS_1 and r2 == DEFAULT_RADIUS_2 and lens_type != "Biconvex"):
-            lens._update_radii_for_type()
         
         lens.id = data.get("id", lens.id)
         lens.created_at = data.get("created_at", lens.created_at)
