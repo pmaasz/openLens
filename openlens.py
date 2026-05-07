@@ -181,33 +181,66 @@ class OpenLensWindow(QMainWindow):
     
     def _load_lens_from_data(self, data: Any) -> None:
         """Load lens or assembly from saved data"""
+        from src.optical_system import OpticalSystem
+
+        # Check if the item already exists in the library by ID
+        existing = None
+        if hasattr(data, 'id'):
+            for item in self._lenses + self._assemblies:
+                if getattr(item, 'id', None) == data.id:
+                    existing = item
+                    break
+
         if isinstance(data, OpticalSystem):
-            self._assemblies.append(data)
-            self._current_assembly = data
+            if not existing:
+                self._assemblies.append(data)
+                target = data
+            else:
+                target = existing
+            self._current_assembly = target
             self._current_lens = None
             self._show_assembly_editor(True)
             self._show_lens_editor(False)
-            self._optical_system = data
+            self._optical_system = target
         elif isinstance(data, Lens):
-            self._lenses.append(data)
-            self._current_lens = data
+            if not existing:
+                self._lenses.append(data)
+                target = data
+            else:
+                target = existing
+            self._current_lens = target
             self._current_assembly = None
             self._show_assembly_editor(False)
             self._show_lens_editor(True)
         elif isinstance(data, dict):
             # Fallback for dict data
+            data_id = data.get('id')
+            for item in self._lenses + self._assemblies:
+                if getattr(item, 'id', None) == data_id:
+                    existing = item
+                    break
+            
             if data.get('type') == 'OpticalSystem':
-                system = OpticalSystem.from_dict(data)
-                self._assemblies.append(system)
-                self._current_assembly = system
+                if not existing:
+                    system = OpticalSystem.from_dict(data)
+                    self._assemblies.append(system)
+                    target = system
+                else:
+                    target = existing
+                self._current_assembly = target
                 self._current_lens = None
             else:
-                lens = Lens.from_dict(data)
-                self._lenses.append(lens)
-                self._current_lens = lens
+                if not existing:
+                    lens = Lens.from_dict(data)
+                    self._lenses.append(lens)
+                    target = lens
+                else:
+                    target = existing
+                self._current_lens = target
                 self._current_assembly = None
         else:
             self._load_default_lens()
+            return
         
         if self._current_lens:
             self._lens_editor.load_lens(self._current_lens)
