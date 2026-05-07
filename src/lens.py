@@ -57,7 +57,8 @@ class Lens:
                  num_grooves: Optional[int] = None,
                  model_glass_mode: bool = False,
                  model_nd: float = 1.5168,
-                 model_vd: float = 64.17) -> None:
+                 model_vd: float = 64.17,
+                 use_type_defaults: bool = False) -> None:
         
         self.id = uuid.uuid4().hex
         self.name = name
@@ -273,7 +274,8 @@ class Lens:
             num_grooves=data.get("num_grooves", None),
             model_glass_mode=data.get("model_glass_mode", False),
             model_nd=data.get("model_nd", 1.5168),
-            model_vd=data.get("model_vd", 64.17)
+            model_vd=data.get("model_vd", 64.17),
+            use_type_defaults=data.get("use_type_defaults", False)
         )
 
         lens.id = data.get("id", lens.id)
