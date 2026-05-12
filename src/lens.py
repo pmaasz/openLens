@@ -229,6 +229,7 @@ class Lens:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert lens to dictionary representation."""
+        # Ensure modified_at is updated on serialization if not already managed
         return {
             "id": self.id,
             "name": self.name,

@@ -141,10 +141,13 @@ class OpenLensWindow(QMainWindow):
                 ]
 
             all_items = self._lenses + self._assemblies
-            
-            # Make sure we have the latest state of all items
-            all_items = []
-            
+
+            # Ensure uniqueness by ID before saving to avoid duplicate keys or state conflicts
+            unique_items = {}
+            for item in all_items:
+                if hasattr(item, 'id'):
+                    unique_items[item.id] = item
+
             self._storage.save_lenses(list(unique_items.values()),
                                    reconcile=True)
             logger.info("Saved %d unique items to database", len(unique_items))
@@ -525,29 +528,26 @@ class OpenLensWindow(QMainWindow):
         if self._editor_tabs.currentIndex() == 0:  # Lens Editor Tab
             # Sync data from Lens Editor widget back to the lens object
             self._lens_editor._on_property_changed()
-            # If we are editing an existing lens, ensure it's in the list
-            if self._current_lens and self._current_lens not in self._lenses:
-                # Check for existing lens by ID
-                found = False
+            # Find the lens in our internal list and replace it with the current one
+            if self._current_lens:
+                # Always update the lens in the main collection to ensure persistence
                 for i, lens in enumerate(self._lenses):
                     if lens.id == self._current_lens.id:
                         self._lenses[i] = self._current_lens
-                        found = True
                         break
-                if not found:
+                else:
+                    # If not found (e.g. it was a new lens not yet added correctly)
                     self._lenses.append(self._current_lens)
         elif self._editor_tabs.currentIndex() == self._assembly_tab_index:
              # Force sync from assembly tab state before saving
              self._current_assembly = self._assembly_tab_widget._optical_system
              # Ensure it's in the list
-             if self._current_assembly and self._current_assembly not in self._assemblies:
-                found = False
+             if self._current_assembly:
                 for i, asm in enumerate(self._assemblies):
                     if asm.id == self._current_assembly.id:
                         self._assemblies[i] = self._current_assembly
-                        found = True
                         break
-                if not found:
+                else:
                     self._assemblies.append(self._current_assembly)
                     
         self._save_to_database()
