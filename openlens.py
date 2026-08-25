@@ -1010,8 +1010,7 @@ Ctrl+6         Tolerancing
             
             for ghost in ghosts:
                 for ray in ghost.rays:
-                    # ray.path is a list of Vector3? 
-                    # Assuming we can access points
+                    # GhostPath.rays are Ray3D objects; .path holds Vector3 sample points
                     if hasattr(ray, 'path') and ray.path:
                         zs = [np.real(p.x) for p in ray.path]
                         ys = [np.real(p.y) for p in ray.path]

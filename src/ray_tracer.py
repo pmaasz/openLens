@@ -1234,61 +1234,40 @@ class LensRayTracer3D:
         ray.origin = intersection
         ray.path.append(intersection)
         
-        # Calculate Normal
+        # Calculate surface normal.
+        # Convention: the normal always points OUT of the lens volume.
+        # (apply_snell flips it internally to face the incident ray, so the
+        # outward orientation is all this method must guarantee.)
         if is_flat:
-            # If front, normal is optical axis (pointing into lens).
-            # If back, normal is -optical axis (pointing out of lens).
-            # Wait, normal should usually point OUT of the object for standard renderers,
-            # but for refraction n1->n2, normal usually points from n1 into n2?
-            # Or just surface normal.
-            # Let's align normal with optical axis for Front, opposite for Back?
-            # Actually, sphere normal is (intersection - center).
-            # For Convex Front (Center to right), normal points Left (out).
-            # For Flat Front, normal should point Left (out)?
-            # My previous logic used (1,0,0) for front flat. That points IN.
-            
-            # Let's standardize: Normal points OUT of the lens volume.
+            # Flat front surface: outward is -optical_axis; flat back: +optical_axis
             if surface_type == 'front':
                 normal = -self.optical_axis
             else:
                 normal = self.optical_axis
         else:
-            # Sphere normal: (intersection - center).normalize()
-            # If Convex Front (Center inside): Normal points In -> Out.
-            # If Concave Front (Center outside): Normal points Out -> In?
-            # (P - C).
-            # R1 > 0 (Convex Front): C is to right. P is to left. P-C points Left (Out). Correct.
-            # R1 < 0 (Concave Front): C is to left. P is to right. P-C points Right (In).
-            # We want Outward normal.
+            # Sphere normal is P - C; flip when it would point into the glass
+            # (concave front: R < 0, or concave back: R2 > 0)
             normal = (intersection - center).normalize()
-            if R < 0: # Concave front means center is on air side. P-C points into glass?
-                # Let's check. R < 0. Center is at -|R|. P is at 0. P-C = 0 - (-R) = +R. Points Right (Into Glass).
-                # We want Outward normal (Left). So flip.
+            if R < 0:
                 normal = -normal
-            
-            # For Back Surface:
-            # R2 < 0 (Convex Back): Center is left. P is right. P-C points Right (Out). Correct.
-            # R2 > 0 (Concave Back): Center is right. P is left. P-C points Left (In).
-            # We want Outward normal (Right). So flip.
+
             if surface_type == 'back' and R > 0:
                 normal = -normal
 
         # Interact
         current_n = ray.n
         
-        # Logic to determine n1/n2 based on direction vs normal
-        # If ray enters (dot(ray, normal) < 0), we go n1 -> n2.
-        # If ray exits (dot(ray, normal) > 0), we go n2 -> n1?
-        # Actually, trace_surface assumes we know the transition (default_n1 -> default_n2).
-        # But we might be tracing rays backwards or internally?
-        # Let's trust the surface type defaults for now, but verify with ray.n.
+        # Determine the media transition for this interaction. Matching ray.n
+        # against the expected indices supports rays traced in either
+        # direction (entering or exiting); an unknown medium falls back to
+        # the surface's default forward transition.
         
         if abs(current_n - default_n1) < 1e-3:
             n1, n2 = default_n1, default_n2
         elif abs(current_n - default_n2) < 1e-3:
             n1, n2 = default_n2, default_n1
         else:
-            n1, n2 = current_n, default_n2 # Guess
+            n1, n2 = current_n, default_n2 # Fallback: forward transition
             
         if interaction == 'reflect':
             ray.reflect(normal, n1, n2)

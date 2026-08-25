@@ -198,10 +198,10 @@ class LensStorage:
                 else:
                     self.db.save_lens(item_dict)
             
-            # We might want to implement a sync mechanism if we need to remove items 
-            # that are no longer in the list. But the current UI usually manages 
-            # adding/updating. Deleting is handled separately? 
-            # Let's check how deletion is handled in main_window.py.
+            # NOTE: This method only inserts/replaces rows. Items removed from
+            # `items` are NOT deleted from the database; callers must call
+            # DatabaseManager.delete_item() explicitly, otherwise deleted
+            # lenses/assemblies reappear on the next load.
             
             if show_status:
                 self._update_status(f"Saved {len(items)} item(s) to database")
