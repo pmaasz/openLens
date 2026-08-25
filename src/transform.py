@@ -1,5 +1,5 @@
 import math
-from typing import List, Union
+from typing import List
 try:
     from .vector3 import Vector3
 except ImportError:

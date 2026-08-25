@@ -5,22 +5,17 @@ Tab for tolerancing and yield analysis
 
 import logging
 import copy
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
-                               QFormLayout, QCheckBox, QDoubleSpinBox, QSpinBox,
-                               QComboBox, QTextEdit, QPushButton, QScrollArea, 
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
+                               QFormLayout, QDoubleSpinBox, QSpinBox,
+                               QComboBox, QTextEdit, QPushButton, QScrollArea,
                                QLabel, QTableWidget, QTableWidgetItem, QHeaderView,
                                QProgressBar, QMessageBox, QDialog)
-from PySide6.QtCore import Slot, Signal, Qt, QMetaObject, Q_ARG, QThread
+from PySide6.QtCore import Signal, Qt, QThread
 
 try:
     from .base_tab import BaseTab
 except ImportError:
     from src.gui.tabs.base_tab import BaseTab
-
-try:
-    from ..dialogs.analysis_plots import AnalysisPlotDialog
-except ImportError:
-    from src.gui.dialogs.analysis_plots import AnalysisPlotDialog
 
 from src.tolerancing import MonteCarloAnalyzer, InverseSensitivityAnalyzer, ToleranceOperand, ToleranceType
 

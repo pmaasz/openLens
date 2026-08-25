@@ -5,11 +5,9 @@ Optical performance metrics and analysis plots
 
 import math
 import logging
-import os
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
-                               QFormLayout, QDoubleSpinBox, QComboBox, 
-                               QPushButton, QLabel, QTextEdit, QScrollArea, QMessageBox, QFileDialog)
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
+                               QFormLayout, QDoubleSpinBox, QComboBox,
+                               QPushButton, QLabel, QTextEdit, QScrollArea, QMessageBox)
 from src.gui.tabs.base_tab import BaseTab
 
 logger = logging.getLogger(__name__)

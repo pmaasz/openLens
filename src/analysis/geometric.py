@@ -1,13 +1,13 @@
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Dict, Any
 import math
 
 try:
-    from ..vector3 import Vector3, vec3
+    from ..vector3 import vec3
     from ..ray_tracer import Ray3D, SystemRayTracer3D
     from ..optical_system import OpticalSystem
     from ..constants import NM_TO_MM, WAVELENGTH_GREEN
 except ImportError:
-    from src.vector3 import Vector3, vec3
+    from src.vector3 import vec3
     from src.ray_tracer import Ray3D, SystemRayTracer3D
     from src.optical_system import OpticalSystem
     from src.constants import NM_TO_MM, WAVELENGTH_GREEN

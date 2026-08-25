@@ -5,7 +5,7 @@ Supports compound lenses, doublets, triplets with air gaps
 """
 
 from typing import List, Tuple, Optional, Dict, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import math
 import json
 import uuid
@@ -14,7 +14,7 @@ from datetime import datetime
 try:
     from .lens import Lens
     from .material_database import get_material_database
-    from .optical_node import OpticalNode, OpticalElement, OpticalAssembly
+    from .optical_node import OpticalElement, OpticalAssembly
     from .vector3 import vec3
 except (ImportError, ValueError):
     import sys
@@ -22,7 +22,7 @@ except (ImportError, ValueError):
     sys.path.insert(0, os.path.dirname(__file__))
     from lens import Lens
     from material_database import get_material_database
-    from optical_node import OpticalNode, OpticalElement, OpticalAssembly
+    from optical_node import OpticalElement, OpticalAssembly
     from vector3 import vec3
 
 

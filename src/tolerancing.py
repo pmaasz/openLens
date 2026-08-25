@@ -5,16 +5,14 @@ import copy
 import math
 import statistics
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 
 try:
     from .optical_system import OpticalSystem
-    from .optical_node import OpticalElement
     from .analysis import SpotDiagram
     from .vector3 import vec3
 except ImportError:
     from optical_system import OpticalSystem
-    from optical_node import OpticalElement
     from analysis import SpotDiagram
     from vector3 import vec3
 

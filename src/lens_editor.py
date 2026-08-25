@@ -3,12 +3,9 @@
 openlens - Interactive Optical Lens Creation and Modification Tool
 """
 
-import json
 import logging
-import os
 from datetime import datetime
-from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 
 # Setup module logger
 logger = logging.getLogger(__name__)
@@ -23,52 +20,6 @@ except (ImportError, ValueError):
         from lens import Lens
     except ImportError:
         pass  # Will be defined below if import fails, or we can raise error
-
-# Try to import material database
-try:
-    from .material_database import get_material_database
-    MATERIAL_DB_AVAILABLE = True
-except (ImportError, ValueError):
-    # Fallback for direct script execution
-    try:
-        import sys
-        import os
-        sys.path.insert(0, os.path.dirname(__file__))
-        from material_database import get_material_database
-        MATERIAL_DB_AVAILABLE = True
-    except ImportError:
-        MATERIAL_DB_AVAILABLE = False
-
-# Try to import validation utilities
-try:
-    from .validation import (
-        validate_json_file_path,
-        validate_file_path,
-        validate_lenses_json_schema,
-        validate_lens_data_schema,
-        ValidationError
-    )
-except (ImportError, ValueError):
-    try:
-        from validation import (
-            validate_json_file_path,
-            validate_file_path,
-            validate_lenses_json_schema,
-            validate_lens_data_schema,
-            ValidationError
-        )
-    except ImportError:
-        # Fallback if validation module not available
-        from typing import Any
-        ValidationError = ValueError
-        def validate_json_file_path(path: Any, **kwargs: Any) -> Path:
-            return Path(path)
-        def validate_file_path(path: Any, **kwargs: Any) -> Path:
-            return Path(path)
-        def validate_lenses_json_schema(data: Any) -> Any:
-            return data
-        def validate_lens_data_schema(data: Any, **kwargs: Any) -> Any:
-            return data
 
 
 try:

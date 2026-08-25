@@ -75,8 +75,6 @@ class AssemblyVisualizationWidget(QWidget):
     
     def _draw_lens(self, painter, lens, cx, cy, scale, color):
         """Draw a single lens"""
-        import math
-        
         def get_sag(r, y):
             if abs(r) < 1e-6: return 0
             r_a = abs(r)

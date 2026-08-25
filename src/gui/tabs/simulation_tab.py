@@ -3,10 +3,9 @@ OpenLens PySide6 Simulation Tab
 Simulation controls and visualization
 """
 
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
-                               QFormLayout, QSpinBox, QDoubleSpinBox, QComboBox, 
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
+                               QFormLayout, QSpinBox, QDoubleSpinBox, QComboBox,
                                QCheckBox, QPushButton, QLabel)
-from PySide6.QtCore import Qt
 from src.gui.tabs.base_tab import BaseTab
 from src.gui.widgets.simulation_viz import SimulationVisualizationWidget
 

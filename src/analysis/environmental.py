@@ -1,10 +1,7 @@
-import math
 import copy
-from typing import Optional
 
 try:
     from ..optical_system import OpticalSystem
-    from ..lens import Lens
     from ..material_database import get_material_database
 except ImportError:
     import sys
@@ -12,7 +9,6 @@ except ImportError:
     # Assuming we are in src/analysis/environmental.py, go up two levels to reach src parent
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
     from src.optical_system import OpticalSystem
-    from src.lens import Lens
     from src.material_database import get_material_database
 
 class EnvironmentalAnalyzer:

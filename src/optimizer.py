@@ -5,7 +5,6 @@ Automatically optimize lens parameters to minimize aberrations and improve perfo
 """
 
 import math
-import random
 from typing import List, Dict, Tuple, Callable, Optional
 from dataclasses import dataclass, field
 import copy

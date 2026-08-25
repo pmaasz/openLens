@@ -4,19 +4,16 @@ Preset Lens Library
 Common lens designs and industry standard templates
 """
 
-import json
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 
 try:
     from .lens import Lens
-    from .optical_system import OpticalSystem
 except (ImportError, ValueError):
     import sys
     import os
     sys.path.insert(0, os.path.dirname(__file__))
     from lens import Lens
-    from optical_system import OpticalSystem
 
 
 @dataclass

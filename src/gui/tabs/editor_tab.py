@@ -2,7 +2,7 @@
 OpenLens PySide6 Editor Tab
 """
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout
+from PySide6.QtWidgets import QVBoxLayout
 from .base_tab import BaseTab
 
 

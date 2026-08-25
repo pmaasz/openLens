@@ -5,8 +5,6 @@ Provides lens data persistence functionality for the GUI.
 """
 
 import logging
-import os
-from pathlib import Path
 from typing import List, Optional, Callable, Any, TYPE_CHECKING
 
 # Configure module logger
@@ -15,11 +13,6 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from ..lens import Lens
     from ..optical_system import OpticalSystem
-    from ..validation import (
-        validate_json_file_path,
-        validate_file_path,
-        ValidationError
-    )
 else:
     # Import Lens model (Runtime)
     try:
@@ -32,7 +25,7 @@ else:
             class Lens:
                 """Fallback Lens class."""
                 pass
-                
+
     # Import OpticalSystem model (Runtime)
     try:
         from ..optical_system import OpticalSystem
@@ -44,32 +37,6 @@ else:
             class OpticalSystem:
                 """Fallback OpticalSystem class."""
                 pass
-
-    # Import validation utilities (Runtime)
-    try:
-        from ..validation import (
-            validate_json_file_path,
-            validate_file_path,
-            ValidationError
-        )
-    except ImportError:
-        try:
-            from validation import (
-                validate_json_file_path,
-                validate_file_path,
-                ValidationError
-            )
-        except ImportError:
-            # Fallback if validation module not available
-            ValidationError = ValueError
-            
-            def validate_json_file_path(path: Any, **kwargs: Any) -> Path:
-                """Fallback validation function."""
-                return Path(path)
-            
-            def validate_file_path(path: Any, **kwargs: Any) -> Path:
-                """Fallback validation function."""
-                return Path(path)
 
     # Import DatabaseManager (Runtime)
     try:

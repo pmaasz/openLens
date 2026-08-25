@@ -1,5 +1,5 @@
 import math
-from typing import Union, Tuple
+from typing import Tuple
 
 class Vector3:
     """3D Vector class with basic operations"""

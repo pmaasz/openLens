@@ -3,8 +3,6 @@ ISO 10110 Drawing Export Module.
 Generates SVG drawings of optical components and systems.
 """
 
-import math
-from typing import List, Dict, Tuple, Optional
 from datetime import datetime
 
 try:

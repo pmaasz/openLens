@@ -1,5 +1,4 @@
-from typing import List, Tuple, Dict, Any, Optional, Union
-import math
+from typing import List, Tuple, Dict, Any
 
 # Optional dependencies
 try:

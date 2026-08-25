@@ -6,7 +6,7 @@ PySide6-based modern GUI
 
 import sys
 import os
-import math
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,26 +15,15 @@ logger = logging.getLogger(__name__)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                               QLabel, QListWidget, QListWidgetItem, QPushButton, 
-                               QDoubleSpinBox, QSpinBox, QLineEdit, QGroupBox, QFormLayout, 
-                               QFrame, QTabWidget, QComboBox, QCheckBox, QDialog, QStatusBar,
-                               QTextEdit, QFileDialog, QMessageBox, QScrollArea)
-from PySide6.QtCore import Qt, QTimer, Slot, Signal, QMetaObject, Q_ARG
+                               QLabel, QTabWidget, QStatusBar, QFileDialog, QMessageBox)
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QKeySequence
 
-# Matplotlib imports for Analysis
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
-
 from src.lens import Lens
-from src.gui.widgets import (LensEditorWidget, LensVisualizationWidget, 
-                             SimulationVisualizationWidget, AssemblyVisualizationWidget,
-                             PerformanceVisualizationWidget, _2DVisualizationWidget)
-from src.gui.tabs import (EditorTab, SimulationTab, PerformanceTab, 
+from src.gui.widgets import LensEditorWidget
+from src.gui.tabs import (SimulationTab, PerformanceTab,
                           AssemblyTab, OptimizationTab, TolerancingTab)
 from src.gui.dialogs import StartupDialog, AnalysisPlotDialog
-from src.services import LensService
 
 
 class OpenLensWindow(QMainWindow):
@@ -233,8 +222,6 @@ class OpenLensWindow(QMainWindow):
     
     def _create_editor_area(self):
         """Create the main editor area with tabs"""
-        from PySide6.QtWidgets import QTabWidget, QFrame
-        
         self._editor_tabs = QTabWidget()
         self._editor_tabs.setStyleSheet("""
             QTabWidget::pane {
@@ -280,7 +267,6 @@ class OpenLensWindow(QMainWindow):
     
     def _on_lens_modified(self, lens):
         """Handle lens modification from editor widget"""
-        self._update_lens_list()
         self._save_to_database()
         self._update_all_tabs()
         self._update_status(f"Updated: {lens.name}")
@@ -312,8 +298,6 @@ class OpenLensWindow(QMainWindow):
     
     def _create_menu(self):
         """Create menu bar"""
-        from PySide6.QtWidgets import QMenuBar, QMenu
-        
         menubar = self.menuBar()
         menubar.setStyleSheet("""
             QMenuBar {
@@ -353,9 +337,6 @@ class OpenLensWindow(QMainWindow):
         
         # Edit menu
         edit_menu = menubar.addMenu("Edit")
-        edit_menu.addAction("Undo", self._on_undo, QKeySequence("Ctrl+Z"))
-        edit_menu.addAction("Redo", self._on_redo, QKeySequence("Ctrl+Y"))
-        edit_menu.addSeparator()
         edit_menu.addAction("Delete Lens", self._on_delete_lens, QKeySequence("Delete"))
         edit_menu.addSeparator()
         edit_menu.addAction("Duplicate Lens", self._on_duplicate_lens, QKeySequence("Ctrl+D"))
@@ -370,7 +351,7 @@ class OpenLensWindow(QMainWindow):
         # Lenses section header
         lens_menu.addAction("--- Lenses ---")
         for i, lens in enumerate(self._lenses):
-            act = lens_menu.addAction(lens.name, lambda idx=i: self._switch_to_lens(idx))
+            lens_menu.addAction(lens.name, lambda idx=i: self._switch_to_lens(idx))
         
         # Separator
         lens_menu.addSeparator()
@@ -381,19 +362,15 @@ class OpenLensWindow(QMainWindow):
             asm_action.setEnabled(False)
             for i, asm in enumerate(self._assemblies):
                 idx = len(self._lenses) + i
-                act = lens_menu.addAction(f"[{asm.name}]", lambda idx=idx: self._switch_to_lens(idx))
+                lens_menu.addAction(f"[{asm.name}]", lambda idx=idx: self._switch_to_lens(idx))
         
         lens_menu.addSeparator()
-        lens_menu.addAction("Refresh", self._refresh_lens_menu)
         
 # View menu
         view_menu = menubar.addMenu("View")
         view_menu_2d = view_menu.addMenu("2D View")
         view_menu_2d.addAction("Top", lambda: self._set_viz_mode("2D"))
         view_menu_2d.addAction("Side", lambda: self._set_viz_mode("side"))
-        
-        view_menu_3d = view_menu.addMenu("3D View (External)")
-        view_menu_3d.addAction("Open 3D Viewer...", self._open_3d_viewer)
         
         view_menu.addSeparator()
         view_menu.addAction("Reset Window", self._on_reset_window, QKeySequence("Ctrl+0"))
@@ -420,14 +397,6 @@ class OpenLensWindow(QMainWindow):
             self._lens_editor.load_lens(item)
             self._update_all_tabs()
             self._update_status(f"Selected: {item.name}")
-    
-    def _update_lens_list(self):
-        """Update internal lens list (list widget removed)"""
-        pass
-    
-    def _on_lens_selected(self, row):
-        """Handle lens/assembly selection (deprecated - list removed)"""
-        pass
     
     def _load_assembly(self, assembly):
         """Load assembly into assembly editor"""
@@ -465,7 +434,6 @@ class OpenLensWindow(QMainWindow):
         self._lenses.append(lens)
         self._current_lens = lens
         self._current_assembly = None
-        self._update_lens_list()
         self._editor_tabs.setCurrentIndex(0)  # Go to Lens Editor
         self._lens_editor.load_lens(lens)
         self._update_all_tabs()
@@ -479,7 +447,6 @@ class OpenLensWindow(QMainWindow):
         self._current_assembly = asm
         self._current_lens = None
         self._optical_system = asm
-        self._update_lens_list()
         self._show_assembly_editor(True)
         self._editor_tabs.setCurrentIndex(1)
         self._update_all_tabs()
@@ -510,7 +477,6 @@ class OpenLensWindow(QMainWindow):
     def _on_open(self):
         """Open from database - just reload"""
         self._load_from_database()
-        self._update_lens_list()
         if self._current_lens:
             self._lens_editor.load_lens(self._current_lens)
         self._update_status("Reloaded from database")
@@ -525,8 +491,6 @@ class OpenLensWindow(QMainWindow):
     
     def _on_save_as(self):
         """Save lens with new filename"""
-        from PySide6.QtWidgets import QFileDialog, QMessageBox
-        
         if not self._current_lens:
             return
         
@@ -539,7 +503,6 @@ class OpenLensWindow(QMainWindow):
             return
         
         try:
-            import json
             data = self._current_lens.to_dict()
             with open(filepath, 'w') as f:
                 json.dump(data, f, indent=2)
@@ -549,8 +512,7 @@ class OpenLensWindow(QMainWindow):
     
     def _on_about(self):
         """Show about dialog"""
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.about(self, "About OpenLens", 
+        QMessageBox.about(self, "About OpenLens",
             "OpenLens - Optical Lens Design\n\n"
             "Version 2.0 (PySide6)\n\n"
             "A modern optical lens design and simulation tool.\n\n"
@@ -564,7 +526,6 @@ class OpenLensWindow(QMainWindow):
     
     def _on_show_shortcuts(self):
         """Show keyboard shortcuts"""
-        from PySide6.QtWidgets import QMessageBox
         shortcuts = """
 Keyboard Shortcuts
 ================
@@ -601,24 +562,13 @@ Ctrl+6         Tolerancing
         
         self._lenses.append(new_lens)
         self._current_lens = new_lens
-        self._update_lens_list()
         self._lens_editor.load_lens(new_lens)
         self._update_all_tabs()
         self._save_to_database()
         self._update_status(f"Duplicated: {new_lens.name}")
     
-    def _on_undo(self):
-        """Undo last action (placeholder)"""
-        self._update_status("Undo not implemented in this version")
-    
-    def _on_redo(self):
-        """Redo last action (placeholder)"""
-        self._update_status("Redo not implemented in this version")
-    
     def _on_toggle_theme(self):
         """Toggle between dark and light theme"""
-        from PySide6.QtWidgets import QApplication
-        
         app = QApplication.instance()
         current = getattr(self, '_theme', 'dark')
         
@@ -801,13 +751,6 @@ Ctrl+6         Tolerancing
                 viz.set_view_mode(mode)
         self._update_status(f"View: {mode}")
     
-    def _open_3d_viewer(self):
-        """Open 3D visualization embedded in the main window"""
-        if not self._current_lens:
-            self._update_status("No lens selected")
-            return
-        
-
     def _on_export_stl(self):
         """Export current lens or assembly to STL"""
         target = self._current_assembly if self._current_assembly else self._current_lens
@@ -947,7 +890,6 @@ Ctrl+6         Tolerancing
             return
             
         try:
-            from src.analysis.psf_mtf import ImageQualityAnalyzer
             from src.analysis.ghost import GhostAnalyzer
             from src.optical_system import OpticalSystem
             from src.gui.dialogs import AnalysisPlotDialog
@@ -970,7 +912,6 @@ Ctrl+6         Tolerancing
             target_system = system
             
             # Draw lenses
-            import math
             def get_sag(r, y):
                 if abs(r) < 1e-6: return 0
                 r_a = abs(r)
@@ -1157,10 +1098,6 @@ Ctrl+6         Tolerancing
             dialog.exec()
         except Exception as e:
             QMessageBox.critical(self, "Analysis Error", f"Failed to analyze wavefront: {e}")
-
-    def _refresh_lens_menu(self):
-        """Refresh the lens menu with current lenses and assemblies"""
-        pass
 
     def _load_default_lens(self):
         from src.lens import Lens

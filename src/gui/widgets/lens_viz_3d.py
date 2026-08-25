@@ -1,5 +1,4 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout
-from PySide6.QtCore import Qt
 import numpy as np
 
 class _3DVisualizationWidget(QWidget):

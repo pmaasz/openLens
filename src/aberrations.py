@@ -21,20 +21,16 @@ except ImportError:
 # Import constants
 try:
     from .constants import (
-        AIRY_DISK_FACTOR,
         SPHERICAL_ABERRATION_EXCELLENT,
         QUALITY_EXCELLENT_THRESHOLD, QUALITY_GOOD_THRESHOLD, QUALITY_FAIR_THRESHOLD,
         WAVELENGTH_GREEN,
-        REFRACTIVE_INDEX_AIR,
         EPSILON,
     )
 except ImportError:
     from constants import (
-        AIRY_DISK_FACTOR,
         SPHERICAL_ABERRATION_EXCELLENT,
         QUALITY_EXCELLENT_THRESHOLD, QUALITY_GOOD_THRESHOLD, QUALITY_FAIR_THRESHOLD,
         WAVELENGTH_GREEN,
-        REFRACTIVE_INDEX_AIR,
         EPSILON,
     )
 
