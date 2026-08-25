@@ -5,7 +5,8 @@ import uuid
 
 from .constants import (
     DEFAULT_RADIUS_1, DEFAULT_RADIUS_2, DEFAULT_THICKNESS, DEFAULT_DIAMETER,
-    REFRACTIVE_INDEX_BK7, EPSILON, LARGE_NUMBER
+    REFRACTIVE_INDEX_BK7, EPSILON, LARGE_NUMBER,
+    LENS_TYPE_BICONVEX, LENS_TYPE_PRESET_RADII
 )
 
 # Material database is an optional dependency
@@ -82,13 +83,11 @@ class Lens:
             self.refractive_index = refractive_index
             
         self.lens_type = lens_type
-        
-        # Only update radii if using default values and lens_type differs from default
-        # This preserves custom radii while allowing lens_type to set defaults when appropriate
-        if (radius_of_curvature_1 == DEFAULT_RADIUS_1 and 
-            radius_of_curvature_2 == DEFAULT_RADIUS_2 and
-            lens_type != "Biconvex"):
-            self._update_radii_for_type()
+
+        # Apply the lens_type radius preset only when radii are still at
+        # their defaults; this preserves custom radii while letting
+        # lens_type choose sensible starting geometry.
+        self._apply_type_preset_if_needed()
         
         # Fresnel properties
         self.is_fresnel = is_fresnel
@@ -211,11 +210,7 @@ class Lens:
             model_nd=data.get("model_nd", 1.5168),
             model_vd=data.get("model_vd", 64.17)
         )
-        
-        # Only update radii if they match defaults and lens_type is different
-        if (r1 == DEFAULT_RADIUS_1 and r2 == DEFAULT_RADIUS_2 and lens_type != "Biconvex"):
-            lens._update_radii_for_type()
-        
+
         lens.id = data.get("id", lens.id)
         lens.created_at = data.get("created_at", lens.created_at)
         lens.modified_at = data.get("modified_at", lens.modified_at)
@@ -224,57 +219,42 @@ class Lens:
     def calculate_focal_length(self) -> Optional[float]:
         """
         Calculate focal length using the lensmaker's equation.
+
+        Flat surfaces (radius = inf, as produced by the property setters
+        for a 0 radius) contribute 1/R = 0 to the power.
         """
         n = self.refractive_index
         R1 = self.radius_of_curvature_1
         R2 = self.radius_of_curvature_2
         d = self.thickness
-        
-        # Use EPSILON for zero check to handle floating-point edge cases
-        if abs(R1) < EPSILON or abs(R2) < EPSILON:
-            return None
-        
+
         # Lensmaker's equation: 1/f = (n-1)[1/R1 - 1/R2 + (n-1)d/(nR1R2)]
         try:
             power = (n - 1) * ((1/R1) - (1/R2) + ((n - 1) * d) / (n * R1 * R2))
-            
+
             if abs(power) < EPSILON:
                 return None
-            
+
             return 1 / power
         except ZeroDivisionError:
             return None
     
+    def _apply_type_preset_if_needed(self) -> None:
+        """Apply the lens_type radius preset if radii are still at defaults."""
+        if (self.radius_of_curvature_1 == DEFAULT_RADIUS_1 and
+                self.radius_of_curvature_2 == DEFAULT_RADIUS_2 and
+                self.lens_type != LENS_TYPE_BICONVEX):
+            self._update_radii_for_type()
+
     def _update_radii_for_type(self) -> None:
-        """Update radii based on the current lens_type."""
-        diameter = self.diameter
-        if diameter <= 0:
-            diameter = DEFAULT_DIAMETER
-        
-        half_aperture = diameter / 2
-        
-        lens_type = self.lens_type
-        
-        if lens_type == "Biconvex":
-            self.radius_of_curvature_1 = 100.0
-            self.radius_of_curvature_2 = -100.0
-        elif lens_type == "Biconcave":
-            self.radius_of_curvature_1 = -100.0
-            self.radius_of_curvature_2 = 100.0
-        elif lens_type == "Plano-Convex":
-            self.radius_of_curvature_1 = 100.0
-            self.radius_of_curvature_2 = float('inf')
-        elif lens_type == "Plano-Concave":
-            self.radius_of_curvature_1 = float('inf')
-            self.radius_of_curvature_2 = 100.0
-        elif lens_type == "Meniscus Convex":
-            self.radius_of_curvature_1 = 80.0
-            self.radius_of_curvature_2 = -120.0
-        elif lens_type == "Meniscus Concave":
-            self.radius_of_curvature_1 = -120.0
-            self.radius_of_curvature_2 = 80.0
-        else:
-            pass
+        """Apply the standard radius preset for the current lens_type.
+
+        Unknown types leave the radii untouched.
+        """
+        preset = LENS_TYPE_PRESET_RADII.get(self.lens_type)
+        if preset is None:
+            return
+        self.radius_of_curvature_1, self.radius_of_curvature_2 = preset
     
     def set_lens_type(self, lens_type: str) -> None:
         """Set lens type and update radii accordingly."""
@@ -391,17 +371,14 @@ class Lens:
         n = self.refractive_index
         r1 = self.radius_of_curvature_1
         t = self.thickness
-        
+
         try:
-            if abs(r1) < EPSILON:
-                return float('inf')
-            
-            # Power of first surface
+            # Power of first surface (flat surface: r1 = inf -> P1 = 0)
             P1 = (n - 1) / r1
-            
+
             # BFL = f * (1 - d * P1 / n)
             bfl = f * (1.0 - t * P1 / n)
-            
+
             return bfl
         except ZeroDivisionError:
             return float('inf')
@@ -425,25 +402,23 @@ class Lens:
         n = self.refractive_index
         r2 = self.radius_of_curvature_2
         t = self.thickness
-        
+
         try:
-            if abs(r2) < EPSILON:
-                return float('inf')
-            
             # Power of second surface (note: using sign convention where P2 = (n_out - n_in)/R2)
             # For light exiting lens: P2 = (1 - n) / R2 = -(n - 1) / R2
+            # Flat surface: r2 = inf -> P2 = 0
             P2 = -(n - 1) / r2
-            
+
             # FFL = f * (1 - d * P2 / n)
             ffl = f * (1.0 - t * P2 / n)
-            
+
             return ffl
         except ZeroDivisionError:
             return float('inf')
 
     def __str__(self) -> str:
         focal_length = self.calculate_focal_length()
-        focal_str = f"{focal_length:.2f}mm" if focal_length else "Undefined"
+        focal_str = f"{focal_length:.2f}mm" if focal_length is not None else "Undefined"
         
         return f"""
 Optical Lens Details:
