@@ -3,9 +3,13 @@ Input validation utilities for openlens
 
 Centralized validation functions to ensure data integrity
 and provide consistent error messages.
+
+All numeric validators share `_validate_number`, which performs type,
+bool, NaN and Inf checks. Domain-specific validators add their range
+semantics on top of it.
 """
 
-import os
+import math
 from pathlib import Path
 from typing import Union, Tuple, Optional
 
@@ -23,437 +27,389 @@ class ValidationError(Exception):
     pass
 
 
-def validate_radius(radius: float, allow_negative: bool = True, 
+def _validate_number(value: float, param_name: str = "value") -> float:
+    """Validate that a value is a real, finite number.
+
+    Shared first stage for all numeric validators: rejects booleans
+    (a bool is an int subclass in Python), non-numeric types and
+    non-finite floats.
+
+    Args:
+        value: Value to validate
+        param_name: Parameter name for error messages
+
+    Returns:
+        float: The value converted to float
+
+    Raises:
+        ValidationError: If value is not a finite number
+    """
+    # Reject booleans explicitly (bool is subclass of int in Python)
+    if isinstance(value, bool):
+        raise ValidationError(f"{param_name} must be a number, got bool")
+
+    if not isinstance(value, (int, float)):
+        raise ValidationError(
+            f"{param_name} must be a number, got {type(value).__name__}"
+        )
+
+    if math.isnan(value) or math.isinf(value):
+        raise ValidationError(
+            f"{param_name} must be a finite number, got {value}"
+        )
+
+    return float(value)
+
+
+def validate_radius(radius: float, allow_negative: bool = True,
                    param_name: str = "radius") -> float:
     """
     Validate radius of curvature.
-    
+
+    Note: zero is rejected here on purpose. Flat surfaces are represented
+    by ``float('inf')`` (the Lens model converts 0 to inf via its property
+    setters); passing a literal 0 indicates an upstream unit/placeholder
+    mistake rather than intent, so it fails loudly instead of silently
+    becoming an infinite radius.
+
     Args:
         radius: Radius value to validate (mm)
         allow_negative: Whether negative values are allowed (for concave surfaces)
         param_name: Parameter name for error messages
-    
+
     Returns:
         float: Validated radius value
-    
+
     Raises:
         ValidationError: If radius is invalid
     """
-    # Reject booleans explicitly (bool is subclass of int in Python)
-    if isinstance(radius, bool):
-        raise ValidationError(f"{param_name} must be a number, got bool")
-    
-    if not isinstance(radius, (int, float)):
-        raise ValidationError(f"{param_name} must be a number, got {type(radius)}")
-    
-    # Check for NaN and Inf
-    import math
-    if math.isnan(radius) or math.isinf(radius):
-        raise ValidationError(f"{param_name} must be a finite number, got {radius}")
-    
+    radius = _validate_number(radius, param_name)
+
     if abs(radius) < EPSILON:
         raise ValidationError(f"{param_name} cannot be zero")
-    
+
     if not allow_negative and radius < 0:
         raise ValidationError(f"{param_name} must be positive")
-    
+
     if abs(radius) < MIN_RADIUS_OF_CURVATURE:
         raise ValidationError(
             f"{param_name} magnitude must be at least {MIN_RADIUS_OF_CURVATURE} mm"
         )
-    
+
     if abs(radius) > MAX_RADIUS_OF_CURVATURE:
         raise ValidationError(
             f"{param_name} magnitude must be at most {MAX_RADIUS_OF_CURVATURE} mm"
         )
-    
-    return float(radius)
+
+    return radius
 
 
 def validate_thickness(thickness: float, param_name: str = "thickness") -> float:
     """
     Validate lens thickness.
-    
+
     Args:
         thickness: Thickness value to validate (mm)
         param_name: Parameter name for error messages
-    
+
     Returns:
         float: Validated thickness value
-    
+
     Raises:
         ValidationError: If thickness is invalid
     """
-    # Reject booleans explicitly (bool is subclass of int in Python)
-    if isinstance(thickness, bool):
-        raise ValidationError(f"{param_name} must be a number, got bool")
-    
-    if not isinstance(thickness, (int, float)):
-        raise ValidationError(f"{param_name} must be a number")
-    
-    # Check for NaN and Inf
-    import math
-    if math.isnan(thickness) or math.isinf(thickness):
-        raise ValidationError(f"{param_name} must be a finite number, got {thickness}")
-    
+    thickness = _validate_number(thickness, param_name)
+
     if thickness <= 0:
         raise ValidationError(f"{param_name} must be positive")
-    
+
     if thickness < MIN_THICKNESS:
         raise ValidationError(
             f"{param_name} must be at least {MIN_THICKNESS} mm"
         )
-    
+
     if thickness > MAX_THICKNESS:
         raise ValidationError(
             f"{param_name} must be at most {MAX_THICKNESS} mm"
         )
-    
-    return float(thickness)
+
+    return thickness
 
 
 def validate_diameter(diameter: float, param_name: str = "diameter") -> float:
     """
     Validate lens diameter.
-    
+
     Args:
         diameter: Diameter value to validate (mm)
         param_name: Parameter name for error messages
-    
+
     Returns:
         float: Validated diameter value
-    
+
     Raises:
         ValidationError: If diameter is invalid
     """
-    # Reject booleans explicitly (bool is subclass of int in Python)
-    if isinstance(diameter, bool):
-        raise ValidationError(f"{param_name} must be a number, got bool")
-    
-    if not isinstance(diameter, (int, float)):
-        raise ValidationError(f"{param_name} must be a number")
-    
-    # Check for NaN and Inf
-    import math
-    if math.isnan(diameter) or math.isinf(diameter):
-        raise ValidationError(f"{param_name} must be a finite number, got {diameter}")
-    
+    diameter = _validate_number(diameter, param_name)
+
     if diameter <= 0:
         raise ValidationError(f"{param_name} must be positive")
-    
+
     if diameter < MIN_DIAMETER:
         raise ValidationError(
             f"{param_name} must be at least {MIN_DIAMETER} mm"
         )
-    
+
     if diameter > MAX_DIAMETER:
         raise ValidationError(
             f"{param_name} must be at most {MAX_DIAMETER} mm"
         )
-    
-    return float(diameter)
+
+    return diameter
 
 
 def validate_refractive_index(n: float, param_name: str = "refractive index") -> float:
     """
     Validate refractive index.
-    
+
     Args:
         n: Refractive index to validate
         param_name: Parameter name for error messages
-    
+
     Returns:
         float: Validated refractive index
-    
+
     Raises:
         ValidationError: If refractive index is invalid
     """
-    # Reject booleans explicitly (bool is subclass of int in Python)
-    if isinstance(n, bool):
-        raise ValidationError(f"{param_name} must be a number, got bool")
-    
-    if not isinstance(n, (int, float)):
-        raise ValidationError(f"{param_name} must be a number")
-    
-    # Check for NaN and Inf
-    import math
-    if math.isnan(n) or math.isinf(n):
-        raise ValidationError(f"{param_name} must be a finite number, got {n}")
-    
+    n = _validate_number(n, param_name)
+
     if n < MIN_REFRACTIVE_INDEX:
         raise ValidationError(
             f"{param_name} must be at least {MIN_REFRACTIVE_INDEX}"
         )
-    
+
     if n > MAX_REFRACTIVE_INDEX:
         raise ValidationError(
             f"{param_name} must be at most {MAX_REFRACTIVE_INDEX}"
         )
-    
-    return float(n)
+
+    return n
 
 
 def validate_wavelength(wavelength: float, param_name: str = "wavelength") -> float:
     """
     Validate wavelength.
-    
+
     Args:
         wavelength: Wavelength in nanometers
         param_name: Parameter name for error messages
-    
+
     Returns:
         float: Validated wavelength
-    
+
     Raises:
         ValidationError: If wavelength is invalid
     """
-    # Reject booleans explicitly (bool is subclass of int in Python)
-    if isinstance(wavelength, bool):
-        raise ValidationError(f"{param_name} must be a number, got bool")
-    
-    if not isinstance(wavelength, (int, float)):
-        raise ValidationError(f"{param_name} must be a number")
-    
-    # Check for NaN and Inf
-    import math
-    if math.isnan(wavelength) or math.isinf(wavelength):
-        raise ValidationError(f"{param_name} must be a finite number, got {wavelength}")
-    
+    wavelength = _validate_number(wavelength, param_name)
+
     if wavelength <= 0:
         raise ValidationError(f"{param_name} must be positive")
-    
+
     if wavelength < 200 or wavelength > 3000:
         raise ValidationError(
             f"{param_name} must be between 200 and 3000 nm (visible to near-IR range)"
         )
-    
-    return float(wavelength)
+
+    return wavelength
 
 
 def validate_temperature(temperature: float, param_name: str = "temperature") -> float:
     """
     Validate temperature.
-    
+
+    Two-layer bound by design: below absolute zero gets its specific
+    physical-impossibility message; anything outside the practical
+    optics range (-100..200 C) gets the range message. Values between
+    -273.15 and -100 are physically possible but outside the supported
+    operating range.
+
     Args:
         temperature: Temperature in Celsius
         param_name: Parameter name for error messages
-    
+
     Returns:
         float: Validated temperature
-    
+
     Raises:
         ValidationError: If temperature is invalid
     """
-    # Reject booleans explicitly (bool is subclass of int in Python)
-    if isinstance(temperature, bool):
-        raise ValidationError(f"{param_name} must be a number, got bool")
-    
-    if not isinstance(temperature, (int, float)):
-        raise ValidationError(f"{param_name} must be a number")
-    
-    # Check for NaN and Inf
-    import math
-    if math.isnan(temperature) or math.isinf(temperature):
-        raise ValidationError(f"{param_name} must be a finite number, got {temperature}")
-    
+    temperature = _validate_number(temperature, param_name)
+
     if temperature < -273.15:
         raise ValidationError(
             f"{param_name} cannot be below absolute zero (-273.15°C)"
         )
-    
+
     if temperature < -100 or temperature > 200:
         raise ValidationError(
             f"{param_name} should be between -100°C and 200°C for typical optics. "
             f"Got {temperature}°C"
         )
-    
-    return float(temperature)
+
+    return temperature
 
 
 def validate_positive_number(value: float, param_name: str = "value") -> float:
     """
     Validate that a number is positive.
-    
+
     Args:
         value: Value to validate
         param_name: Parameter name for error messages
-    
+
     Returns:
         float: Validated value
-    
+
     Raises:
         ValidationError: If value is not positive
     """
-    # Reject booleans explicitly (bool is subclass of int in Python)
-    if isinstance(value, bool):
-        raise ValidationError(f"{param_name} must be a number, got bool")
-    
-    if not isinstance(value, (int, float)):
-        raise ValidationError(f"{param_name} must be a number")
-    
-    # Check for NaN and Inf
-    import math
-    if math.isnan(value) or math.isinf(value):
-        raise ValidationError(f"{param_name} must be a finite number, got {value}")
-    
+    value = _validate_number(value, param_name)
+
     if value <= 0:
         raise ValidationError(f"{param_name} must be positive")
-    
-    return float(value)
+
+    return value
 
 
 def validate_non_negative_number(value: float, param_name: str = "value") -> float:
     """
     Validate that a number is non-negative.
-    
+
     Args:
         value: Value to validate
         param_name: Parameter name for error messages
-    
+
     Returns:
         float: Validated value
-    
+
     Raises:
         ValidationError: If value is negative
     """
-    # Reject booleans explicitly (bool is subclass of int in Python)
-    if isinstance(value, bool):
-        raise ValidationError(f"{param_name} must be a number, got bool")
-    
-    if not isinstance(value, (int, float)):
-        raise ValidationError(f"{param_name} must be a number")
-    
-    # Check for NaN and Inf
-    import math
-    if math.isnan(value) or math.isinf(value):
-        raise ValidationError(f"{param_name} must be a finite number, got {value}")
-    
+    value = _validate_number(value, param_name)
+
     if value < 0:
         raise ValidationError(f"{param_name} cannot be negative")
-    
-    return float(value)
+
+    return value
 
 
 def validate_range(value: float, min_val: float, max_val: float,
                   param_name: str = "value") -> float:
     """
     Validate that a value is within a specified range.
-    
+
     Args:
         value: Value to validate
         min_val: Minimum allowed value (inclusive)
         max_val: Maximum allowed value (inclusive)
         param_name: Parameter name for error messages
-    
+
     Returns:
         float: Validated value
-    
+
     Raises:
         ValidationError: If value is outside range
     """
-    # Reject booleans explicitly (bool is subclass of int in Python)
-    if isinstance(value, bool):
-        raise ValidationError(f"{param_name} must be a number, got bool")
-    
-    if not isinstance(value, (int, float)):
-        raise ValidationError(f"{param_name} must be a number")
-    
-    # Check for NaN and Inf
-    import math
-    if math.isnan(value) or math.isinf(value):
-        raise ValidationError(f"{param_name} must be a finite number, got {value}")
-    
+    value = _validate_number(value, param_name)
+
     if value < min_val or value > max_val:
         raise ValidationError(
             f"{param_name} must be between {min_val} and {max_val}, got {value}"
         )
-    
-    return float(value)
+
+    return value
 
 
 def validate_lens_name(name: str) -> str:
     """
     Validate lens name.
-    
+
     Args:
         name: Lens name to validate
-    
+
     Returns:
         str: Validated name (or "Untitled" if empty)
-    
+
     Raises:
         ValidationError: If name is invalid type
     """
     if not isinstance(name, str):
         raise ValidationError(f"Name must be a string, got {type(name)}")
-    
+
     name = name.strip()
-    
+
     if not name:
         return "Untitled"
-    
+
     if len(name) > 100:
         raise ValidationError("Name must be 100 characters or less")
-    
+
     return name
 
 
-def safe_float_conversion(value: Union[str, int, float], 
+def safe_float_conversion(value: Union[str, int, float],
                          default: float = 0.0,
                          param_name: str = "value") -> Tuple[bool, float]:
     """
     Safely convert a value to float.
-    
+
     Args:
         value: Value to convert
         default: Default value if conversion fails
         param_name: Parameter name for logging
-    
+
     Returns:
         Tuple[bool, float]: (success, converted_value)
     """
-    import math
-    
     # Reject booleans explicitly (bool is subclass of int in Python)
     if isinstance(value, bool):
         return False, default
-    
+
     if isinstance(value, (int, float)):
         result = float(value)
-        # Check for NaN and Inf
         if math.isnan(result) or math.isinf(result):
             return False, default
         return True, result
-    
+
     if isinstance(value, str):
         try:
             result = float(value)
-            # Check for NaN and Inf
             if math.isnan(result) or math.isinf(result):
                 return False, default
             return True, result
         except ValueError:
             return False, default
-    
+
     return False, default
 
 
-def validate_lens_parameters(radius1: float, radius2: float, 
+def validate_lens_parameters(radius1: float, radius2: float,
                             thickness: float, diameter: float,
                             refractive_index: float) -> dict:
     """
     Validate all lens parameters at once.
-    
+
     Args:
         radius1: Front surface radius (mm)
         radius2: Back surface radius (mm)
         thickness: Center thickness (mm)
         diameter: Lens diameter (mm)
         refractive_index: Refractive index
-    
+
     Returns:
         dict: Dictionary of validated parameters
-    
+
     Raises:
         ValidationError: If any parameter is invalid
     """
@@ -466,81 +422,82 @@ def validate_lens_parameters(radius1: float, radius2: float,
     }
 
 
-def check_physical_feasibility(radius1: float, radius2: float, 
+def check_physical_feasibility(radius1: float, radius2: float,
                                thickness: float, diameter: float) -> Tuple[bool, Optional[str]]:
     """
     Check if lens parameters are physically feasible.
-    
+
     Args:
         radius1: Front surface radius (mm)
         radius2: Back surface radius (mm)
         thickness: Center thickness (mm)
         diameter: Lens diameter (mm)
-    
+
     Returns:
         Tuple[bool, Optional[str]]: (is_feasible, warning_message)
     """
     warnings = []
-    
-    # Check if thickness is reasonable compared to radii
+
     min_radius = min(abs(radius1), abs(radius2))
+
+    # Check if thickness is reasonable compared to radii
     if thickness > 0.5 * min_radius:
         warnings.append(
             f"Thickness ({thickness:.1f}mm) is very large compared to "
             f"minimum radius ({min_radius:.1f}mm). Lens may be impractical."
         )
-    
+
     # Check if diameter is reasonable compared to radii
     if diameter > 0.8 * min_radius:
         warnings.append(
             f"Diameter ({diameter:.1f}mm) is large compared to "
             f"minimum radius ({min_radius:.1f}mm). Edge effects may be significant."
         )
-    
+
     # Check for very thin lenses relative to diameter
     if thickness < 0.02 * diameter:
         warnings.append(
             f"Lens is very thin ({thickness:.1f}mm) relative to "
             f"diameter ({diameter:.1f}mm). May be fragile."
         )
-    
+
     if warnings:
         return False, " ".join(warnings)
-    
+
     return True, None
 
 
-def validate_file_path(file_path: Union[str, Path], 
+def validate_file_path(file_path: Union[str, Path],
                        must_exist: bool = False,
                        create_parent: bool = False,
                        param_name: str = "file_path") -> Path:
     """
     Validate and sanitize file path.
-    
+
     Args:
         file_path: Path to validate
         must_exist: If True, file must already exist
         create_parent: If True, create parent directory if it doesn't exist
         param_name: Parameter name for error messages
-    
+
     Returns:
         Path: Validated and resolved Path object
-    
+
     Raises:
         ValidationError: If path is invalid
     """
     if not isinstance(file_path, (str, Path)):
         raise ValidationError(f"{param_name} must be a string or Path object")
-    
+
     try:
         path = Path(file_path).resolve()
     except (ValueError, RuntimeError) as e:
         raise ValidationError(f"Invalid {param_name}: {e}")
-    
+
     # Check if file must exist
     if must_exist and not path.exists():
         raise ValidationError(f"{param_name} does not exist: {path}")
-    
+
     # Check parent directory
     parent = path.parent
     if not parent.exists():
@@ -555,13 +512,13 @@ def validate_file_path(file_path: Union[str, Path],
             raise ValidationError(
                 f"Parent directory does not exist for {param_name}: {parent}"
             )
-    
+
     # Check if parent is writable (for new files)
     if not must_exist and not os.access(parent, os.W_OK):
         raise ValidationError(
             f"Parent directory is not writable for {param_name}: {parent}"
         )
-    
+
     return path
 
 
@@ -571,44 +528,44 @@ def validate_directory_path(dir_path: Union[str, Path],
                            param_name: str = "directory") -> Path:
     """
     Validate and sanitize directory path.
-    
+
     Args:
         dir_path: Directory path to validate
         must_exist: If True, directory must already exist
         create_if_missing: If True, create directory if it doesn't exist
         param_name: Parameter name for error messages
-    
+
     Returns:
         Path: Validated and resolved Path object
-    
+
     Raises:
         ValidationError: If path is invalid
     """
     if not isinstance(dir_path, (str, Path)):
         raise ValidationError(f"{param_name} must be a string or Path object")
-    
+
     try:
         path = Path(dir_path).resolve()
     except (ValueError, RuntimeError) as e:
         raise ValidationError(f"Invalid {param_name}: {e}")
-    
+
     if path.exists():
         if not path.is_dir():
             raise ValidationError(f"{param_name} exists but is not a directory: {path}")
     else:
         if must_exist and not create_if_missing:
             raise ValidationError(f"{param_name} does not exist: {path}")
-        
+
         if create_if_missing:
             try:
                 path.mkdir(parents=True, exist_ok=True)
             except (OSError, PermissionError) as e:
                 raise ValidationError(f"Cannot create {param_name}: {e}")
-    
+
     # Check if directory is accessible
     if path.exists() and not os.access(path, os.R_OK):
         raise ValidationError(f"{param_name} is not readable: {path}")
-    
+
     return path
 
 
@@ -617,47 +574,47 @@ def validate_json_file_path(file_path: Union[str, Path],
                            param_name: str = "JSON file") -> Path:
     """
     Validate JSON file path.
-    
+
     Args:
         file_path: Path to JSON file
         must_exist: If True, file must already exist
         param_name: Parameter name for error messages
-    
+
     Returns:
         Path: Validated and resolved Path object
-    
+
     Raises:
         ValidationError: If path is invalid or not a JSON file
     """
-    path = validate_file_path(file_path, must_exist=must_exist, 
+    path = validate_file_path(file_path, must_exist=must_exist,
                              create_parent=True, param_name=param_name)
-    
+
     if path.suffix.lower() != '.json':
         raise ValidationError(
             f"{param_name} must have .json extension, got: {path.suffix}"
         )
-    
+
     return path
 
 
 def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> dict:
     """
     Validate that a lens data dictionary has the expected schema.
-    
+
     Args:
         data: Dictionary containing lens data
         lens_index: Optional index for error messages
-    
+
     Returns:
         dict: The validated data dictionary
-    
+
     Raises:
         ValidationError: If schema is invalid
     """
     if not isinstance(data, dict):
         idx_str = f" at index {lens_index}" if lens_index is not None else ""
         raise ValidationError(f"Lens data{idx_str} must be a dictionary, got {type(data)}")
-    
+
     # Define required fields with their types
     required_fields = {
         'name': str,
@@ -667,7 +624,7 @@ def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> d
         'diameter': (int, float),
         'refractive_index': (int, float)
     }
-    
+
     # Optional fields with their types
     optional_fields = {
         'type': str,
@@ -678,19 +635,19 @@ def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> d
         'created_at': str,
         'modified_at': str
     }
-    
+
     # Check required fields exist and have correct type
     idx_str = f" at index {lens_index}" if lens_index is not None else ""
     for field, expected_type in required_fields.items():
         if field not in data:
             raise ValidationError(f"Missing required field '{field}' in lens data{idx_str}")
-        
+
         if not isinstance(data[field], expected_type):
             type_name = expected_type.__name__ if isinstance(expected_type, type) else 'number'
             raise ValidationError(
                 f"Field '{field}'{idx_str} must be {type_name}, got {type(data[field]).__name__}"
             )
-    
+
     # Check optional fields have correct type if present
     for field, expected_type in optional_fields.items():
         if field in data and not isinstance(data[field], expected_type):
@@ -698,20 +655,20 @@ def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> d
             raise ValidationError(
                 f"Field '{field}'{idx_str} must be {type_name}, got {type(data[field]).__name__}"
             )
-    
+
     return data
 
 
 def validate_lenses_json_schema(data: list) -> list:
     """
     Validate that JSON data conforms to lenses array schema.
-    
+
     Args:
         data: Parsed JSON data (should be list of lens dictionaries)
-    
+
     Returns:
         list: The validated data list
-    
+
     Raises:
         ValidationError: If schema is invalid
     """
@@ -719,9 +676,9 @@ def validate_lenses_json_schema(data: list) -> list:
         raise ValidationError(
             f"Lenses JSON root must be an array, got {type(data).__name__}"
         )
-    
+
     # Validate each lens in the array
     for i, lens_data in enumerate(data):
         validate_lens_data_schema(lens_data, lens_index=i)
-    
+
     return data
