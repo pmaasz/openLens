@@ -6,7 +6,7 @@ Performs wavelength-dependent ray tracing and dispersion analysis
 
 from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass
-from material_database import MaterialDatabase
+from .material_database import MaterialDatabase
 
 
 @dataclass

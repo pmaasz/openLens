@@ -2,10 +2,10 @@
 """Quick test of ray tracer"""
 
 import sys
-sys.path.insert(0, 'src')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lens_editor import Lens
-from ray_tracer import LensRayTracer, Ray
+from src.lens_editor import Lens
+from src.ray_tracer import LensRayTracer, Ray
 
 print("Testing Ray Tracer")
 print("="*60)

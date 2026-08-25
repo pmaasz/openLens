@@ -8,11 +8,11 @@ import os
 import unittest
 import tempfile
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lens_editor import Lens
-from lens_comparator import LensComparator, ComparisonResult
-from coating_designer import CoatingDesigner, CoatingLayer
+from src.lens_editor import Lens
+from src.lens_comparator import LensComparator, ComparisonResult
+from src.coating_designer import CoatingDesigner, CoatingLayer
 
 
 class TestLensComparator(unittest.TestCase):

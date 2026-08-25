@@ -25,7 +25,7 @@ class StartupDialog(QDialog):
         self._force_centered_count = 0
         
         # Load database items once
-        from src.gui.storage import LensStorage
+        from ..storage import LensStorage
         try:
             storage = LensStorage("openlens.db", lambda x: None)
             self._all_items = storage.load_lenses()
@@ -149,10 +149,10 @@ class StartupDialog(QDialog):
 
         if list_type == "lens":
             title = "Available Lenses"
-            from src.lens import Lens as TypeClass
+            from ...lens import Lens as TypeClass
         else:
             title = "Available Assemblies"
-            from src.optical_system import OpticalSystem as TypeClass
+            from ...optical_system import OpticalSystem as TypeClass
 
         # Update and show header
         self.list_header_label.setText(title)
@@ -318,8 +318,8 @@ class StartupDialog(QDialog):
                 with open(filename, 'r') as f:
                     data = json.load(f)
                 
-                from src.lens import Lens
-                from src.optical_system import OpticalSystem
+                from ...lens import Lens
+                from ...optical_system import OpticalSystem
                 
                 if list_type == "lens":
                     imported = Lens.from_dict(data)
@@ -348,7 +348,7 @@ class StartupDialog(QDialog):
         )
         
         if reply == QMessageBox.Yes:
-            from src.gui.storage import LensStorage
+            from ..storage import LensStorage
             try:
                 storage = LensStorage("openlens.db", lambda x: None)
                 remaining = [i for i in self._all_items if i != item]

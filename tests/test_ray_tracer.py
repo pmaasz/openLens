@@ -8,10 +8,10 @@ import sys
 import os
 import math
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lens_editor import Lens
-from ray_tracer import Ray, LensRayTracer
+from src.lens_editor import Lens
+from src.ray_tracer import Ray, LensRayTracer
 
 
 class TestRay(unittest.TestCase):

@@ -7,19 +7,9 @@ Side-by-side comparison of multiple lens designs
 from typing import List, Dict, Any
 from dataclasses import dataclass
 
-try:
-    from .lens import Lens
-    from .performance_metrics import PerformanceMetrics
-    from .aberrations import AberrationsCalculator
-except (ImportError, ValueError):
-    import sys
-    import os
-    sys.path.insert(0, os.path.dirname(__file__))
-    from lens import Lens
-    from performance_metrics import PerformanceMetrics
-    from aberrations import AberrationsCalculator
-
-
+from .lens import Lens
+from .performance_metrics import PerformanceMetrics
+from .aberrations import AberrationsCalculator
 @dataclass
 class ComparisonResult:
     """Results of lens comparison"""

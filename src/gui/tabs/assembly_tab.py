@@ -6,9 +6,9 @@ Multi-element optical system builder
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
                                QFormLayout, QDoubleSpinBox, QPushButton, 
                                QListWidget, QListWidgetItem)
-from src.gui.tabs.base_tab import BaseTab
-from src.gui.widgets.assembly_viz import AssemblyVisualizationWidget
-from src.optical_system import OpticalSystem, AirGap
+from .base_tab import BaseTab
+from ..widgets.assembly_viz import AssemblyVisualizationWidget
+from ...optical_system import OpticalSystem, AirGap
 
 
 class AssemblyTab(BaseTab):

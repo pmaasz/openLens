@@ -4,23 +4,10 @@ from typing import List, Tuple, Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-try:
-    from ..vector3 import vec3
-    from ..ray_tracer import Ray3D, SystemRayTracer3D
-    from ..optical_system import OpticalSystem
-    from ..constants import NM_TO_MM, WAVELENGTH_GREEN
-except ImportError:
-    # Fallback for direct execution
-    try:
-        from src.vector3 import vec3
-        from src.ray_tracer import Ray3D, SystemRayTracer3D
-        from src.optical_system import OpticalSystem
-        from src.constants import NM_TO_MM, WAVELENGTH_GREEN
-    except ImportError:
-        from vector3 import vec3
-        from ray_tracer import Ray3D, SystemRayTracer3D
-        from optical_system import OpticalSystem
-        from constants import NM_TO_MM, WAVELENGTH_GREEN
+from ..vector3 import vec3
+from ..ray_tracer import Ray3D, SystemRayTracer3D
+from ..optical_system import OpticalSystem
+from ..constants import NM_TO_MM, WAVELENGTH_GREEN
 
 class SpotDiagram:
     """

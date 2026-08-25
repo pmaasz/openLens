@@ -4,11 +4,11 @@ import sys
 import os
 import math
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lens import Lens
-from optical_system import OpticalSystem
-from ray_tracer import Ray3D, SystemRayTracer3D, Vector3, vec3, Matrix4x4
+from src.lens import Lens
+from src.optical_system import OpticalSystem
+from src.ray_tracer import Ray3D, SystemRayTracer3D, Vector3, vec3, Matrix4x4
 
 class TestSystemRayTracer3D(unittest.TestCase):
     def setUp(self):

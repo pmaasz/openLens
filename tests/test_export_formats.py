@@ -5,17 +5,17 @@ Functional tests for Export Enhancements
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import unittest
 import tempfile
 import json
-from lens_editor import Lens
-from export_formats import ZemaxExporter, PrescriptionExporter
+from src.lens_editor import Lens
+from src.export_formats import ZemaxExporter, PrescriptionExporter
 
 # Check if SVG exporter exists
 try:
-    from export_formats import SVGExporter
+    from src.export_formats import SVGExporter
     SVG_AVAILABLE = True
 except ImportError:
     SVG_AVAILABLE = False
@@ -104,7 +104,7 @@ class TestOpticStudioExport(unittest.TestCase):
     
     def test_export_opticstudio(self):
         """Test exporting to OpticStudio format"""
-        from export_formats import OpticStudioExporter
+        from src.export_formats import OpticStudioExporter
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
             filename = f.name

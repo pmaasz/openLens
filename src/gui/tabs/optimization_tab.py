@@ -10,19 +10,10 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
                                QComboBox, QTextEdit, QPushButton, QScrollArea, QLabel)
 from PySide6.QtCore import Slot, Signal, QThread
 
-try:
-    from .base_tab import BaseTab
-except ImportError:
-    from src.gui.tabs.base_tab import BaseTab
-
-try:
-    from ..widgets.lens_viz_2d import _2DVisualizationWidget
-    from ..widgets.assembly_viz import AssemblyVisualizationWidget
-except ImportError:
-    from src.gui.widgets.lens_viz_2d import _2DVisualizationWidget
-    from src.gui.widgets.assembly_viz import AssemblyVisualizationWidget
-
-from src.optimizer import OptimizationVariable, OptimizationTarget
+from .base_tab import BaseTab
+from ..widgets.lens_viz_2d import _2DVisualizationWidget
+from ..widgets.assembly_viz import AssemblyVisualizationWidget
+from ...optimizer import OptimizationVariable, OptimizationTarget
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +31,9 @@ class OptimizationWorker(QThread):
 
     def run(self):
         try:
-            from src.optical_system import OpticalSystem
-            try:
-                from src.global_optimizer import GlobalOptimizer
-            except ImportError:
-                from src.optimizer import LensOptimizer as GlobalOptimizer
-            
+            from ...optical_system import OpticalSystem
+            from ...global_optimizer import GlobalOptimizer
+
             # Setup system
             if isinstance(self.active_target, OpticalSystem):
                 system = copy.deepcopy(self.active_target)
@@ -241,7 +229,7 @@ class OptimizationTab(BaseTab):
             self._opt_vars_layout.addWidget(QLabel("No system selected"))
             return
 
-        from src.optical_system import OpticalSystem
+        from ...optical_system import OpticalSystem
         
         if isinstance(active_target, OpticalSystem):
             self._opt_lens_viz.setVisible(False)
@@ -310,10 +298,7 @@ class OptimizationTab(BaseTab):
         if not self._parent:
             return
 
-        try:
-            from src.global_optimizer import GlobalOptimizer
-        except ImportError:
-            from src.optimizer import LensOptimizer as GlobalOptimizer
+        from ...global_optimizer import GlobalOptimizer
 
         active_target = self._parent._current_assembly if self._parent._current_assembly else self._parent._current_lens
         if not active_target:
@@ -331,7 +316,7 @@ class OptimizationTab(BaseTab):
         
         # Collect variables from dynamic checkboxes
         variables = []
-        from src.optical_system import OpticalSystem
+        from ...optical_system import OpticalSystem
         
         if isinstance(active_target, OpticalSystem):
             for i, element in enumerate(active_target.elements):
@@ -404,7 +389,7 @@ class OptimizationTab(BaseTab):
     def _on_optimization_finished(self, result, variables):
         """Callback for finished optimization"""
         self._opt_is_running = False
-        from src.optical_system import OpticalSystem
+        from ...optical_system import OpticalSystem
         
         if result.success:
             text = f"Optimization Successful!\n\n"
@@ -450,7 +435,7 @@ class OptimizationTab(BaseTab):
         if not self._parent or not self._opt_pending_target:
             return
 
-        from src.optical_system import OpticalSystem
+        from ...optical_system import OpticalSystem
         if isinstance(self._opt_pending_target, OpticalSystem):
             self._parent._current_assembly = self._opt_pending_target
             self._parent._optical_system = self._opt_pending_target
@@ -471,7 +456,7 @@ class OptimizationTab(BaseTab):
             self._opt_results_text.setPlainText("No original state to reset to.")
             return
 
-        from src.optical_system import OpticalSystem
+        from ...optical_system import OpticalSystem
         if isinstance(self._opt_original_target, OpticalSystem):
             self._parent._current_assembly = self._opt_original_target
             self._parent._optical_system = self._opt_original_target

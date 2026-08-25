@@ -4,11 +4,11 @@ import sys
 import os
 import math
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lens import Lens
-from optical_system import OpticalSystem
-from optimizer import LensOptimizer, OptimizationVariable, OptimizationTarget
+from src.lens import Lens
+from src.optical_system import OpticalSystem
+from src.optimizer import LensOptimizer, OptimizationVariable, OptimizationTarget
 
 class TestAssemblyOptimization(unittest.TestCase):
     def setUp(self):

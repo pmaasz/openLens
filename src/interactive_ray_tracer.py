@@ -14,14 +14,8 @@ except ImportError:
     np = None
     HAS_NUMPY = False
 
-try:
-    from .vector3 import Vector3
-    from .ray_tracer import Ray3D, SystemRayTracer3D
-except ImportError:
-    from vector3 import Vector3
-    from ray_tracer import Ray3D, SystemRayTracer3D
-
-
+from .vector3 import Vector3
+from .ray_tracer import Ray3D, SystemRayTracer3D
 @dataclass
 class InteractiveRay:
     """Represents an interactive ray that can be manipulated by user."""

@@ -8,16 +8,8 @@ import struct
 import math
 from typing import List, Tuple, Optional, Any
 
-try:
-    from .vector3 import Vector3
-    from .geometry import LensGeometry
-except ImportError:
-    import sys
-    import os
-    sys.path.insert(0, os.path.dirname(__file__))
-    from vector3 import Vector3
-    from geometry import LensGeometry
-
+from .vector3 import Vector3
+from .geometry import LensGeometry
 class STLExporter:
     """Export lens geometry to STL format"""
     

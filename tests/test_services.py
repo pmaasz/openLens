@@ -14,11 +14,11 @@ import tempfile
 import shutil
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services import LensService, CalculationService, MaterialDatabaseService
-from lens_editor import Lens, LensManager
-from validation import ValidationError
+from src.services import LensService, CalculationService, MaterialDatabaseService
+from src.lens_editor import Lens, LensManager
+from src.validation import ValidationError
 
 
 class TestLensService(unittest.TestCase):

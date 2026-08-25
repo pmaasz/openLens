@@ -8,14 +8,8 @@ import math
 from typing import List, Optional, Tuple, Any
 
 # Import vector class
-try:
-    from .vector3 import Vector3, vec3
-    from .transform import Matrix4x4
-except ImportError:
-    from vector3 import Vector3, vec3
-    from transform import Matrix4x4
-
-
+from .vector3 import Vector3, vec3
+from .transform import Matrix4x4
 class OpticalIntersector:
     """Helper class for common optical intersection math."""
 
@@ -105,10 +99,7 @@ class OpticalIntersector:
 # Import numpy and polarization
 try:
     import numpy as np
-    try:
-        from .polarization import PolarizationCalculator
-    except ImportError:
-        from polarization import PolarizationCalculator
+    from .polarization import PolarizationCalculator
     HAS_POLARIZATION = True
 except ImportError:
     np = None
@@ -116,18 +107,11 @@ except ImportError:
     HAS_POLARIZATION = False
 
 # Import constants
-try:
-    from .constants import (
-        WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR,
-        DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_RADIUS_1,
-        EPSILON, MESH_RESOLUTION_HIGH, LARGE_NUMBER
-    )
-except ImportError:
-    from constants import (
-        WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR,
-        DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_RADIUS_1,
-        EPSILON, MESH_RESOLUTION_HIGH, LARGE_NUMBER
-    )
+from .constants import (
+    WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR,
+    DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_RADIUS_1,
+    EPSILON, MESH_RESOLUTION_HIGH, LARGE_NUMBER
+)
 
 
 class Ray:

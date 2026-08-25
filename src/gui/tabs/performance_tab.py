@@ -8,7 +8,7 @@ import logging
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
                                QFormLayout, QDoubleSpinBox, QComboBox,
                                QPushButton, QLabel, QTextEdit, QScrollArea, QMessageBox)
-from src.gui.tabs.base_tab import BaseTab
+from .base_tab import BaseTab
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class PerformanceTab(BaseTab):
         metrics_layout.addWidget(self._perf_metrics_text, 1)
         
         # Add the visualization widget
-        from src.gui.widgets import PerformanceVisualizationWidget
+        from ..widgets import PerformanceVisualizationWidget
         self._perf_viz = PerformanceVisualizationWidget()
         metrics_layout.addWidget(self._perf_viz, 2)
         
@@ -133,8 +133,8 @@ class PerformanceTab(BaseTab):
             return
             
         try:
-            from src.optical_system import OpticalSystem
-            from src.gui.dialogs.image_sim import ImageSimulationDialog
+            from ...optical_system import OpticalSystem
+            from ..dialogs.image_sim import ImageSimulationDialog
             
             if not isinstance(active_system, OpticalSystem):
                 system = OpticalSystem(name=active_system.name)
@@ -163,8 +163,8 @@ class PerformanceTab(BaseTab):
             return
         
         try:
-            from src.aberrations import AberrationsCalculator
-            from src.optical_system import OpticalSystem
+            from ...aberrations import AberrationsCalculator
+            from ...optical_system import OpticalSystem
             
             # Prepare parameters
             wavelengths = [400, 450, 550, 650, 700]
@@ -263,9 +263,9 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             return
             
         try:
-            from src.analysis.psf_mtf import ImageQualityAnalyzer
-            from src.optical_system import OpticalSystem
-            from src.gui.dialogs.analysis_plots import AnalysisPlotDialog
+            from ...analysis.psf_mtf import ImageQualityAnalyzer
+            from ...optical_system import OpticalSystem
+            from ..dialogs.analysis_plots import AnalysisPlotDialog
             
             # Wrap in system if needed
             if not isinstance(active_system, OpticalSystem):
@@ -323,9 +323,9 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             return
             
         try:
-            from src.aberrations import AberrationsCalculator
-            from src.optical_system import OpticalSystem
-            from src.gui.dialogs.analysis_plots import AnalysisPlotDialog
+            from ...aberrations import AberrationsCalculator
+            from ...optical_system import OpticalSystem
+            from ..dialogs.analysis_plots import AnalysisPlotDialog
             
             if not isinstance(active_system, OpticalSystem):
                 system = OpticalSystem(name=active_system.name)
@@ -381,9 +381,9 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             return
             
         try:
-            from src.aberrations import AberrationsCalculator
-            from src.optical_system import OpticalSystem
-            from src.gui.dialogs.analysis_plots import AnalysisPlotDialog
+            from ...aberrations import AberrationsCalculator
+            from ...optical_system import OpticalSystem
+            from ..dialogs.analysis_plots import AnalysisPlotDialog
             
             if not isinstance(active_system, OpticalSystem):
                 system = OpticalSystem(name=active_system.name)

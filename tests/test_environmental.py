@@ -4,12 +4,12 @@ import os
 import math
 
 # Add src to path
-sys.path.append(os.path.abspath('src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from analysis.environmental import EnvironmentalAnalyzer
-from optical_system import OpticalSystem
-from lens import Lens
-from material_database import get_material_database, MaterialProperties
+from src.analysis.environmental import EnvironmentalAnalyzer
+from src.optical_system import OpticalSystem
+from src.lens import Lens
+from src.material_database import get_material_database, MaterialProperties
 
 class TestEnvironmental(unittest.TestCase):
     def setUp(self):

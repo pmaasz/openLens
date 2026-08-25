@@ -7,15 +7,7 @@ Common lens designs and industry standard templates
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 
-try:
-    from .lens import Lens
-except (ImportError, ValueError):
-    import sys
-    import os
-    sys.path.insert(0, os.path.dirname(__file__))
-    from lens import Lens
-
-
+from .lens import Lens
 @dataclass
 class LensPreset:
     """A preset lens design"""

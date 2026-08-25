@@ -6,8 +6,8 @@ Simulation controls and visualization
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
                                QFormLayout, QSpinBox, QDoubleSpinBox, QComboBox,
                                QCheckBox, QPushButton, QLabel)
-from src.gui.tabs.base_tab import BaseTab
-from src.gui.widgets.simulation_viz import SimulationVisualizationWidget
+from .base_tab import BaseTab
+from ..widgets.simulation_viz import SimulationVisualizationWidget
 
 
 class SimulationTab(BaseTab):

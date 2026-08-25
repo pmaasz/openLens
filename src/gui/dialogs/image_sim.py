@@ -104,7 +104,7 @@ class ImageSimulationDialog(QDialog):
             return
             
         try:
-            from src.analysis.psf_mtf import ImageQualityAnalyzer
+            from ...analysis.psf_mtf import ImageQualityAnalyzer
             analyzer = ImageQualityAnalyzer(self._system)
             
             # Show "Calculating..." message

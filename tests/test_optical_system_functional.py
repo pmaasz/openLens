@@ -9,13 +9,13 @@ import unittest
 import json
 import tempfile
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from optical_system import (
+from src.optical_system import (
     OpticalSystem, LensElement, AirGap, 
     AchromaticDoubletDesigner, create_doublet, create_triplet
 )
-from lens_editor import Lens
+from src.lens_editor import Lens
 
 
 class TestOpticalSystem(unittest.TestCase):

@@ -7,9 +7,9 @@ import sys
 import os
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from validation import (
+from src.validation import (
     ValidationError,
     validate_radius,
     validate_thickness,
@@ -299,7 +299,7 @@ class TestSchemaValidation(unittest.TestCase):
     
     def test_validate_lens_data_schema_valid(self):
         """Test that valid lens data passes validation"""
-        from validation import validate_lens_data_schema
+        from src.validation import validate_lens_data_schema
         valid_data = {
             'name': 'Test Lens',
             'radius_of_curvature_1': 100.0,
@@ -315,7 +315,7 @@ class TestSchemaValidation(unittest.TestCase):
     
     def test_validate_lens_data_schema_missing_field(self):
         """Test detection of missing required fields"""
-        from validation import validate_lens_data_schema
+        from src.validation import validate_lens_data_schema
         invalid_data = {
             'name': 'Test Lens',
             # Missing radius_of_curvature_1
@@ -329,7 +329,7 @@ class TestSchemaValidation(unittest.TestCase):
             
     def test_validate_lens_data_schema_wrong_type(self):
         """Test detection of wrong value types"""
-        from validation import validate_lens_data_schema
+        from src.validation import validate_lens_data_schema
         invalid_data = {
             'name': 'Test Lens',
             'radius_of_curvature_1': "not a number",
@@ -343,7 +343,7 @@ class TestSchemaValidation(unittest.TestCase):
 
     def test_validate_lenses_json_schema_valid(self):
         """Test validation of lenses array"""
-        from validation import validate_lenses_json_schema
+        from src.validation import validate_lenses_json_schema
         valid_array = [
             {
                 'name': 'Lens 1',
@@ -367,7 +367,7 @@ class TestSchemaValidation(unittest.TestCase):
 
     def test_validate_lenses_json_schema_not_array(self):
         """Test rejection of non-array root"""
-        from validation import validate_lenses_json_schema
+        from src.validation import validate_lenses_json_schema
         with self.assertRaises(ValidationError):
             validate_lenses_json_schema({'not': 'an array'})
 

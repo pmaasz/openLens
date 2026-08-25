@@ -7,7 +7,7 @@ import sys
 import os
 
 # Add parent directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Try to import numpy
 try:
@@ -17,8 +17,8 @@ except ImportError:
     NUMPY_AVAILABLE = False
 
 if NUMPY_AVAILABLE:
-    from diffraction import DiffractionCalculator
-    from polarization import (PolarizationCalculator, PolarizationState, 
+    from src.diffraction import DiffractionCalculator
+    from src.polarization import (PolarizationCalculator, PolarizationState, 
                               JonesMatrices)
 
 

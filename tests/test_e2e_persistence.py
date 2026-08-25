@@ -13,11 +13,11 @@ import json
 import sqlite3
 
 # Adjust path to find src
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import DatabaseManager
-from optical_system import OpticalSystem, create_doublet
-from lens import Lens
+from src.database import DatabaseManager
+from src.optical_system import OpticalSystem, create_doublet
+from src.lens import Lens
 
 class TestEndToEndPersistence(unittest.TestCase):
 

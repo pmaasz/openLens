@@ -1,10 +1,6 @@
 import math
 from typing import List
-try:
-    from .vector3 import Vector3
-except ImportError:
-    from vector3 import Vector3
-
+from .vector3 import Vector3
 class Matrix4x4:
     """4x4 Matrix for 3D transformations."""
     __slots__ = ('m',)

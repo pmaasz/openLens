@@ -10,11 +10,11 @@ import sys
 import os
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from gui.optimization_controller import OptimizationController
-from optical_system import OpticalSystem
-from lens import Lens
+from src.optical_system import OpticalSystem
+from src.lens import Lens
 
 class TestOptimizationController(unittest.TestCase):
     def setUp(self):

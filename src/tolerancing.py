@@ -7,15 +7,9 @@ import statistics
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 
-try:
-    from .optical_system import OpticalSystem
-    from .analysis import SpotDiagram
-    from .vector3 import vec3
-except ImportError:
-    from optical_system import OpticalSystem
-    from analysis import SpotDiagram
-    from vector3 import vec3
-
+from .optical_system import OpticalSystem
+from .analysis import SpotDiagram
+from .vector3 import vec3
 class ToleranceType(enum.Enum):
     RADIUS_1 = "Radius 1"
     RADIUS_2 = "Radius 2"

@@ -5,11 +5,11 @@ import os
 
 # Add src to path
 # Use reliable path relative to project root
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src')))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from optical_system import OpticalSystem
-from lens import Lens
-from ray_tracer import SystemRayTracer, Ray
+from src.optical_system import OpticalSystem
+from src.lens import Lens
+from src.ray_tracer import SystemRayTracer, Ray
 
 class TestSystemRayTracer(unittest.TestCase):
     def setUp(self):

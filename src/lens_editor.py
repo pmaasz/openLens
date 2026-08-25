@@ -10,27 +10,13 @@ from typing import Optional, List
 # Setup module logger
 logger = logging.getLogger(__name__)
 
-try:
-    from .lens import Lens
-except (ImportError, ValueError):
-    try:
-        import sys
-        import os
-        sys.path.insert(0, os.path.dirname(__file__))
-        from lens import Lens
-    except ImportError:
-        pass  # Will be defined below if import fails, or we can raise error
-
+from .lens import Lens
 
 try:
     from .gui.storage import load_lenses, save_lenses
     STORAGE_AVAILABLE = True
-except (ImportError, ValueError):
-    try:
-        from gui.storage import load_lenses, save_lenses
-        STORAGE_AVAILABLE = True
-    except ImportError:
-        STORAGE_AVAILABLE = False
+except ImportError:
+    STORAGE_AVAILABLE = False
 
 
 class LensManager:

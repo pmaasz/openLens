@@ -5,11 +5,11 @@ Functional tests for Lens Comparison Mode
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import unittest
-from lens_editor import Lens
-from lens_comparator import LensComparator, ComparisonResult
+from src.lens_editor import Lens
+from src.lens_comparator import LensComparator, ComparisonResult
 
 
 class TestLensComparator(unittest.TestCase):

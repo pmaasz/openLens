@@ -11,10 +11,10 @@ import json
 import math
 
 # Adjust path to find src
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from optical_system import OpticalSystem, AchromaticDoubletDesigner, create_doublet, create_triplet, AirGap
-from lens import Lens
+from src.optical_system import OpticalSystem, AchromaticDoubletDesigner, create_doublet, create_triplet, AirGap
+from src.lens import Lens
 
 class TestOpticalSystem(unittest.TestCase):
 
