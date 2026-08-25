@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from ...lens import Lens
 
 
-class _2DVisualizationWidget(QWidget):
+class LensViz2DWidget(QWidget):
     """2D lens visualization"""
     
     # Signals for interactive manipulation

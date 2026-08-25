@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
 from PySide6.QtCore import Slot, Signal, QThread
 
 from .base_tab import BaseTab
-from ..widgets.lens_viz_2d import _2DVisualizationWidget
+from ..widgets.lens_viz_2d import LensViz2DWidget
 from ..widgets.assembly_viz import AssemblyVisualizationWidget
 from ...optimizer import OptimizationVariable, OptimizationTarget
 
@@ -212,7 +212,7 @@ class OptimizationTab(BaseTab):
         layout.addLayout(btn_layout)
         
         # Visualization (Dual Support)
-        self._opt_lens_viz = _2DVisualizationWidget()
+        self._opt_lens_viz = LensViz2DWidget()
         self._opt_asm_viz = AssemblyVisualizationWidget()
         self._opt_asm_viz.setVisible(False)
         layout.addWidget(self._opt_lens_viz)

@@ -575,13 +575,15 @@ Ctrl+6         Tolerancing
         """Duplicate current lens"""
         if not self._current_lens:
             return
-        
+
         data = self._current_lens.to_dict()
+        # Pop identity so the constructor mints a fresh uuid4 id, matching
+        # LensService.duplicate_lens; keeping the id would collide with the
+        # original on INSERT OR REPLACE.
+        data.pop('id', None)
         data['name'] = f"{self._current_lens.name} (copy)"
         new_lens = Lens.from_dict(data)
-        
-        new_lens.id = f"{new_lens.id}_copy"
-        
+
         self._lenses.append(new_lens)
         self._current_lens = new_lens
         self._lens_editor.load_lens(new_lens)

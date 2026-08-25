@@ -53,7 +53,7 @@ class TestRay(unittest.TestCase):
         ray = Ray(x=0, y=0, angle_rad=math.pi/2)
         
         # Ray hitting surface with normal at 90° - ray is perpendicular to surface
-        success = ray.refract(n1=1.0, n2=1.5, surface_normal_angle_rad=math.pi/2)
+        success = ray.refract(n1=1.0, n2=1.5, surface_normal_angle=math.pi/2)
         
         self.assertTrue(success)
         # At normal incidence, ray should not change direction
@@ -65,7 +65,7 @@ class TestRay(unittest.TestCase):
         
         # Refraction from air (n=1) to glass (n=1.5)
         # Surface normal pointing up (90 degrees)
-        success = ray.refract(n1=1.0, n2=1.5, surface_normal_angle_rad=math.pi/2)
+        success = ray.refract(n1=1.0, n2=1.5, surface_normal_angle=math.pi/2)
         
         self.assertTrue(success)
         
@@ -90,19 +90,19 @@ class TestRay(unittest.TestCase):
         # 1. Just below critical angle (should refract)
         angle_below = critical_angle_rad - 0.001
         ray = Ray(x=0, y=0, angle_rad=angle_below)
-        success = ray.refract(n1=n1, n2=n2, surface_normal_angle_rad=0)
+        success = ray.refract(n1=n1, n2=n2, surface_normal_angle=0)
         self.assertTrue(success, "Should refract just below critical angle")
         
         # 2. Exactly at critical angle (should refract/grazing)
         # Due to floating point precision, we test very close to it
         ray = Ray(x=0, y=0, angle_rad=critical_angle_rad)
-        success = ray.refract(n1=n1, n2=n2, surface_normal_angle_rad=0)
+        success = ray.refract(n1=n1, n2=n2, surface_normal_angle=0)
         self.assertTrue(success, "Should refract at critical angle (grazing transmission)")
         
         # 3. Just above critical angle (should reflect)
         angle_above = critical_angle_rad + 0.001
         ray = Ray(x=0, y=0, angle_rad=angle_above)
-        success = ray.refract(n1=n1, n2=n2, surface_normal_angle_rad=0)
+        success = ray.refract(n1=n1, n2=n2, surface_normal_angle=0)
         self.assertFalse(success, "Should reflect just above critical angle")
         
         # In unified intersector, TIR angle is calculated by vector reflection.

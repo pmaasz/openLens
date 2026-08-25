@@ -4,7 +4,7 @@ Lens visualization and editor widgets for the modern GUI
 """
 
 from .lens_editor import LensEditorWidget
-from .lens_viz_2d import _2DVisualizationWidget
+from .lens_viz_2d import LensViz2DWidget
 from .lens_viz_3d import _3DVisualizationWidget
 from .lens_viz_container import LensVisualizationWidget
 from .simulation_viz import SimulationVisualizationWidget
@@ -13,7 +13,7 @@ from .performance_viz import PerformanceVisualizationWidget
 
 __all__ = [
     'LensEditorWidget',
-    '_2DVisualizationWidget', 
+    'LensViz2DWidget', 
     '_3DVisualizationWidget',
     'LensVisualizationWidget',
     'SimulationVisualizationWidget',
