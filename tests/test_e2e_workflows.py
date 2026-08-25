@@ -10,16 +10,16 @@ import unittest
 import tempfile
 import json
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lens_editor import Lens
-from material_database import MaterialDatabase, get_material_database
-from optical_system import OpticalSystem, create_doublet
-from preset_library import PresetLibrary, get_preset_library
-from performance_metrics import PerformanceMetrics
-from lens_comparator import LensComparator
-from coating_designer import CoatingDesigner
-from aberrations import AberrationsCalculator
+from src.lens_editor import Lens
+from src.material_database import MaterialDatabase, get_material_database
+from src.optical_system import OpticalSystem, create_doublet
+from src.preset_library import PresetLibrary, get_preset_library
+from src.performance_metrics import PerformanceMetrics
+from src.lens_comparator import LensComparator
+from src.coating_designer import CoatingDesigner
+from src.aberrations import AberrationsCalculator
 
 
 class TestCompleteDesignWorkflow(unittest.TestCase):

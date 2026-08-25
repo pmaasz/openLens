@@ -6,9 +6,9 @@ import os
 # Add src to path
 sys.path.append(os.path.abspath('src'))
 
-from tolerancing import MonteCarloAnalyzer, ToleranceOperand, ToleranceType, InverseSensitivityAnalyzer, generate_yield_report
-from optical_system import OpticalSystem
-from lens import Lens
+from src.tolerancing import MonteCarloAnalyzer, ToleranceOperand, ToleranceType, InverseSensitivityAnalyzer, generate_yield_report
+from src.optical_system import OpticalSystem
+from src.lens import Lens
 
 class TestTolerancing(unittest.TestCase):
     def setUp(self):

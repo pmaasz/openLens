@@ -5,48 +5,14 @@ Provides lens data persistence functionality for the GUI.
 """
 
 import logging
-from typing import List, Optional, Callable, Any, TYPE_CHECKING
+from typing import List, Optional, Callable, Any
 
 # Configure module logger
 logger = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    from ..lens import Lens
-    from ..optical_system import OpticalSystem
-else:
-    # Import Lens model (Runtime)
-    try:
-        from ..lens import Lens
-    except ImportError:
-        try:
-            from lens import Lens
-        except ImportError:
-            logger.error("Could not import Lens model")
-            class Lens:
-                """Fallback Lens class."""
-                pass
-
-    # Import OpticalSystem model (Runtime)
-    try:
-        from ..optical_system import OpticalSystem
-    except ImportError:
-        try:
-            from optical_system import OpticalSystem
-        except ImportError:
-            logger.warning("Could not import OpticalSystem model")
-            class OpticalSystem:
-                """Fallback OpticalSystem class."""
-                pass
-
-    # Import DatabaseManager (Runtime)
-    try:
-        from ..database import DatabaseManager
-    except ImportError:
-        try:
-            from database import DatabaseManager
-        except ImportError:
-            logger.warning("Could not import DatabaseManager")
-            DatabaseManager = None
+from ..lens import Lens
+from ..optical_system import OpticalSystem
+from ..database import DatabaseManager
 
 
 class LensStorage:

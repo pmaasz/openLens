@@ -6,7 +6,7 @@ import os
 # Add src to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from material_database import MaterialDatabase, MaterialProperties
+from src.material_database import MaterialDatabase, MaterialProperties
 
 class TestMaterialCache(unittest.TestCase):
     

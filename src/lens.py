@@ -3,35 +3,17 @@ from typing import Optional, Dict, Any
 import math
 import uuid
 
-try:
-    from .constants import (
-        DEFAULT_RADIUS_1, DEFAULT_RADIUS_2, DEFAULT_THICKNESS, DEFAULT_DIAMETER,
-        REFRACTIVE_INDEX_BK7, EPSILON, LARGE_NUMBER
-    )
-except ImportError:
-    # Fallback constants if constants module not found
-    DEFAULT_RADIUS_1 = 100.0
-    DEFAULT_RADIUS_2 = -100.0
-    DEFAULT_THICKNESS = 5.0
-    DEFAULT_DIAMETER = 50.0
-    REFRACTIVE_INDEX_BK7 = 1.5168
-    EPSILON = 1e-10
-    LARGE_NUMBER = 1e10
+from .constants import (
+    DEFAULT_RADIUS_1, DEFAULT_RADIUS_2, DEFAULT_THICKNESS, DEFAULT_DIAMETER,
+    REFRACTIVE_INDEX_BK7, EPSILON, LARGE_NUMBER
+)
 
-# Try to import material database (optional)
-get_material_database = None
-MATERIAL_DB_AVAILABLE = False
-
+# Material database is an optional dependency
 try:
     from .material_database import get_material_database
     MATERIAL_DB_AVAILABLE = True
-except (ImportError, ValueError):
-    # Fallback for direct script execution
-    try:
-        from material_database import get_material_database
-        MATERIAL_DB_AVAILABLE = True
-    except ImportError:
-        MATERIAL_DB_AVAILABLE = False
+except ImportError:
+    MATERIAL_DB_AVAILABLE = False
 
 
 class Lens:

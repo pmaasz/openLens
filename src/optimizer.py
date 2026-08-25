@@ -10,26 +10,11 @@ from dataclasses import dataclass, field
 import copy
 from concurrent.futures import ProcessPoolExecutor
 
-try:
-    from .lens_editor import Lens
-    from .optical_system import OpticalSystem
-    from .aberrations import AberrationsCalculator
-    from .analysis import SpotDiagram
-    from .analysis.beam_synthesis import PSFCalculator, WavefrontSensor, NUMPY_AVAILABLE
-except (ImportError, ValueError):
-    import sys
-    import os
-    sys.path.insert(0, os.path.dirname(__file__))
-    from lens_editor import Lens
-    from optical_system import OpticalSystem
-    from aberrations import AberrationsCalculator
-    # Local imports for analysis modules might fail if not in package context
-    try:
-        from analysis import SpotDiagram
-        from analysis.beam_synthesis import PSFCalculator, WavefrontSensor, NUMPY_AVAILABLE
-    except ImportError:
-        # Fallback if analysis package structure is different
-        pass
+from .lens_editor import Lens
+from .optical_system import OpticalSystem
+from .aberrations import AberrationsCalculator
+from .analysis import SpotDiagram
+from .analysis.beam_synthesis import PSFCalculator, WavefrontSensor, NUMPY_AVAILABLE
 
 
 @dataclass

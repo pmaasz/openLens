@@ -9,11 +9,20 @@ import logging
 from typing import Optional, Dict, List, Any, TYPE_CHECKING
 from datetime import datetime
 
-logger = logging.getLogger(__name__)
+from .lens import Lens
+from .validation import (
+    validate_radius, validate_thickness,
+    validate_diameter, validate_refractive_index,
+    ValidationError
+)
+from .aberrations import AberrationsCalculator, analyze_lens_quality
+from .ray_tracer import LensRayTracer, SystemRayTracer
+from .material_database import get_material_database
 
 if TYPE_CHECKING:
-    from .lens import Lens
     from .optical_system import OpticalSystem
+
+logger = logging.getLogger(__name__)
 
 
 class LensService:
@@ -68,11 +77,6 @@ class LensService:
         Returns:
             Lens: Created lens instance
         """
-        try:
-            from .lens import Lens
-        except ImportError:
-            from lens import Lens
-        
         # Get refractive index from material database if available
         if self.material_db and hasattr(self.material_db, 'get_material'):
             mat = self.material_db.get_material(material)
@@ -113,11 +117,6 @@ class LensService:
         Returns:
             bool: Success status
         """
-        from validation import (
-            validate_radius, validate_thickness, 
-            validate_diameter, validate_refractive_index,
-            ValidationError
-        )
         
         try:
             # Validate before updating
@@ -232,11 +231,6 @@ class LensService:
         Returns:
             Duplicated lens instance
         """
-        try:
-            from .lens import Lens
-        except ImportError:
-            from lens import Lens
-        
         data = lens.to_dict()
         data.pop('id')
         data.pop('created_at')
@@ -263,27 +257,9 @@ class CalculationService:
     
     def __init__(self):
         """Initialize calculation service"""
-        self._aberrations_available = False
-        self._ray_tracer_available = False
-        
-        # Try to import optional calculation modules
-        try:
-            try:
-                from .aberrations import AberrationsCalculator
-            except ImportError:
-                from aberrations import AberrationsCalculator
-            self._aberrations_available = True
-        except ImportError:
-            pass
-        
-        try:
-            try:
-                from .ray_tracer import LensRayTracer, SystemRayTracer
-            except ImportError:
-                from ray_tracer import LensRayTracer, SystemRayTracer
-            self._ray_tracer_available = True
-        except ImportError:
-            pass
+        # Calculation modules are core dependencies and imported at module level
+        self._aberrations_available = True
+        self._ray_tracer_available = True
     
     def calculate_aberrations(self, lens: 'Lens', 
                             aperture: Optional[float] = None,
@@ -393,7 +369,6 @@ class CalculationService:
             return None
         
         try:
-            from aberrations import analyze_lens_quality
             return analyze_lens_quality(lens)
         except Exception as e:
             logger.error("Error assessing quality: %s", e)
@@ -418,15 +393,8 @@ class MaterialDatabaseService:
     
     def __init__(self):
         """Initialize material database service"""
-        self.db = None
-        self._available = False
-        
-        try:
-            from material_database import get_material_database
-            self.db = get_material_database()
-            self._available = True
-        except ImportError:
-            pass
+        self.db = get_material_database()
+        self._available = True
     
     def is_available(self) -> bool:
         """Check if material database is available"""

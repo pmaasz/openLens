@@ -4,16 +4,9 @@ from typing import Optional
 import numpy as np
 
 # Import internal dependencies
-try:
-    from ..vector3 import vec3
-    from ..ray_tracer import Ray3D, SystemRayTracer3D
-    from ..optical_system import OpticalSystem
-except ImportError:
-    # Fallback for direct execution
-    from src.vector3 import vec3
-    from src.ray_tracer import Ray3D, SystemRayTracer3D
-    from src.optical_system import OpticalSystem
-
+from ..vector3 import vec3
+from ..ray_tracer import Ray3D, SystemRayTracer3D
+from ..optical_system import OpticalSystem
 logger = logging.getLogger(__name__)
 
 class WavefrontError:

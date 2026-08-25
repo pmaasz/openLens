@@ -14,13 +14,9 @@ class EditorTab(BaseTab):
         layout = QVBoxLayout(self)
         
         # This will use the extracted LensEditorWidget
-        try:
-            from src.gui.widgets import LensEditorWidget
-            self._editor = LensEditorWidget()
-            layout.addWidget(self._editor)
-        except ImportError:
-            # Fallback - inline widget will be used
-            pass
+        from ..widgets import LensEditorWidget
+        self._editor = LensEditorWidget()
+        layout.addWidget(self._editor)
     
     def load_lens(self, lens):
         """Load lens into editor"""

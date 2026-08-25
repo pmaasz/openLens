@@ -7,14 +7,7 @@ Supports AP203/AP214 geometry (Manifold Solid B-Rep).
 from datetime import datetime
 from typing import List, Any
 
-try:
-    from ..geometry import LensGeometry
-except (ImportError, ValueError):
-    import sys
-    import os
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from src.geometry import LensGeometry
-
+from ..geometry import LensGeometry
 class StepWriter:
     """Helper to generate STEP file content."""
     

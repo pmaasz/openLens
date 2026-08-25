@@ -8,9 +8,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 
 try:
     import numpy as np
-    from ray_tracer import Ray3D, HAS_POLARIZATION
-    from vector3 import vec3, Vector3
-    from polarization import PolarizationCalculator
+    from src.ray_tracer import Ray3D, HAS_POLARIZATION
+    from src.vector3 import vec3, Vector3
+    from src.polarization import PolarizationCalculator
     HAS_NUMPY = True
     print(f"DEBUG: numpy imported successfully. HAS_POLARIZATION={HAS_POLARIZATION}")
 except ImportError as e:

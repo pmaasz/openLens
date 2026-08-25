@@ -6,7 +6,7 @@ import sys
 import os
 
 # Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Try to import pytest
 try:
@@ -16,7 +16,7 @@ except ImportError:
     PYTEST_AVAILABLE = False
     import unittest
 
-from preset_lenses import PresetLensLibrary, get_preset_library
+from src.preset_lenses import PresetLensLibrary, get_preset_library
 
 
 class TestPresetLensLibrary:

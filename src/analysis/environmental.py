@@ -1,16 +1,7 @@
 import copy
 
-try:
-    from ..optical_system import OpticalSystem
-    from ..material_database import get_material_database
-except ImportError:
-    import sys
-    import os
-    # Assuming we are in src/analysis/environmental.py, go up two levels to reach src parent
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-    from src.optical_system import OpticalSystem
-    from src.material_database import get_material_database
-
+from ..optical_system import OpticalSystem
+from ..material_database import get_material_database
 class EnvironmentalAnalyzer:
     """
     Analyzes optical system performance under environmental changes 

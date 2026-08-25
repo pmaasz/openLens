@@ -3,11 +3,12 @@ Functional tests for Interactive Ray Tracer, Image Simulator, and Mechanical Des
 """
 
 import unittest
+import os
 import sys
 from pathlib import Path
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Try to import optional dependencies
 try:
@@ -18,9 +19,9 @@ except ImportError:
     OPTIONAL_DEPS_AVAILABLE = False
 
 if OPTIONAL_DEPS_AVAILABLE:
-    from interactive_ray_tracer import InteractiveRayTracer, InteractiveRay, RayManipulator
-    from image_simulator import ImageSimulator
-    from mechanical_designer import MechanicalDesigner, LensMount, LensCell, Spacer
+    from src.interactive_ray_tracer import InteractiveRayTracer, InteractiveRay, RayManipulator
+    from src.image_simulator import ImageSimulator
+    from src.mechanical_designer import MechanicalDesigner, LensMount, LensCell, Spacer
 
 
 # Mock optical system for testing

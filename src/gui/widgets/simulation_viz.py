@@ -129,7 +129,7 @@ class SimulationVisualizationWidget(QWidget):
     
     def run_simulation(self, lens_or_system, num_rays=11, angle=0, source_height=0, show_ghosts=False, wavelength=550):
         """Run ray tracing simulation"""
-        from src.optical_system import OpticalSystem
+        from ...optical_system import OpticalSystem
         if isinstance(lens_or_system, OpticalSystem):
             self._system = lens_or_system
             self._lens = None
@@ -144,12 +144,12 @@ class SimulationVisualizationWidget(QWidget):
         self._ray_color = self.wavelength_to_color(wavelength)
         
         try:
-            from src.ray_tracer import LensRayTracer, Ray
+            from ...ray_tracer import LensRayTracer, Ray
             
             # Use appropriate tracer
             if self._system:
                 # OpticalSystem has multiple elements
-                from src.ray_tracer import SystemRayTracer
+                from ...ray_tracer import SystemRayTracer
                 tracer = SystemRayTracer(self._system)
                 diameter = self._system.elements[0].lens.diameter if self._system.elements else 25.0
             else:
@@ -185,7 +185,7 @@ class SimulationVisualizationWidget(QWidget):
     def _run_ghost_analysis(self, system, tracer):
         """Run ghost analysis for 2nd order reflections"""
         try:
-            from src.analysis.ghost import GhostAnalyzer
+            from ...analysis.ghost import GhostAnalyzer
             analyzer = GhostAnalyzer(system)
             ghosts = analyzer.trace_ghosts(num_rays=3)
             

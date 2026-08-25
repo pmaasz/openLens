@@ -11,9 +11,9 @@ import tempfile
 import math
 
 # Adjust path to find src
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from optical_system import OpticalSystem, create_doublet
+from src.optical_system import OpticalSystem, create_doublet
 try:
     from io.step_export import StepExporter
 except ImportError:
@@ -27,7 +27,7 @@ except ImportError:
         sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src', 'io'))
         from step_export import StepExporter
 
-from lens import Lens
+from src.lens import Lens
 
 class TestStepExporterMultiBody(unittest.TestCase):
 

@@ -8,31 +8,15 @@ import math
 from typing import Optional, Dict, Any, List, Tuple
 
 # Import ray tracer for exact calculations
-try:
-    from .ray_tracer import LensRayTracer, Ray
-except ImportError:
-    # Handle circular imports or running as script
-    try:
-        from ray_tracer import LensRayTracer, Ray
-    except ImportError:
-        LensRayTracer = None
-        Ray = None
+from .ray_tracer import LensRayTracer, Ray
 
 # Import constants
-try:
-    from .constants import (
-        SPHERICAL_ABERRATION_EXCELLENT,
-        QUALITY_EXCELLENT_THRESHOLD, QUALITY_GOOD_THRESHOLD, QUALITY_FAIR_THRESHOLD,
-        WAVELENGTH_GREEN,
-        EPSILON,
-    )
-except ImportError:
-    from constants import (
-        SPHERICAL_ABERRATION_EXCELLENT,
-        QUALITY_EXCELLENT_THRESHOLD, QUALITY_GOOD_THRESHOLD, QUALITY_FAIR_THRESHOLD,
-        WAVELENGTH_GREEN,
-        EPSILON,
-    )
+from .constants import (
+    SPHERICAL_ABERRATION_EXCELLENT,
+    QUALITY_EXCELLENT_THRESHOLD, QUALITY_GOOD_THRESHOLD, QUALITY_FAIR_THRESHOLD,
+    WAVELENGTH_GREEN,
+    EPSILON,
+)
 
 # Airy disk diameter factor (not radius)
 # The Airy disk DIAMETER = 2.44 * λ * f/#

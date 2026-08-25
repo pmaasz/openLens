@@ -7,8 +7,8 @@ import os
 # Add src to path
 sys.path.append(os.path.abspath('src'))
 
-from optical_node import OpticalNode
-from vector3 import vec3
+from src.optical_node import OpticalNode
+from src.vector3 import vec3
 
 class TestOpticalNodeRotation(unittest.TestCase):
     def test_rotation_transform(self):

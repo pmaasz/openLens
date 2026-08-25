@@ -9,23 +9,13 @@ import os
 from pathlib import Path
 from typing import Union, Tuple, Optional
 
-# Try relative import first (for package), fall back to absolute
-try:
-    from .constants import (
-        MIN_RADIUS_OF_CURVATURE, MAX_RADIUS_OF_CURVATURE,
-        MIN_THICKNESS, MAX_THICKNESS,
-        MIN_DIAMETER, MAX_DIAMETER,
-        MIN_REFRACTIVE_INDEX, MAX_REFRACTIVE_INDEX,
-        EPSILON
-    )
-except ImportError:
-    from constants import (
-        MIN_RADIUS_OF_CURVATURE, MAX_RADIUS_OF_CURVATURE,
-        MIN_THICKNESS, MAX_THICKNESS,
-        MIN_DIAMETER, MAX_DIAMETER,
-        MIN_REFRACTIVE_INDEX, MAX_REFRACTIVE_INDEX,
-        EPSILON
-    )
+from .constants import (
+    MIN_RADIUS_OF_CURVATURE, MAX_RADIUS_OF_CURVATURE,
+    MIN_THICKNESS, MAX_THICKNESS,
+    MIN_DIAMETER, MAX_DIAMETER,
+    MIN_REFRACTIVE_INDEX, MAX_REFRACTIVE_INDEX,
+    EPSILON
+)
 
 
 class ValidationError(Exception):

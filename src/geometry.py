@@ -6,13 +6,8 @@ Used by exporters (SVG, STL, STEP) and visualization modules.
 import math
 from typing import List, Tuple, Dict, Any
 
-try:
-    from .constants import EPSILON
-    from .lens import Lens
-except (ImportError, ValueError):
-    from constants import EPSILON
-    from lens import Lens
-
+from .constants import EPSILON
+from .lens import Lens
 class LensGeometry:
     """Centralized logic for lens surface profiles and 3D meshes."""
     

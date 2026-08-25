@@ -5,12 +5,12 @@ Functional tests for Performance Metrics Dashboard
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import unittest
-from lens_editor import Lens
-from optical_system import OpticalSystem
-from performance_metrics import PerformanceMetrics
+from src.lens_editor import Lens
+from src.optical_system import OpticalSystem
+from src.performance_metrics import PerformanceMetrics
 
 
 class TestPerformanceMetrics(unittest.TestCase):

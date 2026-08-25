@@ -7,12 +7,12 @@ import sys
 import os
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from preset_library import PresetLibrary, LensPreset, get_preset_library
-from performance_metrics import PerformanceMetrics
-from lens_editor import Lens
-from optical_system import create_doublet
+from src.preset_library import PresetLibrary, LensPreset, get_preset_library
+from src.performance_metrics import PerformanceMetrics
+from src.lens_editor import Lens
+from src.optical_system import create_doublet
 
 
 class TestPresetLibrary(unittest.TestCase):

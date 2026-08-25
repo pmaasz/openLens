@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Quick test of aberrations calculator"""
 
+import os
 import sys
-sys.path.insert(0, 'src')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lens_editor import Lens
-from aberrations import AberrationsCalculator, analyze_lens_quality
+from src.lens_editor import Lens
+from src.aberrations import AberrationsCalculator, analyze_lens_quality
 
 # Create a test lens
 lens = Lens(

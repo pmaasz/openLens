@@ -9,21 +9,9 @@ except ImportError:
     np = None # Dummy
 
 # Import dependencies
-try:
-    from ..optical_system import OpticalSystem
-    from . import SpotDiagram
-    from .diffraction_psf import DiffractionPSFCalculator, WavefrontSensor
-except ImportError:
-    # Fallback
-    try:
-        from src.optical_system import OpticalSystem
-        from src.analysis import SpotDiagram
-        from src.analysis.diffraction_psf import DiffractionPSFCalculator, WavefrontSensor
-    except ImportError:
-        # Last resort
-        from optical_system import OpticalSystem
-        from analysis import SpotDiagram
-        from analysis.diffraction_psf import DiffractionPSFCalculator, WavefrontSensor
+from ..optical_system import OpticalSystem
+from . import SpotDiagram
+from .diffraction_psf import DiffractionPSFCalculator, WavefrontSensor
 
 class ImageQualityAnalyzer:
     """

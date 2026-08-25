@@ -11,21 +11,10 @@ except ImportError:
     class np:
         ndarray = Any
         
-try:
-    from ..vector3 import vec3
-    from ..ray_tracer import Ray3D, LensRayTracer3D, SystemRayTracer3D
-    from ..optical_system import OpticalSystem
-    from ..constants import NM_TO_MM, WAVELENGTH_GREEN
-except ImportError:
-    # Fallback for direct execution
-    import sys
-    import os
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    from vector3 import vec3
-    from ray_tracer import Ray3D, LensRayTracer3D, SystemRayTracer3D
-    from optical_system import OpticalSystem
-    from constants import NM_TO_MM, WAVELENGTH_GREEN
-
+from ..vector3 import vec3
+from ..ray_tracer import Ray3D, LensRayTracer3D, SystemRayTracer3D
+from ..optical_system import OpticalSystem
+from ..constants import NM_TO_MM, WAVELENGTH_GREEN
 @dataclass
 class GaussianBeam:
     """

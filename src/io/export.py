@@ -5,18 +5,9 @@ Generates SVG drawings of optical components and systems.
 
 from datetime import datetime
 
-try:
-    from ..optical_system import OpticalSystem
-    from ..lens import Lens
-    from ..geometry import LensGeometry
-except (ImportError, ValueError):
-    import sys
-    import os
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from src.optical_system import OpticalSystem
-    from src.lens import Lens
-    from src.geometry import LensGeometry
-
+from ..optical_system import OpticalSystem
+from ..lens import Lens
+from ..geometry import LensGeometry
 class ISO10110Generator:
     """Generates ISO 10110 compliant SVG drawings."""
     

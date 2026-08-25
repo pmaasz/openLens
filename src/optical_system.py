@@ -11,21 +11,10 @@ import json
 import uuid
 from datetime import datetime
 
-try:
-    from .lens import Lens
-    from .material_database import get_material_database
-    from .optical_node import OpticalElement, OpticalAssembly
-    from .vector3 import vec3
-except (ImportError, ValueError):
-    import sys
-    import os
-    sys.path.insert(0, os.path.dirname(__file__))
-    from lens import Lens
-    from material_database import get_material_database
-    from optical_node import OpticalElement, OpticalAssembly
-    from vector3 import vec3
-
-
+from .lens import Lens
+from .material_database import get_material_database
+from .optical_node import OpticalElement, OpticalAssembly
+from .vector3 import vec3
 @dataclass
 class LensElement:
     """A lens element in an optical system"""

@@ -6,10 +6,10 @@ import os
 # Add src to path
 sys.path.append(os.path.abspath('src'))
 
-from optical_node import OpticalNode, OpticalElement, OpticalAssembly
-from optical_system import OpticalSystem, LensElement
-from lens import Lens
-from vector3 import vec3
+from src.optical_node import OpticalNode, OpticalElement, OpticalAssembly
+from src.optical_system import OpticalSystem, LensElement
+from src.lens import Lens
+from src.vector3 import vec3
 
 class TestOpticalNode(unittest.TestCase):
     def test_node_hierarchy(self):

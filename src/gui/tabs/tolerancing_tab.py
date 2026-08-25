@@ -12,12 +12,8 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
                                QProgressBar, QMessageBox, QDialog)
 from PySide6.QtCore import Signal, Qt, QThread
 
-try:
-    from .base_tab import BaseTab
-except ImportError:
-    from src.gui.tabs.base_tab import BaseTab
-
-from src.tolerancing import MonteCarloAnalyzer, InverseSensitivityAnalyzer, ToleranceOperand, ToleranceType
+from .base_tab import BaseTab
+from ...tolerancing import MonteCarloAnalyzer, InverseSensitivityAnalyzer, ToleranceOperand, ToleranceType
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +29,7 @@ class MonteCarloWorker(QThread):
         self.criterion = criterion
 
     def run(self):
-        from src.optical_system import OpticalSystem
+        from ...optical_system import OpticalSystem
         try:
             system = OpticalSystem(name="Tolerancing")
             system.add_lens(copy.deepcopy(self.current_lens))
@@ -69,7 +65,7 @@ class InverseSensitivityWorker(QThread):
         self.criterion = criterion
 
     def run(self):
-        from src.optical_system import OpticalSystem
+        from ...optical_system import OpticalSystem
         try:
             system = OpticalSystem(name="Tolerancing")
             system.add_lens(copy.deepcopy(self.current_lens))

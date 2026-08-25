@@ -7,14 +7,14 @@ import sys
 import os
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from optimizer import (
+from src.optimizer import (
     OptimizationVariable, OptimizationTarget, MeritFunction,
     LensOptimizer, create_doublet_optimizer, OptimizationResult
 )
-from optical_system import OpticalSystem, create_doublet
-from lens_editor import Lens
+from src.optical_system import OpticalSystem, create_doublet
+from src.lens_editor import Lens
 
 
 class TestOptimizationVariable(unittest.TestCase):

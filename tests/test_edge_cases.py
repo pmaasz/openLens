@@ -10,11 +10,11 @@ import sys
 import os
 
 # Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lens_editor import Lens
-from ray_tracer import Ray, LensRayTracer
-from aberrations import AberrationsCalculator
+from src.lens_editor import Lens
+from src.ray_tracer import Ray, LensRayTracer
+from src.aberrations import AberrationsCalculator
 
 
 class TestExtremeInputValues(unittest.TestCase):

@@ -5,10 +5,10 @@ Test optimization engine
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from optical_system import create_doublet
-from optimizer import (
+from src.optical_system import create_doublet
+from src.optimizer import (
     OptimizationVariable, OptimizationTarget, 
     LensOptimizer, create_doublet_optimizer
 )
@@ -21,8 +21,8 @@ def main():
     
     # Create initial doublet design - deliberately suboptimal
     print("Creating initial (suboptimal) achromatic doublet...")
-    from lens_editor import Lens
-    from optical_system import OpticalSystem
+    from src.lens_editor import Lens
+    from src.optical_system import OpticalSystem
     
     # Create a suboptimal doublet to show improvement
     crown = Lens(name="Crown", radius_of_curvature_1=80, radius_of_curvature_2=-120,

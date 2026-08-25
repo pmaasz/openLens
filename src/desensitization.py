@@ -6,18 +6,9 @@ Optimizes optical systems for manufacturing yield by minimizing sensitivity to t
 import math
 from typing import List, Dict, Optional, Callable
 
-try:
-    from .optimizer import LensOptimizer, OptimizationResult, OptimizationTarget, MeritFunction
-    from .optical_system import OpticalSystem
-    from .tolerancing import ToleranceOperand, ToleranceType
-except (ImportError, ValueError):
-    import sys
-    import os
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from src.optimizer import LensOptimizer, OptimizationResult, OptimizationTarget, MeritFunction
-    from src.optical_system import OpticalSystem
-    from src.tolerancing import ToleranceOperand, ToleranceType
-
+from .optimizer import LensOptimizer, OptimizationResult, OptimizationTarget, MeritFunction
+from .optical_system import OpticalSystem
+from .tolerancing import ToleranceOperand, ToleranceType
 class RobustMeritFunction(MeritFunction):
     """
     Wraps a standard MeritFunction to add sensitivity penalties.
