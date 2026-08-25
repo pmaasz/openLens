@@ -4,6 +4,8 @@ Side-by-side comparison of original and simulated image
 """
 
 import os
+from typing import TYPE_CHECKING, Optional
+
 import numpy as np
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                                QFileDialog, QMessageBox)
@@ -11,10 +13,22 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+    from PySide6.QtWidgets import QWidget
+    from ...optical_system import OpticalSystem
+
 class ImageSimulationDialog(QDialog):
     """Dialog for image simulation with side-by-side comparison."""
     
-    def __init__(self, system, parent=None):
+    def __init__(self, system: "OpticalSystem", parent: Optional["QWidget"] = None) -> None:
+        """Initialize the dialog for simulating an image through a system.
+
+        Args:
+            system: Optical system whose PSF is used for the simulation.
+            parent: Optional parent widget; its ``_theme`` attribute selects
+                the figure styling ('dark' by default).
+        """
         super().__init__(parent)
         self._system = system
         self._original_image = None
@@ -63,7 +77,8 @@ class ImageSimulationDialog(QDialog):
         self._ax_sim = self._setup_axes(self.figure.add_subplot(122), "Simulated Image")
         self.figure.tight_layout()
 
-    def _setup_axes(self, ax, title):
+    def _setup_axes(self, ax: "Axes", title: str) -> "Axes":
+        """Apply dark-theme styling, hide axes, and set the subplot title."""
         theme = getattr(self.parent(), '_theme', 'dark') if self.parent() else 'dark'
         if theme == 'dark':
             ax.set_facecolor('#1e1e1e')
@@ -77,7 +92,8 @@ class ImageSimulationDialog(QDialog):
         ax.axis('off')
         return ax
 
-    def _on_import_image(self):
+    def _on_import_image(self) -> None:
+        """Load a user-selected image and display it as the original."""
         filepath, _ = QFileDialog.getOpenFileName(
             self, "Select Image for Simulation", "", 
             "Images (*.png *.jpg *.jpeg *.bmp);;All Files (*)"
@@ -99,7 +115,8 @@ class ImageSimulationDialog(QDialog):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load image: {e}")
 
-    def _on_run_simulation(self):
+    def _on_run_simulation(self) -> None:
+        """Simulate the loaded original image and display the result."""
         if self._original_image is None:
             return
             

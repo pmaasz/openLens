@@ -5,6 +5,8 @@ Tab for tolerancing and yield analysis
 
 import logging
 import copy
+from typing import List
+
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
                                QFormLayout, QDoubleSpinBox, QSpinBox,
                                QComboBox, QTextEdit, QPushButton, QScrollArea,
@@ -18,17 +20,35 @@ from ...tolerancing import MonteCarloAnalyzer, InverseSensitivityAnalyzer, Toler
 logger = logging.getLogger(__name__)
 
 class MonteCarloWorker(QThread):
+    """Background thread that runs the Monte Carlo tolerance analysis."""
+
     finished = Signal(str, dict)
     failed = Signal(str)
 
-    def __init__(self, current_lens, tol_operands, num_trials, criterion):
+    def __init__(
+        self,
+        current_lens,
+        tol_operands: List[ToleranceOperand],
+        num_trials: int,
+        criterion: float,
+    ) -> None:
+        """Initialize the worker inputs.
+
+        Args:
+            current_lens: Lens under analysis (deep-copied before sampling).
+            tol_operands: Tolerance operands defining the perturbations.
+            num_trials: Number of Monte Carlo trials to run.
+            criterion: RMS spot radius limit used as the pass/fail criterion.
+        """
         super().__init__()
         self.current_lens = current_lens
         self.tol_operands = tol_operands
         self.num_trials = num_trials
         self.criterion = criterion
 
-    def run(self):
+    def run(self) -> None:
+        """Run the Monte Carlo analysis in this thread and emit ``finished``
+        with a report and raw results, or ``failed`` on error."""
         from ...optical_system import OpticalSystem
         try:
             system = OpticalSystem(name="Tolerancing")
@@ -55,16 +75,32 @@ class MonteCarloWorker(QThread):
             self.failed.emit(f"Monte Carlo Error: {e}\n{error_details}")
 
 class InverseSensitivityWorker(QThread):
+    """Background thread that computes inverse sensitivity tolerance limits."""
+
     finished = Signal(str, dict)
     failed = Signal(str)
 
-    def __init__(self, current_lens, tol_operands, criterion):
+    def __init__(
+        self,
+        current_lens,
+        tol_operands: List[ToleranceOperand],
+        criterion: float,
+    ) -> None:
+        """Initialize the worker inputs.
+
+        Args:
+            current_lens: Lens under analysis (deep-copied before optimizing).
+            tol_operands: Tolerance operands to budget.
+            criterion: Target RMS yield criterion for the limit optimization.
+        """
         super().__init__()
         self.current_lens = current_lens
         self.tol_operands = tol_operands
         self.criterion = criterion
 
-    def run(self):
+    def run(self) -> None:
+        """Run the inverse sensitivity analysis in this thread and emit
+        ``finished`` with a report, or ``failed`` on error."""
         from ...optical_system import OpticalSystem
         try:
             system = OpticalSystem(name="Tolerancing")
@@ -93,7 +129,8 @@ class InverseSensitivityWorker(QThread):
 class TolerancingTab(BaseTab):
     """Tab for tolerancing and yield analysis"""
     
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
+        """Build the operands table, analysis controls, and results panel."""
         # Create scroll area
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -213,13 +250,21 @@ class TolerancingTab(BaseTab):
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(scroll)
 
-    def refresh(self):
-        """Update display when parent changes"""
+    def refresh(self) -> None:
+        """Update display when parent changes.
+
+        Reloads the operand table from the parent window's current lens/system
+        state.
+        """
         if self._parent and hasattr(self._parent, '_tol_operands'):
             self._update_tolerance_operands_display()
 
-    def _on_add_tolerance(self):
-        """Add a new tolerance operand"""
+    def _on_add_tolerance(self) -> None:
+        """Add a new tolerance operand.
+
+        Shows a dialog to configure the operand, then appends it to the parent
+        window's tolerance list.
+        """
         if not self._parent or not self._parent._current_lens:
             return
             
@@ -276,8 +321,8 @@ class TolerancingTab(BaseTab):
             self._parent._tol_operands.append(operand)
             self._update_tolerance_operands_display()
 
-    def _on_add_default_tolerances(self):
-        """Add standard tolerances"""
+    def _on_add_default_tolerances(self) -> None:
+        """Add standard tolerances."""
         if not self._parent or not self._parent._current_lens:
             return
             
@@ -298,8 +343,8 @@ class TolerancingTab(BaseTab):
         self._parent._tol_operands.extend(new_operands)
         self._update_tolerance_operands_display()
 
-    def _on_remove_tolerance(self):
-        """Remove selected tolerance operands"""
+    def _on_remove_tolerance(self) -> None:
+        """Remove selected tolerance operands."""
         if not self._parent:
             return
         selected_rows = sorted(set(index.row() for index in self._tol_table.selectedIndexes()), reverse=True)
@@ -312,8 +357,8 @@ class TolerancingTab(BaseTab):
         
         self._update_tolerance_operands_display()
 
-    def _on_clear_tolerances(self):
-        """Clear all tolerances"""
+    def _on_clear_tolerances(self) -> None:
+        """Clear all tolerances."""
         if not self._parent or not self._parent._tol_operands:
             return
             
@@ -322,8 +367,13 @@ class TolerancingTab(BaseTab):
             self._parent._tol_operands = []
             self._update_tolerance_operands_display()
 
-    def _on_tol_item_changed(self, item):
-        """Handle manual edits"""
+    def _on_tol_item_changed(self, item: QTableWidgetItem) -> None:
+        """Handle manual edits.
+
+        Args:
+            item: Table item whose edited Min/Max cell updates the matching
+                tolerance operand.
+        """
         if not self._parent:
             return
         row = item.row()
@@ -338,8 +388,8 @@ class TolerancingTab(BaseTab):
             except ValueError:
                 self._update_tolerance_operands_display()
 
-    def _update_tolerance_operands_display(self):
-        """Update the table display"""
+    def _update_tolerance_operands_display(self) -> None:
+        """Update the table display."""
         if not self._parent:
             return
         self._tol_table.blockSignals(True)
@@ -364,8 +414,12 @@ class TolerancingTab(BaseTab):
             
         self._tol_table.blockSignals(False)
 
-    def _on_run_monte_carlo(self):
-        """Run Monte Carlo analysis"""
+    def _on_run_monte_carlo(self) -> None:
+        """Run Monte Carlo analysis.
+
+        Starts a :class:`MonteCarloWorker` thread using the current operands
+        and trial settings from the UI.
+        """
         if not self._parent or not self._parent._current_lens:
             self._tol_results_text.setPlainText("No lens selected.")
             return
@@ -390,8 +444,12 @@ class TolerancingTab(BaseTab):
         self._mc_worker.failed.connect(self._on_analysis_failed)
         self._mc_worker.start()
 
-    def _on_run_inverse_sensitivity(self):
-        """Run Inverse Sensitivity analysis"""
+    def _on_run_inverse_sensitivity(self) -> None:
+        """Run Inverse Sensitivity analysis.
+
+        Starts an :class:`InverseSensitivityWorker` thread to compute RSS
+        budgeted tolerance limits for the current operands.
+        """
         if not self._parent or not self._parent._current_lens:
             self._tol_results_text.setPlainText("No lens selected.")
             return

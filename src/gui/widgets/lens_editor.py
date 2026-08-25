@@ -3,11 +3,16 @@ OpenLens PySide6 Lens Editor Widget
 Main editor widget for lens properties with visualization
 """
 
+from typing import Optional, TYPE_CHECKING
+
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QFormLayout, 
                                QLabel, QDoubleSpinBox, QLineEdit, QFrame, QComboBox, QCheckBox)
 from PySide6.QtCore import Signal
 
 from .lens_viz_container import LensVisualizationWidget
+
+if TYPE_CHECKING:
+    from ...lens import Lens
 
 
 class LensEditorWidget(QWidget):
@@ -18,13 +23,19 @@ class LensEditorWidget(QWidget):
     # Signal emitted when lens model is modified and needs saving/refreshing
     lens_modified = Signal(object) # Using object for Lens class to avoid circularity if any
     
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        """Initialize the editor widget and build its UI.
+
+        Args:
+            parent: Optional parent widget (usually the main window).
+        """
         super().__init__(parent)
         self._lens = None
         self._parent = parent
         self._setup_ui()
     
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
+        """Set up the editor layout with the properties panel and visualization."""
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
         
@@ -46,8 +57,14 @@ class LensEditorWidget(QWidget):
         
         main_layout.addWidget(self._viz_widget, 2)
 
-    def _on_interactive_property_changed(self, prop, value):
-        """Update UI and lens when dragging in 2D view"""
+    def _on_interactive_property_changed(self, prop: str, value: float) -> None:
+        """Update UI and lens when dragging in 2D view
+
+        Args:
+            prop: Name of the changed property ('r1', 'r2', 'thickness' or
+                'diameter').
+            value: New numeric value for the property.
+        """
         if prop == 'r1':
             self._r1_input.setValue(value)
         elif prop == 'r2':
@@ -57,8 +74,12 @@ class LensEditorWidget(QWidget):
         elif prop == 'diameter':
             self._diameter_input.setValue(value)
     
-    def _create_properties_panel(self):
-        """Create the properties panel"""
+    def _create_properties_panel(self) -> QFrame:
+        """Create the properties panel
+
+        Returns:
+            The frame containing all editor input groups.
+        """
         frame = QFrame()
         frame.setFrameShape(QFrame.StyledPanel)
         layout = QVBoxLayout(frame)
@@ -193,13 +214,13 @@ class LensEditorWidget(QWidget):
         
         return frame
     
-    def _on_name_changed(self, name):
+    def _on_name_changed(self, name: str) -> None:
         """Handle name change"""
         if self._lens:
             self._lens.name = name
             self.lens_modified.emit(self._lens)
 
-    def _on_property_changed(self):
+    def _on_property_changed(self) -> None:
         """Handle property changes with auto-save"""
         if self._lens:
             self._lens.radius_of_curvature_1 = self._r1_input.value()
@@ -215,7 +236,7 @@ class LensEditorWidget(QWidget):
             self.lens_modified.emit(self._lens)
             self.lens_updated.emit()
     
-    def _on_material_changed(self, material):
+    def _on_material_changed(self, material: str) -> None:
         """Handle material change"""
         material_indices = {
             "BK7": 1.5168,
@@ -232,7 +253,7 @@ class LensEditorWidget(QWidget):
             if self._viz_widget:
                 self._viz_widget.update_lens(self._lens)
     
-    def _on_fresnel_changed(self, state):
+    def _on_fresnel_changed(self, state: int) -> None:
         """Handle Fresnel checkbox change"""
         enabled = state == 2
         
@@ -254,7 +275,7 @@ class LensEditorWidget(QWidget):
             self._lens.is_fresnel = False
             self._num_grooves_value.setText("0")
     
-    def _update_groove_count(self):
+    def _update_groove_count(self) -> None:
         """Calculate number of grooves"""
         if not self._lens or not hasattr(self._lens, 'is_fresnel') or not self._lens.is_fresnel:
             return
@@ -264,7 +285,7 @@ class LensEditorWidget(QWidget):
             grooves = int(diameter / (2 * pitch))
             self._num_grooves_value.setText(str(grooves))
     
-    def _update_calculated(self):
+    def _update_calculated(self) -> None:
         """Update calculated properties"""
         if not self._lens:
             return
@@ -305,8 +326,12 @@ class LensEditorWidget(QWidget):
             self._bfl_label.setText("--")
             self._ffl_label.setText("--")
 
-    def load_lens(self, lens):
-        """Load a lens into the editor"""
+    def load_lens(self, lens: "Lens") -> None:
+        """Load a lens into the editor
+
+        Args:
+            lens: The lens model to display and edit.
+        """
         self._lens = lens
         self._name_input.blockSignals(True)
         self._name_input.setText(lens.name)

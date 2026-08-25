@@ -1,10 +1,22 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout
 import numpy as np
+from typing import Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ...lens import Lens
+
 
 class _3DVisualizationWidget(QWidget):
     """3D lens visualization using matplotlib"""
     
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        """Initialize the widget and its embedded matplotlib canvas.
+
+        Falls back to a placeholder label when matplotlib is unavailable.
+
+        Args:
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self._lens = None
         self._canvas = None
@@ -64,7 +76,15 @@ class _3DVisualizationWidget(QWidget):
             lbl.setStyleSheet("color: #888; padding: 50px;")
             layout.addWidget(lbl)
     
-    def update_lens(self, lens):
+    def update_lens(self, lens: "Lens") -> None:
+        """Redraw the 3D lens geometry for the given lens.
+
+        Clears the rotatable lens axis, redraws the surfaces and edge
+        circles, adjusts the axis limits and refreshes the canvas.
+
+        Args:
+            lens: The lens model to render.
+        """
         if not lens or not self._ax or not self._figure:
             return
         
@@ -93,7 +113,8 @@ class _3DVisualizationWidget(QWidget):
         theta = np.linspace(0, 2*np.pi, 36)
         
         # Helper for sag
-        def get_sag(r, y):
+        def get_sag(r: float, y: Any) -> Any:
+            """Return the surface sag for radius ``r`` at height ``y``."""
             if abs(r) < 1e-6: return 0
             r_a = abs(r)
             y_safe = np.minimum(y, r_a)

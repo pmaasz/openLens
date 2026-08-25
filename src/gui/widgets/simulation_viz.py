@@ -2,11 +2,25 @@ from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter, QPen, QBrush
 import math
+from typing import Optional, TYPE_CHECKING, Union
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QKeyEvent, QMouseEvent, QPaintEvent, QWheelEvent
+
+    from ...lens import Lens
+    from ...optical_system import OpticalSystem
+    from ...ray_tracer import SystemRayTracer
+
 
 class SimulationVisualizationWidget(QWidget):
     """2D ray tracing simulation visualization widget"""
     
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        """Initialize the widget with default view and display state.
+
+        Args:
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self._lens = None
         self._system = None
@@ -38,8 +52,15 @@ class SimulationVisualizationWidget(QWidget):
         self.setFocusPolicy(Qt.StrongFocus)
     
     @staticmethod
-    def wavelength_to_color(wavelength):
-        """Convert wavelength (nm) to RGB color"""
+    def wavelength_to_color(wavelength: float) -> QColor:
+        """Convert wavelength (nm) to RGB color
+
+        Args:
+            wavelength: Wavelength in nanometers (clamped to 380-780 nm).
+
+        Returns:
+            A QColor approximating the spectral color at that wavelength.
+        """
         if wavelength < 380:
             wavelength = 380
         elif wavelength > 780:
@@ -73,7 +94,7 @@ class SimulationVisualizationWidget(QWidget):
         
         return QColor(r, g, b, 200)
     
-    def wheelEvent(self, event):
+    def wheelEvent(self, event: "QWheelEvent") -> None:
         """Handle mouse wheel for zooming"""
         if event.angleDelta().y() > 0:
             self._zoom *= 1.1
@@ -82,14 +103,14 @@ class SimulationVisualizationWidget(QWidget):
         self._zoom = max(0.1, min(self._zoom, 50.0))
         self.update()
     
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, event: "QMouseEvent") -> None:
         """Start panning on mouse press"""
         if event.button() == Qt.LeftButton:
             self._is_panning = True
             self._last_mouse_x = event.position().x()
             self._last_mouse_y = event.position().y()
     
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event: "QMouseEvent") -> None:
         """Pan the view when dragging"""
         if self._is_panning:
             dx = event.position().x() - self._last_mouse_x
@@ -100,12 +121,12 @@ class SimulationVisualizationWidget(QWidget):
             self._last_mouse_y = event.position().y()
             self.update()
     
-    def mouseReleaseEvent(self, event):
+    def mouseReleaseEvent(self, event: "QMouseEvent") -> None:
         """Stop panning on mouse release"""
         if event.button() == Qt.LeftButton:
             self._is_panning = False
     
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, event: "QKeyEvent") -> None:
         """Handle keyboard for zoom/pan reset"""
         if event.key() == Qt.Key_R:
             self._zoom = 1.0
@@ -120,15 +141,27 @@ class SimulationVisualizationWidget(QWidget):
             self._zoom = max(0.1, self._zoom)
             self.update()
     
-    def reset_view(self):
+    def reset_view(self) -> None:
         """Reset zoom and pan"""
         self._zoom = 1.0
         self._pan_x = 0
         self._pan_y = 0
         self.update()
     
-    def run_simulation(self, lens_or_system, num_rays=11, angle=0, source_height=0, show_ghosts=False, wavelength=550):
-        """Run ray tracing simulation"""
+    def run_simulation(self, lens_or_system: Union["Lens", "OpticalSystem"],
+                       num_rays: int = 11, angle: float = 0, source_height: float = 0,
+                       show_ghosts: bool = False, wavelength: float = 550) -> None:
+        """Run ray tracing simulation
+
+        Args:
+            lens_or_system: The lens model or optical system to trace.
+            num_rays: Number of rays to trace across the aperture.
+            angle: Field angle of the ray fan in degrees.
+            source_height: Vertical offset of the ray fan origin (mm).
+            show_ghosts: Whether to trace ghost rays from internal
+                reflections.
+            wavelength: Wavelength in nanometers used for the ray color.
+        """
         from ...optical_system import OpticalSystem
         if isinstance(lens_or_system, OpticalSystem):
             self._system = lens_or_system
@@ -182,7 +215,7 @@ class SimulationVisualizationWidget(QWidget):
         
         self.update()
     
-    def _run_ghost_analysis(self, system, tracer):
+    def _run_ghost_analysis(self, system: "OpticalSystem", tracer: "SystemRayTracer") -> None:
         """Run ghost analysis for 2nd order reflections"""
         try:
             from ...analysis.ghost import GhostAnalyzer
@@ -195,14 +228,19 @@ class SimulationVisualizationWidget(QWidget):
         except Exception as e:
             print(f"Ghost analysis error: {e}")
     
-    def run_image_simulation(self, lens, pattern="Star"):
-        """Run image simulation pattern through lens"""
+    def run_image_simulation(self, lens: "Lens", pattern: str = "Star") -> None:
+        """Run image simulation pattern through lens
+
+        Args:
+            lens: The lens model to simulate the image for.
+            pattern: Image pattern name ('Star', 'Grid' or 'USAF 1951').
+        """
         self._lens = lens
         self._show_image_sim = True
         self._image_pattern = pattern
         self.update()
     
-    def clear_simulation(self):
+    def clear_simulation(self) -> None:
         """Clear simulation results"""
         self._rays = []
         self._ghost_rays = []
@@ -210,7 +248,7 @@ class SimulationVisualizationWidget(QWidget):
         self._show_image_sim = False
         self.update()
     
-    def paintEvent(self, event):
+    def paintEvent(self, event: "QPaintEvent") -> None:
         """Paint the simulation"""
         from PySide6.QtGui import QPainter, QPen, QColor, QPainterPath, QBrush
         
@@ -245,9 +283,12 @@ class SimulationVisualizationWidget(QWidget):
         cx = w / 4 + self._pan_x
         cy = h / 2 + self._pan_y
 
-        def draw_single_lens(pnt, lens, start_x, center_y, sc, color):
+        def draw_single_lens(pnt: QPainter, lens: "Lens", start_x: float,
+                             center_y: float, sc: float, color: QColor) -> None:
+            """Draw the filled cross-section of a single lens."""
             # Helper to get sag at y
-            def get_sag(r, y):
+            def get_sag(r: float, y: float) -> float:
+                """Return the surface sag for radius ``r`` at height ``y``."""
                 if abs(r) < 1e-6: return 0
                 r_a = abs(r)
                 if y > r_a: return r_a

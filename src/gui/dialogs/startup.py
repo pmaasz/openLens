@@ -3,6 +3,8 @@ OpenLens PySide6 Dialogs - Startup
 Fixed layout and styling based on user feedback.
 """
 
+from typing import Any, List, Optional, Tuple
+
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, 
                                QListWidget, QLabel, QWidget, QFileDialog, QMessageBox, QFrame,
                                QScrollArea)
@@ -14,7 +16,12 @@ class StartupDialog(QDialog):
     
     result_selected = Signal(str, object)  # action, data
     
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize the dialog and load stored lenses and assemblies.
+
+        Loads all stored items once into ``_all_items``, falling back to an
+        empty list when the database cannot be read.
+        """
         super().__init__()
         self.setWindowTitle("Welcome to OpenLens")
         self.setModal(True)
@@ -35,7 +42,8 @@ class StartupDialog(QDialog):
             
         self._setup_ui()
     
-    def _recenter(self):
+    def _recenter(self) -> None:
+        """Center the dialog on the screen containing the mouse cursor."""
         from PySide6.QtGui import QGuiApplication, QCursor
         screen = QGuiApplication.screenAt(QCursor.pos())
         if not screen:
@@ -47,7 +55,8 @@ class StartupDialog(QDialog):
             y = avail_geom.y() + (avail_geom.height() - self.height()) // 2
             self.move(x, y)
 
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
+        """Build the static welcome screen with the four main action buttons."""
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
         layout.setContentsMargins(40, 40, 40, 40)
@@ -129,7 +138,7 @@ class StartupDialog(QDialog):
         
         layout.addStretch()
 
-    def _show_list(self, list_type):
+    def _show_list(self, list_type: str) -> None:
         """Show list of items matching the visual design in the image"""
         # Clear existing list UI
         while self.list_layout.count():
@@ -245,7 +254,8 @@ class StartupDialog(QDialog):
         """)
         # Create a simple SVG-like icon using a painter or just better styling
         from PySide6.QtGui import QIcon, QPainter, QPen, QPixmap, QColor
-        def create_icon(icon_type):
+        def create_icon(icon_type: str) -> QIcon:
+            """Draw a plus ("plus") or minus icon pixmap."""
             pixmap = QPixmap(32, 32)
             pixmap.fill(Qt.transparent)
             painter = QPainter(pixmap)
@@ -292,7 +302,8 @@ class StartupDialog(QDialog):
         
         self._recenter()
 
-    def _clear_layout(self, layout):
+    def _clear_layout(self, layout: QVBoxLayout) -> None:
+        """Recursively remove and delete all widgets and sub-layouts."""
         while layout.count():
             child = layout.takeAt(0)
             if child.widget():
@@ -300,14 +311,19 @@ class StartupDialog(QDialog):
             elif child.layout():
                 self._clear_layout(child.layout())
 
-    def _open_selected(self, list_widget, items, list_type):
+    def _open_selected(self, list_widget: QListWidget, items: List[Any], list_type: str) -> None:
+        """Accept the dialog with an ``open_<list_type>`` action for the highlighted item.
+
+        Sets ``_selected_action`` to "open_lens" or "open_assembly" and
+        ``_selected_data`` to the selected Lens/OpticalSystem instance.
+        """
         idx = list_widget.currentRow()
         if idx >= 0:
             self._selected_data = items[idx]
             self._selected_action = f"open_{list_type}"
             self.accept()
 
-    def _on_import(self, list_type):
+    def _on_import(self, list_type: str) -> None:
         """Import from JSON file"""
         filename, _ = QFileDialog.getOpenFileName(
             self, f"Import {list_type.capitalize()}", "", "JSON Files (*.json);;All Files (*)"
@@ -332,7 +348,7 @@ class StartupDialog(QDialog):
             except Exception as e:
                 QMessageBox.critical(self, "Import Error", f"Failed to import: {e}")
 
-    def _on_delete(self, list_widget, items, list_type):
+    def _on_delete(self, list_widget: QListWidget, items: List[Any], list_type: str) -> None:
         """Delete from database"""
         idx = list_widget.currentRow()
         if idx < 0:
@@ -358,13 +374,24 @@ class StartupDialog(QDialog):
             except Exception as e:
                 QMessageBox.critical(self, "Delete Error", f"Failed to delete: {e}")
 
-    def _create_new_lens(self):
+    def _create_new_lens(self) -> None:
+        """Accept the dialog with the "create_lens" action and no data selected."""
         self._selected_action = "create_lens"
         self.accept()
 
-    def _create_new_assembly(self):
+    def _create_new_assembly(self) -> None:
+        """Accept the dialog with the "create_assembly" action and no data selected."""
         self._selected_action = "create_assembly"
         self.accept()
 
-    def get_result(self):
+    def get_result(self) -> Tuple[Optional[str], Optional[Any]]:
+        """Return the selected action and associated data.
+
+        Returns:
+            Tuple ``(action, data)`` where ``action`` is one of "create_lens",
+            "create_assembly", "open_lens", or "open_assembly" (or ``None`` if
+            nothing was selected), and ``data`` is the selected
+            Lens/OpticalSystem instance for "open_*" actions and ``None`` for
+            "create_*" actions.
+        """
         return self._selected_action, self._selected_data

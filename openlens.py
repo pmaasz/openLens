@@ -8,6 +8,7 @@ import sys
 import os
 import json
 import logging
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +36,26 @@ from src.analysis.diffraction_psf import WavefrontSensor
 
 
 class OpenLensWindow(QMainWindow):
-    """Main application window"""
+    """Main application window.
+
+    Owns the lens/assembly library (``_lenses`` / ``_assemblies``), the
+    tabbed editor area, and SQLite persistence. Tabs are refreshed via
+    :meth:`_update_all_tabs` whenever the active model changes.
+    """
     
-    def __init__(self, action=None, data=None):
+    def __init__(
+            self,
+            action: Optional[str] = None,
+            data: Optional[Any] = None) -> None:
+        """Create the main window and load its state.
+
+        Args:
+            action: Startup action selected in the startup dialog. One of
+                "create_lens", "create_assembly", "open_lens",
+                "open_assembly", or None for the default lens.
+            data: Model instance associated with an "open_*" action
+                (a Lens or OpticalSystem); ignored for "create_*" actions.
+        """
         super().__init__()
         
         self._action = action
@@ -62,7 +80,7 @@ class OpenLensWindow(QMainWindow):
         
         self._handle_startup(action, data)
     
-    def _load_from_database(self):
+    def _load_from_database(self) -> None:
         """Load lenses and assemblies from SQLite database"""
         
         self._update_status("Loading library...")
@@ -92,7 +110,7 @@ class OpenLensWindow(QMainWindow):
             self._current_lens = None
             self._current_assembly = None
     
-    def _save_to_database(self):
+    def _save_to_database(self) -> None:
         """Save all lenses and assemblies to SQLite database"""
         
         try:
@@ -125,7 +143,7 @@ class OpenLensWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Failed to save to database: {e}")
     
-    def _handle_startup(self, action, data):
+    def _handle_startup(self, action: Optional[str], data: Optional[Any]) -> None:
         """Handle startup action"""
         if action == "create_lens":
             self._on_new_lens()
@@ -143,14 +161,14 @@ class OpenLensWindow(QMainWindow):
             self._load_default_lens()
             self._update_status("Loaded default lens")
     
-    def _update_status(self, message):
+    def _update_status(self, message: str) -> None:
         """Update status bar message"""
         if hasattr(self, '_status_label'):
             self._status_label.setText(message)
         if hasattr(self, '_status_bar'):
             self._status_bar.showMessage(message)
     
-    def _load_lens_from_data(self, data):
+    def _load_lens_from_data(self, data: Any) -> None:
         """Load lens or assembly from saved data"""
         if isinstance(data, OpticalSystem):
             self._assemblies.append(data)
@@ -185,7 +203,7 @@ class OpenLensWindow(QMainWindow):
         
         self._update_all_tabs()
     
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
         """Setup the main UI"""
         central = QWidget()
         self.setCentralWidget(central)
@@ -225,7 +243,7 @@ class OpenLensWindow(QMainWindow):
         self._update_status("Welcome to OpenLens")
 
     
-    def _create_editor_area(self):
+    def _create_editor_area(self) -> QTabWidget:
         """Create the main editor area with tabs"""
         self._editor_tabs = QTabWidget()
         self._editor_tabs.setStyleSheet("""
@@ -270,13 +288,13 @@ class OpenLensWindow(QMainWindow):
         
         return self._editor_tabs
     
-    def _on_lens_modified(self, lens):
+    def _on_lens_modified(self, lens: Lens) -> None:
         """Handle lens modification from editor widget"""
         self._save_to_database()
         self._update_all_tabs()
         self._update_status(f"Updated: {lens.name}")
 
-    def _on_assembly_modified(self):
+    def _on_assembly_modified(self) -> None:
         """Handle assembly modification from assembly tab"""
         # Ensure we are saving the actual modified system
         modified_system = self._assembly_tab_widget._optical_system
@@ -292,16 +310,16 @@ class OpenLensWindow(QMainWindow):
         self._update_all_tabs()
         self._update_status(f"Assembly updated: {self._current_assembly.name if self._current_assembly else 'Unknown'}")
 
-    def _show_assembly_editor(self, show=True):
+    def _show_assembly_editor(self, show: bool = True) -> None:
         """Show/hide assembly editor tab"""
         if hasattr(self, '_assembly_tab_index'):
             self._editor_tabs.setTabVisible(self._assembly_tab_index, show)
     
-    def _show_lens_editor(self, show=True):
+    def _show_lens_editor(self, show: bool = True) -> None:
         """Show lens editor tab"""
         self._editor_tabs.setTabVisible(0, show)
     
-    def _create_menu(self):
+    def _create_menu(self) -> None:
         """Create menu bar"""
         menubar = self.menuBar()
         menubar.setStyleSheet("""
@@ -385,7 +403,7 @@ class OpenLensWindow(QMainWindow):
         help_menu.addAction("About", self._on_about)
         help_menu.addAction("Keyboard Shortcuts", self._on_show_shortcuts)
     
-    def _set_current_item(self, item, is_assembly=False):
+    def _set_current_item(self, item: Any, is_assembly: bool = False) -> None:
         """Set current item (lens or assembly)"""
         if is_assembly:
             self._current_assembly = item
@@ -403,7 +421,7 @@ class OpenLensWindow(QMainWindow):
             self._update_all_tabs()
             self._update_status(f"Selected: {item.name}")
     
-    def _load_assembly(self, assembly):
+    def _load_assembly(self, assembly: OpticalSystem) -> None:
         """Load assembly into assembly editor"""
         if hasattr(self, '_optical_system'):
             self._optical_system = assembly
@@ -412,7 +430,7 @@ class OpenLensWindow(QMainWindow):
         if hasattr(self, '_system_list'):
             self._update_system_list()
     
-    def _update_all_tabs(self):
+    def _update_all_tabs(self) -> None:
         """Update all tab displays for current lens or assembly"""
         if not self._current_lens and not self._current_assembly:
             return
@@ -433,7 +451,7 @@ class OpenLensWindow(QMainWindow):
             self._assembly_tab_widget.refresh()
 
     
-    def _on_new_lens(self):
+    def _on_new_lens(self) -> None:
         """Create new lens"""
         lens = Lens(name=f"Lens {len(self._lenses) + 1}")
         self._lenses.append(lens)
@@ -444,7 +462,7 @@ class OpenLensWindow(QMainWindow):
         self._update_all_tabs()
         self._update_status(f"Created: {lens.name}")
     
-    def _on_new_assembly(self):
+    def _on_new_assembly(self) -> None:
         """Create new assembly"""
         asm = OpticalSystem(name=f"Assembly {len(self._assemblies) + 1}")
         self._assemblies.append(asm)
@@ -456,7 +474,7 @@ class OpenLensWindow(QMainWindow):
         self._update_all_tabs()
         self._update_status(f"Created: {asm.name}")
     
-    def _on_delete_lens(self):
+    def _on_delete_lens(self) -> None:
         """Delete current lens or assembly"""
         if self._current_lens:
             if len(self._lenses) > 1:
@@ -478,14 +496,14 @@ class OpenLensWindow(QMainWindow):
                 self._current_assembly = None
             self._update_status("Deleted assembly")
     
-    def _on_open(self):
+    def _on_open(self) -> None:
         """Open from database - just reload"""
         self._load_from_database()
         if self._current_lens:
             self._lens_editor.load_lens(self._current_lens)
         self._update_status("Reloaded from database")
     
-    def _on_save(self):
+    def _on_save(self) -> None:
         """Save to database"""
         if self._editor_tabs.currentIndex() == self._assembly_tab_index:
              # Force sync from assembly tab state before saving
@@ -493,7 +511,7 @@ class OpenLensWindow(QMainWindow):
         self._save_to_database()
         self._update_status("Saved to database")
     
-    def _on_save_as(self):
+    def _on_save_as(self) -> None:
         """Save lens with new filename"""
         if not self._current_lens:
             return
@@ -514,7 +532,7 @@ class OpenLensWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save file: {e}")
     
-    def _on_about(self):
+    def _on_about(self) -> None:
         """Show about dialog"""
         QMessageBox.about(self, "About OpenLens",
             "OpenLens - Optical Lens Design\n\n"
@@ -528,7 +546,7 @@ class OpenLensWindow(QMainWindow):
             "- Tolerancing\n\n"
             "Migrated from Tkinter to PySide6")
     
-    def _on_show_shortcuts(self):
+    def _on_show_shortcuts(self) -> None:
         """Show keyboard shortcuts"""
         shortcuts = """
 Keyboard Shortcuts
@@ -553,7 +571,7 @@ Ctrl+6         Tolerancing
 """
         QMessageBox.information(self, "Keyboard Shortcuts", shortcuts)
     
-    def _on_duplicate_lens(self):
+    def _on_duplicate_lens(self) -> None:
         """Duplicate current lens"""
         if not self._current_lens:
             return
@@ -571,7 +589,7 @@ Ctrl+6         Tolerancing
         self._save_to_database()
         self._update_status(f"Duplicated: {new_lens.name}")
     
-    def _on_toggle_theme(self):
+    def _on_toggle_theme(self) -> None:
         """Toggle between dark and light theme"""
         app = QApplication.instance()
         current = getattr(self, '_theme', 'dark')
@@ -652,7 +670,7 @@ Ctrl+6         Tolerancing
             self.dark_theme(app)
             self._update_status("Dark theme")
     
-    def dark_theme(self, app):
+    def dark_theme(self, app: QApplication) -> None:
         """Apply dark theme"""
         app.setStyleSheet("""
             QMainWindow {
@@ -741,13 +759,13 @@ Ctrl+6         Tolerancing
         """)
 
     
-    def _on_reset_window(self):
+    def _on_reset_window(self) -> None:
         """Reset window to default size and position"""
         self.resize(1000, 700)
         self.move(50, 50)
         self._update_status("Window reset")
     
-    def _set_viz_mode(self, mode):
+    def _set_viz_mode(self, mode: str) -> None:
         """Set visualization view mode"""
         if hasattr(self, '_lens_editor') and self._lens_editor:
             viz = getattr(self._lens_editor, '_viz_widget', None)
@@ -755,7 +773,7 @@ Ctrl+6         Tolerancing
                 viz.set_view_mode(mode)
         self._update_status(f"View: {mode}")
     
-    def _on_export_stl(self):
+    def _on_export_stl(self) -> None:
         """Export current lens or assembly to STL"""
         target = self._current_assembly if self._current_assembly else self._current_lens
         if not target:
@@ -783,7 +801,7 @@ Ctrl+6         Tolerancing
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to export STL: {e}")
 
-    def _on_export_step(self):
+    def _on_export_step(self) -> None:
         """Export current lens or assembly to STEP"""
         target = self._current_assembly if self._current_assembly else self._current_lens
         if not target:
@@ -813,7 +831,7 @@ Ctrl+6         Tolerancing
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to export STEP: {e}")
 
-    def _on_export_iso10110(self):
+    def _on_export_iso10110(self) -> None:
         """Export ISO 10110 drawing as SVG"""
         target = self._current_assembly if self._current_assembly else self._current_lens
         if not target:
@@ -841,7 +859,7 @@ Ctrl+6         Tolerancing
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to export drawing: {e}")
 
-    def _on_export_report(self):
+    def _on_export_report(self) -> None:
         """Export comprehensive design report"""
         target = self._current_assembly if self._current_assembly else self._current_lens
         if not target:
@@ -881,7 +899,7 @@ Ctrl+6         Tolerancing
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to export report: {e}")
 
-    def _on_show_ghost_analysis(self):
+    def _on_show_ghost_analysis(self) -> None:
         """Show Ghost Reflection Analysis"""
         target = self._current_assembly if self._current_assembly else self._current_lens
         if not target:
@@ -907,7 +925,8 @@ Ctrl+6         Tolerancing
             target_system = system
             
             # Draw lenses
-            def get_sag(r, y):
+            def get_sag(r: float, y: float) -> float:
+                """Sagitta of a spherical surface at aperture height ``y``."""
                 if abs(r) < 1e-6: return 0
                 r_a = abs(r)
                 if y > r_a: return r_a
@@ -960,7 +979,7 @@ Ctrl+6         Tolerancing
         except Exception as e:
             QMessageBox.critical(self, "Analysis Error", f"Failed to perform ghost analysis: {e}")
 
-    def _on_show_psf(self):
+    def _on_show_psf(self) -> None:
         """Show Point Spread Function analysis"""
         target = self._current_assembly if self._current_assembly else self._current_lens
         if not target:
@@ -1010,7 +1029,7 @@ Ctrl+6         Tolerancing
         except Exception as e:
             QMessageBox.critical(self, "Analysis Error", f"Failed to calculate PSF: {e}")
 
-    def _on_show_mtf(self):
+    def _on_show_mtf(self) -> None:
         """Show Modulation Transfer Function analysis"""
         target = self._current_assembly if self._current_assembly else self._current_lens
         if not target:
@@ -1049,7 +1068,7 @@ Ctrl+6         Tolerancing
         except Exception as e:
             QMessageBox.critical(self, "Analysis Error", f"Failed to calculate MTF: {e}")
 
-    def _on_show_wavefront(self):
+    def _on_show_wavefront(self) -> None:
         """Show Wavefront Error analysis"""
         target = self._current_assembly if self._current_assembly else self._current_lens
         if not target:
@@ -1085,7 +1104,8 @@ Ctrl+6         Tolerancing
         except Exception as e:
             QMessageBox.critical(self, "Analysis Error", f"Failed to analyze wavefront: {e}")
 
-    def _load_default_lens(self):
+    def _load_default_lens(self) -> None:
+        """Create a fresh default lens and make it the active editor target."""
         lens = Lens(name="Default Lens")
         self._lenses.append(lens)
         self._current_lens = lens
@@ -1094,14 +1114,20 @@ Ctrl+6         Tolerancing
             self._lens_editor.load_lens(lens)
         self._update_all_tabs()
 
-    def _switch_to_lens(self, index):
+    def _switch_to_lens(self, index: int) -> None:
+        """Select the lens or assembly at the given combined menu index.
+
+        Args:
+            index: Index into lenses followed by assemblies.
+        """
         if 0 <= index < len(self._lenses):
             self._set_current_item(self._lenses[index], is_assembly=False)
         elif len(self._lenses) <= index < len(self._lenses) + len(self._assemblies):
             self._set_current_item(self._assemblies[index - len(self._lenses)], is_assembly=True)
 
 
-def main():
+def main() -> None:
+    """Run the OpenLens application: startup dialog, then the main window."""
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
     
