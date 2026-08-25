@@ -4,7 +4,6 @@ Chromatic Aberration Analyzer
 Performs wavelength-dependent ray tracing and dispersion analysis
 """
 
-import math
 from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass
 from material_database import MaterialDatabase

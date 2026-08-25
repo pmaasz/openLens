@@ -4,7 +4,7 @@ Handles lens housing, mounting, and spacing calculations.
 """
 
 import numpy as np
-from typing import List, Dict, Tuple, Optional, Any
+from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 
 

@@ -15,10 +15,10 @@ except ImportError:
     HAS_NUMPY = False
 
 try:
-    from .vector3 import Vector3, vec3
+    from .vector3 import Vector3
     from .ray_tracer import Ray3D, SystemRayTracer3D
 except ImportError:
-    from vector3 import Vector3, vec3
+    from vector3 import Vector3
     from ray_tracer import Ray3D, SystemRayTracer3D
 
 

@@ -5,19 +5,17 @@ Includes Simulated Annealing and Differential Evolution.
 
 import math
 import random
-import copy
-from typing import List, Dict, Optional, Tuple, Callable
-from dataclasses import dataclass
+from typing import List, Dict, Optional, Callable
 
 try:
-    from .optimizer import OptimizationVariable, OptimizationResult, LensOptimizer, MeritFunction, OptimizationTarget
+    from .optimizer import OptimizationVariable, OptimizationResult, LensOptimizer, OptimizationTarget
     from .optical_system import OpticalSystem
 except (ImportError, ValueError):
     import sys
     import os
     # Fix import path if running directly
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from src.optimizer import OptimizationVariable, OptimizationResult, LensOptimizer, MeritFunction, OptimizationTarget
+    from src.optimizer import OptimizationVariable, OptimizationResult, LensOptimizer, OptimizationTarget
     from src.optical_system import OpticalSystem
 
 class GlobalOptimizer(LensOptimizer):

@@ -9,13 +9,13 @@ import math
 from typing import List, Tuple, Optional, Any
 
 try:
-    from .vector3 import Vector3, vec3
+    from .vector3 import Vector3
     from .geometry import LensGeometry
 except ImportError:
     import sys
     import os
     sys.path.insert(0, os.path.dirname(__file__))
-    from vector3 import Vector3, vec3
+    from vector3 import Vector3
     from geometry import LensGeometry
 
 class STLExporter:

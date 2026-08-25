@@ -23,14 +23,6 @@ except ImportError:
     PIL_AVAILABLE = False
     logger.warning("PIL/Pillow not available. Image loading disabled.")
 
-# Try importing matplotlib
-try:
-    import matplotlib.pyplot as plt
-    MATPLOTLIB_AVAILABLE = True
-except ImportError:
-    MATPLOTLIB_AVAILABLE = False
-    logger.warning("matplotlib not available. Plotting disabled.")
-
 # Try importing scipy (optional)
 try:
     from scipy.ndimage import gaussian_filter, gaussian_filter1d, zoom, sobel

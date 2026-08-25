@@ -1,8 +1,4 @@
 
-import math
-import statistics
-from typing import List, Tuple, Optional, Dict, Any
-
 # Expose SpotDiagram
 try:
     from .spot_diagram import SpotDiagram

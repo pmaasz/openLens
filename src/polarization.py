@@ -10,7 +10,7 @@ Implements polarization calculations including:
 """
 
 import numpy as np
-from typing import Tuple, Dict, Optional
+from typing import Dict, Optional
 try:
     import matplotlib.pyplot as plt
     HAS_MATPLOTLIB = True

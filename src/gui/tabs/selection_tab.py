@@ -2,7 +2,7 @@
 OpenLens PySide6 Selection Tab
 """
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QListWidget
+from PySide6.QtWidgets import QVBoxLayout, QLabel, QListWidget
 from .base_tab import BaseTab
 
 

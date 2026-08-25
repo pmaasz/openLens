@@ -118,14 +118,14 @@ except ImportError:
 # Import constants
 try:
     from .constants import (
-        WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR, REFRACTIVE_INDEX_VACUUM,
-        DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_RADIUS_1, DEFAULT_THICKNESS,
+        WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR,
+        DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_RADIUS_1,
         EPSILON, MESH_RESOLUTION_HIGH, LARGE_NUMBER
     )
 except ImportError:
     from constants import (
-        WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR, REFRACTIVE_INDEX_VACUUM,
-        DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_RADIUS_1, DEFAULT_THICKNESS,
+        WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR,
+        DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_RADIUS_1,
         EPSILON, MESH_RESOLUTION_HIGH, LARGE_NUMBER
     )
 
@@ -385,81 +385,6 @@ class LensRayTracer:
             dx = math.cos(ray.angle)
             dy = math.sin(ray.angle)
             
-            # Use common sphere intersection helper
-            t_solutions = OpticalIntersector.intersect_sphere(
-                ray.x, ray.y, 0, dx, dy, 0, cx, 0, 0, R
-            )
-            
-            if t_solutions is None:
-                return None
-            
-            t1, t2 = t_solutions
-            
-            # Use EPSILON to avoid intersecting the surface we just left
-            valid_ts = [t for t in [t1, t2] if t > EPSILON]
-            if not valid_ts:
-                # Check if we are already past the surface
-                dist_sq = (ray.x - cx)**2 + ray.y**2
-                R_sq = R**2
-                
-                already_exited = False
-                if self.R2 < 0 and dist_sq > R_sq:
-                    already_exited = True
-                elif self.R2 > 0 and dist_sq < R_sq:
-                    already_exited = True
-                    
-                if already_exited:
-                    return (ray.x, ray.y)
-                
-                return None
-            
-            # Choose appropriate intersection based on surface curvature
-            if self.R2 < 0:
-                t = max(valid_ts)
-            else:
-                t = min(valid_ts)
-            
-            x = ray.x + t * dx
-            y = ray.y + t * dy
-            
-            if abs(y) > self.D / 2:
-                if len(valid_ts) > 1:
-                    t_other = min(valid_ts) if self.R2 < 0 else max(valid_ts)
-                    x_other = ray.x + t_other * dx
-                    y_other = ray.y + t_other * dy
-                    if abs(y_other) <= self.D / 2:
-                        return (x_other, y_other)
-                return None
-            
-            return (x, y)
-
-    
-    def _intersect_back_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
-        """Find intersection point of ray with back surface."""
-        if self.back_is_flat:
-            # Flat surface at x=d
-            if abs(math.cos(ray.angle)) < EPSILON:
-                return None
-            
-            t = (self.back_vertex_x - ray.x) / math.cos(ray.angle)
-            if t < EPSILON:
-                return None
-            
-            y = ray.y + t * math.sin(ray.angle)
-            
-            if abs(y) > self.D / 2:
-                return None
-            
-            return (self.back_vertex_x, y)
-        
-        else:
-            # Spherical surface
-            cx = self.back_center_x
-            R = abs(self.R2)
-            
-            dx = math.cos(ray.angle)
-            dy = math.sin(ray.angle)
-            
             a = dx*dx + dy*dy
             b = 2 * ((ray.x - cx) * dx + ray.y * dy)
             c = (ray.x - cx)**2 + ray.y**2 - R**2
@@ -536,13 +461,6 @@ class LensRayTracer:
         # Propagate to front surface
         x1, y1 = intersection
         
-        # Check for non-movement to prevent infinite loops or false termination
-        # but only if we are already AT the surface.
-        dist_to_surface = math.sqrt((x1 - ray.x)**2 + (y1 - ray.y)**2)
-        if dist_to_surface < EPSILON:
-             # Already at surface, push slightly inside if we are supposed to be inside
-             pass
-
         ray.x, ray.y = x1, y1
         if len(ray.path) == 0 or ray.path[-1] != (x1, y1):
             ray.path.append((x1, y1))

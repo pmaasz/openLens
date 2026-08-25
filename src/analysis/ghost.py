@@ -1,10 +1,9 @@
 from dataclasses import dataclass, field
-from typing import List, Tuple, Optional, Dict, Any
-import math
+from typing import List, Optional, Dict, Any
 
-from ..ray_tracer import Ray3D, LensRayTracer3D, Vector3, vec3
+from ..ray_tracer import Ray3D, LensRayTracer3D, vec3
 from ..optical_system import OpticalSystem
-from ..constants import WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR
+from ..constants import WAVELENGTH_GREEN, NM_TO_MM
 
 @dataclass
 class GhostPath:

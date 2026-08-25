@@ -9,7 +9,6 @@ from dataclasses import dataclass
 
 try:
     from .lens import Lens
-    from .optical_system import OpticalSystem
     from .performance_metrics import PerformanceMetrics
     from .aberrations import AberrationsCalculator
 except (ImportError, ValueError):
@@ -17,7 +16,6 @@ except (ImportError, ValueError):
     import os
     sys.path.insert(0, os.path.dirname(__file__))
     from lens import Lens
-    from optical_system import OpticalSystem
     from performance_metrics import PerformanceMetrics
     from aberrations import AberrationsCalculator
 

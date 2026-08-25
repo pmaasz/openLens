@@ -4,7 +4,7 @@ Used by exporters (SVG, STL, STEP) and visualization modules.
 """
 
 import math
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Dict, Any
 
 try:
     from .constants import EPSILON

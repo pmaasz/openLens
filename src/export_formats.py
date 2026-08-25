@@ -5,7 +5,6 @@ Zemax, OpticStudio, SVG technical drawings
 """
 
 import math
-from typing import Optional, List, Tuple
 
 try:
     from .lens_editor import Lens

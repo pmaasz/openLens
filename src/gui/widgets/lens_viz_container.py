@@ -1,5 +1,4 @@
 from PySide6.QtWidgets import QWidget, QTabWidget, QVBoxLayout
-from PySide6.QtGui import QColor
 from .lens_viz_2d import _2DVisualizationWidget
 from .lens_viz_3d import _3DVisualizationWidget
 

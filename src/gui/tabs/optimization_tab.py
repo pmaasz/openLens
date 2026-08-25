@@ -5,10 +5,10 @@ Tab for lens and system optimization
 
 import logging
 import copy
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
-                               QFormLayout, QCheckBox, QDoubleSpinBox, 
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
+                               QFormLayout, QCheckBox, QDoubleSpinBox,
                                QComboBox, QTextEdit, QPushButton, QScrollArea, QLabel)
-from PySide6.QtCore import Slot, Signal, Qt, QThread
+from PySide6.QtCore import Slot, Signal, QThread
 
 try:
     from .base_tab import BaseTab
@@ -22,7 +22,7 @@ except ImportError:
     from src.gui.widgets.lens_viz_2d import _2DVisualizationWidget
     from src.gui.widgets.assembly_viz import AssemblyVisualizationWidget
 
-from src.optimizer import LensOptimizer, OptimizationVariable, OptimizationTarget
+from src.optimizer import OptimizationVariable, OptimizationTarget
 
 logger = logging.getLogger(__name__)
 

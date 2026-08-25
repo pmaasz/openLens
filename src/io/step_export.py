@@ -4,9 +4,8 @@ Generates ISO 10303-21 (STEP) files for optical components.
 Supports AP203/AP214 geometry (Manifold Solid B-Rep).
 """
 
-import math
 from datetime import datetime
-from typing import List, Tuple, Any
+from typing import List, Any
 
 try:
     from ..geometry import LensGeometry

@@ -1,6 +1,5 @@
 
-import math
-from typing import List, Optional, Tuple, Any, Dict, Union
+from typing import List, Optional, Tuple, Any, Dict
 try:
     from .vector3 import Vector3, vec3
     from .transform import Matrix4x4
