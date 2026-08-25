@@ -20,10 +20,18 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QKeySequence
 
 from src.lens import Lens
+from src.optical_system import OpticalSystem
+from src.gui.storage import LensStorage
 from src.gui.widgets import LensEditorWidget
 from src.gui.tabs import (SimulationTab, PerformanceTab,
                           AssemblyTab, OptimizationTab, TolerancingTab)
 from src.gui.dialogs import StartupDialog, AnalysisPlotDialog
+from src.stl_export import STLExporter
+from src.io.step_export import StepExporter
+from src.io.export import ISO10110Generator
+from src.analysis.ghost import GhostAnalyzer
+from src.analysis.psf_mtf import ImageQualityAnalyzer
+from src.analysis.diffraction_psf import WavefrontSensor
 
 
 class OpenLensWindow(QMainWindow):
@@ -56,7 +64,6 @@ class OpenLensWindow(QMainWindow):
     
     def _load_from_database(self):
         """Load lenses and assemblies from SQLite database"""
-        from src.gui.storage import LensStorage
         
         self._update_status("Loading library...")
         try:
@@ -87,7 +94,6 @@ class OpenLensWindow(QMainWindow):
     
     def _save_to_database(self):
         """Save all lenses and assemblies to SQLite database"""
-        from src.gui.storage import LensStorage
         
         try:
             # Sync tolerances to current target metadata before saving
@@ -146,7 +152,6 @@ class OpenLensWindow(QMainWindow):
     
     def _load_lens_from_data(self, data):
         """Load lens or assembly from saved data"""
-        from src.optical_system import OpticalSystem
         if isinstance(data, OpticalSystem):
             self._assemblies.append(data)
             self._current_assembly = data
@@ -441,7 +446,6 @@ class OpenLensWindow(QMainWindow):
     
     def _on_new_assembly(self):
         """Create new assembly"""
-        from src.optical_system import OpticalSystem
         asm = OpticalSystem(name=f"Assembly {len(self._assemblies) + 1}")
         self._assemblies.append(asm)
         self._current_assembly = asm
@@ -766,8 +770,6 @@ Ctrl+6         Tolerancing
             return
             
         try:
-            from src.stl_export import STLExporter
-            from src.optical_system import OpticalSystem
             
             if isinstance(target, Lens):
                 system = OpticalSystem(name=target.name)
@@ -796,8 +798,6 @@ Ctrl+6         Tolerancing
             return
             
         try:
-            from src.io.step_export import STEPExporter
-            from src.optical_system import OpticalSystem
             
             if isinstance(target, Lens):
                 system = OpticalSystem(name=target.name)
@@ -828,8 +828,6 @@ Ctrl+6         Tolerancing
             return
             
         try:
-            from src.io.export import ISO10110Generator
-            from src.optical_system import OpticalSystem
             
             if isinstance(target, Lens):
                 system = OpticalSystem(name=target.name)
@@ -890,9 +888,6 @@ Ctrl+6         Tolerancing
             return
             
         try:
-            from src.analysis.ghost import GhostAnalyzer
-            from src.optical_system import OpticalSystem
-            from src.gui.dialogs import AnalysisPlotDialog
             import numpy as np
             
             if isinstance(target, Lens):
@@ -972,9 +967,6 @@ Ctrl+6         Tolerancing
             return
             
         try:
-            from src.analysis.psf_mtf import ImageQualityAnalyzer
-            from src.optical_system import OpticalSystem
-            from src.gui.dialogs import AnalysisPlotDialog
             import numpy as np
             
             if isinstance(target, Lens):
@@ -1025,9 +1017,6 @@ Ctrl+6         Tolerancing
             return
             
         try:
-            from src.analysis.psf_mtf import ImageQualityAnalyzer
-            from src.optical_system import OpticalSystem
-            from src.gui.dialogs import AnalysisPlotDialog
             import numpy as np
             
             if isinstance(target, Lens):
@@ -1067,9 +1056,6 @@ Ctrl+6         Tolerancing
             return
             
         try:
-            from src.analysis.diffraction_psf import WavefrontSensor
-            from src.optical_system import OpticalSystem
-            from src.gui.dialogs import AnalysisPlotDialog
             import numpy as np
             
             if isinstance(target, Lens):
@@ -1100,7 +1086,6 @@ Ctrl+6         Tolerancing
             QMessageBox.critical(self, "Analysis Error", f"Failed to analyze wavefront: {e}")
 
     def _load_default_lens(self):
-        from src.lens import Lens
         lens = Lens(name="Default Lens")
         self._lenses.append(lens)
         self._current_lens = lens
