@@ -114,7 +114,7 @@ class LensManager:
         print(f"\n=== All Optical Lenses ({len(self.lenses)}) ===")
         for idx, lens in enumerate(self.lenses, 1):
             focal = lens.calculate_focal_length()
-            focal_str = f"{focal:.2f}mm" if focal else "Undefined"
+            focal_str = f"{focal:.2f}mm" if focal is not None else "Undefined"
             print(f"{idx}. {lens.name} - {lens.material} ({lens.lens_type}) - f={focal_str}")
     
     def get_lens_by_index(self, idx: int) -> Optional[Lens]:

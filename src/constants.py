@@ -161,6 +161,16 @@ ALL_LENS_TYPES = [
     LENS_TYPE_MENISCUS_CONCAVE
 ]
 
+# Standard radius preset (R1, R2) in mm applied per lens type
+LENS_TYPE_PRESET_RADII = {
+    LENS_TYPE_BICONVEX: (DEFAULT_RADIUS_1, DEFAULT_RADIUS_2),
+    LENS_TYPE_BICONCAVE: (-DEFAULT_RADIUS_1, -DEFAULT_RADIUS_2),
+    LENS_TYPE_PLANO_CONVEX: (DEFAULT_RADIUS_1, float('inf')),
+    LENS_TYPE_PLANO_CONCAVE: (float('inf'), DEFAULT_RADIUS_1),
+    LENS_TYPE_MENISCUS_CONVEX: (80.0, -120.0),
+    LENS_TYPE_MENISCUS_CONCAVE: (-120.0, 80.0),
+}
+
 # ==================== Quality Assessment Constants ====================
 
 # Quality score thresholds (0-100)
