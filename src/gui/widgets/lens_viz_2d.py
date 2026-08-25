@@ -2,6 +2,13 @@ from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt, QPoint, Signal
 from PySide6.QtGui import QColor, QPainter, QPen, QPainterPath, QBrush
 import math
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QMouseEvent, QPaintEvent
+
+    from ...lens import Lens
+
 
 class _2DVisualizationWidget(QWidget):
     """2D lens visualization"""
@@ -9,7 +16,12 @@ class _2DVisualizationWidget(QWidget):
     # Signals for interactive manipulation
     property_changed = Signal(str, float)
     
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        """Initialize the widget with default colors and interaction state.
+
+        Args:
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self._lens = None
         self._view_mode = "2D"
@@ -36,7 +48,8 @@ class _2DVisualizationWidget(QWidget):
         
         self.setMouseTracking(True)
 
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, event: "QMouseEvent") -> None:
+        """Select the handle under the mouse cursor, if any."""
         if not self._lens: return
         
         pos = event.position().toPoint()
@@ -49,11 +62,13 @@ class _2DVisualizationWidget(QWidget):
                 self.setCursor(Qt.ClosedHandCursor)
                 break
 
-    def mouseReleaseEvent(self, event):
+    def mouseReleaseEvent(self, event: "QMouseEvent") -> None:
+        """Deselect the active handle and restore the cursor."""
         self._active_handle = None
         self.setCursor(Qt.ArrowCursor)
 
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event: "QMouseEvent") -> None:
+        """Drag the active handle or update the cursor on hover."""
         if not self._lens: return
         
         pos = event.position().toPoint()
@@ -99,15 +114,26 @@ class _2DVisualizationWidget(QWidget):
             else:
                 self.setCursor(Qt.ArrowCursor)
 
-    def set_view_mode(self, mode):
+    def set_view_mode(self, mode: str) -> None:
+        """Set the view mode and schedule a repaint.
+
+        Args:
+            mode: View mode name (e.g. '2D').
+        """
         self._view_mode = mode
         self.update()
-    
-    def update_lens(self, lens):
+
+    def update_lens(self, lens: "Lens") -> None:
+        """Set the lens model to visualize and schedule a repaint.
+
+        Args:
+            lens: The lens model to draw.
+        """
         self._lens = lens
         self.update()
-    
-    def paintEvent(self, event):
+
+    def paintEvent(self, event: "QPaintEvent") -> None:
+        """Paint the grid, axis, lens cross-section and interactive handles."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
@@ -155,7 +181,8 @@ class _2DVisualizationWidget(QWidget):
         half_d = diameter / 2
         
         # Helper to get sag at y
-        def get_sag(r, y):
+        def get_sag(r: float, y: float) -> float:
+            """Return the surface sag for radius ``r`` at height ``y``."""
             if abs(r) < 1e-6: return 0
             r_a = abs(r)
             y_safe = min(abs(y), r_a)
@@ -230,7 +257,8 @@ class _2DVisualizationWidget(QWidget):
         painter.drawPath(path_r2)
 
         # Draw handles (spaced out to avoid crowding)
-        def draw_handle(p, name, pos, label=""):
+        def draw_handle(p: QPainter, name: str, pos: QPoint, label: str = "") -> None:
+            """Draw an interactive handle and register it for hit testing."""
             self._handles[name] = pos
             if self._active_handle == name:
                 p.setPen(QPen(QColor(0, 255, 0), 2))

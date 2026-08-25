@@ -13,7 +13,8 @@ from ..widgets.simulation_viz import SimulationVisualizationWidget
 class SimulationTab(BaseTab):
     """Simulation controls and visualization"""
     
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
+        """Build the ray source controls panel and the visualization widget."""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         
@@ -89,8 +90,13 @@ class SimulationTab(BaseTab):
         self._sim_viz = SimulationVisualizationWidget()
         layout.addWidget(self._sim_viz, 3)
 
-    def _on_run_simulation(self):
-        """Run ray tracing simulation"""
+    def _on_run_simulation(self) -> None:
+        """Run ray tracing simulation.
+
+        Reads the source settings from the controls and forwards them, along
+        with the active lens/assembly from the parent window, to the
+        visualization widget.
+        """
         active_system = self._parent._current_assembly if self._parent._current_assembly else self._parent._current_lens
         if active_system:
             num_rays = int(self._sim_num_rays.value())
@@ -108,21 +114,30 @@ class SimulationTab(BaseTab):
             
             self._sim_viz.run_simulation(active_system, num_rays, angle, source_height, show_ghosts, wavelength)
     
-    def _on_wavelength_changed(self, index):
-        """Show/hide custom wavelength input based on selection"""
+    def _on_wavelength_changed(self, index: int) -> None:
+        """Show/hide custom wavelength input based on selection.
+
+        Args:
+            index: Index of the selected wavelength entry; index 5 selects
+                the custom wavelength input.
+        """
         is_custom = (index == 5)
         self._sim_custom_label.setVisible(is_custom)
         self._sim_custom_wavelength.setVisible(is_custom)
         self._sim_custom_wavelength.setEnabled(is_custom)
     
-    def _on_clear_simulation(self):
-        """Clear simulation visualization"""
+    def _on_clear_simulation(self) -> None:
+        """Clear simulation visualization."""
         self._sim_viz.clear_simulation()
     
-    def _reset_simulation_view(self):
-        """Reset the simulation view (zoom and pan)"""
+    def _reset_simulation_view(self) -> None:
+        """Reset the simulation view (zoom and pan)."""
         self._sim_viz.reset_view()
 
-    def refresh(self):
-        """Refresh simulation state if needed"""
+    def refresh(self) -> None:
+        """Refresh simulation state if needed.
+
+        Reloads from the parent window's current lens/system state; currently
+        no extra work is required.
+        """
         pass

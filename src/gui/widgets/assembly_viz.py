@@ -6,12 +6,24 @@ OpenLens PySide6 Assembly Visualization Widget
 from PySide6.QtWidgets import QWidget
 from PySide6.QtGui import QPainter, QPen, QPainterPath, QBrush, QColor
 from PySide6.QtCore import Qt
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QPaintEvent
+
+    from ...lens import Lens
+    from ...optical_system import OpticalSystem
 
 
 class AssemblyVisualizationWidget(QWidget):
     """2D visualization of optical system (multiple lenses)"""
     
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        """Initialize the widget with its color palette.
+
+        Args:
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self._system = None
         
@@ -28,12 +40,16 @@ class AssemblyVisualizationWidget(QWidget):
         ]
         self._text_color = QColor("#e0e0e0")
     
-    def update_system(self, system):
-        """Update visualization with optical system"""
+    def update_system(self, system: "OpticalSystem") -> None:
+        """Update visualization with optical system
+
+        Args:
+            system: The optical system whose elements should be drawn.
+        """
         self._system = system
         self.update()
     
-    def paintEvent(self, event):
+    def paintEvent(self, event: "QPaintEvent") -> None:
         """Paint the optical system visualization"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
@@ -73,9 +89,20 @@ class AssemblyVisualizationWidget(QWidget):
             else:
                 cx += lens.thickness * scale
     
-    def _draw_lens(self, painter, lens, cx, cy, scale, color):
-        """Draw a single lens"""
-        def get_sag(r, y):
+    def _draw_lens(self, painter: QPainter, lens: "Lens", cx: float,
+                   cy: float, scale: float, color: QColor) -> None:
+        """Draw a single lens
+
+        Args:
+            painter: Painter used for drawing.
+            lens: The lens model to draw.
+            cx: Horizontal center of the lens in widget coordinates.
+            cy: Vertical center of the lens in widget coordinates.
+            scale: Pixels per millimeter.
+            color: Fill and outline color for the lens.
+        """
+        def get_sag(r: float, y: float) -> float:
+            """Return the surface sag for radius ``r`` at height ``y``."""
             if abs(r) < 1e-6: return 0
             r_a = abs(r)
             if y > r_a: return r_a

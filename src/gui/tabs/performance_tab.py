@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 class PerformanceTab(BaseTab):
     """Optical performance metrics and analysis plots"""
     
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
+        """Build the metrics dashboard, parameter inputs, and analysis buttons."""
         # Create scroll area
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -125,8 +126,8 @@ class PerformanceTab(BaseTab):
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(scroll)
 
-    def _on_show_image_simulation(self):
-        """Show Image Simulation Dialog with side-by-side view"""
+    def _on_show_image_simulation(self) -> None:
+        """Show Image Simulation Dialog with side-by-side view."""
         active_system = self._parent._current_assembly if self._parent._current_assembly else self._parent._current_lens
         if not active_system:
             QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
@@ -155,8 +156,8 @@ class PerformanceTab(BaseTab):
             QMessageBox.critical(self, "Analysis Error", f"Failed to start image simulation: {e}")
 
 
-    def _on_calculate_performance_metrics(self):
-        """Calculate and display performance metrics for the active lens or assembly"""
+    def _on_calculate_performance_metrics(self) -> None:
+        """Calculate and display performance metrics for the active lens or assembly."""
         active_system = self._parent._current_assembly if self._parent._current_assembly else self._parent._current_lens
         if not active_system:
             self._perf_metrics_text.setPlainText("No system selected.")
@@ -255,8 +256,8 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             logger.error(f"Performance calculation error: {e}")
             self._perf_metrics_text.setPlainText(f"Error calculating metrics: {e}")
 
-    def _on_show_spot_diagram(self):
-        """Show spot diagram using ImageQualityAnalyzer for active system"""
+    def _on_show_spot_diagram(self) -> None:
+        """Show spot diagram using ImageQualityAnalyzer for active system."""
         active_system = self._parent._current_assembly if self._parent._current_assembly else self._parent._current_lens
         if not active_system:
             QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
@@ -315,8 +316,8 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             logger.error(f"Spot diagram error: {e}")
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate spot diagram: {e}")
 
-    def _on_show_ray_fan(self):
-        """Show ray fan plot for active system"""
+    def _on_show_ray_fan(self) -> None:
+        """Show ray fan plot for active system."""
         active_system = self._parent._current_assembly if self._parent._current_assembly else self._parent._current_lens
         if not active_system:
             QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
@@ -373,8 +374,8 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             logger.error(f"Ray fan error: {e}")
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate ray fan: {e}")
 
-    def _on_show_field_curves(self):
-        """Show field curvature and distortion plots"""
+    def _on_show_field_curves(self) -> None:
+        """Show field curvature and distortion plots."""
         active_system = self._parent._current_assembly if self._parent._current_assembly else self._parent._current_lens
         if not active_system:
             QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
@@ -446,24 +447,28 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             logger.error(f"Field curves error: {e}")
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate field curves: {e}")
 
-    def _on_show_psf(self):
-        """Show PSF Analysis through parent"""
+    def _on_show_psf(self) -> None:
+        """Show PSF Analysis through parent."""
         self._parent._on_show_psf()
 
-    def _on_show_mtf(self):
-        """Show MTF Analysis through parent"""
+    def _on_show_mtf(self) -> None:
+        """Show MTF Analysis through parent."""
         self._parent._on_show_mtf()
 
-    def _on_show_wavefront(self):
-        """Show Wavefront Analysis through parent"""
+    def _on_show_wavefront(self) -> None:
+        """Show Wavefront Analysis through parent."""
         self._parent._on_show_wavefront()
 
-    def _on_show_ghost_analysis(self):
-        """Show Ghost Analysis through parent"""
+    def _on_show_ghost_analysis(self) -> None:
+        """Show Ghost Analysis through parent."""
         self._parent._on_show_ghost_analysis()
 
-    def refresh(self):
-        """Refresh performance tab state"""
+    def refresh(self) -> None:
+        """Refresh performance tab state.
+
+        Reloads from the parent window's current lens/system state,
+        recalculating the displayed metrics when a system is active.
+        """
         # Re-calculate metrics if there's an active lens/assembly
         active_system = self._parent._current_assembly if self._parent._current_assembly else self._parent._current_lens
         if active_system:

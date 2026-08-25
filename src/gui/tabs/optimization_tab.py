@@ -5,6 +5,8 @@ Tab for lens and system optimization
 
 import logging
 import copy
+from typing import Dict, List
+
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
                                QFormLayout, QCheckBox, QDoubleSpinBox,
                                QComboBox, QTextEdit, QPushButton, QScrollArea, QLabel)
@@ -18,10 +20,29 @@ from ...optimizer import OptimizationVariable, OptimizationTarget
 logger = logging.getLogger(__name__)
 
 class OptimizationWorker(QThread):
+    """Background thread that runs the selected optimizer on a deep copy of
+    the active lens/system."""
+
     finished = Signal(object, list)
     failed = Signal(str)
 
-    def __init__(self, active_target, variables, targets, constraints, algorithm):
+    def __init__(
+        self,
+        active_target,
+        variables: List[OptimizationVariable],
+        targets: List[OptimizationTarget],
+        constraints: Dict[str, float],
+        algorithm: str,
+    ) -> None:
+        """Initialize the worker inputs.
+
+        Args:
+            active_target: Lens or optical system selected for optimization.
+            variables: Adjustable optimization variables collected from the UI.
+            targets: Merit targets the optimizer should satisfy.
+            constraints: Geometric limits keyed by constraint name.
+            algorithm: Name of the selected optimization algorithm.
+        """
         super().__init__()
         self.active_target = active_target
         self.variables = variables
@@ -29,7 +50,9 @@ class OptimizationWorker(QThread):
         self.constraints = constraints
         self.algorithm = algorithm
 
-    def run(self):
+    def run(self) -> None:
+        """Execute the optimization in this thread and emit ``finished`` with
+        the result or ``failed`` with an error message."""
         try:
             from ...optical_system import OpticalSystem
             from ...global_optimizer import GlobalOptimizer
@@ -64,7 +87,8 @@ class OptimizationWorker(QThread):
 class OptimizationTab(BaseTab):
     """Tab for lens and system optimization"""
     
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
+        """Build the variables, targets, constraints, results, and viz panels."""
         # Create scroll area
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -212,8 +236,12 @@ class OptimizationTab(BaseTab):
         #     self._parent.opt_finished.connect(self._on_optimization_finished)
         #     self._parent.opt_failed.connect(self._on_optimization_failed)
 
-    def refresh(self):
-        """Update the variables list based on current selection (Lens or Assembly)"""
+    def refresh(self) -> None:
+        """Update the variables list based on current selection (Lens or Assembly).
+
+        Rebuilds the variable checkboxes and preview visualizations from the
+        parent window's current lens/system state.
+        """
         # Clear existing
         while self._opt_vars_layout.count():
             child = self._opt_vars_layout.takeAt(0)
@@ -284,8 +312,8 @@ class OptimizationTab(BaseTab):
             
         self._opt_vars_layout.addStretch()
 
-    def _on_stop_optimization(self):
-        """Stop the currently running optimization"""
+    def _on_stop_optimization(self) -> None:
+        """Stop the currently running optimization."""
         if self._opt_is_running:
             self._opt_is_running = False
             self._opt_results_text.setPlainText("Optimization stopped by user.")
@@ -293,8 +321,12 @@ class OptimizationTab(BaseTab):
                 self._parent._update_status("Optimization stopped.")
             self._opt_apply_btn.setEnabled(False)
 
-    def _on_run_optimization(self):
-        """Run system optimization"""
+    def _on_run_optimization(self) -> None:
+        """Run system optimization.
+
+        Collects variables, targets, and constraints from the UI and starts an
+        :class:`OptimizationWorker` thread for the active lens/system.
+        """
         if not self._parent:
             return
 
@@ -386,8 +418,16 @@ class OptimizationTab(BaseTab):
         self._opt_worker.start()
 
     @Slot(object, list)
-    def _on_optimization_finished(self, result, variables):
-        """Callback for finished optimization"""
+    def _on_optimization_finished(
+        self, result, variables: List[OptimizationVariable]
+    ) -> None:
+        """Callback for finished optimization.
+
+        Args:
+            result: Optimization result emitted by the worker thread.
+            variables: Variables that were optimized, used to report the new
+                parameter values.
+        """
         self._opt_is_running = False
         from ...optical_system import OpticalSystem
         
@@ -423,15 +463,19 @@ class OptimizationTab(BaseTab):
             self._opt_results_text.setPlainText(f"Optimization failed: {result.message}")
 
     @Slot(str)
-    def _on_optimization_failed(self, message):
-        """Callback for failed optimization"""
+    def _on_optimization_failed(self, message: str) -> None:
+        """Callback for failed optimization.
+
+        Args:
+            message: Error description emitted by the worker thread.
+        """
         self._opt_is_running = False
         self._opt_results_text.setPlainText(f"Optimization Error: {message}")
         if self._parent:
             self._parent._update_status(f"Optimization failed: {message}")
 
-    def _on_apply_optimization(self):
-        """Apply the optimization results to the current system"""
+    def _on_apply_optimization(self) -> None:
+        """Apply the optimization results to the current system."""
         if not self._parent or not self._opt_pending_target:
             return
 
@@ -450,8 +494,8 @@ class OptimizationTab(BaseTab):
         self._opt_results_text.append("\nChanges applied to system.")
         self._parent._save_to_database()
 
-    def _on_reset_optimization(self):
-        """Reset optimization to original values"""
+    def _on_reset_optimization(self) -> None:
+        """Reset optimization to original values."""
         if not self._parent or not self._opt_original_target:
             self._opt_results_text.setPlainText("No original state to reset to.")
             return

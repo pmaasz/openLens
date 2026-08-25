@@ -9,8 +9,11 @@ from .base_tab import BaseTab
 class SelectionTab(BaseTab):
     """Lens selection tab"""
     
-    def _setup_ui(self):
-        """Setup UI"""
+    def _setup_ui(self) -> None:
+        """Setup UI.
+
+        Builds the title label and the lens library list widget.
+        """
         layout = QVBoxLayout(self)
         
         title = QLabel("Lens Library")
@@ -20,7 +23,10 @@ class SelectionTab(BaseTab):
         self._list_widget = QListWidget()
         layout.addWidget(self._list_widget)
     
-    def refresh(self):
-        """Refresh the lens list"""
+    def refresh(self) -> None:
+        """Refresh the lens list.
+
+        Reloads the list from the parent window's current lens/system state.
+        """
         # Placeholder - would load from storage
         pass

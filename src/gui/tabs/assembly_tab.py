@@ -14,7 +14,8 @@ from ...optical_system import OpticalSystem, AirGap
 class AssemblyTab(BaseTab):
     """Multi-element optical system builder"""
     
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
+        """Build the builder panels and create the initial optical system."""
         layout = QHBoxLayout(self)
         
         # Left: Available lenses + System builder
@@ -86,8 +87,12 @@ class AssemblyTab(BaseTab):
         self._optical_system = OpticalSystem(name="New Assembly")
         self.refresh_lens_list()
 
-    def refresh_lens_list(self):
-        """Populate the lens selection list from the main window's lens collection"""
+    def refresh_lens_list(self) -> None:
+        """Populate the lens selection list from the main window's lens collection.
+
+        Schedules a retry via a short timer while the list is still empty,
+        e.g. when the database load has not finished yet.
+        """
         self._assembly_lens_list.clear()
         if hasattr(self._parent, '_lenses'):
             for lens in self._parent._lenses:
@@ -99,8 +104,8 @@ class AssemblyTab(BaseTab):
             from PySide6.QtCore import QTimer
             QTimer.singleShot(100, self.refresh_lens_list)
 
-    def _update_system_list(self):
-        """Update the system list widget from the optical system model"""
+    def _update_system_list(self) -> None:
+        """Update the system list widget from the optical system model."""
         self._system_list.clear()
         for i, element in enumerate(self._optical_system.elements):
             # Air gap before element i is at index i-1
@@ -113,8 +118,8 @@ class AssemblyTab(BaseTab):
             item = QListWidgetItem(f"{i+1}: {element.lens.name}{gap_str}")
             self._system_list.addItem(item)
 
-    def _on_add_lens_to_system(self):
-        """Add selected lens to optical system"""
+    def _on_add_lens_to_system(self) -> None:
+        """Add selected lens to optical system."""
         current = self._assembly_lens_list.currentRow()
         if current >= 0 and current < len(self._parent._lenses):
             lens = self._parent._lenses[current]
@@ -125,8 +130,8 @@ class AssemblyTab(BaseTab):
             self._assembly_viz.update_system(self._optical_system)
             self._on_assembly_changed()
     
-    def _on_remove_lens_from_system(self):
-        """Remove selected lens from system"""
+    def _on_remove_lens_from_system(self) -> None:
+        """Remove selected lens from system."""
         current = self._system_list.currentRow()
         if current >= 0 and current < len(self._optical_system.elements):
             self._optical_system.remove_lens(current)
@@ -134,8 +139,8 @@ class AssemblyTab(BaseTab):
             self._assembly_viz.update_system(self._optical_system)
             self._on_assembly_changed()
     
-    def _on_move_lens_up(self):
-        """Move lens up in system"""
+    def _on_move_lens_up(self) -> None:
+        """Move lens up in system."""
         current = self._system_list.currentRow()
         if current > 0:
             self._optical_system.elements[current], self._optical_system.elements[current-1] = \
@@ -144,8 +149,8 @@ class AssemblyTab(BaseTab):
             self._assembly_viz.update_system(self._optical_system)
             self._on_assembly_changed()
     
-    def _on_move_lens_down(self):
-        """Move lens down in system"""
+    def _on_move_lens_down(self) -> None:
+        """Move lens down in system."""
         current = self._system_list.currentRow()
         if current >= 0 and current < len(self._optical_system.elements) - 1:
             self._optical_system.elements[current], self._optical_system.elements[current+1] = \
@@ -154,8 +159,13 @@ class AssemblyTab(BaseTab):
             self._assembly_viz.update_system(self._optical_system)
             self._on_assembly_changed()
 
-    def _on_system_item_selected(self, index):
-        """Handle system item selection"""
+    def _on_system_item_selected(self, index: int) -> None:
+        """Handle system item selection.
+
+        Args:
+            index: Row index of the element selected in the system list;
+                enables the air gap editor for rows after the first element.
+        """
         if index > 0:
             self._air_gap_group.setEnabled(True)
             # The gap before the element at 'index' is at index-1 in the air_gaps list
@@ -171,12 +181,17 @@ class AssemblyTab(BaseTab):
         else:
             self._air_gap_group.setEnabled(False)
 
-    def _on_apply_gap_clicked(self):
-        """Apply the current air gap value to the system"""
+    def _on_apply_gap_clicked(self) -> None:
+        """Apply the current air gap value to the system."""
         self._on_air_gap_changed(self._air_gap_input.value())
 
-    def _on_air_gap_changed(self, value):
-        """Update air gap for selected element"""
+    def _on_air_gap_changed(self, value: float) -> None:
+        """Update air gap for selected element.
+
+        Args:
+            value: New air gap thickness in mm, applied to the gap before the
+                element currently selected in the system list.
+        """
         current = self._system_list.currentRow()
         if current >= 0:
             # The gap before the i-th element is at index i-1 in self.air_gaps
@@ -195,14 +210,18 @@ class AssemblyTab(BaseTab):
                 self._assembly_viz.update_system(self._optical_system)
                 self._on_assembly_changed()
 
-    def _on_assembly_changed(self):
-        """Notify parent window of assembly changes"""
+    def _on_assembly_changed(self) -> None:
+        """Notify parent window of assembly changes."""
         self._parent._current_assembly = self._optical_system
         self._parent._update_status(f"Assembly updated: {self._optical_system.name}")
         self.data_updated.emit()
 
-    def refresh(self):
-        """Refresh assembly tab state from parent's current assembly"""
+    def refresh(self) -> None:
+        """Refresh assembly tab state from parent's current assembly.
+
+        Reloads the lens list and syncs the builder with the parent window's
+        current lens/system state.
+        """
         self.refresh_lens_list()
         
         # Sync with parent's current assembly if it exists
