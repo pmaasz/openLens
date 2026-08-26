@@ -126,6 +126,9 @@ class AberrationsCalculator:
 
         if self.is_system:
             field_data = self._calculate_field_metrics_system(field_angle_deg)
+            if field_data is None:
+                field_data = {'coma': 0.0, 'astigmatism': 0.0,
+                              'field_curvature': 0.0, 'distortion': 0.0}
             return {
                 'focal_length': focal_length,
                 'numerical_aperture': na,
@@ -139,7 +142,7 @@ class AberrationsCalculator:
                 'chromatic': chromatic,
                 'chromatic_aberration': chromatic,
                 'airy_disk_diameter': airy,
-                'spot_rms': self._calculate_spot_rms(),
+                'spot_rms': self._calculate_spot_rms() or 0.0,
                 'strehl': strehl,
                 'mtf_cutoff': mtf_cutoff
             }
@@ -217,10 +220,9 @@ class AberrationsCalculator:
             }
         except Exception as e:
             logger.warning(
-                "Field metrics computation failed at %.1f deg: %s - "
-                "reporting zeros", field_angle, e)
-            return {'field_curvature': 0.0, 'distortion': 0.0,
-                    'astigmatism': 0.0, 'coma': 0.0}
+                "Field metrics computation failed at %.1f deg: %s",
+                field_angle, e)
+            return None
 
     def _calculate_coma(self, focal_length: float, field_angle_deg: float) -> float:
         """Calculate third-order Seidel coma for a single lens"""
@@ -346,7 +348,9 @@ class AberrationsCalculator:
         """Estimate Strehl ratio from wavefront error/spot size"""
         # Simplified estimation: Strehl ~= exp(-(2*pi*RMS_OPD)^2)
         # For now, return a placeholder based on spot size vs airy disk
-        spot_rms = self._calculate_spot_rms() if self.is_system else 5.0 # Placeholder for single lens
+        spot_rms = self._calculate_spot_rms() if self.is_system else 5.0
+        if spot_rms is None:
+            spot_rms = 5.0
         airy_r = self._calculate_airy_disk(focal_length) * 500 # diameter/2 in um
         if airy_r <= 0: return 0
         ratio = airy_r / max(airy_r, spot_rms)
@@ -392,8 +396,9 @@ class AberrationsCalculator:
             mean_y = sum(y_hits) / len(y_hits)
             rms = math.sqrt(sum((y - mean_y)**2 for y in y_hits) / len(y_hits))
             return rms * 1000 # convert to um
-        except:
-            return 0
+        except Exception as e:
+            logger.warning("Spot RMS ray-trace failed: %s", e)
+            return None
 
     def _calculate_spherical_aberration(self, focal_length: float) -> float:
         """
@@ -479,7 +484,7 @@ class AberrationsCalculator:
             if hasattr(self.target, 'calculate_chromatic_aberration'):
                 res = self.target.calculate_chromatic_aberration()
                 return res.get('longitudinal')
-            return 0
+            return None
         
         # Typical Abbe numbers for common materials
         abbe_numbers = {

@@ -180,16 +180,16 @@ class Lens:
                 if hasattr(db, 'calculate_model_index'):
                     return db.calculate_model_index(
                         self.model_nd, self.model_vd, wavelength_nm)
-            except _MATERIAL_DB_ERRORS:
-                pass
+            except _MATERIAL_DB_ERRORS as e:
+                logger.debug("Model index lookup failed: %s", e)
             return self.model_nd
         if MATERIAL_DB_AVAILABLE:
             try:
                 db = get_material_database()
                 return db.get_refractive_index(
                     self.material, wavelength_nm, self.temperature)
-            except _MATERIAL_DB_ERRORS:
-                pass
+            except _MATERIAL_DB_ERRORS as e:
+                logger.debug("Material index lookup failed: %s", e)
         return self.refractive_index
 
     @classmethod

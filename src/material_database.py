@@ -430,9 +430,9 @@ class MaterialDatabase:
                     try:
                         coeffs = [float(x) for x in parts[1:]]
                         current_glass['dispersion'] = coeffs
-                    except ValueError:
-                        pass
-                        
+                    except ValueError as e:
+                        logger.debug("AGF dispersion parse failed: %s", e)
+
                 elif key == 'IT' and current_glass:
                     # Internal Transmission
                     # IT Thickness T1 T2 T3 ... (pairs are interleaved? No usually IT Thk W1 T1 W2 T2 ...)
@@ -452,8 +452,8 @@ class MaterialDatabase:
                                 pairs.append((w_um * 1000.0, t)) # Convert um to nm
                         
                         current_glass['transmission'] = pairs
-                    except (IndexError, ValueError):
-                        pass
+                    except (IndexError, ValueError) as e:
+                        logger.debug("AGF transmission parse failed: %s", e)
 
             # Save last glass
             if current_glass:
