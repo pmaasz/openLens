@@ -7,7 +7,7 @@ Calculate professional optical specifications
 import math
 from typing import Optional, Dict, Any
 
-from .lens_editor import Lens
+from .lens import Lens
 from .optical_system import OpticalSystem
 class PerformanceMetrics:
     """Calculate optical performance metrics"""
