@@ -366,43 +366,35 @@ class OpticalSystem:
             'd': WAVELENGTH_D_LINE,  # Yellow (Reference)
             'C': WAVELENGTH_C_LINE   # Red
         }
-        
-        bfls = {}
-        original_states = []
-        
-        # Save original wavelengths
-        for element in self.elements:
-            original_states.append(element.lens.wavelength)
-            
-        try:
-            for line, wl in lines.items():
-                for element in self.elements:
-                    element.lens.update_refractive_index(wavelength_nm=wl)
-                bfls[line] = self.calculate_back_focal_length()
-            
-            if bfls['F'] is not None and bfls['C'] is not None:
-                longitudinal = bfls['C'] - bfls['F']
-                return {
-                    "longitudinal": longitudinal,
-                    "bfl_F": bfls['F'],
-                    "bfl_d": bfls['d'],
-                    "bfl_C": bfls['C'],
-                    "corrected": abs(longitudinal) < 0.1
-                }
-            return {"longitudinal": 0.0, "corrected": False}
-                
-        finally:
-            # Restore original wavelengths
-            for i, element in enumerate(self.elements):
-                element.lens.update_refractive_index(wavelength_nm=original_states[i])
 
-    def _calculate_system_matrix(self) -> Optional[Tuple[float, float, float, float]]:
+        bfls = {}
+        for line, wl in lines.items():
+            n_map = {i: el.lens.refractive_index_at(wl)
+                     for i, el in enumerate(self.elements)}
+            bfls[line] = self.calculate_back_focal_length(n_overrides=n_map)
+
+        if bfls['F'] is not None and bfls['C'] is not None:
+            longitudinal = bfls['C'] - bfls['F']
+            return {
+                "longitudinal": longitudinal,
+                "bfl_F": bfls['F'],
+                "bfl_d": bfls['d'],
+                "bfl_C": bfls['C'],
+                "corrected": abs(longitudinal) < 0.1
+            }
+        return {"longitudinal": 0.0, "corrected": False}
+
+    def _calculate_system_matrix(self, n_overrides=None):
         """Calculate the system ray-transfer (ABCD) matrix surface-by-surface.
 
         Treats each surface and thickness individually (thick-lens model):
         for each element, apply refraction at the first surface, propagation
         through the glass at the reduced thickness d/n, refraction at the
         second surface, then propagation through the following air gap.
+
+        Args:
+            n_overrides: Optional dict mapping element index → refractive
+                index to use instead of ``element.lens.refractive_index``.
         """
         if not self.elements:
             return None
@@ -413,7 +405,8 @@ class OpticalSystem:
 
         for i, element in enumerate(self.elements):
             lens = element.lens
-            n_lens = lens.refractive_index
+            n_lens = (n_overrides[i] if n_overrides and i in n_overrides
+                      else lens.refractive_index)
 
             # Refraction at first surface (n_current → n_lens).
             # Standard paraxial refraction matrix is [[1, 0], [-P, 1]].
@@ -441,9 +434,9 @@ class OpticalSystem:
 
         return A, B, C, D
     
-    def calculate_back_focal_length(self) -> Optional[float]:
+    def calculate_back_focal_length(self, n_overrides=None) -> Optional[float]:
         """Calculate Back Focal Length (BFL) of the system."""
-        matrix = self._calculate_system_matrix()
+        matrix = self._calculate_system_matrix(n_overrides=n_overrides)
         if not matrix:
             return None
         A, B, C, D = matrix
