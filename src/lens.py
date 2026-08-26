@@ -90,10 +90,12 @@ class Lens:
             
         self.lens_type = lens_type
 
-        # Apply the lens_type radius preset only when radii are still at
-        # their defaults; this preserves custom radii while letting
-        # lens_type choose sensible starting geometry.
-        self._apply_type_preset_if_needed()
+        # Only overwrite radii when the caller explicitly opts in.
+        # This prevents silently clobbering r1=100, r2=-100 passed for
+        # a Plano-Convex lens just because they happen to match the
+        # Biconvex defaults.
+        if use_type_defaults:
+            self._update_radii_for_type()
         
         # Fresnel properties
         self.is_fresnel = is_fresnel
@@ -307,13 +309,6 @@ class Lens:
         except ZeroDivisionError:
             return None
     
-    def _apply_type_preset_if_needed(self) -> None:
-        """Apply the lens_type radius preset if radii are still at defaults."""
-        if (self.radius_of_curvature_1 == DEFAULT_RADIUS_1 and
-                self.radius_of_curvature_2 == DEFAULT_RADIUS_2 and
-                self.lens_type != LENS_TYPE_BICONVEX):
-            self._update_radii_for_type()
-
     def _update_radii_for_type(self) -> None:
         """Apply the standard radius preset for the current lens_type.
 
