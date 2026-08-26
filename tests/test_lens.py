@@ -81,8 +81,8 @@ class TestLensTypePresets(unittest.TestCase):
     """Radius presets applied per lens_type"""
 
     def test_preset_applied_when_radii_default(self):
-        """Selecting a type with default radii applies the preset"""
-        lens = Lens(lens_type="Plano-Convex")
+        """Selecting a type with use_type_defaults applies the preset"""
+        lens = Lens(lens_type="Plano-Convex", use_type_defaults=True)
         self.assertEqual(lens.radius_of_curvature_1, 100.0)
         self.assertEqual(lens.radius_of_curvature_2, float('inf'))
 

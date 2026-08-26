@@ -57,7 +57,8 @@ class Lens:
                  num_grooves: Optional[int] = None,
                  model_glass_mode: bool = False,
                  model_nd: float = 1.5168,
-                 model_vd: float = 64.17) -> None:
+                 model_vd: float = 64.17,
+                 use_type_defaults: bool = False) -> None:
         
         self.id = uuid.uuid4().hex
         self.name = name
@@ -89,10 +90,12 @@ class Lens:
             
         self.lens_type = lens_type
 
-        # Apply the lens_type radius preset only when radii are still at
-        # their defaults; this preserves custom radii while letting
-        # lens_type choose sensible starting geometry.
-        self._apply_type_preset_if_needed()
+        # Only overwrite radii when the caller explicitly opts in.
+        # This prevents silently clobbering r1=100, r2=-100 passed for
+        # a Plano-Convex lens just because they happen to match the
+        # Biconvex defaults.
+        if use_type_defaults:
+            self._update_radii_for_type()
         
         # Fresnel properties
         self.is_fresnel = is_fresnel
@@ -228,6 +231,7 @@ class Lens:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert lens to dictionary representation."""
+        # Ensure modified_at is updated on serialization if not already managed
         return {
             "id": self.id,
             "name": self.name,
@@ -273,7 +277,8 @@ class Lens:
             num_grooves=data.get("num_grooves", None),
             model_glass_mode=data.get("model_glass_mode", False),
             model_nd=data.get("model_nd", 1.5168),
-            model_vd=data.get("model_vd", 64.17)
+            model_vd=data.get("model_vd", 64.17),
+            use_type_defaults=data.get("use_type_defaults", False)
         )
 
         lens.id = data.get("id", lens.id)
@@ -304,13 +309,6 @@ class Lens:
         except ZeroDivisionError:
             return None
     
-    def _apply_type_preset_if_needed(self) -> None:
-        """Apply the lens_type radius preset if radii are still at defaults."""
-        if (self.radius_of_curvature_1 == DEFAULT_RADIUS_1 and
-                self.radius_of_curvature_2 == DEFAULT_RADIUS_2 and
-                self.lens_type != LENS_TYPE_BICONVEX):
-            self._update_radii_for_type()
-
     def _update_radii_for_type(self) -> None:
         """Apply the standard radius preset for the current lens_type.
 

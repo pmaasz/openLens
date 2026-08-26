@@ -141,13 +141,13 @@ class OpenLensWindow(QMainWindow):
                 ]
 
             all_items = self._lenses + self._assemblies
-            
+
             # Ensure uniqueness by ID before saving to avoid duplicate keys or state conflicts
             unique_items = {}
             for item in all_items:
                 if hasattr(item, 'id'):
                     unique_items[item.id] = item
-            
+
             self._storage.save_lenses(list(unique_items.values()),
                                    reconcile=True)
             logger.info("Saved %d unique items to database", len(unique_items))
@@ -181,33 +181,66 @@ class OpenLensWindow(QMainWindow):
     
     def _load_lens_from_data(self, data: Any) -> None:
         """Load lens or assembly from saved data"""
+        from src.optical_system import OpticalSystem
+
+        # Check if the item already exists in the library by ID
+        existing = None
+        if hasattr(data, 'id'):
+            for item in self._lenses + self._assemblies:
+                if getattr(item, 'id', None) == data.id:
+                    existing = item
+                    break
+
         if isinstance(data, OpticalSystem):
-            self._assemblies.append(data)
-            self._current_assembly = data
+            if not existing:
+                self._assemblies.append(data)
+                target = data
+            else:
+                target = existing
+            self._current_assembly = target
             self._current_lens = None
             self._show_assembly_editor(True)
             self._show_lens_editor(False)
-            self._optical_system = data
+            self._optical_system = target
         elif isinstance(data, Lens):
-            self._lenses.append(data)
-            self._current_lens = data
+            if not existing:
+                self._lenses.append(data)
+                target = data
+            else:
+                target = existing
+            self._current_lens = target
             self._current_assembly = None
             self._show_assembly_editor(False)
             self._show_lens_editor(True)
         elif isinstance(data, dict):
             # Fallback for dict data
+            data_id = data.get('id')
+            for item in self._lenses + self._assemblies:
+                if getattr(item, 'id', None) == data_id:
+                    existing = item
+                    break
+            
             if data.get('type') == 'OpticalSystem':
-                system = OpticalSystem.from_dict(data)
-                self._assemblies.append(system)
-                self._current_assembly = system
+                if not existing:
+                    system = OpticalSystem.from_dict(data)
+                    self._assemblies.append(system)
+                    target = system
+                else:
+                    target = existing
+                self._current_assembly = target
                 self._current_lens = None
             else:
-                lens = Lens.from_dict(data)
-                self._lenses.append(lens)
-                self._current_lens = lens
+                if not existing:
+                    lens = Lens.from_dict(data)
+                    self._lenses.append(lens)
+                    target = lens
+                else:
+                    target = existing
+                self._current_lens = target
                 self._current_assembly = None
         else:
             self._load_default_lens()
+            return
         
         if self._current_lens:
             self._lens_editor.load_lens(self._current_lens)
@@ -319,7 +352,7 @@ class OpenLensWindow(QMainWindow):
         file_menu = menubar.addMenu("File")
         file_menu.addAction("New Lens", self._on_new_lens, QKeySequence.New)
         file_menu.addAction("Open...", self._on_open, QKeySequence.Open)
-        file_menu.addAction("Save", self._on_save, QKeySequence.Save)
+        file_menu.addAction("Save", self._on_save, QKeySequence("Ctrl+S"))
         file_menu.addAction("Save As...", self._on_save_as, QKeySequence("Ctrl+Shift+S"))
         file_menu.addSeparator()
         
@@ -492,9 +525,31 @@ class OpenLensWindow(QMainWindow):
     
     def _on_save(self) -> None:
         """Save to database"""
-        if self._editor_tabs.currentIndex() == self._assembly_tab_index:
+        if self._editor_tabs.currentIndex() == 0:  # Lens Editor Tab
+            # Sync data from Lens Editor widget back to the lens object
+            self._lens_editor._on_property_changed()
+            # Find the lens in our internal list and replace it with the current one
+            if self._current_lens:
+                # Always update the lens in the main collection to ensure persistence
+                for i, lens in enumerate(self._lenses):
+                    if lens.id == self._current_lens.id:
+                        self._lenses[i] = self._current_lens
+                        break
+                else:
+                    # If not found (e.g. it was a new lens not yet added correctly)
+                    self._lenses.append(self._current_lens)
+        elif self._editor_tabs.currentIndex() == self._assembly_tab_index:
              # Force sync from assembly tab state before saving
              self._current_assembly = self._assembly_tab_widget._optical_system
+             # Ensure it's in the list
+             if self._current_assembly:
+                for i, asm in enumerate(self._assemblies):
+                    if asm.id == self._current_assembly.id:
+                        self._assemblies[i] = self._current_assembly
+                        break
+                else:
+                    self._assemblies.append(self._current_assembly)
+                    
         self._save_to_database()
         self._update_status("Saved to database")
     
