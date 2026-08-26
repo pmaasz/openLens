@@ -620,9 +620,8 @@ Ctrl+6         Tolerancing
             return
 
         data = self._current_lens.to_dict()
-        # Pop identity so the constructor mints a fresh uuid4 id, matching
-        # LensService.duplicate_lens; keeping the id would collide with the
-        # original on INSERT OR REPLACE.
+        # Pop identity so the constructor mints a fresh uuid4 id;
+        # keeping the id would collide with the original on INSERT OR REPLACE.
         data.pop('id', None)
         data['name'] = f"{self._current_lens.name} (copy)"
         new_lens = Lens.from_dict(data)
