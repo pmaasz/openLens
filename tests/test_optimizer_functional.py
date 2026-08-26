@@ -7,6 +7,11 @@ import sys
 import os
 import unittest
 
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from _utils import skip_slow
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.optimizer import (
@@ -17,6 +22,7 @@ from src.optical_system import OpticalSystem, create_doublet
 from src.lens import Lens
 
 
+@skip_slow
 class TestOptimizationVariable(unittest.TestCase):
     """Test OptimizationVariable class"""
     
@@ -56,6 +62,7 @@ class TestOptimizationVariable(unittest.TestCase):
         self.assertEqual(var.clamp(75.0), 75.0)
 
 
+@skip_slow
 class TestOptimizationTarget(unittest.TestCase):
     """Test OptimizationTarget class"""
     
@@ -84,6 +91,7 @@ class TestOptimizationTarget(unittest.TestCase):
         self.assertEqual(target.target_type, "target")
 
 
+@skip_slow
 class TestMeritFunction(unittest.TestCase):
     """Test merit function evaluation"""
     
@@ -119,6 +127,7 @@ class TestMeritFunction(unittest.TestCase):
         self.assertGreaterEqual(merit, 0)
 
 
+@skip_slow
 class TestLensOptimizer(unittest.TestCase):
     """Test LensOptimizer class"""
     
@@ -272,6 +281,7 @@ class TestLensOptimizer(unittest.TestCase):
         self.assertEqual(len(result.merit_history), len(result.variable_history))
 
 
+@skip_slow
 class TestDoubletOptimizer(unittest.TestCase):
     """Test doublet-specific optimizer"""
     
@@ -316,6 +326,7 @@ class TestDoubletOptimizer(unittest.TestCase):
         self.assertEqual(len(result.optimized_system.elements), 2)
 
 
+@skip_slow
 class TestOptimizationConvergence(unittest.TestCase):
     """Test optimization convergence behavior"""
     

@@ -162,11 +162,14 @@ class MechanicalDesigner:
                          tolerance: float = 0.1) -> List[Spacer]:
         """Calculate required spacers between lens elements."""
         self.spacers.clear()
-        
-        if not hasattr(self.optical_system, 'lenses'):
+
+        elements = getattr(self.optical_system, 'elements', None)
+        if elements:
+            num_lenses = len(elements)
+        elif hasattr(self.optical_system, 'lenses'):
+            num_lenses = len(self.optical_system.lenses)
+        else:
             return []
-        
-        num_lenses = len(self.optical_system.lenses)
         
         if target_spacing is None:
             # Use default spacing from optical design

@@ -13,6 +13,8 @@ from src.lens import Lens
 from src.optical_system import OpticalSystem
 from src.tolerancing import MonteCarloAnalyzer, ToleranceOperand, ToleranceType
 
+from _utils import skip_slow
+
 
 def _make_system():
     system = OpticalSystem(name="mc")
@@ -31,6 +33,7 @@ def _make_tolerances(distribution="uniform"):
     ]
 
 
+@skip_slow
 class TestSeededMonteCarlo(unittest.TestCase):
     """RNG-seeded Monte Carlo reproducibility"""
 

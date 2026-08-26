@@ -57,6 +57,12 @@ python3 -m unittest tests.test_validation.TestRadiusValidation.test_valid_radius
 # With pytest (if installed)
 pytest tests/                           # All tests
 pytest tests/test_validation.py         # Single file
+
+# Skip slow/integration suites (Monte Carlo, e2e workflows, functional optimizer)
+OPENLENS_SKIP_SLOW=1 python3 -m unittest discover -s tests -t .
+
+# Parallel execution (requires pytest-xdist from the [dev] extras)
+pytest -n auto tests/
 ```
 
 ### Linting

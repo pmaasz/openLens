@@ -10,9 +10,8 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Try to import optional dependencies
+# numpy is required by the modules under test
 try:
-    import pytest
     import numpy as np
     OPTIONAL_DEPS_AVAILABLE = True
 except ImportError:
@@ -20,20 +19,37 @@ except ImportError:
 
 if OPTIONAL_DEPS_AVAILABLE:
     from src.interactive_ray_tracer import InteractiveRayTracer, InteractiveRay, RayManipulator
-    from src.image_simulator import ImageSimulator
+    from src.image_simulator import ImageSimulator, SCIPY_AVAILABLE
     from src.mechanical_designer import MechanicalDesigner, LensMount, LensCell, Spacer
+    from src.lens import Lens as _Lens
+    from src.optical_system import OpticalSystem
 
 
-# Mock optical system for testing
+# Mock optical system for testing.
+# Delegates .elements to a real OpticalSystem so components that use the
+# current API (3D tracer, mechanical designer) keep working, while the
+# legacy stub methods used by these tests stay available.
 class MockOpticalSystem:
     def __init__(self):
+        from src.lens import Lens as _Lens
+        from src.optical_system import OpticalSystem as _OpticalSystem
+        self._system = _OpticalSystem(name="mock")
+        self._system.add_lens(_Lens(radius_of_curvature_1=100.0,
+                                    radius_of_curvature_2=-100.0,
+                                    thickness=5.0,
+                                    diameter=25.4,
+                                    refractive_index=1.5))
         self.surfaces = []
         self.lenses = []
         self.element_spacing = []
-        
+
+    @property
+    def elements(self):
+        return self._system.elements
+
     def effective_focal_length(self, wavelength):
         return 50.0
-    
+
     def get_aberrations(self, wavelength):
         return {
             'spherical': 0.1,
@@ -48,11 +64,11 @@ class MockLens:
         self.center_thickness = center_thickness
 
 
-@unittest.skipUnless(OPTIONAL_DEPS_AVAILABLE, "requires pytest and numpy")
-class TestInteractiveRayTracer:
+@unittest.skipUnless(OPTIONAL_DEPS_AVAILABLE, "requires numpy")
+class TestInteractiveRayTracer(unittest.TestCase):
     """Test interactive ray tracing functionality."""
     
-    def setup_method(self):
+    def setUp(self):
         self.optical_system = MockOpticalSystem()
         self.tracer = InteractiveRayTracer(self.optical_system)
     
@@ -66,7 +82,7 @@ class TestInteractiveRayTracer:
         
         assert ray is not None
         assert len(self.tracer.interactive_rays) == 1
-        assert ray.wavelength == 587.6
+        assert ray.wavelength == 587.6e-6  # stored in mm
         assert np.allclose(ray.origin, [0, 0, 0])
     
     def test_remove_ray(self):
@@ -123,7 +139,7 @@ class TestInteractiveRayTracer:
         assert 'origin' in info
         assert 'direction' in info
         assert 'wavelength' in info
-        assert info['wavelength'] == 650
+        assert info['wavelength'] == 650e-6  # stored in mm
         assert 'num_segments' in info
     
     def test_get_all_rays_data(self):
@@ -145,10 +161,10 @@ class TestInteractiveRayTracer:
         assert ray2.color in self.tracer.ray_colors
 
 
-class TestRayManipulator:
+class TestRayManipulator(unittest.TestCase):
     """Test ray manipulation interface."""
     
-    def setup_method(self):
+    def setUp(self):
         self.optical_system = MockOpticalSystem()
         self.tracer = InteractiveRayTracer(self.optical_system)
         self.manipulator = RayManipulator(self.tracer)
@@ -180,10 +196,10 @@ class TestRayManipulator:
         assert not_found is None
 
 
-class TestImageSimulator:
+class TestImageSimulator(unittest.TestCase):
     """Test image simulation functionality."""
     
-    def setup_method(self):
+    def setUp(self):
         self.optical_system = MockOpticalSystem()
         self.optical_system.aperture_diameter = 10.0
         self.simulator = ImageSimulator(self.optical_system)
@@ -278,6 +294,8 @@ class TestImageSimulator:
         edge_val = vignetted[0, 0]
         assert center_val > edge_val
     
+    @unittest.skipUnless(SCIPY_AVAILABLE,
+                         "diffraction simulation requires scipy")
     def test_diffraction(self):
         """Test diffraction blur."""
         image = np.zeros((50, 50))
@@ -290,15 +308,23 @@ class TestImageSimulator:
         assert blurred.sum() > 0
 
 
-class TestMechanicalDesigner:
+class TestMechanicalDesigner(unittest.TestCase):
     """Test mechanical design functionality."""
     
-    def setup_method(self):
-        self.optical_system = MockOpticalSystem()
-        self.optical_system.lenses = [
-            MockLens(diameter=25.4, center_thickness=5.0),
-            MockLens(diameter=30.0, center_thickness=6.0)
-        ]
+    def setUp(self):
+        from src.lens import Lens as _Lens
+        self.optical_system = OpticalSystem(name="mech")
+        self.optical_system.add_lens(_Lens(radius_of_curvature_1=50.0,
+                                           radius_of_curvature_2=-50.0,
+                                           thickness=5.0,
+                                           diameter=25.4,
+                                           refractive_index=1.5))
+        self.optical_system.add_lens(_Lens(radius_of_curvature_1=-30.0,
+                                           radius_of_curvature_2=60.0,
+                                           thickness=6.0,
+                                           diameter=30.0,
+                                           refractive_index=1.6),
+                                     air_gap_before=10.0)
         self.designer = MechanicalDesigner(self.optical_system)
     
     def test_design_lens_cells(self):
@@ -440,15 +466,25 @@ class TestMechanicalDesigner:
             assert np.isfinite(weight)
 
 
-class TestIntegration:
+class TestIntegration(unittest.TestCase):
     """Integration tests combining multiple features."""
     
     def test_full_mechanical_design_workflow(self):
         """Test complete mechanical design workflow."""
         # Setup optical system
-        optical_system = MockOpticalSystem()
-        optical_system.lenses = [MockLens(25.4, 5.0), MockLens(30.0, 6.0)]
-        optical_system.element_spacing = [10.0]
+        from src.lens import Lens as _Lens
+        optical_system = OpticalSystem(name="integration")
+        optical_system.add_lens(_Lens(radius_of_curvature_1=50.0,
+                                      radius_of_curvature_2=-50.0,
+                                      thickness=5.0,
+                                      diameter=25.4,
+                                      refractive_index=1.5))
+        optical_system.add_lens(_Lens(radius_of_curvature_1=-30.0,
+                                      radius_of_curvature_2=60.0,
+                                      thickness=6.0,
+                                      diameter=30.0,
+                                      refractive_index=1.6),
+                                air_gap_before=10.0)
         
         # Design mechanics
         designer = MechanicalDesigner(optical_system)
@@ -495,7 +531,7 @@ class TestIntegration:
 if __name__ == '__main__':
     if OPTIONAL_DEPS_AVAILABLE:
         import pytest
-        pytest.main([__file__, '-v'])
+        unittest.main(verbosity=2)
     else:
         # Fallback to unittest if pytest not available
         unittest.main()

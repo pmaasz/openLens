@@ -300,6 +300,12 @@ openlens includes comprehensive functional tests to ensure accuracy and reliabil
 
 ```bash
 python3 -m unittest discover -s tests -t .
+
+# Skip slow/integration suites for a quick pass
+OPENLENS_SKIP_SLOW=1 python3 -m unittest discover -s tests -t .
+
+# Parallel execution (requires pytest + pytest-xdist: pip install -e .[dev])
+pytest -n auto tests/
 ```
 
 ## Examples

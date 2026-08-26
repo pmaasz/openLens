@@ -7,6 +7,11 @@ Tests complete workflows from start to finish - simplified for actual API
 import sys
 import os
 import unittest
+
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from _utils import skip_slow
 import tempfile
 import json
 
@@ -22,6 +27,7 @@ from src.coating_designer import CoatingDesigner
 from src.aberrations import AberrationsCalculator
 
 
+@skip_slow
 class TestCompleteDesignWorkflow(unittest.TestCase):
     """Test complete lens design workflow from scratch"""
     
@@ -63,6 +69,7 @@ class TestCompleteDesignWorkflow(unittest.TestCase):
         print("✓ Complete design workflow successful!")
 
 
+@skip_slow
 class TestPresetWorkflow(unittest.TestCase):
     """Test workflow: Load preset -> Analyze -> Compare"""
     
@@ -113,6 +120,7 @@ class TestPresetWorkflow(unittest.TestCase):
         print("✓ Preset analysis workflow successful!")
 
 
+@skip_slow
 class TestMultiElementSystemWorkflow(unittest.TestCase):
     """Test multi-element system design workflow"""
     
@@ -156,6 +164,7 @@ class TestMultiElementSystemWorkflow(unittest.TestCase):
         print("✓ Doublet analysis workflow successful!")
 
 
+@skip_slow
 class TestCoatingDesignWorkflow(unittest.TestCase):
     """Test coating design workflow"""
     
@@ -212,6 +221,7 @@ class TestCoatingDesignWorkflow(unittest.TestCase):
         print("✓ Coating design workflow successful!")
 
 
+@skip_slow
 class TestMaterialSelectionWorkflow(unittest.TestCase):
     """Test material selection and comparison workflow"""
     
@@ -273,6 +283,7 @@ class TestMaterialSelectionWorkflow(unittest.TestCase):
         print("✓ Material comparison workflow successful!")
 
 
+@skip_slow
 class TestCompleteProductionWorkflow(unittest.TestCase):
     """Test complete production workflow: Design -> Analyze -> Export"""
     
@@ -330,6 +341,7 @@ class TestCompleteProductionWorkflow(unittest.TestCase):
         print("✓ Full production workflow successful!")
 
 
+@skip_slow
 class TestTemperatureCompensationWorkflow(unittest.TestCase):
     """Test temperature-dependent calculations workflow"""
     
@@ -373,6 +385,7 @@ class TestTemperatureCompensationWorkflow(unittest.TestCase):
         print("✓ Temperature compensation workflow successful!")
 
 
+@skip_slow
 class TestIntegratedAnalysisWorkflow(unittest.TestCase):
     """Test integrated analysis of complete optical system"""
     
