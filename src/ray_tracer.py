@@ -141,6 +141,7 @@ class Ray:
         self.n = n
         self.path: List[Tuple[float, float]] = [(self.x, self.y)]
         self.terminated = False
+        self.hit: bool = False  # set by LensRayTracer; True = ray intersected a surface
 
     @property
     def angle(self) -> float:
@@ -442,14 +443,16 @@ class LensRayTracer:
             if propagate_distance > 0:
                 ray.propagate(propagate_distance)
             ray.terminated = True
+            ray.hit = False
             return ray
         
         # Propagate to front surface
         x1, y1 = intersection
-        
+
         ray.x, ray.y = x1, y1
         if len(ray.path) == 0 or ray.path[-1] != (x1, y1):
             ray.path.append((x1, y1))
+        ray.hit = True
         
         # Refract at front surface
         normal_angle = self._get_surface_normal_angle(x1, y1, 'front')
@@ -676,19 +679,13 @@ class SystemRayTracer:
         """Trace a single ray through all elements"""
         
         for i, element in enumerate(self.system.elements):
-            # Record current state
-            path_len_before = len(ray.path)
-            
             # Create a tracer for this specific element at its position
             lens_tracer = LensRayTracer(element.lens, x_offset=element.position)
             
             # Trace through this lens
             lens_tracer.trace_ray(ray, propagate_distance=0)
             
-            # Check if we hit the lens
-            hit_lens = len(ray.path) > path_len_before
-            
-            if not hit_lens:
+            if not ray.hit:
                 # We missed this lens. Reset termination.
                 ray.terminated = False
                 
