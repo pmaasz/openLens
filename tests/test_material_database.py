@@ -163,7 +163,7 @@ class TestLensIntegration(unittest.TestCase):
     def test_lens_with_material(self):
         """Test creating lens with material name"""
         lens = Lens(name="Test", material="BK7", wavelength_nm=587.6)
-        self.assertEqual(lens.wavelength_nm, 587.6)
+        self.assertEqual(lens.wavelength, 587.6)
         
         # Test constructor with implicit material database lookup
         lens = Lens(material="BK7", wavelength_nm=587.6)

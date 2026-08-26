@@ -152,7 +152,7 @@ class LensService:
                 if mat is not None:
                     lens.refractive_index = self.material_db.get_refractive_index(
                         kwargs['material'],
-                        lens.wavelength_nm,
+                        lens.wavelength,
                         lens.temperature
                     )
             
