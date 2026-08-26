@@ -61,11 +61,23 @@ COLOR_BG_MEDIUM = "#2d2d2d"
 COLOR_BG_LIGHT = "#3d3d3d"
 COLOR_FG = "#e0e0e0"
 COLOR_FG_DIM = "#888888"
-COLOR_ACCENT = "#4a9eff"
+
+# Accent used for selection / pressed states (single source of truth)
+COLOR_ACCENT = "#0078d4"
 COLOR_SUCCESS = "#4caf50"
 COLOR_WARNING = "#ff9800"
 COLOR_ERROR = "#f44336"
-COLOR_HIGHLIGHT = "#2196F3"
+COLOR_HIGHLIGHT = COLOR_ACCENT
+
+# Borders and light-theme surfaces
+COLOR_BORDER_DARK = "#3f3f3f"
+COLOR_BORDER_LIGHT = "#cccccc"
+COLOR_WINDOW_LIGHT = "#f5f5f5"
+COLOR_SURFACE_LIGHT = "#ffffff"
+COLOR_SURFACE_ALT_LIGHT = "#e0e0e0"
+COLOR_HOVER_LIGHT = "#d0d0d0"
+COLOR_TEXT_ON_LIGHT = "#1e1e1e"
+COLOR_TEXT_ON_ACCENT = "#ffffff"
 
 # Font configurations
 FONT_FAMILY = "Arial"
