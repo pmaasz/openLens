@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 import copy
 from concurrent.futures import ProcessPoolExecutor
 
-from .lens_editor import Lens
+from .lens import Lens
 from .optical_system import OpticalSystem
 from .aberrations import AberrationsCalculator
 from .analysis import SpotDiagram

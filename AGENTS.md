@@ -230,11 +230,18 @@ class TestLensCalculations(unittest.TestCase):
 ## Common Patterns
 
 ### Service Layer Pattern
-Business logic is in `src/services.py`, keeping UI code thin:
-```python
-# In GUI/CLI code
-result = services.calculate_lens_properties(lens_data)
-```
+`src/services.py` provides `LensService` / `CalculationService` /
+`MaterialDatabaseService` for CLI and integration code. The PySide6 main
+window (`openlens.py`) currently owns its library state directly and does
+not route through the service layer - do not add new GUI code paths that
+pretend otherwise; either use services consistently or keep manipulating
+the window state explicitly.
+
+### Persistence Policy
+SQLite (via `DatabaseManager`/`LensStorage`, default `openlens.db`) is
+the application's source of truth. JSON is an interchange/export format
+only (`OpticalSystem.save/load` and the GUI "Save As..." dialog); do not
+introduce new features that treat JSON files as primary app state.
 
 ### Optimization Pattern
 The `LensOptimizer` in `src/optimizer.py` uses a flexible target/variable system.

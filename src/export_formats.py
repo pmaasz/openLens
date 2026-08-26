@@ -6,7 +6,7 @@ Zemax, OpticStudio, SVG technical drawings
 
 import math
 
-from .lens_editor import Lens
+from .lens import Lens
 from .optical_system import OpticalSystem
 class ZemaxExporter:
     """Export to Zemax format (.zmx)"""

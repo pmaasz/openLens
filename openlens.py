@@ -37,6 +37,10 @@ from src.io.export import ISO10110Generator
 from src.analysis.ghost import GhostAnalyzer
 from src.analysis.psf_mtf import ImageQualityAnalyzer
 from src.analysis.diffraction_psf import WavefrontSensor
+from src.analysis.plots import (
+    apply_dark_axis_theme, plot_ghost_analysis,
+    plot_mtf, plot_psf, plot_wavefront,
+)
 
 
 class OpenLensWindow(QMainWindow):
@@ -714,76 +718,20 @@ Ctrl+6         Tolerancing
         target = self._current_assembly if self._current_assembly else self._current_lens
         if not target:
             return
-            
+
         try:
-            import numpy as np
-            
             if isinstance(target, Lens):
                 system = OpticalSystem(name=target.name)
                 system.add_lens(target)
             else:
                 system = target
-                
+
             analyzer = GhostAnalyzer(system)
             ghosts = analyzer.trace_ghosts(num_rays=5)
-            
+
             dialog = AnalysisPlotDialog("Ghost Analysis", self)
             ax = dialog.get_axes()
-            
-            # Plot main system
-            # Use the existing visualization logic by providing the axis
-            target_system = system
-            
-            # Draw lenses
-            def get_sag(r: float, y: float) -> float:
-                """Sagitta of a spherical surface at aperture height ``y``."""
-                if abs(r) < 1e-6: return 0
-                r_a = abs(r)
-                if y > r_a: return r_a
-                sag = r_a - (r_a**2 - y**2)**0.5
-                return sag if r > 0 else -sag
-
-            current_z = 0
-            for i, element in enumerate(target_system.elements):
-                lens = element.lens
-                r1 = lens.radius_of_curvature_1
-                r2 = lens.radius_of_curvature_2
-                t = lens.thickness
-                d = lens.diameter
-                half_d = d / 2
-
-                # Surface 1
-                y = [y_val / 10.0 for y_val in range(int(-half_d*10), int(half_d*10)+1)]
-                z1 = [current_z + get_sag(r1, y_val) for y_val in y]
-                
-                # Surface 2
-                z2 = [current_z + t + get_sag(r2, y_val) for y_val in y]
-                
-                # Plot surfaces
-                ax.plot([np.real(val) for val in z1], [np.real(val) for val in y], 'b-', alpha=0.5)
-                ax.plot([np.real(val) for val in z2], [np.real(val) for val in y], 'b-', alpha=0.5)
-                # Plot edges
-                ax.plot([np.real(z1[0]), np.real(z2[0])], [np.real(y[0]), np.real(y[0])], 'b-', alpha=0.5)
-                ax.plot([np.real(z1[-1]), np.real(z2[-1])], [np.real(y[-1]), np.real(y[-1])], 'b-', alpha=0.5)
-                
-                if i < len(target_system.air_gaps):
-                    current_z += t + target_system.air_gaps[i].thickness
-                else:
-                    current_z += t
-
-            ax.set_title(f"Ghost Reflection Analysis: {len(ghosts)} paths found")
-            
-            for ghost in ghosts:
-                for ray in ghost.rays:
-                    # GhostPath.rays are Ray3D objects; .path holds Vector3 sample points
-                    if hasattr(ray, 'path') and ray.path:
-                        zs = [np.real(p.x) for p in ray.path]
-                        ys = [np.real(p.y) for p in ray.path]
-                        ax.plot(zs, ys, 'r--', alpha=0.3)
-            
-            ax.set_xlabel("Z (mm)")
-            ax.set_ylabel("Y (mm)")
-            ax.grid(True, alpha=0.2)
+            plot_ghost_analysis(ax, system, ghosts)
             dialog.exec()
             
         except Exception as e:
@@ -795,47 +743,25 @@ Ctrl+6         Tolerancing
         target = self._current_assembly if self._current_assembly else self._current_lens
         if not target:
             return
-            
+
         try:
-            import numpy as np
-            
             if isinstance(target, Lens):
                 system = OpticalSystem(name=target.name)
                 system.add_lens(target)
             else:
                 system = target
-                
+
             analyzer = ImageQualityAnalyzer(system)
             psf_data = analyzer.calculate_psf(pixels=64)
-            
+
             dialog = AnalysisPlotDialog("PSF Analysis", self)
             ax = dialog.get_axes()
-            
+
             # Apply dark theme to axes if needed
             if getattr(self, '_theme', 'dark') == 'dark':
-                ax.set_facecolor('#1e1e1e')
-                ax.tick_params(colors='#e0e0e0')
-                ax.xaxis.label.set_color('#e0e0e0')
-                ax.yaxis.label.set_color('#e0e0e0')
-                ax.title.set_color('#e0e0e0')
-                for spine in ax.spines.values():
-                    spine.set_edgecolor('#3f3f3f')
+                apply_dark_axis_theme(ax)
 
-            img = psf_data['image']
-            if np.iscomplexobj(img):
-                img = np.real(img)
-            extent = [
-                psf_data['z_axis'][0], psf_data['z_axis'][-1],
-                psf_data['y_axis'][0], psf_data['y_axis'][-1]
-            ]
-            
-            im = ax.imshow(img, extent=extent, cmap='viridis', origin='lower')
-            dialog.figure.colorbar(im, ax=ax, label="Relative Intensity")
-            
-            ax.set_title(f"Point Spread Function (Geometric)")
-            ax.set_xlabel("Sagittal (mm)")
-            ax.set_ylabel("Tangential (mm)")
-            
+            plot_psf(ax, psf_data)
             dialog.exec()
         except Exception as e:
             logger.error("PSF calculation failed: %s", e)
@@ -846,36 +772,20 @@ Ctrl+6         Tolerancing
         target = self._current_assembly if self._current_assembly else self._current_lens
         if not target:
             return
-            
+
         try:
-            import numpy as np
-            
             if isinstance(target, Lens):
                 system = OpticalSystem(name=target.name)
                 system.add_lens(target)
             else:
                 system = target
-                
+
             analyzer = ImageQualityAnalyzer(system)
             mtf_data = analyzer.calculate_mtf(max_freq=100)
-            
+
             dialog = AnalysisPlotDialog("MTF Analysis", self)
             ax = dialog.get_axes()
-            
-            mtf_freq = np.real(mtf_data['freq'])
-            mtf_tan = np.real(mtf_data['mtf_tan'])
-            mtf_sag = np.real(mtf_data['mtf_sag'])
-            
-            ax.plot(mtf_freq, mtf_tan, 'r-', label="Tangential")
-            ax.plot(mtf_freq, mtf_sag, 'b--', label="Sagittal")
-            
-            ax.set_ylim(0, 1.05)
-            ax.set_title("Modulation Transfer Function")
-            ax.set_xlabel("Spatial Frequency (lp/mm)")
-            ax.set_ylabel("Modulation")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            
+            plot_mtf(ax, mtf_data)
             dialog.exec()
         except Exception as e:
             logger.error("MTF calculation failed: %s", e)
@@ -886,33 +796,20 @@ Ctrl+6         Tolerancing
         target = self._current_assembly if self._current_assembly else self._current_lens
         if not target:
             return
-            
+
         try:
-            import numpy as np
-            
             if isinstance(target, Lens):
                 system = OpticalSystem(name=target.name)
                 system.add_lens(target)
             else:
                 system = target
-                
+
             sensor = WavefrontSensor(system)
             wf = sensor.get_pupil_wavefront(grid_size=64)
-            
+
             dialog = AnalysisPlotDialog("Wavefront Analysis", self)
             ax = dialog.get_axes()
-            
-            # wf.W is 2D array of wavefront error in waves
-            wf_data = wf.W
-            if np.iscomplexobj(wf_data):
-                wf_data = np.real(wf_data)
-            im = ax.imshow(wf_data, cmap='RdBu', origin='lower')
-            dialog.figure.colorbar(im, ax=ax, label="Wavefront Error (λ)")
-            
-            ax.set_title("Exit Pupil Wavefront Error")
-            ax.set_xlabel("X Pupil")
-            ax.set_ylabel("Y Pupil")
-            
+            plot_wavefront(ax, wf.W)
             dialog.exec()
         except Exception as e:
             logger.error("Wavefront analysis failed: %s", e)
