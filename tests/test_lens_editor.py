@@ -13,7 +13,8 @@ import sys
 
 # Import the modules to test
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.lens_editor import Lens, LensManager
+from src.lens import Lens
+from src.lens_editor import LensManager
 
 
 class TestLens(unittest.TestCase):
@@ -194,9 +195,12 @@ class TestLensManager(unittest.TestCase):
         self.assertEqual(new_manager.lenses[0].material, "BK7")
     
     def test_load_from_nonexistent_file(self):
-        """Test loading from non-existent file"""
-        manager = LensManager(storage_file="nonexistent_file.json")
-        self.assertEqual(len(manager.lenses), 0)
+        """Test loading from non-existent file (path must stay in tmpdir)"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = LensManager(
+                storage_file=os.path.join(tmp, "nonexistent_file.json"))
+            self.assertEqual(len(manager.lenses), 0)
     
     def test_load_from_corrupt_file(self):
         """Test loading from corrupt JSON file"""

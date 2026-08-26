@@ -15,7 +15,7 @@ from src.optical_system import (
     OpticalSystem, LensElement, AirGap, 
     AchromaticDoubletDesigner, create_doublet, create_triplet
 )
-from src.lens_editor import Lens
+from src.lens import Lens
 
 
 class TestOpticalSystem(unittest.TestCase):

@@ -19,7 +19,7 @@ except ImportError:
 from src.preset_lenses import PresetLensLibrary, get_preset_library
 
 
-class TestPresetLensLibrary:
+class TestPresetLensLibrary(unittest.TestCase):
     """Test the preset lens library functionality"""
     
     def test_library_initialization(self):
@@ -191,26 +191,32 @@ class TestPresetLensLibrary:
             if preset["radius1"] != float('inf') and preset["radius1"] != float('-inf'):
                 assert preset["radius1"] != 0, f"{preset_id}: Zero radius1"
     
-    def test_export_import_preset(self, tmp_path):
+    def test_export_import_preset(self):
         """Test exporting and importing presets"""
-        library = PresetLensLibrary()
-        
-        # Export a preset
-        export_file = tmp_path / "test_preset.json"
-        library.export_preset("simple_plano_convex", str(export_file))
-        
-        assert export_file.exists()
-        
-        # Import it back
-        preset_id = library.import_custom_preset(str(export_file))
-        assert preset_id.startswith("custom_")
-        
-        imported = library.get_preset(preset_id)
-        assert imported["name"] == "Simple Plano-Convex"
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_path:
+            from pathlib import Path
+            tmp_path = Path(tmp_path)
+
+            library = PresetLensLibrary()
+
+            # Export a preset
+            export_file = tmp_path / "test_preset.json"
+            library.export_preset("simple_plano_convex", str(export_file))
+
+            assert export_file.exists()
+
+            # Import it back
+            preset_id = library.import_custom_preset(str(export_file))
+            assert preset_id.startswith("custom_")
+
+            imported = library.get_preset(preset_id)
+            assert imported["name"] == "Simple Plano-Convex"
 
 
-def test_preset_library_integration():
-    """Integration test for the complete preset library"""
+class TestPresetLibraryIntegration(unittest.TestCase):
+    def test_preset_library_integration(self):
+        """Integration test for the complete preset library"""
     library = get_preset_library()
     
     # Get all categories
@@ -243,3 +249,7 @@ if __name__ == "__main__":
     else:
         # Fallback - run as unittest (limited compatibility)
         print("pytest not available, skipping tests that require pytest syntax")
+
+
+if __name__ == '__main__':
+    unittest.main()

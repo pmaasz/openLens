@@ -15,7 +15,7 @@ When invoked, perform the following steps:
 Execute the full test suite using the project's test runner:
 
 ```bash
-python3 tests/run_all_tests.py
+python3 -m unittest discover -s tests -t .
 ```
 
 ### 2. Parse and Report Results
@@ -75,7 +75,7 @@ This subagent should be invoked:
 
 ```bash
 # Full test suite (recommended)
-python3 tests/run_all_tests.py
+python3 -m unittest discover -s tests -t .
 
 # Single test file
 python3 -m unittest tests.test_lens_editor

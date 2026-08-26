@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import unittest
 import tempfile
 import json
-from src.lens_editor import Lens
+from src.lens import Lens
 from src.export_formats import ZemaxExporter, PrescriptionExporter
 
 # Check if SVG exporter exists

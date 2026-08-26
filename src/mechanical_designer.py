@@ -118,11 +118,16 @@ class MechanicalDesigner:
                          material: str = 'aluminum') -> List[LensCell]:
         """Design lens cells for all elements in the system."""
         self.lens_cells.clear()
-        
-        if not hasattr(self.optical_system, 'lenses'):
-            return []
-        
-        for lens in self.optical_system.lenses:
+
+        elements = getattr(self.optical_system, 'elements', None)
+        if elements:
+            # OpticalSystem wraps lenses in LensElement objects
+            lenses = [getattr(e, 'lens', e) for e in elements]
+        else:
+            # Duck-typed systems may expose a plain lens list
+            lenses = getattr(self.optical_system, 'lenses', [])
+
+        for lens in lenses:
             # Get lens diameter
             if hasattr(lens, 'diameter'):
                 lens_diameter = lens.diameter
@@ -157,11 +162,14 @@ class MechanicalDesigner:
                          tolerance: float = 0.1) -> List[Spacer]:
         """Calculate required spacers between lens elements."""
         self.spacers.clear()
-        
-        if not hasattr(self.optical_system, 'lenses'):
+
+        elements = getattr(self.optical_system, 'elements', None)
+        if elements:
+            num_lenses = len(elements)
+        elif hasattr(self.optical_system, 'lenses'):
+            num_lenses = len(self.optical_system.lenses)
+        else:
             return []
-        
-        num_lenses = len(self.optical_system.lenses)
         
         if target_spacing is None:
             # Use default spacing from optical design

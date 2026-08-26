@@ -32,7 +32,7 @@ If this fails, list the specific violations.
 Execute the full regression test suite.
 
 ```bash
-python3 tests/run_all_tests.py
+python3 -m unittest discover -s tests -t .
 ```
 
 ### 4. Reporting

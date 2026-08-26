@@ -52,18 +52,22 @@ class TestGlobalOptimizer(unittest.TestCase):
         f = result.optimized_system.get_system_focal_length()
         self.assertAlmostEqual(f, 80.0, delta=1.0) # SA is stochastic, allow loose delta
 
-    # def test_genetic_algorithm(self):
-    #     """Test Genetic Algorithm convergence"""
-    #     optimizer = GlobalOptimizer(self.system, self.variables, self.targets)
-        
-    #     # Run GA
-    #     result = optimizer.optimize_genetic(
-    #         population_size=10,
-    #         generations=5
-    #     )
-        
-    #     self.assertTrue(result.success)
-    #     self.assertLess(result.final_merit, result.initial_merit)
+    def test_genetic_algorithm_seeded(self):
+        """Seeded GA improves merit on the focal-length target"""
+        optimizer = GlobalOptimizer(self.system, self.variables,
+                                    self.targets, seed=123)
+
+        result = optimizer.optimize_genetic(
+            population_size=12,
+            generations=8
+        )
+
+        self.assertTrue(result.success)
+        self.assertLessEqual(result.final_merit, result.initial_merit)
+        # Optimized radius must stay inside the declared variable bounds
+        r1 = result.optimized_system.elements[0].lens.radius_of_curvature_1
+        self.assertGreaterEqual(r1, 50.0 - 1e-6)
+        self.assertLessEqual(r1, 150.0 + 1e-6)
 
 if __name__ == '__main__':
     unittest.main()

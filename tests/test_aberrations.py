@@ -9,7 +9,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.lens_editor import Lens
+from src.lens import Lens
 from src.aberrations import AberrationsCalculator, analyze_lens_quality
 
 
@@ -55,9 +55,10 @@ class TestAberrationsCalculator(unittest.TestCase):
         )
     
     def test_calculator_initialization(self):
-        """Test that calculator initializes correctly"""
+        """Calculator copies lens properties verbatim"""
         calc = AberrationsCalculator(self.biconvex)
-        self.assertAlmostEqual(calc.n, 1.5168, places=4)
+        # Exact identity: no numerical tolerance is involved in a copy
+        self.assertEqual(calc.n, self.biconvex.refractive_index)
         self.assertEqual(calc.R1, 100.0)
         self.assertEqual(calc.R2, -100.0)
         self.assertEqual(calc.D, 50.0)
@@ -500,6 +501,56 @@ class TestAberrationsBehavior(unittest.TestCase):
         results_wide = calc.calculate_all_aberrations(field_angle_deg=20.0)
         self.assertGreater(abs(results_wide['coma']), 0)
         self.assertGreater(results_wide['astigmatism'], 0)
+
+
+
+class TestAberrationPhysicsIdentities(unittest.TestCase):
+    """Regression locks: aberration outputs equal their defining formulas.
+
+    Each assertion compares an output against an independent derivation;
+    a physics regression breaks the identity instead of merely moving a
+    smoke-test flag.
+    """
+
+    def setUp(self):
+        self.lens = Lens(
+            name="Identity Lens",
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=50.0,
+            refractive_index=1.5168,
+            lens_type="Biconvex",
+            material="BK7",
+        )
+        self.results = AberrationsCalculator(
+            self.lens).calculate_all_aberrations(field_angle_deg=5.0)
+
+    def test_chromatic_aberration_equals_f_over_abbe(self):
+        """Longitudinal CA of a thin singlet = f / Vd (BK7 Vd = 64.17)"""
+        f = self.results['focal_length']
+        expected = f / 64.17
+        self.assertAlmostEqual(
+            self.results['chromatic_aberration'] / expected, 1.0, places=9)
+
+    def test_airy_disk_matches_diffraction_formula(self):
+        """Airy diameter = 2.44 * lambda * f/# with lambda = 550 nm"""
+        f_number = self.results['focal_length'] / self.lens.diameter
+        expected = 2.44 * 550e-6 * f_number  # mm
+        self.assertAlmostEqual(
+            self.results['airy_disk_diameter'] / expected, 1.0, places=9)
+
+    def test_f_number_is_f_over_diameter(self):
+        """f/# identity"""
+        expected = self.results['focal_length'] / self.lens.diameter
+        self.assertAlmostEqual(self.results['f_number'] / expected,
+                               1.0, places=12)
+
+    def test_numerical_aperture_is_d_over_two_f(self):
+        """NA = D / (2f) for object at infinity"""
+        expected = self.lens.diameter / (2.0 * self.results['focal_length'])
+        self.assertAlmostEqual(self.results['numerical_aperture'] / expected,
+                               1.0, places=12)
 
 
 if __name__ == '__main__':

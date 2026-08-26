@@ -7,6 +7,12 @@ import unittest
 import sys
 import os
 import tempfile
+
+# Headless environments (CI): fall back to Qt's offscreen platform before
+# any QApplication is created. A real DISPLAY always wins.
+if os.environ.get('DISPLAY', '') == '' and sys.platform.startswith('linux'):
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtTest import QTest
 from PySide6.QtCore import Qt

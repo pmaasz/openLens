@@ -17,7 +17,8 @@ import shutil
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.services import LensService, CalculationService, MaterialDatabaseService
-from src.lens_editor import Lens, LensManager
+from src.lens import Lens
+from src.lens_editor import LensManager
 from src.validation import ValidationError
 
 
