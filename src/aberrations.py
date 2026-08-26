@@ -183,7 +183,7 @@ class AberrationsCalculator:
             # 1. Field Curvature and Distortion
             # Sample up to field_angle
             fc_data = analysis.calculate_field_curvature_distortion(
-                max_field_angle=max(field_angle, 0.1),
+                max_field_angle_deg=max(field_angle, 0.1),
                 num_points=10
             )
             
@@ -191,13 +191,18 @@ class AberrationsCalculator:
             fan_data = analysis.calculate_ray_fan(field_angle_deg=field_angle)
             
             # Extract metrics at the requested field_angle
-            # fc_data['tan_focus_shift'] etc are lists, we want the last element if we sampled up to field_angle
-            field_curv = fc_data['tan_focus_shift'][-1] if fc_data['tan_focus_shift'] else 0.0
-            dist = fc_data['distortion_pct'][-1] if fc_data['distortion_pct'] else 0.0
-            astig = abs(fc_data['tan_focus_shift'][-1] - fc_data['sag_focus_shift'][-1]) if fc_data['tan_focus_shift'] and fc_data['sag_focus_shift'] else 0.0
+            # fc_data['tan_focus_shift_mm'] etc are lists, we want the last element if we sampled up to field_angle
+            field_curv = (fc_data['tan_focus_shift_mm'][-1]
+                          if fc_data['tan_focus_shift_mm'] else 0.0)
+            dist = (fc_data['distortion_pct'][-1]
+                    if fc_data['distortion_pct'] else 0.0)
+            astig = (abs(fc_data['tan_focus_shift_mm'][-1]
+                         - fc_data['sag_focus_shift_mm'][-1])
+                     if fc_data['tan_focus_shift_mm'] and fc_data['sag_focus_shift_mm']
+                     else 0.0)
             
             # Coma estimation from ray fan (asymmetry in transverse error)
-            errors = fan_data['ray_errors']
+            errors = fan_data.get('ray_errors_mm', fan_data.get('transverse_aberration', []))
             coma_val = 0.0
             if len(errors) >= 2:
                 # Coma ~= (y_top + y_bottom) / 2 - y_chief

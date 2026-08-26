@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 from ..lens import Lens
 from ..optical_system import OpticalSystem
-from ..database import DatabaseManager
+from ..database import DatabaseManager, LensInUseError
 
 
 class LensStorage:
@@ -100,13 +100,42 @@ class LensStorage:
             logger.error("Failed to load lenses from database: %s", e)
             return []
     
-    def save_lenses(self, items: List[Any], show_status: bool = True) -> bool:
-        """Save all lenses and optical systems to SQLite database.
-        
+    def delete_item(self, item_id: str) -> bool:
+        """Delete a lens or assembly from the database by id.
+
+        Must be called for every removal; save_lenses() only
+        inserts/replaces rows and never reconciles deletions.
+
         Args:
-            items: List of Lens/OpticalSystem objects to save.
-            show_status: Whether to show a status message on success.
-        
+            item_id: Id of the lens or assembly to remove.
+
+        Returns:
+            bool: True on success.
+
+        Raises:
+            LensInUseError: The lens is still placed in an assembly.
+        """
+        if not self.db:
+            logger.error("DatabaseManager not available")
+            return False
+        self.db.delete_item(item_id)
+        self._update_status(f"Deleted {item_id} from database")
+        return True
+
+    def save_lenses(self, items: List[Any], show_status: bool = True,
+                    reconcile: bool = False) -> bool:
+        """Save lenses/optical systems to the SQLite database.
+
+        Args:
+            items: Lens/OpticalSystem objects to persist.
+            show_status: Whether to report a status message on success.
+            reconcile: If True, treat `items` as a COMPLETE library
+                snapshot and delete database rows whose ids are absent
+                from it (removal reconciliation). Only enable this when
+                the caller owns every stored object - partial lists
+                (e.g. the CLI lens-only view) must keep the default to
+                avoid wiping assemblies.
+
         Returns:
             True if save was successful, False otherwise.
         """
@@ -122,20 +151,52 @@ class LensStorage:
                     self.db.save_assembly(item_dict)
                 else:
                     self.db.save_lens(item_dict)
-            
-            # NOTE: This method only inserts/replaces rows. Items removed from
-            # `items` are NOT deleted from the database; callers must call
-            # DatabaseManager.delete_item() explicitly, otherwise deleted
-            # lenses/assemblies reappear on the next load.
-            
+
+            if reconcile:
+                self._reconcile(items)
+
             if show_status:
                 self._update_status(f"Saved {len(items)} item(s) to database")
             return True
-            
+
         except Exception as e:
             self._update_status(f"Error: Failed to save lenses: {e}")
             logger.error("Failed to save lenses: %s", e)
             return False
+
+    def _reconcile(self, items: List[Any]) -> None:
+        """Delete rows whose ids are absent from the full snapshot."""
+        keep = {item.id for item in items if hasattr(item, 'id')}
+        existing = self.db.all_ids()
+
+        # Assemblies first: removing them releases lens references so the
+        # lens pass cannot trip the in-use guard for stale pairs.
+        removed = 0
+        for asm_id in existing['assemblies']:
+            if asm_id not in keep:
+                self.db.delete_item(asm_id)
+                removed += 1
+
+        for lens_id in existing['lenses']:
+            if lens_id in keep:
+                continue
+            try:
+                self.db.delete_item(lens_id)
+                removed += 1
+            except Exception as e:
+                # LensInUseError: an assembly kept in the snapshot still
+                # references this lens; keep the row rather than fail the
+                # whole save.
+                logger.warning("Reconciliation kept lens %s: %s",
+                               lens_id, e)
+        if removed:
+            logger.info("Reconciliation removed %d stale row(s)", removed)
+
+
+def delete_item(storage_file: str = "openlens.db",
+                item_id: str = "") -> bool:
+    """Delete a single lens/assembly from the database (convenience)."""
+    return LensStorage(storage_file).delete_item(item_id)
 
 
 def load_lenses(storage_file: str = "openlens.db") -> List[Any]:
