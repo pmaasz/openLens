@@ -19,12 +19,12 @@ from .constants import (
     QUALITY_EXCELLENT_THRESHOLD, QUALITY_GOOD_THRESHOLD, QUALITY_FAIR_THRESHOLD,
     WAVELENGTH_GREEN,
     EPSILON,
+    AIRY_DISK_FACTOR,
 )
 
-# Airy disk diameter factor (not radius)
-# The Airy disk DIAMETER = 2.44 * λ * f/#
-# AIRY_DISK_FACTOR from constants is 1.22 (for radius), so we need 2.44 for diameter
-AIRY_DISK_DIAMETER_FACTOR = 2.44
+# Airy disk DIAMETER = 2 * (Airy radius) = 2.44 * λ * f/#
+# (constants.AIRY_DISK_FACTOR is the 1.22 radius factor)
+AIRY_DISK_DIAMETER_FACTOR = 2.0 * AIRY_DISK_FACTOR
 
 
 class AberrationsCalculator:
@@ -113,43 +113,52 @@ class AberrationsCalculator:
         
         # Calculate numerical aperture and other parameters
         na = self._calculate_numerical_aperture(focal_length)
-        
+
+        # Compute each quantity once; the dict exposes two documented
+        # alias keys per value ('spherical'/'spherical_aberration',
+        # 'chromatic'/'chromatic_aberration') for API compatibility.
+        spherical = self._calculate_spherical_aberration(focal_length)
+        chromatic = self._calculate_chromatic_aberration(focal_length)
+        f_number = self._calculate_f_number(focal_length)
+        airy = self._calculate_airy_disk(focal_length)
+        strehl = self._calculate_strehl_ratio(focal_length)
+        mtf_cutoff = self._calculate_mtf_cutoff(focal_length)
+
         if self.is_system:
-            # For systems, we primarily rely on exact calculations where possible
             field_data = self._calculate_field_metrics_system(field_angle_deg)
             return {
                 'focal_length': focal_length,
                 'numerical_aperture': na,
-                'f_number': self._calculate_f_number(focal_length),
-                'spherical': self._calculate_spherical_aberration(focal_length),
-                'spherical_aberration': self._calculate_spherical_aberration(focal_length),
+                'f_number': f_number,
+                'spherical': spherical,
+                'spherical_aberration': spherical,
                 'coma': field_data['coma'],
                 'astigmatism': field_data['astigmatism'],
                 'field_curvature': field_data['field_curvature'],
                 'distortion': field_data['distortion'],
-                'chromatic': self._calculate_chromatic_aberration(focal_length),
-                'chromatic_aberration': self._calculate_chromatic_aberration(focal_length),
-                'airy_disk_diameter': self._calculate_airy_disk(focal_length),
-                'spot_rms': self._calculate_spot_rms() if self.is_system else 0,
-                'strehl': self._calculate_strehl_ratio(focal_length),
-                'mtf_cutoff': self._calculate_mtf_cutoff(focal_length)
+                'chromatic': chromatic,
+                'chromatic_aberration': chromatic,
+                'airy_disk_diameter': airy,
+                'spot_rms': self._calculate_spot_rms(),
+                'strehl': strehl,
+                'mtf_cutoff': mtf_cutoff
             }
 
         return {
             'focal_length': focal_length,
             'numerical_aperture': na,
-            'f_number': self._calculate_f_number(focal_length),
-            'spherical': self._calculate_spherical_aberration(focal_length),
-            'spherical_aberration': self._calculate_spherical_aberration(focal_length),
+            'f_number': f_number,
+            'spherical': spherical,
+            'spherical_aberration': spherical,
             'coma': self._calculate_coma(focal_length, field_angle_deg),
             'astigmatism': self._calculate_astigmatism(focal_length, field_angle_deg),
             'field_curvature': self._calculate_field_curvature(focal_length),
             'distortion': self._calculate_distortion(focal_length, field_angle_deg),
-            'chromatic': self._calculate_chromatic_aberration(focal_length),
-            'chromatic_aberration': self._calculate_chromatic_aberration(focal_length),
-            'airy_disk_diameter': self._calculate_airy_disk(focal_length),
-            'strehl': self._calculate_strehl_ratio(focal_length),
-            'mtf_cutoff': self._calculate_mtf_cutoff(focal_length)
+            'chromatic': chromatic,
+            'chromatic_aberration': chromatic,
+            'airy_disk_diameter': airy,
+            'strehl': strehl,
+            'mtf_cutoff': mtf_cutoff
         }
     
     def _calculate_f_number(self, focal_length: float) -> float:
