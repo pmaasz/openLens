@@ -6,6 +6,25 @@ from typing import List, Dict, Any, Iterator
 
 logger = logging.getLogger(__name__)
 
+
+class LensInUseError(RuntimeError):
+    """Raised when deleting a lens that is still used by assemblies.
+
+    Attributes:
+        lens_id: Id of the lens that could not be deleted.
+        assemblies: List of (assembly_id, assembly_name) referencing it.
+    """
+
+    def __init__(self, lens_id: str, assemblies):
+        self.lens_id = lens_id
+        self.assemblies = list(assemblies)
+        names = ", ".join(f"'{name}' (id={aid})" for aid, name in assemblies)
+        super().__init__(
+            f"Lens {lens_id} is still used by {len(self.assemblies)} "
+            f"assembly(ies): {names}. Remove it from those assemblies first."
+        )
+
+
 class DatabaseManager:
     """Handles SQLite database operations for Lens and OpticalSystem storage."""
     
@@ -21,6 +40,7 @@ class DatabaseManager:
         """
         conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.isolation_level = None  # autocommit: explicit BEGIN for atomic blocks
+        conn.row_factory = sqlite3.Row  # name-based access everywhere
         conn.execute('PRAGMA journal_mode=WAL')
         conn.execute('PRAGMA synchronous=NORMAL')
         conn.execute('PRAGMA foreign_keys=ON')  # Ensure foreign keys are enforced
@@ -214,7 +234,6 @@ class DatabaseManager:
         lenses_lookup = {}
 
         with self._connection() as conn:
-            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
             # 1. Load all lenses first (including those in assemblies)
@@ -316,12 +335,46 @@ class DatabaseManager:
 
         return results
 
+    def get_referencing_assemblies(self, lens_id: str) -> List[tuple]:
+        """Return (assembly_id, assembly_name) pairs using this lens."""
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT a.id, a.name
+                FROM assembly_elements ae
+                JOIN assemblies a ON a.id = ae.assembly_id
+                WHERE ae.lens_id = ?
+                ORDER BY a.name
+            ''', (lens_id,))
+            return [(row['id'], row['name']) for row in cursor.fetchall()]
+
     def delete_item(self, item_id: str):
-        """Delete a lens or assembly by ID (atomic)."""
+        """Delete a lens or assembly by ID (atomic).
+
+        Deleting a lens that is still placed in any assembly is refused
+        with :class:`LensInUseError` instead of an opaque foreign-key
+        error; remove the element from the assembly first. Deleting an
+        assembly cascades its element and air-gap rows.
+        """
         with self._connection() as conn:
             cursor = conn.cursor()
             cursor.execute('BEGIN IMMEDIATE')
             try:
+                # Lens branch: refuse while still referenced by any assembly.
+                refs = []
+                if conn.execute('SELECT 1 FROM lenses WHERE id = ?',
+                                (item_id,)).fetchone():
+                    cursor.execute('''
+                        SELECT a.id, a.name
+                        FROM assembly_elements ae
+                        JOIN assemblies a ON a.id = ae.assembly_id
+                        WHERE ae.lens_id = ?
+                        ORDER BY a.name
+                    ''', (item_id,))
+                    refs = [(r['id'], r['name']) for r in cursor.fetchall()]
+                    if refs:
+                        raise LensInUseError(item_id, refs)
+
                 cursor.execute('DELETE FROM assemblies WHERE id = ?', (item_id,))
                 cursor.execute('DELETE FROM lenses WHERE id = ?', (item_id,))
                 cursor.execute('COMMIT')
