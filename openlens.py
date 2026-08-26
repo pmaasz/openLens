@@ -337,27 +337,11 @@ class OpenLensWindow(QMainWindow):
         prefs_menu = menubar.addMenu("Preferences")
         prefs_menu.addAction("Toggle Dark/Light Theme", self._on_toggle_theme, QKeySequence("Ctrl+T"))
         
-        # Lens menu (quick switch)
-        lens_menu = menubar.addMenu("Lens")
-        
-        # Lenses section header
-        lens_menu.addAction("--- Lenses ---")
-        for i, lens in enumerate(self._lenses):
-            lens_menu.addAction(lens.name, lambda idx=i: self._switch_to_lens(idx))
-        
-        # Separator
-        lens_menu.addSeparator()
-        
-        if self._assemblies:
-            # Assemblies section header
-            asm_action = lens_menu.addAction("--- Assemblies ---")
-            asm_action.setEnabled(False)
-            for i, asm in enumerate(self._assemblies):
-                idx = len(self._lenses) + i
-                lens_menu.addAction(f"[{asm.name}]", lambda idx=idx: self._switch_to_lens(idx))
-        
-        lens_menu.addSeparator()
-        
+        # Lens menu (quick switch). Rebuilt every time it opens so it
+        # reflects the deferred database load and any library changes.
+        self._lens_menu = menubar.addMenu("Lens")
+        self._lens_menu.aboutToShow.connect(self._rebuild_lens_menu)
+
 # View menu
         view_menu = menubar.addMenu("View")
         view_menu_2d = view_menu.addMenu("2D View")
@@ -944,6 +928,42 @@ Ctrl+6         Tolerancing
             self._set_current_item(self._lenses[index], is_assembly=False)
         elif len(self._lenses) <= index < len(self._lenses) + len(self._assemblies):
             self._set_current_item(self._assemblies[index - len(self._lenses)], is_assembly=True)
+
+    def _rebuild_lens_menu(self) -> None:
+        """Repopulate the Lens quick-switch menu from current state.
+
+        Connected to the menu's aboutToShow signal so entries always
+        reflect the library, including items loaded by the deferred
+        database load and everything created or deleted afterwards.
+        """
+        menu = self._lens_menu
+        menu.clear()
+
+        if not self._lenses and not self._assemblies:
+            empty = menu.addAction("(library is empty)")
+            empty.setEnabled(False)
+            return
+
+        lenses_header = menu.addAction("--- Lenses ---")
+        lenses_header.setEnabled(False)
+        for lens in self._lenses:
+            action = menu.addAction(lens.name)
+            action.setCheckable(True)
+            action.setChecked(lens is self._current_lens)
+            action.triggered.connect(
+                lambda checked=False, item=lens: self._set_current_item(item))
+
+        if self._assemblies:
+            menu.addSeparator()
+            asm_header = menu.addAction("--- Assemblies ---")
+            asm_header.setEnabled(False)
+            for asm in self._assemblies:
+                action = menu.addAction(f"[{asm.name}]")
+                action.setCheckable(True)
+                action.setChecked(asm is self._current_assembly)
+                action.triggered.connect(
+                    lambda checked=False, item=asm: self._set_current_item(
+                        item, is_assembly=True))
 
 
 def main() -> None:
