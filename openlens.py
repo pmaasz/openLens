@@ -483,6 +483,7 @@ class OpenLensWindow(QMainWindow):
                 json.dump(data, f, indent=2)
                 
         except Exception as e:
+            logger.error("Failed to save file: %s", e)
             QMessageBox.critical(self, "Error", f"Failed to save file: {e}")
     
     def _on_about(self) -> None:
@@ -603,6 +604,7 @@ Ctrl+6         Tolerancing
             exporter.export(filepath)
             self._update_status(f"Exported to STL: {os.path.basename(filepath)}")
         except Exception as e:
+            logger.error("STL export failed: %s", e)
             QMessageBox.critical(self, "Export Error", f"Failed to export STL: {e}")
 
     def _on_export_step(self) -> None:
@@ -631,8 +633,10 @@ Ctrl+6         Tolerancing
             exporter.export(filepath)
             self._update_status(f"Exported to STEP: {os.path.basename(filepath)}")
         except ImportError:
+            logger.error("STEP export failed with ImportError: %s", e)
             QMessageBox.warning(self, "Export Error", "STEP export requires additional dependencies (e.g. pythonocc-core).")
         except Exception as e:
+            logger.error("STEP export failed: %s", e)
             QMessageBox.critical(self, "Export Error", f"Failed to export STEP: {e}")
 
     def _on_export_iso10110(self) -> None:
@@ -661,6 +665,7 @@ Ctrl+6         Tolerancing
             generator.generate_svg(filepath)
             self._update_status(f"Exported drawing to: {os.path.basename(filepath)}")
         except Exception as e:
+            logger.error("ISO 10110 export failed: %s", e)
             QMessageBox.critical(self, "Export Error", f"Failed to export drawing: {e}")
 
     def _on_export_report(self) -> None:
@@ -701,6 +706,7 @@ Ctrl+6         Tolerancing
             
             self._update_status(f"Report exported to: {os.path.basename(filepath)}")
         except Exception as e:
+            logger.error("Report export failed: %s", e)
             QMessageBox.critical(self, "Export Error", f"Failed to export report: {e}")
 
     def _on_show_ghost_analysis(self) -> None:
@@ -781,6 +787,7 @@ Ctrl+6         Tolerancing
             dialog.exec()
             
         except Exception as e:
+            logger.error("Ghost analysis failed: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to perform ghost analysis: {e}")
 
     def _on_show_psf(self) -> None:
@@ -831,6 +838,7 @@ Ctrl+6         Tolerancing
             
             dialog.exec()
         except Exception as e:
+            logger.error("PSF calculation failed: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to calculate PSF: {e}")
 
     def _on_show_mtf(self) -> None:
@@ -870,6 +878,7 @@ Ctrl+6         Tolerancing
             
             dialog.exec()
         except Exception as e:
+            logger.error("MTF calculation failed: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to calculate MTF: {e}")
 
     def _on_show_wavefront(self) -> None:
@@ -906,6 +915,7 @@ Ctrl+6         Tolerancing
             
             dialog.exec()
         except Exception as e:
+            logger.error("Wavefront analysis failed: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to analyze wavefront: {e}")
 
     def _load_default_lens(self) -> None:

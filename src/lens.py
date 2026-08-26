@@ -1,7 +1,16 @@
 from datetime import datetime
 from typing import Optional, Dict, Any
+import logging
 import math
+import sqlite3
 import uuid
+
+logger = logging.getLogger(__name__)
+
+#: Exceptions the material-database layer can realistically raise for
+#: corrupt Sellmeier data or storage faults (unknown materials do NOT
+#: raise - they return defaults).
+_MATERIAL_DB_ERRORS = (ArithmeticError, ValueError, KeyError, sqlite3.Error)
 
 from .constants import (
     DEFAULT_RADIUS_1, DEFAULT_RADIUS_2, DEFAULT_THICKNESS, DEFAULT_DIAMETER,
@@ -29,7 +38,7 @@ class Lens:
                  radius_of_curvature_2: float = DEFAULT_RADIUS_2,
                  thickness: float = DEFAULT_THICKNESS,
                  diameter: float = DEFAULT_DIAMETER,
-                 refractive_index: float = REFRACTIVE_INDEX_BK7,
+                 refractive_index: Optional[float] = None,
                  lens_type: str = "Biconvex",
                  material: str = "BK7",
                  wavelength_nm: float = 587.6,
@@ -57,30 +66,57 @@ class Lens:
         self.model_nd = model_nd
         self.model_vd = model_vd
 
-        # Get refractive index from material database if available
-        if self.model_glass_mode and MATERIAL_DB_AVAILABLE:
+        # Refractive index resolution order:
+        #   1. Explicit refractive_index argument wins (honours caller
+        #      intent and keeps serialization round-trips exact).
+        #   2. Model-glass mode computes it from nd/vd.
+        #   3. Material database lookup for known materials.
+        #   4. BK7 default constant.
+        # The DB layer returns defaults for unknown materials; a raised
+        # exception means corrupt Sellmeier data or a storage fault -
+        # log it loudly and fall back to the BK7 constant.
+        if refractive_index is not None:
+            self.refractive_index = float(refractive_index)
+        elif self.model_glass_mode and MATERIAL_DB_AVAILABLE:
             try:
                 db = get_material_database()
-                # Check if db has the new method (it might not if reload failed, but here we assume it works)
                 if hasattr(db, 'calculate_model_index'):
-                    self.refractive_index = db.calculate_model_index(self.model_nd, self.model_vd, self.wavelength)
+                    self.refractive_index = db.calculate_model_index(
+                        self.model_nd, self.model_vd, self.wavelength)
                 else:
-                     # Fallback if method missing
-                     self.refractive_index = self.model_nd
-            except Exception:
+                    logger.warning(
+                        "material DB lacks calculate_model_index; "
+                        "using model index %.4f for %s",
+                        self.model_nd, self.model_nd)
+                    self.refractive_index = self.model_nd
+            except _MATERIAL_DB_ERRORS as e:
+                logger.warning(
+                    "Model-glass index lookup failed (nd=%.4f vd=%.2f wl=%snm):"
+                    " %s - using model index",
+                    self.model_nd, self.model_vd, self.wavelength, e)
                 self.refractive_index = self.model_nd
         elif MATERIAL_DB_AVAILABLE:
             try:
                 db = get_material_database()
                 mat = db.get_material(material)
                 if mat:
-                    self.refractive_index = db.get_refractive_index(material, wavelength, temperature)
+                    # Use the resolved design wavelength (the raw parameter
+                    # defaults to None when wavelength_nm was given).
+                    self.refractive_index = db.get_refractive_index(
+                        material, self.wavelength, temperature)
                 else:
-                    self.refractive_index = refractive_index
-            except Exception:
-                self.refractive_index = refractive_index
+                    logger.warning(
+                        "material %r not in database - using BK7 default",
+                        material)
+                    self.refractive_index = REFRACTIVE_INDEX_BK7
+            except _MATERIAL_DB_ERRORS as e:
+                logger.warning(
+                    "Material lookup failed for %s @ %snm/%sC: %s - "
+                    "using BK7 default",
+                    material, self.wavelength, temperature, e)
+                self.refractive_index = REFRACTIVE_INDEX_BK7
         else:
-            self.refractive_index = refractive_index
+            self.refractive_index = REFRACTIVE_INDEX_BK7
             
         self.lens_type = lens_type
 
@@ -142,17 +178,27 @@ class Lens:
                         self.model_nd, self.model_vd, self.wavelength
                     )
                 else:
+                    logger.warning(
+                        "material DB lacks calculate_model_index; "
+                        "keeping model index %.4f", self.model_nd)
                     self.refractive_index = self.model_nd
-            except Exception:
-                pass
+            except _MATERIAL_DB_ERRORS as e:
+                logger.warning(
+                    "Model-glass index update failed (wl=%snm): %s - "
+                    "keeping model index",
+                    self.wavelength, e)
         elif MATERIAL_DB_AVAILABLE:
             try:
                 db = get_material_database()
                 self.refractive_index = db.get_refractive_index(
                     self.material, self.wavelength, self.temperature
                 )
-            except Exception:
-                pass
+            except _MATERIAL_DB_ERRORS as e:
+                logger.warning(
+                    "Material index update failed for %s @ %snm/%sC: %s - "
+                    "keeping previous index %.4f",
+                    self.material, self.wavelength, self.temperature, e,
+                    self.refractive_index)
     
     def calculate_num_grooves(self) -> None:
         """Calculate the number of grooves based on diameter and pitch"""
