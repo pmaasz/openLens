@@ -335,6 +335,17 @@ class DatabaseManager:
 
         return results
 
+    def all_ids(self) -> Dict[str, List[str]]:
+        """Return every stored id grouped by kind: {'lenses': [...],
+        'assemblies': [...]}. Lightweight helper for reconciliation."""
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT id FROM lenses')
+            lens_ids = [r['id'] for r in cursor.fetchall()]
+            cursor.execute('SELECT id FROM assemblies')
+            asm_ids = [r['id'] for r in cursor.fetchall()]
+        return {'lenses': lens_ids, 'assemblies': asm_ids}
+
     def get_referencing_assemblies(self, lens_id: str) -> List[tuple]:
         """Return (assembly_id, assembly_name) pairs using this lens."""
         with self._connection() as conn:

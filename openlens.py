@@ -148,7 +148,8 @@ class OpenLensWindow(QMainWindow):
                 if hasattr(item, 'id'):
                     unique_items[item.id] = item
             
-            self._storage.save_lenses(list(unique_items.values()))
+            self._storage.save_lenses(list(unique_items.values()),
+                                   reconcile=True)
             logger.info("Saved %d unique items to database", len(unique_items))
         except Exception as e:
             logger.error("Failed to save to database: %s", e)
