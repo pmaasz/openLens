@@ -13,6 +13,8 @@ import logging
 import numpy as np
 from typing import Tuple, Optional, Dict, Any
 
+from .constants import WAVELENGTH_D_LINE, WAVELENGTH_GREEN
+
 logger = logging.getLogger(__name__)
 
 # Try importing PIL
@@ -49,7 +51,7 @@ class ImageSimulator:
     def simulate_image(self, input_image: np.ndarray,
                       object_distance: float,
                       image_distance: Optional[float] = None,
-                      wavelength: float = 587.6) -> Dict[str, Any]:
+                      wavelength: float = WAVELENGTH_D_LINE) -> Dict[str, Any]:
         """
         Simulate image formation through the optical system.
         
@@ -214,7 +216,7 @@ class ImageSimulator:
         # Different wavelengths focus at different distances
         # Simulate by scaling each channel slightly differently
         wavelengths = [650, 550, 450]  # R, G, B
-        base_wavelength = 550
+        base_wavelength = WAVELENGTH_GREEN
         
         for i, wl in enumerate(wavelengths):
             if not hasattr(self.optical_system, 'effective_focal_length'):

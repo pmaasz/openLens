@@ -68,7 +68,7 @@ class AberrationsCalculator:
     def calculate_all_aberrations(self, 
                                    object_distance_mm: Optional[float] = None,
                                    field_angle_deg: float = 0.0,
-                                   wavelength_nm: float = 550.0,
+                                   wavelength_nm: float = WAVELENGTH_GREEN,
                                    **kwargs) -> Dict[str, Any]:
         """
         Calculate all primary aberrations.
@@ -282,7 +282,7 @@ class AberrationsCalculator:
 
     def calculate_ray_fan(self, 
                           field_angle_deg: float = 0.0, 
-                          wavelength_nm: float = 550.0,
+                          wavelength_nm: float = WAVELENGTH_GREEN,
                           num_points: int = 21,
                           pupil_axis: str = 'y') -> Dict[str, Any]:
         """
@@ -303,7 +303,7 @@ class AberrationsCalculator:
     def calculate_field_curvature(self, 
                                   max_field_angle_deg: float = 20.0, 
                                   num_points: int = 11,
-                                  wavelength_nm: float = 550.0) -> Tuple[List[float], List[float], List[float]]:
+                                  wavelength_nm: float = WAVELENGTH_GREEN) -> Tuple[List[float], List[float], List[float]]:
         """
         Interface for field curvature calculation.
         Returns (angles_deg, sag_shift_mm, tan_shift_mm)
@@ -324,7 +324,7 @@ class AberrationsCalculator:
     def calculate_distortion_curve(self, 
                                    max_field_angle_deg: float = 20.0, 
                                    num_points: int = 11,
-                                   wavelength_nm: float = 550.0) -> Tuple[List[float], List[float]]:
+                                   wavelength_nm: float = WAVELENGTH_GREEN) -> Tuple[List[float], List[float]]:
         """
         Interface for distortion curve calculation.
         Returns (angles_deg, distortion_pct)

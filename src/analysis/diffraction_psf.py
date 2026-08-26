@@ -1,3 +1,4 @@
+from ..constants import WAVELENGTH_GREEN
 import math
 import logging
 from typing import Optional
@@ -27,7 +28,7 @@ class WavefrontSensor:
         self.tracer = SystemRayTracer3D(system)
 
     def get_pupil_wavefront(self, field_angle_deg: float = 0.0, 
-                           wavelength_nm: float = 550.0,
+                           wavelength_nm: float = WAVELENGTH_GREEN,
                            grid_size: int = 64) -> WavefrontError:
         """
         Calculate wavefront error map at the exit pupil.

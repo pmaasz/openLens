@@ -9,11 +9,25 @@ import math
 
 # ==================== Optical Constants ====================
 
-# Default wavelengths (in nanometers)
-WAVELENGTH_D_LINE = 587.6  # Helium d-line (yellow)
+# Reference wavelengths (nm) and where each applies.
+# Do NOT mix them casually: swapping defaults shifts every derived
+# number (focal length, aberrations, diffraction) by a few percent.
+#
+# WAVELENGTH_D_LINE (587.6 nm, helium d-line):
+#     The glass-catalog reference. Material data (nd, Abbe number Vd)
+#     is defined here, so the Lens model persists and solves at this
+#     wavelength by default.
+#
+# WAVELENGTH_GREEN (550 nm, photopic peak):
+#     The human-eye sensitivity reference. Used as the default for
+#     ray-tracing visualization, spot/PSF/MTF analysis and resolution
+#     estimates, because those describe what an observer sees.
+#
+# Fraunhofer lines F/C flank the d-line for chromatic spreads.
+WAVELENGTH_D_LINE = 587.6  # Helium d-line (yellow) - Lens design reference
 WAVELENGTH_C_LINE = 656.3  # Hydrogen C-line (red)
 WAVELENGTH_F_LINE = 486.1  # Hydrogen F-line (blue)
-WAVELENGTH_GREEN = 550.0   # Green light
+WAVELENGTH_GREEN = 550.0   # Photopic peak - visualization/analysis default
 
 # Standard refractive indices
 REFRACTIVE_INDEX_AIR = 1.0

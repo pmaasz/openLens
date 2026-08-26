@@ -8,6 +8,7 @@ import math
 from typing import Optional, Dict, Any
 
 from .lens import Lens
+from .constants import WAVELENGTH_GREEN
 from .optical_system import OpticalSystem
 class PerformanceMetrics:
     """Calculate optical performance metrics"""
@@ -164,7 +165,7 @@ class PerformanceMetrics:
             return theta_rad * 1e6  # Convert to microradians
         return None
     
-    def estimate_resolution_rayleigh(self, wavelength: float = 550.0, 
+    def estimate_resolution_rayleigh(self, wavelength: float = WAVELENGTH_GREEN, 
                                      f_number: Optional[float] = None) -> Optional[float]:
         """
         Estimate spatial resolution using Rayleigh criterion
@@ -189,7 +190,7 @@ class PerformanceMetrics:
         
         return resolution_um
     
-    def estimate_mtf_cutoff(self, wavelength: float = 550.0,
+    def estimate_mtf_cutoff(self, wavelength: float = WAVELENGTH_GREEN,
                            f_number: Optional[float] = None) -> Optional[float]:
         """
         Estimate MTF (Modulation Transfer Function) cutoff frequency
@@ -218,7 +219,7 @@ class PerformanceMetrics:
         
         return mtf_cutoff
     
-    def calculate_airy_disk_radius(self, wavelength: float = 550.0) -> Optional[float]:
+    def calculate_airy_disk_radius(self, wavelength: float = WAVELENGTH_GREEN) -> Optional[float]:
         """
         Calculate Airy disk radius at focal plane
         r = 1.22 * λ * f / D (mm)
@@ -311,7 +312,7 @@ class PerformanceMetrics:
         }
     
     def get_all_metrics(self, entrance_pupil_diameter: Optional[float] = None,
-                        wavelength: float = 550.0,
+                        wavelength: float = WAVELENGTH_GREEN,
                         object_distance: float = 1000.0,
                         sensor_size: float = 36.0) -> Dict[str, Any]:
         """

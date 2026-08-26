@@ -1,3 +1,4 @@
+from .constants import WAVELENGTH_D_LINE, WAVELENGTH_GREEN
 """
 Service Layer for openlens
 
@@ -52,7 +53,7 @@ class LensService:
     def create_lens(self, name: str, radius1: float, radius2: float,
                    thickness: float, diameter: float, 
                    material: str = "BK7", 
-                   wavelength_nm: float = 587.6,
+                   wavelength_nm: float = WAVELENGTH_D_LINE,
                    temperature: float = 20.0) -> 'Lens':
         """
         Create a new lens with proper material database integration.
@@ -414,7 +415,7 @@ class MaterialDatabaseService:
             ]
     
     def get_refractive_index(self, material: str, 
-                           wavelength_nm: float = 587.6,
+                           wavelength_nm: float = WAVELENGTH_D_LINE,
                            temperature: float = 20.0) -> float:
         """
         Get refractive index for a material.

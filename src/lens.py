@@ -14,7 +14,7 @@ _MATERIAL_DB_ERRORS = (ArithmeticError, ValueError, KeyError, sqlite3.Error)
 
 from .constants import (
     DEFAULT_RADIUS_1, DEFAULT_RADIUS_2, DEFAULT_THICKNESS, DEFAULT_DIAMETER,
-    REFRACTIVE_INDEX_BK7, EPSILON, LARGE_NUMBER,
+    REFRACTIVE_INDEX_BK7, EPSILON, LARGE_NUMBER, WAVELENGTH_D_LINE,
     LENS_TYPE_BICONVEX, LENS_TYPE_PRESET_RADII,
     LENS_TYPE_BICONCAVE, LENS_TYPE_PLANO_CONVEX, LENS_TYPE_PLANO_CONCAVE,
     LENS_TYPE_MENISCUS_CONVEX, LENS_TYPE_MENISCUS_CONCAVE,
@@ -44,7 +44,7 @@ class Lens:
                  refractive_index: Optional[float] = None,
                  lens_type: str = LENS_TYPE_BICONVEX,
                  material: str = "BK7",
-                 wavelength_nm: float = 587.6,
+                 wavelength_nm: float = WAVELENGTH_D_LINE,
                  wavelength: Optional[float] = None,
                  temperature: float = 20.0,
                  is_fresnel: bool = False,
@@ -167,7 +167,7 @@ class Lens:
     @classmethod
     def for_material(cls,
                      material: str,
-                     wavelength_nm: float = 587.6,
+                     wavelength_nm: float = WAVELENGTH_D_LINE,
                      temperature: float = 20.0,
                      **kwargs) -> 'Lens':
         """Factory: build a lens and resolve its index from the database.
@@ -241,7 +241,7 @@ class Lens:
             refractive_index=data.get("refractive_index", REFRACTIVE_INDEX_BK7),
             lens_type=lens_type,
             material=data.get("material", "BK7"),
-            wavelength_nm=data.get("wavelength_nm", data.get("wavelength", 587.6)),
+            wavelength_nm=data.get("wavelength_nm", data.get("wavelength", WAVELENGTH_D_LINE)),
             temperature=data.get("temperature", 20.0),
             is_fresnel=data.get("is_fresnel", False),
             groove_pitch=data.get("groove_pitch", DEFAULT_THICKNESS),

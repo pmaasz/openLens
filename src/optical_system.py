@@ -13,6 +13,7 @@ import logging
 from datetime import datetime
 
 from .lens import Lens
+from .constants import WAVELENGTH_D_LINE, WAVELENGTH_C_LINE, WAVELENGTH_F_LINE, WAVELENGTH_GREEN
 from .material_database import get_material_database
 from .optical_node import OpticalElement, OpticalAssembly
 from .vector3 import vec3
@@ -361,9 +362,9 @@ class OpticalSystem:
         """Calculate system longitudinal chromatic aberration using standard F, d, C lines."""
         # Standard Fraunhofer lines in nm
         lines = {
-            'F': 486.1,  # Blue
-            'd': 587.6,  # Yellow (Reference)
-            'C': 656.3   # Red
+            'F': WAVELENGTH_F_LINE,  # Blue
+            'd': WAVELENGTH_D_LINE,  # Yellow (Reference)
+            'C': WAVELENGTH_C_LINE   # Red
         }
         
         bfls = {}
@@ -555,7 +556,7 @@ class AchromaticDoubletDesigner:
             thickness=diameter * 0.15,  # ~15% of diameter
             diameter=diameter,
             material=crown_material,
-            wavelength=587.6
+            wavelength=WAVELENGTH_D_LINE
         )
         
         flint_lens = Lens(
@@ -565,7 +566,7 @@ class AchromaticDoubletDesigner:
             thickness=diameter * 0.08,  # Thinner flint
             diameter=diameter,
             material=flint_material,
-            wavelength=587.6
+            wavelength=WAVELENGTH_D_LINE
         )
         
         # Create system
