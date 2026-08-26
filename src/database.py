@@ -112,7 +112,7 @@ class DatabaseManager:
             conn.commit()
         except Exception as e:
             conn.rollback()
-            logger.error(f"Failed to save lens: {e}")
+            logger.error("Failed to save lens: %s", e)
             raise
         finally:
             conn.close()
@@ -178,7 +178,7 @@ class DatabaseManager:
             conn.commit()
         except Exception as e:
             conn.rollback()
-            logger.error(f"Failed to save assembly: {e}")
+            logger.error("Failed to save assembly: %s", e)
             raise
         finally:
             conn.close()

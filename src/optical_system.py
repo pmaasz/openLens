@@ -9,12 +9,15 @@ from dataclasses import dataclass
 import math
 import json
 import uuid
+import logging
 from datetime import datetime
 
 from .lens import Lens
 from .material_database import get_material_database
 from .optical_node import OpticalElement, OpticalAssembly
 from .vector3 import vec3
+
+logger = logging.getLogger(__name__)
 @dataclass
 class LensElement:
     """A lens element in an optical system"""
@@ -283,7 +286,7 @@ class OpticalSystem:
                 json.dump(self.to_dict(), f, indent=2)
             return True
         except Exception as e:
-            print(f"Error saving optical system: {e}")
+            logger.error("Error saving optical system: %s", e)
             return False
             
     def to_dict(self) -> Dict[str, Any]:
@@ -351,7 +354,7 @@ class OpticalSystem:
                 data = json.load(f)
             return OpticalSystem.from_dict(data)
         except Exception as e:
-            print(f"Error loading optical system: {e}")
+            logger.error("Error loading optical system: %s", e)
             return None
 
     def calculate_chromatic_aberration(self) -> Dict[str, Any]:

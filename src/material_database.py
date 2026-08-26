@@ -371,7 +371,7 @@ class MaterialDatabase:
         Returns number of materials imported.
         """
         if not os.path.exists(catalog_file):
-            logger.error(f"Catalog file not found: {catalog_file}")
+            logger.error("Catalog file not found: %s", catalog_file)
             return 0
             
         count = 0
@@ -409,7 +409,7 @@ class MaterialDatabase:
                         tce = float(parts[5]) if len(parts) > 5 else 0.0
                         density = float(parts[6]) if len(parts) > 6 else 0.0
                     except (IndexError, ValueError):
-                        logger.warning(f"Error parsing NM line for {name}")
+                        logger.warning("Error parsing NM line for %s", name)
                         current_glass = None
                         continue
                         
@@ -461,7 +461,7 @@ class MaterialDatabase:
                 count += 1
                 
         except Exception as e:
-            logger.error(f"Error importing AGF catalog: {e}")
+            logger.error("Error importing AGF catalog: %s", e)
             
         return count
 
@@ -534,10 +534,10 @@ class MaterialDatabase:
                         self.add_material(mat)
                         count += 1
                     except (ValueError, KeyError) as e:
-                        logger.warning(f"Skipping invalid CSV row: {e}")
+                        logger.warning("Skipping invalid CSV row: %s", e)
                         continue
         except Exception as e:
-            logger.error(f"Error importing CSV catalog: {e}")
+            logger.error("Error importing CSV catalog: %s", e)
             
         return count
 

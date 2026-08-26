@@ -101,14 +101,15 @@ class OpenLensWindow(QMainWindow):
                 else:
                     self._lenses.append(item)
             
-            logger.info(f"Loaded {len(self._lenses)} lenses and {len(self._assemblies)} assemblies from database")
+            logger.info("Loaded %d lenses and %d assemblies from database",
+                        len(self._lenses), len(self._assemblies))
             self._update_status(f"Loaded library: {len(self._lenses)} lenses, {len(self._assemblies)} assemblies")
             
             # Update tabs that depend on the loaded library
             self._update_all_tabs()
             
         except Exception as e:
-            logger.error(f"Failed to load from database: {e}")
+            logger.error("Failed to load from database: %s", e)
             self._lenses = []
             self._assemblies = []
             self._current_lens = None
@@ -143,9 +144,9 @@ class OpenLensWindow(QMainWindow):
                     unique_items[item.id] = item
             
             storage.save_lenses(list(unique_items.values()))
-            logger.info(f"Saved {len(unique_items)} unique items to database")
+            logger.info("Saved %d unique items to database", len(unique_items))
         except Exception as e:
-            logger.error(f"Failed to save to database: {e}")
+            logger.error("Failed to save to database: %s", e)
     
     def _handle_startup(self, action: Optional[str], data: Optional[Any]) -> None:
         """Handle startup action"""

@@ -81,7 +81,7 @@ class OptimizationWorker(QThread):
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
-            logger.error(f"Optimization error:\n{error_details}")
+            logger.error("Optimization error:\n%s", error_details)
             self.failed.emit(str(e))
 
 class OptimizationTab(BaseTab):

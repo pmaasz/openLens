@@ -10,6 +10,7 @@ Implements polarization calculations including:
 """
 
 import numpy as np
+import logging
 from typing import Dict, Optional
 try:
     import matplotlib.pyplot as plt
@@ -17,6 +18,8 @@ try:
 except ImportError:
     HAS_MATPLOTLIB = False
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -331,7 +334,7 @@ class PolarizationCalculator:
             save_path: Optional path to save plot
         """
         if not HAS_MATPLOTLIB:
-            print("Warning: matplotlib not installed. Plotting disabled.")
+            logger.warning("matplotlib not installed. Plotting disabled.")
             return
 
         angles = np.linspace(0, 90, 500)
@@ -388,7 +391,7 @@ class PolarizationCalculator:
             save_path: Optional path to save plot
         """
         if not HAS_MATPLOTLIB:
-            print("Warning: matplotlib not installed. Plotting disabled.")
+            logger.warning("matplotlib not installed. Plotting disabled.")
             return
 
         # Generate ellipse
