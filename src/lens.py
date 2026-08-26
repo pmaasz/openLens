@@ -169,6 +169,26 @@ class Lens:
                     self.material, self.wavelength, self.temperature, e,
                     self.refractive_index)
 
+    def refractive_index_at(self, wavelength_nm: float) -> float:
+        """Return refractive index at *wavelength_nm* without mutating self."""
+        if self.model_glass_mode and MATERIAL_DB_AVAILABLE:
+            try:
+                db = get_material_database()
+                if hasattr(db, 'calculate_model_index'):
+                    return db.calculate_model_index(
+                        self.model_nd, self.model_vd, wavelength_nm)
+            except _MATERIAL_DB_ERRORS:
+                pass
+            return self.model_nd
+        if MATERIAL_DB_AVAILABLE:
+            try:
+                db = get_material_database()
+                return db.get_refractive_index(
+                    self.material, wavelength_nm, self.temperature)
+            except _MATERIAL_DB_ERRORS:
+                pass
+        return self.refractive_index
+
     @classmethod
     def for_material(cls,
                      material: str,
