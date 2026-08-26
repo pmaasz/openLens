@@ -53,6 +53,7 @@ DEFAULT_RADIUS_1 = 100.0
 DEFAULT_RADIUS_2 = -100.0
 DEFAULT_THICKNESS = 5.0
 DEFAULT_DIAMETER = 50.0
+DEFAULT_PROPAGATION_DISTANCE = 100.0  # mm — free-space propagation before first surface
 DEFAULT_TEMPERATURE = 20.0  # degrees Celsius
 
 # ==================== Ray Tracing Constants ====================
