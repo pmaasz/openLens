@@ -226,6 +226,14 @@ class TestLensCalculations(unittest.TestCase):
 - `DEFAULT_RADIUS_2 = -100.0` - Default second surface radius (mm)
 - `DEFAULT_THICKNESS = 5.0` - Default lens thickness (mm)
 - `REFRACTIVE_INDEX_BK7 = 1.5168` - Default glass refractive index (BK7)
+- **`WAVELENGTH_D_LINE = 587.6`** - Helium d-line; the Lens model's default
+  wavelength, matching glass-catalog data (nd, Abbe Vd). Use here.
+- **`WAVELENGTH_GREEN = 550.0`** - Photopic peak; the default for ray-tracing
+  visualization, spot/PSF/MTF analysis, and resolution estimates — the number
+  an observer sees. Do NOT use for glass catalog lookups.
+- `WAVELENGTH_C_LINE = 656.3`, `WAVELENGTH_F_LINE = 486.1` - Fraunhofer
+  flanks for chromatic-spread calculations. Always import from constants,
+  never hardcode.
 
 ## Common Patterns
 

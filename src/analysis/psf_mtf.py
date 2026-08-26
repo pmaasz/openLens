@@ -1,3 +1,4 @@
+from ..constants import WAVELENGTH_GREEN, WAVELENGTH_C_LINE, WAVELENGTH_D_LINE, WAVELENGTH_F_LINE
 from typing import List, Tuple, Dict, Any
 
 # Optional dependencies
@@ -26,7 +27,7 @@ class ImageQualityAnalyzer:
         
     def calculate_spot_diagram(self, 
                                field_angle_deg: float = 0.0, 
-                               wavelength_nm: float = 550.0,
+                               wavelength_nm: float = WAVELENGTH_GREEN,
                                num_rings: int = 6,
                                focus_shift_mm: float = 0.0) -> List[Tuple[float, float]]:
         """
@@ -43,7 +44,7 @@ class ImageQualityAnalyzer:
 
     def calculate_psf(self, 
                       field_angle_deg: float = 0.0, 
-                      wavelength_nm: float = 550.0,
+                      wavelength_nm: float = WAVELENGTH_GREEN,
                       focus_shift_mm: float = 0.0,
                       sensor_size_mm: float = 0.1,  # mm (size of the window to compute PSF)
                       pixels: int = 64,
@@ -138,7 +139,7 @@ class ImageQualityAnalyzer:
 
     def calculate_mtf(self, 
                       field_angle_deg: float = 0.0, 
-                      wavelength_nm: float = 550.0,
+                      wavelength_nm: float = WAVELENGTH_GREEN,
                       focus_shift_mm: float = 0.0,
                       max_freq: float = 100.0,
                       use_diffraction: bool = False) -> Dict[str, Any]:
@@ -472,7 +473,7 @@ class ImageQualityAnalyzer:
     def simulate_image(self, 
                       image_array: np.ndarray, 
                       pixel_size_mm: float = 0.005, 
-                      wavelengths_nm: Tuple[float, float, float] = (656.3, 587.6, 486.1),
+                      wavelengths_nm: Tuple[float, float, float] = (WAVELENGTH_C_LINE, WAVELENGTH_D_LINE, WAVELENGTH_F_LINE),
                       field_angle_deg: float = 0.0,
                       focus_shift_mm: float = 0.0) -> np.ndarray:
         """

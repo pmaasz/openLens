@@ -6,6 +6,7 @@ Performs wavelength-dependent ray tracing and dispersion analysis
 
 from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass
+from .constants import WAVELENGTH_D_LINE, WAVELENGTH_C_LINE, WAVELENGTH_F_LINE
 from .material_database import MaterialDatabase
 
 
@@ -41,11 +42,11 @@ class ChromaticAnalyzer:
         'i': 365.0,   # Mercury i-line (UV)
         'h': 404.7,   # Mercury h-line (violet)
         'g': 435.8,   # Mercury g-line (blue)
-        'F': 486.1,   # Hydrogen F-line (blue)
-        'd': 587.6,   # Helium d-line (yellow) - reference
+        'F': WAVELENGTH_F_LINE,   # Hydrogen F-line (blue)
+        'd': WAVELENGTH_D_LINE,   # Helium d-line (yellow) - reference
         'D': 589.3,   # Sodium D-line (yellow)
         'e': 546.1,   # Mercury e-line (green)
-        'C': 656.3,   # Hydrogen C-line (red)
+        'C': WAVELENGTH_C_LINE,   # Hydrogen C-line (red)
         'r': 706.5,   # Helium r-line (red)
         's': 852.1,   # Cesium s-line (near IR)
         't': 1014.0   # Mercury t-line (near IR)
