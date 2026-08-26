@@ -10,6 +10,16 @@ from typing import List, Optional, Tuple, Any
 # Import vector class
 from .vector3 import Vector3, vec3
 from .transform import Matrix4x4
+import enum
+
+
+class RefractionResult(enum.Enum):
+    """Outcome of applying Snell's law at an interface."""
+    REFRACTED = "refracted"   # transmitted into new medium; n updated
+    REFLECTED = "reflected"   # total internal reflection; direction mutated
+    MISSED    = "missed"      # no intersection; state unchanged
+
+
 class OpticalIntersector:
     """Helper class for common optical intersection math."""
 
@@ -167,34 +177,36 @@ class Ray:
         self.y += distance_mm * math.sin(self.angle_rad)
         self.path.append((self.x, self.y))
     
-    def refract(self, n1: float, n2: float, surface_normal_angle: float = 0.0) -> bool:
+    def refract_or_reflect(self, n1: float, n2: float,
+                           surface_normal_angle: float = 0.0) -> RefractionResult:
         """
         Apply Snell's law at an interface.
-        
+
         Args:
-            n1: Refractive index of medium ray is coming from
-            n2: Refractive index of medium ray is entering
-            surface_normal_angle: Angle of surface normal (radians)
-        
+            n1: Refractive index of medium ray is coming from.
+            n2: Refractive index of medium ray is entering.
+            surface_normal_angle: Angle of surface normal (radians).
+
         Returns:
-            True if refraction occurred, False if total internal reflection
+            REFRACTED  — transmitted; self.n updated to n2.
+            REFLECTED  — total internal reflection; self.angle_rad updated.
+            MISSED     — no valid solution; state unchanged.
         """
-        # Use common Snell implementation
         incident_dir = (math.cos(self.angle_rad), math.sin(self.angle_rad), 0.0)
         normal = (math.cos(surface_normal_angle), math.sin(surface_normal_angle), 0.0)
-        
+
         result = OpticalIntersector.apply_snell(incident_dir, normal, n1, n2)
         if result is None:
-            return False
-        
+            return RefractionResult.MISSED
+
         rx, ry, _, is_tir = result
         self.angle_rad = math.atan2(ry, rx)
-        
+
         if is_tir:
-            return False
-            
+            return RefractionResult.REFLECTED
+
         self.n = n2
-        return True
+        return RefractionResult.REFRACTED
 
 
 class LensRayTracer:
@@ -456,7 +468,7 @@ class LensRayTracer:
         
         # Refract at front surface
         normal_angle = self._get_surface_normal_angle(x1, y1, 'front')
-        if not ray.refract(REFRACTIVE_INDEX_AIR, self.n, normal_angle):
+        if ray.refract_or_reflect(REFRACTIVE_INDEX_AIR, self.n, normal_angle) is not RefractionResult.REFRACTED:
             # Total internal reflection at front surface
             ray.terminated = True
             return ray
@@ -489,7 +501,7 @@ class LensRayTracer:
         
         # Refract at back surface
         normal_angle = self._get_surface_normal_angle(x2, y2, 'back')
-        if not ray.refract(self.n, REFRACTIVE_INDEX_AIR, normal_angle):
+        if ray.refract_or_reflect(self.n, REFRACTIVE_INDEX_AIR, normal_angle) is not RefractionResult.REFRACTED:
             # Total internal reflection at back surface
             ray.terminated = True
             return ray
@@ -899,38 +911,37 @@ class Ray3D:
              
              self.intensity *= R
 
-    def refract(self, n1: float, n2: float, normal: Vector3) -> bool:
-        """
-        Apply Snell's law at an interface using vector math.
-        """
+    def refract_or_reflect(self, n1: float, n2: float,
+                           normal: Vector3) -> RefractionResult:
+        """Apply Snell's law at an interface using vector math."""
         if self.polarization_vector is not None and HAS_POLARIZATION:
-            # Polarization logic still uses its own update for now as it needs coeffs
-            # but we can at least unify the direction calculation if we want.
-            # For now, let's keep it as is to avoid breaking complex polarization math.
-            pass
-        else:
-            incident_dir = (self.direction.x, self.direction.y, self.direction.z)
-            normal_tuple = (normal.x, normal.y, normal.z)
-            
-            result = OpticalIntersector.apply_snell(incident_dir, normal_tuple, n1, n2)
-            if result:
-                rx, ry, rz, is_tir = result
-                new_direction = vec3(rx, ry, rz)
-                
-                if is_tir:
-                    self.direction = new_direction
-                    return False
-                
-                # Refraction
-                cos_i = abs(self.direction.dot(normal))
-                cos_t = abs(new_direction.dot(normal))
-                R = self._compute_fresnel_reflectance(n1, n2, cos_i, cos_t)
-                self.intensity *= (1.0 - R)
-                
-                self.direction = new_direction
-                self.n = n2
-                return True
-            return False
+            # Polarization path — not yet unified; fall through as miss
+            # so callers treat it as a surface that wasn't processed.
+            return RefractionResult.MISSED
+
+        incident_dir = (self.direction.x, self.direction.y, self.direction.z)
+        normal_tuple = (normal.x, normal.y, normal.z)
+
+        result = OpticalIntersector.apply_snell(incident_dir, normal_tuple, n1, n2)
+        if result is None:
+            return RefractionResult.MISSED
+
+        rx, ry, rz, is_tir = result
+        new_direction = vec3(rx, ry, rz)
+
+        if is_tir:
+            self.direction = new_direction
+            return RefractionResult.REFLECTED
+
+        # Refraction
+        cos_i = abs(self.direction.dot(normal))
+        cos_t = abs(new_direction.dot(normal))
+        R = self._compute_fresnel_reflectance(n1, n2, cos_i, cos_t)
+        self.intensity *= (1.0 - R)
+
+        self.direction = new_direction
+        self.n = n2
+        return RefractionResult.REFRACTED
 
         # Fallback to original implementation for polarization
         cos_i = -self.direction.dot(normal)
@@ -1062,7 +1073,7 @@ class LensRayTracer3D:
             
         return ray.origin + ray.direction * t
 
-    def trace_surface(self, ray: Ray3D, surface_type: str, interaction: str = 'refract') -> bool:
+    def trace_surface(self, ray: Ray3D, surface_type: str, interaction: str = 'refract') -> RefractionResult:
         """Trace ray interaction with a specific surface."""
         if surface_type == 'front':
             center = self.front_center
@@ -1172,15 +1183,15 @@ class LensRayTracer3D:
             
         if interaction == 'reflect':
             ray.reflect(normal, n1, n2)
-            return True
+            return RefractionResult.REFLECTED
         elif interaction == 'refract':
-            return ray.refract(n1, n2, normal)
-            
-        return False
+            return ray.refract_or_reflect(n1, n2, normal)
+
+        return RefractionResult.MISSED
 
     def trace_ray(self, ray: Ray3D, propagate_distance: float = DEFAULT_PROPAGATION_DISTANCE) -> Ray3D:
         # 1. Intersect Front Surface
-        if not self.trace_surface(ray, 'front', 'refract'):
+        if self.trace_surface(ray, 'front', 'refract') is not RefractionResult.REFRACTED:
             if not ray.terminated:
                  # Missed
                  ray.propagate(propagate_distance)
@@ -1188,7 +1199,7 @@ class LensRayTracer3D:
             return ray
             
         # 2. Intersect Back Surface
-        if not self.trace_surface(ray, 'back', 'refract'):
+        if self.trace_surface(ray, 'back', 'refract') is not RefractionResult.REFRACTED:
              ray.terminated = True
              return ray
              

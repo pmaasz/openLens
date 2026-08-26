@@ -107,7 +107,7 @@ class TestPolarizationRayTracing(unittest.TestCase):
         ray = Ray3D(self.origin, incident_dir, n=self.n1, polarization_vector=pol_array)
         
         # Refract
-        ray.refract(self.n1, self.n2, self.normal)
+        ray.refract_or_reflect(self.n1, self.n2, self.normal)
         
         # Check intensity
         # T = 4*n1*n2 / (n1+n2)^2 for normal incidence

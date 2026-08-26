@@ -9,7 +9,7 @@ Critical angle: theta_c = arcsin(n_air / n_BK7) = arcsin(1 / 1.5168)
 import math
 import unittest
 
-from src.ray_tracer import Ray
+from src.ray_tracer import RefractionResult, Ray
 
 N_BK7 = 1.5168
 CRITICAL_DEG = math.degrees(math.asin(1.0 / N_BK7))  # 41.2354...
@@ -23,7 +23,7 @@ class TestTIRCriticalAngle(unittest.TestCase):
         ray.n = N_BK7  # travelling inside glass towards the exit surface
         # Flat surface: normal along +x; incident direction makes the
         # angle with the normal equal to the ray's own angle.
-        tir = not ray.refract(N_BK7, 1.0, surface_normal_angle=0.0)
+        tir = ray.refract_or_reflect(N_BK7, 1.0, surface_normal_angle=0.0) is RefractionResult.REFLECTED
         return tir, ray
 
     def test_critical_angle_value(self):
