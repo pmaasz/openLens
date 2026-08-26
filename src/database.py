@@ -221,9 +221,23 @@ class DatabaseManager:
                     assembly.update(meta)
                 del assembly['metadata']
                 
-                # Load elements
+                # Load elements. Named columns only: both tables define an
+                # 'id' column, so 'l.*' would create a duplicate key whose
+                # winner depends on column order.
                 cursor.execute('''
-                    SELECT ae.position, ae.lens_id, l.* 
+                    SELECT l.id AS lens_pk,
+                           l.name AS lens_name,
+                           l.radius1 AS lens_radius1,
+                           l.radius2 AS lens_radius2,
+                           l.thickness AS lens_thickness,
+                           l.material AS lens_material,
+                           l.refractive_index AS lens_refractive_index,
+                           l.diameter AS lens_diameter,
+                           l.created_at AS lens_created_at,
+                           l.modified_at AS lens_modified_at,
+                           l.metadata AS lens_metadata,
+                           ae.lens_id,
+                           ae.position
                     FROM assembly_elements ae
                     JOIN lenses l ON ae.lens_id = l.id
                     WHERE ae.assembly_id = ?
@@ -240,25 +254,26 @@ class DatabaseManager:
                         lens_data = lenses_lookup[lens_id]
                     else:
                         lens_data = {
-                            'id': e_dict['id'],
-                            'name': e_dict['name'],
-                            'radius_of_curvature_1': e_dict['radius1'],
-                            'radius_of_curvature_2': e_dict['radius2'],
-                            'thickness': e_dict['thickness'],
-                            'material': e_dict['material'],
-                            'refractive_index': e_dict['refractive_index'],
-                            'diameter': e_dict['diameter'],
-                            'created_at': e_dict['created_at'],
-                            'modified_at': e_dict['modified_at']
+                            'id': e_dict['lens_pk'],
+                            'name': e_dict['lens_name'],
+                            'radius_of_curvature_1': e_dict['lens_radius1'],
+                            'radius_of_curvature_2': e_dict['lens_radius2'],
+                            'thickness': e_dict['lens_thickness'],
+                            'material': e_dict['lens_material'],
+                            'refractive_index': e_dict['lens_refractive_index'],
+                            'diameter': e_dict['lens_diameter'],
+                            'created_at': e_dict['lens_created_at'],
+                            'modified_at': e_dict['lens_modified_at']
                         }
-                        if e_dict['metadata']:
-                            lens_data.update(json.loads(e_dict['metadata']))
+                        if e_dict['lens_metadata']:
+                            lens_data.update(json.loads(e_dict['lens_metadata']))
                     
                     elements.append({
                         'lens': lens_data,
                         'lens_id': lens_id,
                         'position': e_dict['position']
                     })
+
 
                 assembly['elements'] = elements
                 
