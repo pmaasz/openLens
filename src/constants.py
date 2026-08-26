@@ -35,8 +35,7 @@ REFRACTIVE_INDEX_BK7 = 1.5168
 REFRACTIVE_INDEX_VACUUM = 1.0
 
 # Static d-line fallback indices for common materials, used when no
-# database lookup is performed. Single source of truth for lens.py,
-# LensService and MaterialDatabaseService.
+# database lookup is performed.  Single source of truth for lens.py.
 DEFAULT_MATERIAL_INDICES = {
     "BK7": 1.5168,
     "Fused Silica": 1.4585,

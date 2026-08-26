@@ -28,7 +28,6 @@ Key source files:
 - `src/ray_tracer.py` - 2D/3D ray tracing engine
 - `src/aberrations.py` - Seidel aberration calculator
 - `src/validation.py` - Input validation utilities
-- `src/services.py` - Service layer (business logic)
 - `src/database.py` - SQLite persistence (DatabaseManager)
 - `src/constants.py` - All constants and configuration
 - `src/gui/` - GUI implementation (widgets/, tabs/, dialogs/, theme.py, storage.py)
@@ -236,14 +235,6 @@ class TestLensCalculations(unittest.TestCase):
   never hardcode.
 
 ## Common Patterns
-
-### Service Layer Pattern
-`src/services.py` provides `LensService` / `CalculationService` /
-`MaterialDatabaseService` for CLI and integration code. The PySide6 main
-window (`openlens.py`) currently owns its library state directly and does
-not route through the service layer - do not add new GUI code paths that
-pretend otherwise; either use services consistently or keep manipulating
-the window state explicitly.
 
 ### Persistence Policy
 SQLite (via `DatabaseManager`/`LensStorage`, default `openlens.db`) is
