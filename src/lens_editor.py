@@ -11,6 +11,14 @@ from typing import Optional, List
 logger = logging.getLogger(__name__)
 
 from .lens import Lens
+from .validation import (
+    ValidationError,
+    validate_radius,
+    validate_thickness,
+    validate_diameter,
+    validate_refractive_index,
+    validate_lens_name,
+)
 
 try:
     from .gui.storage import load_lenses, save_lenses
@@ -30,8 +38,9 @@ class LensManager:
     
     def __init__(self, storage_file: str = "openlens.db") -> None:
         if storage_file.endswith(".json"):
-            storage_file = storage_file.replace(".json", ".db")
-            
+            storage_file = storage_file[:-len(".json")] + ".db"
+            print(f"note: storage is SQLite; using {storage_file}")
+
         self.storage_file = storage_file
         self.lenses = self.load_lenses()
     
@@ -79,27 +88,54 @@ class LensManager:
         """
         print("\n=== Create New Optical Lens ===")
         name = input("Lens name: ").strip() or "Untitled"
-        
-        try:
-            r1 = float(input("Radius of curvature 1 (mm) [100.0]: ").strip() or "100.0")
-            r2 = float(input("Radius of curvature 2 (mm) [-100.0]: ").strip() or "-100.0")
-            thickness = float(input("Center thickness (mm) [5.0]: ").strip() or "5.0")
-            diameter = float(input("Diameter (mm) [50.0]: ").strip() or "50.0")
-            refractive_index = float(input("Refractive index [1.5168]: ").strip() or "1.5168")
-        except ValueError:
-            print("Invalid number format. Using defaults.")
-            r1, r2, thickness, diameter, refractive_index = 100.0, -100.0, 5.0, 50.0, 1.5168
-        
+
+        r1 = self._prompt_float(
+            "Radius of curvature 1 (mm) [100.0]: ", 100.0,
+            lambda v: validate_radius(v, param_name="Radius 1"))
+        r2 = self._prompt_float(
+            "Radius of curvature 2 (mm) [-100.0]: ", -100.0,
+            lambda v: validate_radius(v, param_name="Radius 2"))
+        thickness = self._prompt_float(
+            "Center thickness (mm) [5.0]: ", 5.0,
+            lambda v: validate_thickness(v))
+        diameter = self._prompt_float(
+            "Diameter (mm) [50.0]: ", 50.0,
+            lambda v: validate_diameter(v))
+        refractive_index = self._prompt_float(
+            "Refractive index [1.5168]: ", 1.5168,
+            lambda v: validate_refractive_index(v))
+
         lens_type = input("Type (Biconvex/Biconcave/Plano-Convex/etc) [Biconvex]: ").strip() or "Biconvex"
         material = input("Material (BK7/Fused Silica/etc) [BK7]: ").strip() or "BK7"
-        
-        lens = Lens(name, r1, r2, thickness, diameter, refractive_index, lens_type, material)
+
+        lens = Lens(name=name,
+                    radius_of_curvature_1=r1,
+                    radius_of_curvature_2=r2,
+                    thickness=thickness,
+                    diameter=diameter,
+                    refractive_index=refractive_index,
+                    lens_type=lens_type,
+                    material=material)
         self.lenses.append(lens)
         self.save_lenses()
-        
+
         print(f"\n✓ Lens created successfully!")
         print(lens)
         return lens
+
+    @staticmethod
+    def _prompt_float(prompt: str, default: float, validator) -> float:
+        """Prompt until a value passes ``validator``; empty accepts default."""
+        while True:
+            raw = input(prompt).strip()
+            if not raw:
+                return default
+            try:
+                return validator(float(raw))
+            except ValueError:
+                print(f"  not a number: {raw!r}")
+            except ValidationError as e:
+                print(f"  invalid: {e}")
     
     def list_lenses(self) -> None:
         """
@@ -153,30 +189,39 @@ class LensManager:
             
             print(f"\nModifying: {lens.name}")
             print("(Press Enter to keep current value)")
-            
+
             new_name = input(f"Name [{lens.name}]: ").strip()
             if new_name:
-                lens.name = new_name
-            
-            new_r1 = input(f"Radius of curvature 1 [{lens.radius_of_curvature_1}]: ").strip()
-            if new_r1:
-                lens.radius_of_curvature_1 = float(new_r1)
-            
-            new_r2 = input(f"Radius of curvature 2 [{lens.radius_of_curvature_2}]: ").strip()
-            if new_r2:
-                lens.radius_of_curvature_2 = float(new_r2)
-            
-            new_thickness = input(f"Thickness [{lens.thickness}]: ").strip()
-            if new_thickness:
-                lens.thickness = float(new_thickness)
-            
-            new_diameter = input(f"Diameter [{lens.diameter}]: ").strip()
-            if new_diameter:
-                lens.diameter = float(new_diameter)
-            
-            new_refr = input(f"Refractive index [{lens.refractive_index}]: ").strip()
-            if new_refr:
-                lens.refractive_index = float(new_refr)
+                lens.name = validate_lens_name(new_name)
+
+            def _apply(attr, prompt, validator, current):
+                raw = input(prompt).strip()
+                if not raw:
+                    return
+                try:
+                    setattr(lens, attr, validator(float(raw)))
+                except ValueError:
+                    print(f"  not a number: {raw!r} - keeping {current}")
+                except ValidationError as e:
+                    print(f"  invalid: {e} - keeping {current}")
+
+            _apply("radius_of_curvature_1",
+                   f"Radius of curvature 1 [{lens.radius_of_curvature_1}]: ",
+                   lambda v: validate_radius(v, param_name="Radius 1"),
+                   lens.radius_of_curvature_1)
+            _apply("radius_of_curvature_2",
+                   f"Radius of curvature 2 [{lens.radius_of_curvature_2}]: ",
+                   lambda v: validate_radius(v, param_name="Radius 2"),
+                   lens.radius_of_curvature_2)
+            _apply("thickness",
+                   f"Thickness [{lens.thickness}]: ",
+                   validate_thickness, lens.thickness)
+            _apply("diameter",
+                   f"Diameter [{lens.diameter}]: ",
+                   validate_diameter, lens.diameter)
+            _apply("refractive_index",
+                   f"Refractive index [{lens.refractive_index}]: ",
+                   validate_refractive_index, lens.refractive_index)
             
             new_type = input(f"Type [{lens.lens_type}]: ").strip()
             if new_type:
