@@ -29,6 +29,11 @@ except ImportError:
     MATERIAL_DB_AVAILABLE = False
 
 
+def _is_flat(r):
+    """True if radius r is zero, non-finite, or effectively infinite (flat surface)."""
+    return not r or not math.isfinite(r) or abs(r) > LARGE_NUMBER or abs(r) < EPSILON
+
+
 class Lens:
     """
     Represents an optical lens with its physical and optical properties.
@@ -307,9 +312,8 @@ class Lens:
         r1 = self.radius_of_curvature_1
         r2 = self.radius_of_curvature_2
         
-        # Handle flat surfaces (radius = 0 or infinity)
-        r1_flat = r1 == 0 or not math.isfinite(r1) or abs(r1) > LARGE_NUMBER if r1 else True
-        r2_flat = r2 == 0 or not math.isfinite(r2) or abs(r2) > LARGE_NUMBER if r2 else True
+        r1_flat = _is_flat(r1)
+        r2_flat = _is_flat(r2)
         
         # Determine type based on radii
         if r1_flat and r2_flat:

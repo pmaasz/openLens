@@ -115,6 +115,7 @@ from .constants import (
     RAY_START_OFFSET_MM, RAY_START_OFFSET_3D_MM,
     RAY_EXIT_PROPAGATION_2D_MM, RAY_EXIT_PROPAGATION_3D_MM,
 )
+from .lens import _is_flat
 
 
 class Ray:
@@ -237,7 +238,7 @@ class LensRayTracer:
         # Cx = Vertex + R
         
         # Front surface (R1)
-        if abs(self.R1) > LARGE_NUMBER or not math.isfinite(self.R1) or abs(self.R1) < EPSILON:  # Essentially flat or zero radius
+        if _is_flat(self.R1):
             self.front_center_x = self.front_vertex_x
             self.front_is_flat = True
         else:
@@ -245,7 +246,7 @@ class LensRayTracer:
             self.front_is_flat = False
         
         # Back surface (R2)
-        if abs(self.R2) > LARGE_NUMBER or not math.isfinite(self.R2) or abs(self.R2) < EPSILON:  # Essentially flat or zero radius
+        if _is_flat(self.R2):
             self.back_center_x = self.back_vertex_x
             self.back_is_flat = True
         else:
@@ -1002,7 +1003,7 @@ class LensRayTracer3D:
         self.back_vertex = self.transform.multiply_point(v1)
         
         # Front Center
-        if abs(self.R1) > LARGE_NUMBER or not math.isfinite(self.R1) or abs(self.R1) < EPSILON:
+        if _is_flat(self.R1):
             self.front_center = self.front_vertex
             self.front_is_flat = True
         else:
@@ -1010,7 +1011,7 @@ class LensRayTracer3D:
             self.front_is_flat = False
         
         # Back Center
-        if abs(self.R2) > LARGE_NUMBER or not math.isfinite(self.R2) or abs(self.R2) < EPSILON:
+        if _is_flat(self.R2):
             self.back_center = self.back_vertex
             self.back_is_flat = True
         else:
