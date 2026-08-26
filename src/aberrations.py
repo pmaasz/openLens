@@ -4,8 +4,11 @@ Lens Aberrations Calculator
 Calculates primary optical aberrations for single lens elements
 """
 
+import logging
 import math
 from typing import Optional, Dict, Any, List, Tuple
+
+logger = logging.getLogger(__name__)
 
 # Import ray tracer for exact calculations
 from .ray_tracer import LensRayTracer, Ray
@@ -198,8 +201,12 @@ class AberrationsCalculator:
                 'astigmatism': astig,
                 'coma': coma_val
             }
-        except Exception:
-            return {'field_curvature': 0.0, 'distortion': 0.0, 'astigmatism': 0.0, 'coma': 0.0}
+        except Exception as e:
+            logger.warning(
+                "Field metrics computation failed at %.1f deg: %s - "
+                "reporting zeros", field_angle, e)
+            return {'field_curvature': 0.0, 'distortion': 0.0,
+                    'astigmatism': 0.0, 'coma': 0.0}
 
     def _calculate_coma(self, focal_length: float, field_angle_deg: float) -> float:
         """Calculate third-order Seidel coma for a single lens"""
@@ -448,7 +455,7 @@ class AberrationsCalculator:
                 
                 return marginal_focus - paraxial_focus
         except Exception as e:
-            # logger.error("Performance calculation error: %s", e)
+            logger.warning("Spherical aberration ray trace failed: %s", e)
             return None
 
     def _calculate_chromatic_aberration(self, focal_length: float) -> Optional[float]:
