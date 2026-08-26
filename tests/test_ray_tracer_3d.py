@@ -26,7 +26,7 @@ class TestRayTracer3D(unittest.TestCase):
 
     def test_on_axis_ray_agreement(self):
         # 2D Trace
-        ray2d = Ray(x_mm=-20, y_mm=0, angle_rad=0)
+        ray2d = Ray(x=-20, y=0, angle_rad=0)
         self.tracer2d.trace_ray(ray2d)
         
         # 3D Trace
@@ -54,7 +54,7 @@ class TestRayTracer3D(unittest.TestCase):
         h = 10.0
         
         # 2D Trace
-        ray2d = Ray(x_mm=-20, y_mm=h, angle_rad=0)
+        ray2d = Ray(x=-20, y=h, angle_rad=0)
         self.tracer2d.trace_ray(ray2d)
         
         # 3D Trace

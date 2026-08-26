@@ -127,12 +127,13 @@ class Ray:
         path: List of (x, y) points along the ray path
     """
     
-    def __init__(self, x: float = 0.0, y: float = 0.0, angle_rad: float = 0.0, 
-                 wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM, n: float = REFRACTIVE_INDEX_AIR, **kwargs) -> None:
-        self.x = kwargs.get('x_mm', x)
-        self.y = kwargs.get('y_mm', y)
-        self.angle_rad = kwargs.get('angle_rad', angle_rad)
-        self.wavelength = kwargs.get('wavelength_mm', wavelength_mm)
+    def __init__(self, x: float = 0.0, y: float = 0.0, angle_rad: float = 0.0,
+                 wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM,
+                 n: float = REFRACTIVE_INDEX_AIR) -> None:
+        self.x = x
+        self.y = y
+        self.angle_rad = angle_rad
+        self.wavelength = wavelength_mm
         self.n = n
         self.path: List[Tuple[float, float]] = [(self.x, self.y)]
         self.terminated = False
@@ -161,7 +162,7 @@ class Ray:
         self.y += distance_mm * math.sin(self.angle_rad)
         self.path.append((self.x, self.y))
     
-    def refract(self, n1: float, n2: float, surface_normal_angle: float = 0.0, **kwargs) -> bool:
+    def refract(self, n1: float, n2: float, surface_normal_angle: float = 0.0) -> bool:
         """
         Apply Snell's law at an interface.
         
@@ -173,12 +174,9 @@ class Ray:
         Returns:
             True if refraction occurred, False if total internal reflection
         """
-        # Handle backward compatibility for surface_normal_angle_rad
-        sn_angle = kwargs.get('surface_normal_angle_rad', surface_normal_angle)
-        
         # Use common Snell implementation
         incident_dir = (math.cos(self.angle_rad), math.sin(self.angle_rad), 0.0)
-        normal = (math.cos(sn_angle), math.sin(sn_angle), 0.0)
+        normal = (math.cos(surface_normal_angle), math.sin(surface_normal_angle), 0.0)
         
         result = OpticalIntersector.apply_snell(incident_dir, normal, n1, n2)
         if result is None:

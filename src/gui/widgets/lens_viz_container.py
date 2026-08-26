@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QWidget, QTabWidget, QVBoxLayout
 from typing import Optional, TYPE_CHECKING
 
-from .lens_viz_2d import _2DVisualizationWidget
+from .lens_viz_2d import LensViz2DWidget
 from .lens_viz_3d import _3DVisualizationWidget
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ class LensVisualizationWidget(QWidget):
         """)
         
         # 2D view (custom canvas)
-        self._2d_widget = _2DVisualizationWidget()
+        self._2d_widget = LensViz2DWidget()
         self._viz_tabs.addTab(self._2d_widget, "2D")
         
         # 3D view (matplotlib embedded)
