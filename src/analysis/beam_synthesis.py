@@ -12,7 +12,7 @@ except ImportError:
         ndarray = Any
         
 from ..vector3 import vec3
-from ..ray_tracer import Ray3D, LensRayTracer3D, SystemRayTracer3D
+from ..ray_tracer import RefractionResult, Ray3D, LensRayTracer3D, SystemRayTracer3D
 from ..optical_system import OpticalSystem
 from ..constants import NM_TO_MM, WAVELENGTH_GREEN
 @dataclass
@@ -89,7 +89,7 @@ class GaussianBeam:
             else:
                 self.q_y = 1.0 / inv_q_y_new
         
-        # Ray refraction is handled separately by the tracer calling ray.refract()
+        # Ray refraction is handled separately by the tracer calling ray.refract_or_reflect()
         # This method only updates the q parameter.
 
 
@@ -404,7 +404,7 @@ class BeamSynthesisPropagator:
             tracer = LensRayTracer3D(element.lens, x_offset=element.position)
             
             # Front
-            if not tracer.trace_surface(beam.ray, 'front', 'refract'):
+            if tracer.trace_surface(beam.ray, 'front', 'refract') is not RefractionResult.REFRACTED:
                 beam.ray.terminated = True
                 return
             
@@ -418,7 +418,7 @@ class BeamSynthesisPropagator:
             beam.refract(1.0, element.lens.refractive_index, element.lens.radius_of_curvature_1)
             
             # Back
-            if not tracer.trace_surface(beam.ray, 'back', 'refract'):
+            if tracer.trace_surface(beam.ray, 'back', 'refract') is not RefractionResult.REFRACTED:
                 beam.ray.terminated = True
                 return
                 
