@@ -1,4 +1,5 @@
 
+import logging
 import enum
 import random
 import copy
@@ -10,6 +11,8 @@ from typing import List, Dict, Any, Optional
 from .optical_system import OpticalSystem
 from .analysis import SpotDiagram
 from .vector3 import vec3
+
+logger = logging.getLogger(__name__)
 class ToleranceType(enum.Enum):
     RADIUS_1 = "Radius 1"
     RADIUS_2 = "Radius 2"
@@ -146,8 +149,9 @@ class MonteCarloAnalyzer:
                         db = get_material_database()
                         mat = db.get_material(lens.material)
                         if mat: lens.model_vd = mat.vd
-                    except: pass
-                
+                    except Exception as e:
+                        logger.debug("Material DB lookup for Vd failed: %s", e)
+
                 lens.model_nd += delta
                 lens.update_refractive_index()
                 
@@ -160,8 +164,9 @@ class MonteCarloAnalyzer:
                         db = get_material_database()
                         mat = db.get_material(lens.material)
                         if mat: lens.model_vd = mat.vd
-                    except: pass
-                
+                    except Exception as e:
+                        logger.debug("Material DB lookup for Vd failed: %s", e)
+
                 lens.model_vd += delta
                 lens.update_refractive_index()
 
@@ -381,7 +386,8 @@ class InverseSensitivityAnalyzer:
                     db = get_material_database()
                     mat = db.get_material(lens.material)
                     if mat: lens.model_vd = mat.vd
-                except: pass
+                except Exception as e:
+                    logger.debug("Material DB lookup for Vd failed: %s", e)
             lens.model_nd += value
             lens.update_refractive_index()
             
@@ -394,7 +400,8 @@ class InverseSensitivityAnalyzer:
                     db = get_material_database()
                     mat = db.get_material(lens.material)
                     if mat: lens.model_vd = mat.vd
-                except: pass
+                except Exception as e:
+                    logger.debug("Material DB lookup for Vd failed: %s", e)
             lens.model_vd += value
             lens.update_refractive_index()
             

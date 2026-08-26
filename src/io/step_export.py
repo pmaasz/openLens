@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 """
 STEP Export Module for OpenLens.
 Generates ISO 10303-21 (STEP) files for optical components.
@@ -119,8 +123,8 @@ class StepExporter:
                 solid_id = self._export_lens_solid(self.system, 0.0)
                 if solid_id:
                     shape_ids.append(solid_id)
-            except (AttributeError, KeyError):
-                pass
+            except (AttributeError, KeyError) as e:
+                logger.debug("STEP solid export skipped: %s", e)
                 
         # Create Root Product Definition if needed
         # For simplicity, we just leave the geometric entities in the file.

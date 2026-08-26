@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 #!/usr/bin/env python3
 """
 Export to professional optical design formats
@@ -318,9 +322,10 @@ class SVGExporter:
                     return 0
                 try:
                     return abs(radius) - math.sqrt(radius * radius - half_d * half_d)
-                except ValueError:
+                except ValueError as e:
+                    logger.debug("Sag calculation failed: %s", e)
                     return 0
-            
+
             sag1 = calc_sag(r1, lens.diameter / 2) * scale
             sag2 = calc_sag(r2, lens.diameter / 2) * scale
             
