@@ -110,7 +110,10 @@ except ImportError:
 from .constants import (
     WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR,
     DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_RADIUS_1,
-    EPSILON, MESH_RESOLUTION_HIGH, LARGE_NUMBER
+    EPSILON, MESH_RESOLUTION_HIGH, LARGE_NUMBER,
+    APERTURE_FILL_FACTOR,
+    RAY_START_OFFSET_MM, RAY_START_OFFSET_3D_MM,
+    RAY_EXIT_PROPAGATION_2D_MM, RAY_EXIT_PROPAGATION_3D_MM,
 )
 
 
@@ -499,7 +502,7 @@ class LensRayTracer:
                            angle_deg: float = 0.0) -> List[Ray]:
         """Trace parallel rays (collimated beam) through the lens."""
         if ray_height_range is None:
-            max_height = self.D / 2 * 0.95  # Use 95% of aperture
+            max_height = self.D / 2 * APERTURE_FILL_FACTOR
             ray_height_range = (-max_height, max_height)
         
         rays = []
@@ -507,7 +510,7 @@ class LensRayTracer:
         angle_rad = math.radians(angle_deg)
         
         # Starting position (before lens) - rays start at x=-100 to visualize the beam
-        start_x = -100.0
+        start_x = -RAY_START_OFFSET_MM
         
         # Calculate lens position (x=0) for target height
         lens_x = 0.0
@@ -635,7 +638,7 @@ class SystemRayTracer:
         
         # Calculate first lens diameter to determine ray spread
         first_lens = self.system.elements[0].lens
-        max_height = first_lens.diameter / 2 * 0.95
+        max_height = first_lens.diameter / 2 * APERTURE_FILL_FACTOR
         min_h, max_h = -max_height, max_height
         
         rays = []
@@ -643,7 +646,7 @@ class SystemRayTracer:
         
         # Determine start position (well before first element)
         first_pos = self.system.elements[0].position
-        start_x = first_pos - 100.0
+        start_x = first_pos - RAY_START_OFFSET_MM
         
         for i in range(num_rays):
             if num_rays == 1:
@@ -697,7 +700,7 @@ class SystemRayTracer:
                         ray.propagate(dist)
                 else:
                     # Last element, propagate into distance
-                    ray.propagate(150.0) # Larger distance for better visualization
+                    ray.propagate(RAY_EXIT_PROPAGATION_2D_MM)
                 continue
             
             # If we HIT the lens but it terminated (TIR or hit side), 
@@ -707,7 +710,7 @@ class SystemRayTracer:
                 # Propagate from current position to end of visualization
                 # unless it was a really sharp TIR that shouldn't move forward
                 if math.cos(ray.angle) > 0.1: # Moving generally forward
-                    ray.propagate(150.0 - ray.x)
+                    ray.propagate(RAY_EXIT_PROPAGATION_2D_MM - ray.x)
                 break
             
             # If we HIT the lens and it didn't terminate, we go to next element.
@@ -720,7 +723,7 @@ class SystemRayTracer:
                     ray.propagate(EPSILON)
             else:
                 # Last element, propagate into distance
-                ray.propagate(150.0)
+                ray.propagate(RAY_EXIT_PROPAGATION_2D_MM)
 
 class Ray3D:
     """
@@ -1230,7 +1233,7 @@ class SystemRayTracer3D:
             
         # Propagate a bit after last element
         if not ray.terminated:
-             ray.propagate(50.0)
+             ray.propagate(RAY_EXIT_PROPAGATION_3D_MM)
              
         return ray
 
@@ -1249,7 +1252,7 @@ class SystemRayTracer3D:
         
         # Entrance pupil position
         ep_x = self.system.elements[0].position
-        start_x = ep_x - 50.0
+        start_x = ep_x - RAY_START_OFFSET_3D_MM
         
         angle_rad = math.radians(field_angle_deg)
         direction = vec3(math.cos(angle_rad), math.sin(angle_rad), 0.0)
@@ -1282,7 +1285,7 @@ class SystemRayTracer3D:
             return rays
             
         first_pos = self.system.elements[0].position
-        start_x = first_pos - 50.0
+        start_x = first_pos - RAY_START_OFFSET_3D_MM
         
         half_size = size / 2
         step = size / (grid_points - 1) if grid_points > 1 else 0

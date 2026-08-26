@@ -5,6 +5,8 @@ This module centralizes all magic numbers and configuration values
 to improve code maintainability and clarity.
 """
 
+import math
+
 # ==================== Optical Constants ====================
 
 # Default wavelengths (in nanometers)
@@ -45,6 +47,13 @@ DEFAULT_TEMPERATURE = 20.0  # degrees Celsius
 DEFAULT_NUM_RAYS = 11
 DEFAULT_RAY_HEIGHT_RANGE = (-20.0, 20.0)  # mm
 DEFAULT_ANGLE_RANGE = (-30.0, 30.0)  # degrees
+
+# Geometry of ray bundles (mm)
+APERTURE_FILL_FACTOR = 0.95          # rays span 95% of the lens aperture
+RAY_START_OFFSET_MM = 100.0          # 2D collimated beams start this far before the first surface
+RAY_START_OFFSET_3D_MM = 50.0        # same, for 3D/system traces
+RAY_EXIT_PROPAGATION_2D_MM = 150.0   # draw length after the last element (2D)
+RAY_EXIT_PROPAGATION_3D_MM = 50.0    # draw length after the last element (3D)
 
 # Ray intersection tolerances
 RAY_INTERSECTION_TOLERANCE = 1e-10
@@ -176,6 +185,10 @@ LENS_TYPE_PLANO_CONCAVE = "Plano-Concave"
 LENS_TYPE_MENISCUS_CONVEX = "Meniscus Convex"
 LENS_TYPE_MENISCUS_CONCAVE = "Meniscus Concave"
 
+# Classification result for shapes that match no creatable type.
+# Intentionally not part of ALL_LENS_TYPES (it is not selectable).
+LENS_TYPE_UNKNOWN = "Unknown"
+
 ALL_LENS_TYPES = [
     LENS_TYPE_BICONVEX,
     LENS_TYPE_BICONCAVE,
@@ -217,8 +230,8 @@ QUALITY_RATING_POOR = "Poor"
 
 # Common factors
 FWHM_TO_SIGMA = 2.355  # Full Width Half Maximum to standard deviation
-DEGREES_TO_RADIANS = 0.017453292519943295  # pi/180
-RADIANS_TO_DEGREES = 57.29577951308232  # 180/pi
+DEGREES_TO_RADIANS = math.pi / 180.0
+RADIANS_TO_DEGREES = 180.0 / math.pi
 
 # ==================== Status Messages ====================
 
