@@ -109,7 +109,7 @@ except ImportError:
 # Import constants
 from .constants import (
     WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR,
-    DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_RADIUS_1,
+    DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_PROPAGATION_DISTANCE,
     EPSILON, MESH_RESOLUTION_HIGH, LARGE_NUMBER,
     APERTURE_FILL_FACTOR,
     RAY_START_OFFSET_MM, RAY_START_OFFSET_3D_MM,
@@ -431,7 +431,7 @@ class LensRayTracer:
             
             return (x, y)
     
-    def trace_ray(self, ray: Ray, propagate_distance: float = (DEFAULT_RADIUS_1)) -> Ray:
+    def trace_ray(self, ray: Ray, propagate_distance: float = DEFAULT_PROPAGATION_DISTANCE) -> Ray:
         """Trace a ray through the lens."""
         # Find intersection with front surface
         intersection = self._intersect_front_surface(ray)
@@ -1180,7 +1180,7 @@ class LensRayTracer3D:
             
         return False
 
-    def trace_ray(self, ray: Ray3D, propagate_distance: float = DEFAULT_RADIUS_1) -> Ray3D:
+    def trace_ray(self, ray: Ray3D, propagate_distance: float = DEFAULT_PROPAGATION_DISTANCE) -> Ray3D:
         # 1. Intersect Front Surface
         if not self.trace_surface(ray, 'front', 'refract'):
             if not ray.terminated:
