@@ -150,9 +150,9 @@ class PerformanceTab(BaseTab):
             if 'PIL' in str(e) or 'Pillow' in str(e):
                 QMessageBox.warning(self, "Dependency Missing", "Image simulation requires 'Pillow' (PIL).")
             else:
-                logger.error(f"Import error in image simulation: {e}")
+                logger.error("Import error in image simulation: %s", e)
         except Exception as e:
-            logger.error(f"Image simulation error: {e}")
+            logger.error("Image simulation error: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to start image simulation: {e}")
 
 
@@ -253,7 +253,7 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             self._parent._update_status(f"Calculated metrics for {system.name}")
                 
         except Exception as e:
-            logger.error(f"Performance calculation error: {e}")
+            logger.error("Performance calculation error: %s", e)
             self._perf_metrics_text.setPlainText(f"Error calculating metrics: {e}")
 
     def _on_show_spot_diagram(self) -> None:
@@ -313,7 +313,7 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             dialog.exec()
             
         except Exception as e:
-            logger.error(f"Spot diagram error: {e}")
+            logger.error("Spot diagram error: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate spot diagram: {e}")
 
     def _on_show_ray_fan(self) -> None:
@@ -371,7 +371,7 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             dialog.exec()
             
         except Exception as e:
-            logger.error(f"Ray fan error: {e}")
+            logger.error("Ray fan error: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate ray fan: {e}")
 
     def _on_show_field_curves(self) -> None:
@@ -444,7 +444,7 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             dialog.exec()
             
         except Exception as e:
-            logger.error(f"Field curves error: {e}")
+            logger.error("Field curves error: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate field curves: {e}")
 
     def _on_show_psf(self) -> None:

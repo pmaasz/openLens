@@ -438,7 +438,7 @@ class MaterialDatabaseService:
             try:
                 return self.db.get_refractive_index(material, wavelength_nm, temperature)
             except (KeyError, ValueError, TypeError) as e:
-                logger.debug(f"Material lookup failed for {material}: {e}")
+                logger.debug("Material lookup failed for {material}: %s", e)
         
         # Fallback to defaults
         defaults = {

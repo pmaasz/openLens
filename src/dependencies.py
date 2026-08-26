@@ -5,8 +5,11 @@ Provides clean, centralized handling of optional dependencies
 with consistent error messages and feature detection.
 """
 
+import logging
 import sys
 from typing import Optional, Callable, Any
+
+logger = logging.getLogger(__name__)
 
 
 class DependencyManager:
@@ -45,7 +48,7 @@ class DependencyManager:
                 self._warnings_shown.add(module_name)
                 feature = feature_name or f"{module_name} features"
                 install = install_cmd or f"pip install {module_name}"
-                print(f"⚠ {feature} not available. Install with: {install}")
+                logger.warning("%s not available. Install with: %s", feature, install)
             
             return False
     

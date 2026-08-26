@@ -426,7 +426,7 @@ class ImageSimulator:
         try:
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 48)
         except (IOError, OSError) as e:
-            logger.debug(f"Failed to load system font, using default: {e}")
+            logger.debug("Failed to load system font, using default: %s", e)
             font = ImageFont.load_default()
         
         bbox = draw.textbbox((0, 0), text, font=font)
