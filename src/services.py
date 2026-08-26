@@ -10,6 +10,7 @@ from typing import Optional, Dict, List, Any, TYPE_CHECKING
 from datetime import datetime
 
 from .lens import Lens
+from .constants import DEFAULT_MATERIAL_INDICES, REFRACTIVE_INDEX_BK7
 from .validation import (
     validate_radius, validate_thickness,
     validate_diameter, validate_refractive_index,
@@ -45,16 +46,8 @@ class LensService:
         self.material_db = material_db
     
     def _get_default_index(self, material: str) -> float:
-        """Get default refractive index for common materials"""
-        default_indices = {
-            "BK7": 1.5168,
-            "Fused Silica": 1.4585,
-            "SF11": 1.78,
-            "Crown Glass": 1.52,
-            "Flint Glass": 1.65,
-            "Sapphire": 1.77
-        }
-        return default_indices.get(material, 1.5168)
+        """Static d-line index for common materials (shared table)."""
+        return DEFAULT_MATERIAL_INDICES.get(material, REFRACTIVE_INDEX_BK7)
     
     def create_lens(self, name: str, radius1: float, radius2: float,
                    thickness: float, diameter: float, 
@@ -436,20 +429,19 @@ class MaterialDatabaseService:
         """
         if self._available and self.db:
             try:
-                return self.db.get_refractive_index(material, wavelength_nm, temperature)
+                mat = self.db.get_material(material)
+                if mat is not None:
+                    return self.db.get_refractive_index(
+                        material, wavelength_nm, temperature)
+                # Unknown material: fall through to shared static table
+                logger.debug("Material %r not in database - using static "
+                             "default index", material)
             except (KeyError, ValueError, TypeError) as e:
-                logger.debug("Material lookup failed for {material}: %s", e)
-        
-        # Fallback to defaults
-        defaults = {
-            "BK7": 1.5168,
-            "Fused Silica": 1.4585,
-            "Crown Glass": 1.52,
-            "Flint Glass": 1.65,
-            "SF11": 1.78,
-            "Sapphire": 1.77
-        }
-        return defaults.get(material, 1.5168)
+                logger.debug("Material lookup failed for %s: %s",
+                             material, e)
+
+        # Shared static d-line defaults (single source of truth)
+        return DEFAULT_MATERIAL_INDICES.get(material, REFRACTIVE_INDEX_BK7)
     
     def get_material_info(self, material: str) -> Dict[str, Any]:
         """

@@ -15,7 +15,8 @@ _MATERIAL_DB_ERRORS = (ArithmeticError, ValueError, KeyError, sqlite3.Error)
 from .constants import (
     DEFAULT_RADIUS_1, DEFAULT_RADIUS_2, DEFAULT_THICKNESS, DEFAULT_DIAMETER,
     REFRACTIVE_INDEX_BK7, EPSILON, LARGE_NUMBER,
-    LENS_TYPE_BICONVEX, LENS_TYPE_PRESET_RADII
+    LENS_TYPE_BICONVEX, LENS_TYPE_PRESET_RADII,
+    DEFAULT_MATERIAL_INDICES,
 )
 
 # Material database is an optional dependency
@@ -66,57 +67,18 @@ class Lens:
         self.model_nd = model_nd
         self.model_vd = model_vd
 
-        # Refractive index resolution order:
+        # Refractive index resolution (cheap and pure - no I/O here):
         #   1. Explicit refractive_index argument wins (honours caller
         #      intent and keeps serialization round-trips exact).
-        #   2. Model-glass mode computes it from nd/vd.
-        #   3. Material database lookup for known materials.
-        #   4. BK7 default constant.
-        # The DB layer returns defaults for unknown materials; a raised
-        # exception means corrupt Sellmeier data or a storage fault -
-        # log it loudly and fall back to the BK7 constant.
+        #   2. Static per-material default from constants.
+        #   3. BK7 default constant.
+        # Database-backed resolution is opt-in via update_refractive_index()
+        # or the Lens.for_material() factory.
         if refractive_index is not None:
             self.refractive_index = float(refractive_index)
-        elif self.model_glass_mode and MATERIAL_DB_AVAILABLE:
-            try:
-                db = get_material_database()
-                if hasattr(db, 'calculate_model_index'):
-                    self.refractive_index = db.calculate_model_index(
-                        self.model_nd, self.model_vd, self.wavelength)
-                else:
-                    logger.warning(
-                        "material DB lacks calculate_model_index; "
-                        "using model index %.4f for %s",
-                        self.model_nd, self.model_nd)
-                    self.refractive_index = self.model_nd
-            except _MATERIAL_DB_ERRORS as e:
-                logger.warning(
-                    "Model-glass index lookup failed (nd=%.4f vd=%.2f wl=%snm):"
-                    " %s - using model index",
-                    self.model_nd, self.model_vd, self.wavelength, e)
-                self.refractive_index = self.model_nd
-        elif MATERIAL_DB_AVAILABLE:
-            try:
-                db = get_material_database()
-                mat = db.get_material(material)
-                if mat:
-                    # Use the resolved design wavelength (the raw parameter
-                    # defaults to None when wavelength_nm was given).
-                    self.refractive_index = db.get_refractive_index(
-                        material, self.wavelength, temperature)
-                else:
-                    logger.warning(
-                        "material %r not in database - using BK7 default",
-                        material)
-                    self.refractive_index = REFRACTIVE_INDEX_BK7
-            except _MATERIAL_DB_ERRORS as e:
-                logger.warning(
-                    "Material lookup failed for %s @ %snm/%sC: %s - "
-                    "using BK7 default",
-                    material, self.wavelength, temperature, e)
-                self.refractive_index = REFRACTIVE_INDEX_BK7
         else:
-            self.refractive_index = REFRACTIVE_INDEX_BK7
+            self.refractive_index = DEFAULT_MATERIAL_INDICES.get(
+                material, REFRACTIVE_INDEX_BK7)
             
         self.lens_type = lens_type
 
@@ -199,6 +161,36 @@ class Lens:
                     "keeping previous index %.4f",
                     self.material, self.wavelength, self.temperature, e,
                     self.refractive_index)
+
+    @classmethod
+    def for_material(cls,
+                     material: str,
+                     wavelength_nm: float = 587.6,
+                     temperature: float = 20.0,
+                     **kwargs) -> 'Lens':
+        """Factory: build a lens and resolve its index from the database.
+
+        The constructor stays free of I/O; call this when the refractive
+        index should come from the Sellmeier data of a known material.
+        An explicit ``refractive_index`` in ``kwargs`` is honoured as-is
+        (no lookup is performed).
+
+        Args:
+            material: Material name looked up in the database.
+            wavelength_nm: Design wavelength (nm).
+            temperature: Operating temperature (°C).
+            **kwargs: Any other Lens constructor arguments.
+
+        Returns:
+            Lens: The constructed lens with a resolved refractive index.
+        """
+        lens = cls(material=material,
+                   wavelength_nm=wavelength_nm,
+                   temperature=temperature,
+                   **kwargs)
+        if kwargs.get('refractive_index') is None:
+            lens.update_refractive_index()
+        return lens
     
     def calculate_num_grooves(self) -> None:
         """Calculate the number of grooves based on diameter and pitch"""
