@@ -34,14 +34,14 @@ setup(
     packages=find_packages(exclude=['tests', 'tests.*']),
     include_package_data=True,
     
-    python_requires='>=3.6',
+    python_requires='>=3.7',
     
     # Core dependencies (PySide6 for GUI)
     install_requires=[
         'PySide6>=6.0',
     ],
     
-    # Optional dependencies for 3D visualization
+    # Optional dependencies for visualization / development
     extras_require={
         'visualization': ['matplotlib>=3.3.0', 'numpy>=1.19.0'],
         'dev': [
@@ -50,6 +50,7 @@ setup(
             'black>=22.0.0',
             'pylint>=2.12.0',
             'flake8>=4.0.0',
+            'pre-commit>=2.20.0',
         ],
     },
     
@@ -69,7 +70,7 @@ setup(
         'Topic :: Scientific/Engineering :: Visualization',
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',

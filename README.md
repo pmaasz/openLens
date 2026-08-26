@@ -4,9 +4,9 @@
 
 **An interactive optical lens design and simulation tool for single glass lens elements**
 
-[![Python](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-41%20passing-brightgreen.svg)](docs/TESTING.md)
+[![Tests](https://img.shields.io/badge/tests-494%20passing-brightgreen.svg)](docs/TESTING.md)
 
 </div>
 
@@ -63,41 +63,32 @@ openlens is a desktop application for designing and analyzing **glass optical le
 ### Prerequisites
 
 **Core Requirements:**
-- **Python 3.6 or higher**
-- **tkinter** (for GUI version - usually included with Python)
+- **Python 3.7 or higher**
+- **PySide6 ≥ 6.2** (GUI framework - installed via pip)
 - **X11 display server** (Linux) or native display (Windows/Mac)
+
+**Recommended Dependencies:**
+
+| Package | Version | Features Enabled |
+|---------|---------|------------------|
+| numpy | ≥1.19.0 | Numerical operations, ray tracing, STL export |
+| matplotlib | ≥3.3.0 | Plots, analysis dialogs |
 
 **Optional Dependencies:**
 
 | Package | Version | Features Enabled |
 |---------|---------|------------------|
-| matplotlib | ≥3.3.0 | 3D visualization, ray tracing plots |
-| numpy | ≥1.19.0 | Numerical operations, ray tracing, STL export |
 | scipy | ≥1.5.0 | Advanced diffraction calculations, image simulation |
 | Pillow (PIL) | ≥8.0.0 | Image loading for image simulator |
 
-**Note:** All optional dependencies are gracefully handled - the application will run with reduced functionality if they are not installed.
+**Note:** The recommended/optional dependencies are gracefully handled - the application will run with reduced functionality if they are not installed.
 
-### Installing tkinter
+### Installing PySide6
 
-**On Ubuntu/Debian:**
 ```bash
-sudo apt-get update
-sudo apt-get install python3-tk
+pip install PySide6
 ```
-
-**On Fedora/RHEL:**
-```bash
-sudo dnf install python3-tkinter
-```
-
-**On Arch Linux:**
-```bash
-sudo pacman -S tk
-```
-
-**On Windows/Mac:**
-tkinter is included with Python by default.
+(or simply `pip install -r requirements.txt`)
 
 ### Method 1: Automated Setup (Recommended)
 
@@ -130,17 +121,14 @@ pip install scipy Pillow
 The script will:
 - Check Python installation
 - Create virtual environment
-- Verify tkinter availability
 - Display activation instructions
 
 **What works without optional dependencies:**
 - ✅ All core lens calculations (focal length, optical power)
 - ✅ Lens creation, editing, and management
-- ✅ GUI interface
+- ✅ GUI interface (PySide6)
 - ✅ Data persistence (SQLite)
-- ✅ Ray tracing (if numpy/matplotlib installed)
-- ✅ Aberrations calculations
-- ❌ 3D visualization (requires matplotlib + numpy)
+- ⚠️ Ray tracing and analysis plots need numpy/matplotlib
 - ❌ Advanced diffraction calculations with Bessel functions (requires scipy)
 - ❌ Image simulation (requires scipy + Pillow)
 
@@ -184,12 +172,12 @@ The script will:
    
    Note: The application works without these, with features gracefully disabled.
 
-4. **Verify Python and tkinter:**
+4. **Verify Python and PySide6:**
    ```bash
    python3 --version
-   # Should show Python 3.6 or higher
-   
-   python3 -c "import tkinter; print('tkinter available')"
+   # Should show Python 3.7 or higher
+
+   python3 -c "import PySide6; print('PySide6 available')"
    ```
 
 5. **Run the application:**
@@ -355,37 +343,34 @@ python3 tests/run_all_tests.py
 
 ```
 openLens/
-├── openlens.py              # Main entry point
-├── src/                     # Source code directory
+├── openlens.py              # PySide6 GUI entry point (main window)
+├── src/                     # Source package
 │   ├── __init__.py
-│   ├── lens_editor.py       # CLI application
-│   ├── lens_editor_gui.py   # GUI entry point
-│   ├── gui/                 # GUI implementation
-│   │   ├── main_window.py
-│   │   └── ...
-│   ├── lens_visualizer.py   # 3D visualization
-│   └── stl_export.py        # STL export functionality
-├── tests/                   # Test directory
-│   ├── __init__.py
-│   ├── run_all_tests.py     # Test runner
-│   ├── test_lens_editor.py  # Core tests
-│   ├── test_gui.py          # GUI tests
-│   └── test_visualization.py # Visualization tests
-├── openlens.db              # Data storage (SQLite)
-├── verify_setup.py          # Setup verification script
-├── README.md                # This file
-├── docs/                    # Documentation
-│   ├── PROJECT_SUMMARY.md   # Project overview
-│   └── TESTING.md           # Testing documentation
+│   ├── lens.py              # Core Lens model
+│   ├── optical_system.py    # Multi-element systems
+│   ├── lens_editor.py       # CLI application + LensManager
+│   ├── ray_tracer.py        # 2D/3D ray tracing engine
+│   ├── aberrations.py       # Seidel aberrations
+│   ├── optimizer.py         # Lens optimization engine
+│   ├── tolerancing.py       # Monte Carlo / sensitivity analysis
+│   ├── database.py          # SQLite persistence
+│   ├── validation.py        # Input validation
+│   ├── services.py          # Service layer
+│   ├── constants.py         # Constants and configuration
+│   ├── gui/                 # GUI implementation (widgets/, tabs/, dialogs/, theme.py)
+│   ├── analysis/            # Spot diagram, PSF/MTF, ghost, wavefront
+│   └── io/                  # STEP / ISO 10110 export
+├── tests/                   # unittest test suites (~56 files)
+├── openlens.db              # Data storage (SQLite, created on first run)
+├── requirements.txt         # Runtime dependencies
+└── setup.py                 # Package distribution (pip install -e .)
 ```
 
 ---
 
 ## Troubleshooting
 
-### Issue: "No display name and no $DISPLAY environment variable"
-
-**Error:** `_tkinter.TclError: no display name and no $DISPLAY environment variable`
+### Issue: "No display name and no $DISPLAY environment variable" / Qt platform plugin errors
 
 This occurs when running on a headless server or via SSH without X11 forwarding.
 
@@ -397,28 +382,25 @@ This occurs when running on a headless server or via SSH without X11 forwarding.
   sudo apt-get install xvfb
   xvfb-run python3 openlens.py
   ```
+  or force Qt's offscreen platform for testing:
+  ```bash
+  QT_QPA_PLATFORM=offscreen python3 openlens.py
+  ```
 - **WSL users**: Install an X server like VcXsrv or X410, then:
   ```bash
   export DISPLAY=:0
   python3 openlens.py
   ```
 
-### Issue: tkinter not found
+### Issue: PySide6 not found
 
-**Error:** `ModuleNotFoundError: No module named 'tkinter'`
+**Error:** `ModuleNotFoundError: No module named 'PySide6'`
 
 **Solution:**
 ```bash
-# Ubuntu/Debian
-sudo apt-get install python3-tk
-
-# Fedora
-sudo dnf install python3-tkinter
-
-# Arch Linux
-sudo pacman -S tk
-
-# macOS - reinstall Python from python.org
+pip install PySide6
+# or
+pip install -r requirements.txt
 ```
 
 ### Issue: Lenses not saving

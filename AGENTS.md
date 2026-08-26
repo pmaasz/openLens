@@ -4,35 +4,36 @@ This file provides guidance for AI coding agents working in this repository.
 
 ## Project Overview
 
-OpenLens is an interactive optical lens design and simulation tool for single glass lens elements.
-- **Language**: Python 3.6+
+OpenLens is an interactive optical lens design and simulation tool for single glass lens elements and multi-element systems.
+- **Language**: Python 3.7+ (dataclasses are used throughout)
 - **License**: MIT
-- **Core Dependencies**: Standard library only (tkinter, json, math, unittest). **IMPORTANT**: Always prefer the standard library over external dependencies.
-- **Optional Dependencies**: matplotlib, numpy, scipy, Pillow (for advanced features). **RULE**: Only use these if explicitly requested or if performance requirements cannot be met with standard Python.
+- **Core Dependencies**: PySide6 (GUI, required), numpy + matplotlib (highly recommended for simulation/plots)
+- **Optional Dependencies**: scipy, Pillow (advanced diffraction and image-simulation features). **RULE**: Guard optional imports with try/except and a `*_AVAILABLE` flag - the app must start and run core features without them.
 
 ## Project Structure
 
 ```
-/src/               # Main source code (30 modules)
-/tests/             # Test suites (34 test files)
+/openlens.py        # PySide6 GUI entry point (main window)
+/src/               # Main source package (~68 modules incl. subpackages)
+/tests/             # Test suites (~56 files, unittest)
 /docs/              # Documentation
-/openlens.py        # Main GUI entry point
-/setup.py           # Package distribution
-/requirements.txt   # Dependencies
+/setup.py           # Package distribution (pip install -e .)
+/requirements.txt   # Runtime dependencies
 ```
 
 Key source files:
 - `src/lens.py` - Core Lens class model
+- `src/optical_system.py` - Multi-element OpticalSystem model
 - `src/lens_editor.py` - CLI application and LensManager
-- `src/lens_editor_gui.py` - GUI entry point
-- `src/gui/` - GUI implementation (main_window, tabs, etc.)
-- `src/aberrations.py` - Aberrations calculator
-- `src/ray_tracer.py` - Ray tracing engine
+- `src/ray_tracer.py` - 2D/3D ray tracing engine
+- `src/aberrations.py` - Seidel aberration calculator
 - `src/validation.py` - Input validation utilities
 - `src/services.py` - Service layer (business logic)
+- `src/database.py` - SQLite persistence (DatabaseManager)
 - `src/constants.py` - All constants and configuration
-- `src/optical_node.py` - 3D scene graph node
-- `src/transform.py` - Matrix transformations
+- `src/gui/` - GUI implementation (widgets/, tabs/, dialogs/, theme.py, storage.py)
+- `src/analysis/` - Spot diagram, PSF/MTF, ghost, wavefront analysis
+- `src/io/` - STEP / ISO 10110 export
 
 ## Build/Lint/Test Commands
 
@@ -41,25 +42,25 @@ Key source files:
 python3 openlens.py              # Run GUI application
 python3 -m src.lens_editor       # Run CLI application
 ```
-
 ### Running Tests
-```bash
-# Run all tests
-python3 tests/run_all_tests.py
 
-# Run specific test file
-python3 tests/test_lens_editor.py
-python3 tests/test_gui.py
+```bash
+# Run all tests (full discovery)
+python3 -m unittest discover -s tests -t .
+
+# Run a single test file
+python3 -m unittest tests.test_validation
 
 # Run a single test method
-python3 -m unittest tests.test_lens_editor.TestLensCalculations.test_biconvex_focal_length
+python3 -m unittest tests.test_validation.TestRadiusValidation.test_valid_radius_returns_float
 
 # With pytest (if installed)
 pytest tests/                           # All tests
-pytest tests/test_lens_editor.py        # Single file
-pytest tests/test_lens_editor.py::TestLensCalculations::test_biconvex_focal_length  # Single test
-pytest --cov=src tests/                 # With coverage
+pytest tests/test_validation.py         # Single file
 ```
+
+Note: `tests/run_all_tests.py` is a legacy phased runner that executes
+only a subset of the suite; prefer discovery.
 
 ### Linting
 ```bash
@@ -95,13 +96,21 @@ from typing import Optional, Dict, Any, List, Tuple
 # 2. Third-party imports (if any)
 import numpy as np
 
-# 3. Local imports with try/except for relative import fallback
+# 3. Local imports - plain relative imports (the package is installed
+#    via pip install -e .; do NOT add try/except ImportError fallbacks)
+from .constants import EPSILON, DEFAULT_RADIUS_1
+from .validation import validate_positive
+```
+
+Optional third-party dependencies are the exception: guard them with
+try/except and an availability flag:
+
+```python
 try:
-    from .constants import EPSILON, DEFAULT_RADIUS_1
-    from .validation import validate_positive
+    import matplotlib.pyplot as plt
+    HAS_MATPLOTLIB = True
 except ImportError:
-    from constants import EPSILON, DEFAULT_RADIUS_1
-    from validation import validate_positive
+    HAS_MATPLOTLIB = False
 ```
 
 ### Type Hints
@@ -193,7 +202,7 @@ logger.error("Error updating lens: %s", e)
 ```python
 class TestLensCalculations(unittest.TestCase):
     def setUp(self):
-        self.lens = Lens(radius_1=50.0, radius_2=-50.0, n=1.5, thickness=5.0)
+        self.lens = Lens(radius_of_curvature_1=50.0, radius_of_curvature_2=-50.0, n=1.5, thickness=5.0)
 
     def test_biconvex_focal_length_positive(self):
         """Biconvex lens should have positive focal length."""
@@ -204,7 +213,7 @@ class TestLensCalculations(unittest.TestCase):
     def test_invalid_radius_raises_validation_error(self):
         """Invalid radius should raise ValidationError."""
         with self.assertRaises(ValidationError):
-            Lens(radius_1=0, radius_2=-50.0, n=1.5, thickness=5.0)
+            validate_radius(0)
 ```
 
 ## Key Constants (from src/constants.py)
@@ -212,8 +221,8 @@ class TestLensCalculations(unittest.TestCase):
 - `EPSILON = 1e-10` - Tolerance for floating-point comparisons
 - `DEFAULT_RADIUS_1 = 100.0` - Default first surface radius (mm)
 - `DEFAULT_RADIUS_2 = -100.0` - Default second surface radius (mm)
-- `DEFAULT_THICKNESS = 10.0` - Default lens thickness (mm)
-- `DEFAULT_REFRACTIVE_INDEX = 1.5168` - Default glass refractive index (BK7)
+- `DEFAULT_THICKNESS = 5.0` - Default lens thickness (mm)
+- `REFRACTIVE_INDEX_BK7 = 1.5168` - Default glass refractive index (BK7)
 
 ## Common Patterns
 
@@ -257,7 +266,7 @@ def process_lens(self, data: Dict[str, Any]) -> Lens:
 - Write Google-style docstrings for all public functions
 
 **After changes:**
-- Run the test suite: `python3 tests/run_all_tests.py`
+- Run the test suite: `python3 -m unittest discover -s tests -t .`
 - If adding new functionality, add corresponding tests in `tests/`
 - Verify no regressions were introduced
 
@@ -320,7 +329,7 @@ Subsubsection
 
 **After changes:**
 - Run the specific test file: `python3 -m unittest tests.test_<name>`
-- Run the full suite to catch any interactions: `python3 tests/run_all_tests.py`
+- Run the full suite to catch any interactions: `python3 -m unittest discover -s tests -t .`
 
 **Test structure example:**
 ```python
@@ -351,7 +360,7 @@ This project has automation subagents configured in `.opencode/agents/`:
 ### quality-checker
 - **Purpose**: Run tests, formatters (black), and linters (flake8)
 - **When to use**: After editing `src/` or `tests/` files, before committing
-- **Command**: Checks formatting, runs linter, and invokes `python3 tests/run_all_tests.py`
+- **Command**: Checks formatting, runs linter, and invokes `python3 -m unittest discover -s tests -t .`
 
 ### doc-checker
 - **Purpose**: Validate Sphinx documentation

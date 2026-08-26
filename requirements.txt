@@ -1,7 +1,7 @@
-# openlens Requirements
-# Python 3.6+ required
+# openlens Runtime Requirements
+# Python 3.7+ required
 
-# GUI Framework (Required for new GUI)
+# GUI Framework (Required)
 PySide6>=6.2.0
 
 # Scientific Computing & Visualization (Highly Recommended)
@@ -12,9 +12,6 @@ matplotlib>=3.3.0
 scipy>=1.5.0
 Pillow>=8.0.0
 
-# Development tools (Optional)
-# black>=22.0.0
-# flake8>=4.0.0
-# pytest>=7.0.0
-# pytest-cov>=3.0.0
-# sphinx>=4.5.0
+# Development tools (black, flake8, pytest, pre-commit, ...) are NOT
+# listed here on purpose - install them via the extras group:
+#   pip install -e .[dev]
