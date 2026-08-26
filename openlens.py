@@ -27,6 +27,10 @@ from src.gui.widgets import LensEditorWidget
 from src.gui.tabs import (SimulationTab, PerformanceTab,
                           AssemblyTab, OptimizationTab, TolerancingTab)
 from src.gui.dialogs import StartupDialog, AnalysisPlotDialog
+from src.gui.theme import (
+    DARK, LIGHT, get_app_stylesheet, get_menubar_qss,
+    get_status_bar_qss, get_tab_widget_qss,
+)
 from src.stl_export import STLExporter
 from src.io.step_export import StepExporter
 from src.io.export import ISO10110Generator
@@ -226,13 +230,7 @@ class OpenLensWindow(QMainWindow):
         
         # Status bar
         self._status_bar = QStatusBar()
-        self._status_bar.setStyleSheet("""
-            QStatusBar {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-                border-top: 1px solid #3f3f3f;
-            }
-        """)
+        self._status_bar.setStyleSheet(get_status_bar_qss(self._theme))
         self._status_label = QLabel("Ready")
         self._status_bar.addWidget(self._status_label)
         self.setStatusBar(self._status_bar)
@@ -246,21 +244,7 @@ class OpenLensWindow(QMainWindow):
     def _create_editor_area(self) -> QTabWidget:
         """Create the main editor area with tabs"""
         self._editor_tabs = QTabWidget()
-        self._editor_tabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #3f3f3f;
-                background-color: #1e1e1e;
-            }
-            QTabBar::tab {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-                padding: 8px 16px;
-                border: 1px solid #3f3f3f;
-            }
-            QTabBar::tab:selected {
-                background-color: #0078d4;
-            }
-        """)
+        self._editor_tabs.setStyleSheet(get_tab_widget_qss(self._theme))
         
         # Lens Editor tab (always visible)
         self._lens_editor = LensEditorWidget(self)
@@ -322,23 +306,7 @@ class OpenLensWindow(QMainWindow):
     def _create_menu(self) -> None:
         """Create menu bar"""
         menubar = self.menuBar()
-        menubar.setStyleSheet("""
-            QMenuBar {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-            }
-            QMenuBar::item:selected {
-                background-color: #0078d4;
-            }
-            QMenu {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-                border: 1px solid #3f3f3f;
-            }
-            QMenu::item:selected {
-                background-color: #0078d4;
-            }
-        """)
+        menubar.setStyleSheet(get_menubar_qss(self._theme))
         
         # File menu
         file_menu = menubar.addMenu("File")
@@ -598,74 +566,7 @@ Ctrl+6         Tolerancing
         
         if current == 'dark':
             self._theme = 'light'
-            app.setStyleSheet("""
-                QMainWindow {
-                    background-color: #f5f5f5;
-                }
-                QWidget {
-                    background-color: #f5f5f5;
-                    color: #1e1e1e;
-                }
-                QGroupBox {
-                    color: #1e1e1e;
-                    border: 1px solid #ccc;
-                    border-radius: 5px;
-                    margin-top: 10px;
-                    font-weight: bold;
-                    padding-top: 10px;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                }
-                QDoubleSpinBox, QSpinBox {
-                    background-color: #fff;
-                    color: #1e1e1e;
-                    border: 1px solid #ccc;
-                    padding: 3px;
-                }
-                QPushButton {
-                    background-color: #e0e0e0;
-                    color: #1e1e1e;
-                    border: 1px solid #ccc;
-                    padding: 5px 15px;
-                }
-                QPushButton:hover {
-                    background-color: #d0d0d0;
-                }
-                QPushButton:pressed {
-                    background-color: #0078d4;
-                    color: #fff;
-                }
-                QListWidget {
-                    background-color: #fff;
-                    color: #1e1e1e;
-                    border: 1px solid #ccc;
-                }
-                QListWidget::item:selected {
-                    background-color: #0078d4;
-                    color: #fff;
-                }
-                QLabel {
-                    color: #1e1e1e;
-                }
-                QTabWidget::pane {
-                    border: 1px solid #ccc;
-                }
-                QTabBar::tab {
-                    background-color: #e0e0e0;
-                    color: #1e1e1e;
-                    padding: 5px 10px;
-                }
-                QTabBar::tab:selected {
-                    background-color: #0078d4;
-                    color: #fff;
-                }
-                QStatusBar {
-                    background-color: #e0e0e0;
-                    color: #1e1e1e;
-                }
-            """)
+            app.setStyleSheet(get_app_stylesheet(LIGHT))
             self._update_status("Light theme")
         else:
             self._theme = 'dark'
@@ -673,92 +574,8 @@ Ctrl+6         Tolerancing
             self._update_status("Dark theme")
     
     def dark_theme(self, app: QApplication) -> None:
-        """Apply dark theme"""
-        app.setStyleSheet("""
-            QMainWindow {
-                background-color: #1e1e1e;
-            }
-            QWidget {
-                background-color: #1e1e1e;
-                color: #e0e0e0;
-            }
-            QGroupBox {
-                color: #e0e0e0;
-                border: 1px solid #3f3f3f;
-                border-radius: 5px;
-                margin-top: 10px;
-                font-weight: bold;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-            }
-            QDoubleSpinBox, QSpinBox, QLineEdit, QTextEdit, QTableWidget {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-                border: 1px solid #3f3f3f;
-                padding: 3px;
-            }
-            QHeaderView::section {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-                padding: 4px;
-                border: 1px solid #3f3f3f;
-            }
-            QTableCornerButton::section {
-                background-color: #2d2d2d;
-                border: 1px solid #3f3f3f;
-            }
-            QPushButton {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-                border: 1px solid #3f3f3f;
-                padding: 5px 15px;
-            }
-            QPushButton:hover {
-                background-color: #3d3d3d;
-            }
-            QPushButton:pressed {
-                background-color: #0078d4;
-            }
-            QListWidget {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-                border: 1px solid #3f3f3f;
-            }
-            QListWidget::item:selected {
-                background-color: #0078d4;
-            }
-            QLabel {
-                color: #e0e0e0;
-            }
-            QTabWidget::pane {
-                border: 1px solid #3f3f3f;
-            }
-            QTabBar::tab {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-                padding: 5px 10px;
-            }
-            QTabBar::tab:selected {
-                background-color: #0078d4;
-            }
-            QStatusBar {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-                border-top: 1px solid #3f3f3f;
-            }
-            QProgressBar {
-                border: 1px solid #3f3f3f;
-                border-radius: 2px;
-                text-align: center;
-                background-color: #2d2d2d;
-            }
-            QProgressBar::chunk {
-                background-color: #0078d4;
-            }
-        """)
+        """Apply the dark application stylesheet."""
+        app.setStyleSheet(get_app_stylesheet(DARK))
 
     
     def _on_reset_window(self) -> None:
@@ -1132,47 +949,9 @@ def main() -> None:
     """Run the OpenLens application: startup dialog, then the main window."""
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
-    
+
     # Set dark theme
-    app.setStyleSheet("""
-        QMainWindow {
-            background-color: #1e1e1e;
-        }
-        QWidget {
-            background-color: #1e1e1e;
-            color: #e0e0e0;
-        }
-        QGroupBox {
-            color: #e0e0e0;
-            border: 1px solid #3f3f3f;
-            border-radius: 5px;
-            margin-top: 10px;
-            font-weight: bold;
-            padding-top: 10px;
-        }
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            left: 10px;
-        }
-        QDoubleSpinBox, QSpinBox {
-            background-color: #2d2d2d;
-            color: #e0e0e0;
-            border: 1px solid #3f3f3f;
-            padding: 3px;
-        }
-        QPushButton {
-            background-color: #2d2d2d;
-            color: #e0e0e0;
-            border: 1px solid #3f3f3f;
-            padding: 5px 15px;
-        }
-        QPushButton:hover {
-            background-color: #3d3d3d;
-        }
-        QPushButton:pressed {
-            background-color: #0078d4;
-        }
-    """)
+    app.setStyleSheet(get_app_stylesheet(DARK))
     
     startup = StartupDialog()
     result = startup.exec()
