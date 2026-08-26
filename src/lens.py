@@ -16,7 +16,9 @@ from .constants import (
     DEFAULT_RADIUS_1, DEFAULT_RADIUS_2, DEFAULT_THICKNESS, DEFAULT_DIAMETER,
     REFRACTIVE_INDEX_BK7, EPSILON, LARGE_NUMBER,
     LENS_TYPE_BICONVEX, LENS_TYPE_PRESET_RADII,
-    DEFAULT_MATERIAL_INDICES,
+    LENS_TYPE_BICONCAVE, LENS_TYPE_PLANO_CONVEX, LENS_TYPE_PLANO_CONCAVE,
+    LENS_TYPE_MENISCUS_CONVEX, LENS_TYPE_MENISCUS_CONCAVE,
+    LENS_TYPE_UNKNOWN, DEFAULT_MATERIAL_INDICES,
 )
 
 # Material database is an optional dependency
@@ -40,7 +42,7 @@ class Lens:
                  thickness: float = DEFAULT_THICKNESS,
                  diameter: float = DEFAULT_DIAMETER,
                  refractive_index: Optional[float] = None,
-                 lens_type: str = "Biconvex",
+                 lens_type: str = LENS_TYPE_BICONVEX,
                  material: str = "BK7",
                  wavelength_nm: float = 587.6,
                  wavelength: Optional[float] = None,
@@ -228,7 +230,7 @@ class Lens:
         """Create lens from dictionary representation."""
         r1 = data.get("radius_of_curvature_1", DEFAULT_RADIUS_1)
         r2 = data.get("radius_of_curvature_2", DEFAULT_RADIUS_2)
-        lens_type = data.get("type", "Biconvex")
+        lens_type = data.get("type", LENS_TYPE_BICONVEX)
         
         lens = cls(
             name=data.get("name", "Untitled"),
@@ -311,21 +313,25 @@ class Lens:
         
         # Determine type based on radii
         if r1_flat and r2_flat:
-            return "Unknown"
+            return LENS_TYPE_UNKNOWN
         elif r1_flat:
-            return "Plano-Concave" if r2 > 0 else "Plano-Convex"
+            return (LENS_TYPE_PLANO_CONCAVE if r2 > 0
+                    else LENS_TYPE_PLANO_CONVEX)
         elif r2_flat:
-            return "Plano-Convex" if r1 > 0 else "Plano-Concave"
+            return (LENS_TYPE_PLANO_CONVEX if r1 > 0
+                    else LENS_TYPE_PLANO_CONCAVE)
         elif r1 > 0 and r2 < 0:
-            return "Biconvex"
+            return LENS_TYPE_BICONVEX
         elif r1 < 0 and r2 > 0:
-            return "Biconcave"
+            return LENS_TYPE_BICONCAVE
         elif r1 > 0 and r2 > 0:
-            return "Meniscus Convex" if r1 < r2 else "Meniscus Concave"
+            return (LENS_TYPE_MENISCUS_CONVEX if r1 < r2
+                    else LENS_TYPE_MENISCUS_CONCAVE)
         elif r1 < 0 and r2 < 0:
-            return "Meniscus Concave" if abs(r1) < abs(r2) else "Meniscus Convex"
+            return (LENS_TYPE_MENISCUS_CONCAVE if abs(r1) < abs(r2)
+                    else LENS_TYPE_MENISCUS_CONVEX)
         else:
-            return "Unknown"
+            return LENS_TYPE_UNKNOWN
     
     def calculate_optical_power(self) -> Optional[float]:
         """
