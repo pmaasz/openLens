@@ -35,10 +35,12 @@ class OpticalIntersector:
         center_y: float,
         center_z: float,
         radius: float,
-    ) -> Optional[Tuple[float, float, float, float]]:
+    ) -> Optional[Tuple[float, float]]:
         """
         Intersect a ray with a sphere.
-        Returns (x, y, z, t) or None.
+
+        Returns:
+            (t1, t2) parametric distances or None if no intersection.
         """
         oc_x = origin_x - center_x
         oc_y = origin_y - center_y
@@ -49,7 +51,7 @@ class OpticalIntersector:
         c = oc_x**2 + oc_y**2 + oc_z**2 - radius**2
 
         discriminant = b*b - 4*a*c
-        if discriminant < -1e-10:  # Use EPSILON-like tolerance
+        if discriminant < -EPSILON:
             return None
 
         discriminant = max(0, discriminant)
