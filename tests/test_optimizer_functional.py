@@ -14,7 +14,7 @@ from src.optimizer import (
     LensOptimizer, create_doublet_optimizer, OptimizationResult
 )
 from src.optical_system import OpticalSystem, create_doublet
-from src.lens_editor import Lens
+from src.lens import Lens
 
 
 class TestOptimizationVariable(unittest.TestCase):

@@ -21,7 +21,7 @@ def main():
     
     # Create initial doublet design - deliberately suboptimal
     print("Creating initial (suboptimal) achromatic doublet...")
-    from src.lens_editor import Lens
+    from src.lens import Lens
     from src.optical_system import OpticalSystem
     
     # Create a suboptimal doublet to show improvement

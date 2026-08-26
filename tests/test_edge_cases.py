@@ -12,7 +12,7 @@ import os
 # Add src directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.lens_editor import Lens
+from src.lens import Lens
 from src.ray_tracer import Ray, LensRayTracer
 from src.aberrations import AberrationsCalculator
 

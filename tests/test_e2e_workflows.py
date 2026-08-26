@@ -12,7 +12,7 @@ import json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.lens_editor import Lens
+from src.lens import Lens
 from src.material_database import MaterialDatabase, get_material_database
 from src.optical_system import OpticalSystem, create_doublet
 from src.preset_library import PresetLibrary, get_preset_library

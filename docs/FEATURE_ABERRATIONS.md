@@ -246,7 +246,7 @@ python3 tests/test_aberrations.py
 python3 test_aberrations_quick.py
 
 # Run all tests (includes aberrations)
-python3 tests/run_all_tests.py
+python3 -m unittest discover -s tests -t .
 ```
 
 ---

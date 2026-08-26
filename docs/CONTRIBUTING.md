@@ -117,7 +117,7 @@ python3 verify_setup.py
 
 ```bash
 # Run all tests to ensure everything works
-python3 tests/run_all_tests.py
+python3 -m unittest discover -s tests -t .
 
 # Should see: "All 41 tests passed!"
 ```
@@ -523,7 +523,7 @@ self.assertGreater(a, b)
 
 ```bash
 # Run all tests
-python3 tests/run_all_tests.py
+python3 -m unittest discover -s tests -t .
 
 # Run specific test file
 python3 tests/test_lens_editor.py
@@ -814,7 +814,7 @@ git checkout -b feature/new-feature
 # ... edit files ...
 
 # 4. Test frequently
-python3 tests/run_all_tests.py
+python3 -m unittest discover -s tests -t .
 
 # 5. Commit changes
 git add .
@@ -896,7 +896,7 @@ and Sellmeier coefficient usage.
 cat > .git/hooks/pre-commit << 'EOF'
 #!/bin/bash
 echo "Running tests before commit..."
-python3 tests/run_all_tests.py
+python3 -m unittest discover -s tests -t .
 if [ $? -ne 0 ]; then
     echo "Tests failed. Commit aborted."
     exit 1

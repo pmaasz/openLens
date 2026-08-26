@@ -299,7 +299,7 @@ openlens includes comprehensive functional tests to ensure accuracy and reliabil
 ### Run All Tests
 
 ```bash
-python3 tests/run_all_tests.py
+python3 -m unittest discover -s tests -t .
 ```
 
 ## Examples
@@ -450,7 +450,7 @@ cd openLens
 git checkout -b feature/my-feature
 
 # 4. Make changes and test
-python3 tests/run_all_tests.py
+python3 -m unittest discover -s tests -t .
 
 # 5. Submit a pull request
 ```

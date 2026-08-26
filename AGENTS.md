@@ -59,9 +59,6 @@ pytest tests/                           # All tests
 pytest tests/test_validation.py         # Single file
 ```
 
-Note: `tests/run_all_tests.py` is a legacy phased runner that executes
-only a subset of the suite; prefer discovery.
-
 ### Linting
 ```bash
 pre-commit run --all-files    # Run all pre-commit hooks

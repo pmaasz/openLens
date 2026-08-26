@@ -13,7 +13,7 @@ Use this agent when:
 
 1. **Verify Clean State**: Ensure no uncommitted changes
 2. **Update Version**: Bump version in `setup.py`
-3. **Run Tests**: Execute `python3 tests/run_all_tests.py`
+3. **Run Tests**: Execute `python3 -m unittest discover -s tests -t .`
 4. **Build Executable**: Run PyInstaller with correct paths
    - Use `--name OpenLens-v{VERSION}-Linux` for the executable name
    - Use `--paths src` to include the source directory

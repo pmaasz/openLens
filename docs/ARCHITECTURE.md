@@ -327,7 +327,6 @@ openLens/
 │   └── polarization.py           # Polarization effects
 │
 ├── tests/                         # Test suite
-│   ├── run_all_tests.py
 │   ├── test_lens_editor.py
 │   ├── test_gui.py
 │   ├── test_ray_tracer.py
