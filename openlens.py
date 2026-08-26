@@ -22,6 +22,7 @@ from PySide6.QtGui import QKeySequence
 
 from src.lens import Lens
 from src.optical_system import OpticalSystem
+from src.database import LensInUseError
 from src.gui.storage import LensStorage
 from src.gui.widgets import LensEditorWidget
 from src.gui.tabs import (SimulationTab, PerformanceTab,
@@ -75,6 +76,7 @@ class OpenLensWindow(QMainWindow):
         
         # Initialize database
         self._db_path = "openlens.db"
+        self._storage = LensStorage(self._db_path)
         self._lenses = []
         self._assemblies = []
         self._current_lens = None
@@ -93,8 +95,7 @@ class OpenLensWindow(QMainWindow):
         
         self._update_status("Loading library...")
         try:
-            storage = LensStorage(self._db_path, lambda x: None)
-            all_items = storage.load_lenses()
+            all_items = self._storage.load_lenses()
             
             self._lenses = []
             self._assemblies = []
@@ -138,7 +139,6 @@ class OpenLensWindow(QMainWindow):
                     } for op in self._tol_operands
                 ]
 
-            storage = LensStorage(self._db_path, lambda x: None)
             all_items = self._lenses + self._assemblies
             
             # Ensure uniqueness by ID before saving to avoid duplicate keys or state conflicts
@@ -147,7 +147,7 @@ class OpenLensWindow(QMainWindow):
                 if hasattr(item, 'id'):
                     unique_items[item.id] = item
             
-            storage.save_lenses(list(unique_items.values()))
+            self._storage.save_lenses(list(unique_items.values()))
             logger.info("Saved %d unique items to database", len(unique_items))
         except Exception as e:
             logger.error("Failed to save to database: %s", e)
@@ -431,26 +431,54 @@ class OpenLensWindow(QMainWindow):
         self._update_all_tabs()
         self._update_status(f"Created: {asm.name}")
     
+    def _notify_delete_blocked(self, error: LensInUseError) -> None:
+        """Tell the user a lens cannot be deleted while assemblies use it."""
+        logger.error("Deletion refused: %s", error)
+        QMessageBox.warning(
+            self, "Lens is in use",
+            "This lens is still used by the following assemblies:\n\n"
+            + "\n".join(f"  • {name}" for _, name in error.assemblies)
+            + "\n\nRemove it from those assemblies first.")
+
     def _on_delete_lens(self) -> None:
-        """Delete current lens or assembly"""
+        """Delete the current lens or assembly (memory and database).
+
+        Raises nothing to the user on refusal: LensInUseError surfaces as
+        a warning dialog and leaves both memory and database untouched.
+        """
+        item = self._current_lens if self._current_lens else self._current_assembly
+        if not item:
+            return
+
+        # Refusals that must not touch memory or database:
+        if self._current_lens and len(self._lenses) <= 1:
+            self._update_status("Cannot delete the last lens")
+            return
+
+        # Persist the removal first; abort on refusal without touching memory.
+        try:
+            self._storage.delete_item(item.id)
+        except LensInUseError as e:
+            self._notify_delete_blocked(e)
+            return
+        except Exception as e:
+            logger.error("Database delete failed for %s: %s", item.id, e)
+            QMessageBox.critical(self, "Delete failed",
+                                 f"Could not delete '{item.name}': {e}")
+            return
+
         if self._current_lens:
-            if len(self._lenses) > 1:
-                idx = self._lenses.index(self._current_lens)
-                self._lenses.pop(idx)
-                self._current_lens = self._lenses[0]
-                self._current_assembly = None
-                self._lens_editor.load_lens(self._current_lens)
-                self._update_all_tabs()
-                self._update_status(f"Deleted. Now editing: {self._current_lens.name}")
-            else:
-                self._update_status("Cannot delete the last lens")
-        elif self._current_assembly:
+            idx = self._lenses.index(self._current_lens)
+            self._lenses.pop(idx)
+            self._current_lens = self._lenses[0]
+            self._current_assembly = None
+            self._lens_editor.load_lens(self._current_lens)
+            self._update_all_tabs()
+            self._update_status(f"Deleted. Now editing: {self._current_lens.name}")
+        else:
             idx = self._assemblies.index(self._current_assembly)
             self._assemblies.pop(idx)
-            if self._assemblies:
-                self._current_assembly = self._assemblies[0]
-            else:
-                self._current_assembly = None
+            self._current_assembly = self._assemblies[0] if self._assemblies else None
             self._update_status("Deleted assembly")
     
     def _on_open(self) -> None:

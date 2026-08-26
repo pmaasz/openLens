@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 from ..lens import Lens
 from ..optical_system import OpticalSystem
-from ..database import DatabaseManager
+from ..database import DatabaseManager, LensInUseError
 
 
 class LensStorage:
@@ -100,6 +100,28 @@ class LensStorage:
             logger.error("Failed to load lenses from database: %s", e)
             return []
     
+    def delete_item(self, item_id: str) -> bool:
+        """Delete a lens or assembly from the database by id.
+
+        Must be called for every removal; save_lenses() only
+        inserts/replaces rows and never reconciles deletions.
+
+        Args:
+            item_id: Id of the lens or assembly to remove.
+
+        Returns:
+            bool: True on success.
+
+        Raises:
+            LensInUseError: The lens is still placed in an assembly.
+        """
+        if not self.db:
+            logger.error("DatabaseManager not available")
+            return False
+        self.db.delete_item(item_id)
+        self._update_status(f"Deleted {item_id} from database")
+        return True
+
     def save_lenses(self, items: List[Any], show_status: bool = True) -> bool:
         """Save all lenses and optical systems to SQLite database.
         
@@ -136,6 +158,12 @@ class LensStorage:
             self._update_status(f"Error: Failed to save lenses: {e}")
             logger.error("Failed to save lenses: %s", e)
             return False
+
+
+def delete_item(storage_file: str = "openlens.db",
+                item_id: str = "") -> bool:
+    """Delete a single lens/assembly from the database (convenience)."""
+    return LensStorage(storage_file).delete_item(item_id)
 
 
 def load_lenses(storage_file: str = "openlens.db") -> List[Any]:
