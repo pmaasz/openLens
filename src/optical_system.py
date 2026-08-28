@@ -13,7 +13,10 @@ import logging
 from datetime import datetime
 
 from .lens import Lens
-from .constants import WAVELENGTH_D_LINE, WAVELENGTH_C_LINE, WAVELENGTH_F_LINE, WAVELENGTH_GREEN
+from .constants import (
+    WAVELENGTH_D_LINE, WAVELENGTH_C_LINE, WAVELENGTH_F_LINE, WAVELENGTH_GREEN,
+    DEFAULT_MATERIAL_INDICES,
+)
 from .optical_node import OpticalElement, OpticalAssembly
 
 try:
@@ -614,11 +617,11 @@ def create_triplet(focal_length: float = 100.0, diameter: float = 50.0) -> Optic
     
     # Calculate radii
     # Lens 1 (BK7): Equiconvex
-    n_bk7 = 1.5168
+    n_bk7 = DEFAULT_MATERIAL_INDICES["BK7"]
     r1_crown = 2 * f1 * (n_bk7 - 1)
     
     # Lens 2 (SF11): Equiconcave
-    n_sf11 = 1.7847
+    n_sf11 = DEFAULT_MATERIAL_INDICES["SF11"]
     r_flint = 2 * abs(f2) * (n_sf11 - 1)
     
     lens1 = Lens(
