@@ -133,25 +133,17 @@ class MeritFunction:
                 else:
                     merit += 1e5
                 
-                # Helper for sag
-                def get_sag(r, h):
-                    if abs(r) < 1e-6: return 0 # Plane
-                    c = 1.0/r
-                    if 1 - (c*h)**2 < 0: return r # Invalid
-                    return c*h**2 / (1 + math.sqrt(1 - (c*h)**2))
-
                 s1 = get_sag(lens.radius_of_curvature_1, y)
                 s2 = get_sag(lens.radius_of_curvature_2, y)
-                
+
                 edge_thickness = lens.thickness - s1 + s2
-                
+
                 if edge_thickness < min_et: # Min edge thickness constraint
                     merit += 1e4 * (min_et - edge_thickness)**2
-                    
+
             except Exception:
                 merit += 1e5 # Calculation error penalty
 
-        # Helper for sag outside loop
         def get_sag(r, h):
             if abs(r) < 1e-6: return 0 # Plane
             c = 1.0/r
@@ -191,34 +183,31 @@ class MeritFunction:
 
         for target in self.targets:
             if target.name == "spherical_aberration":
-                # Get spherical aberration for first lens
                 if system.elements:
-                    calc = AberrationsCalculator(system.elements[0].lens)
+                    calc = AberrationsCalculator(system)
                     results = calc.calculate_all_aberrations()
                     if results.get('spherical_aberration') is not None:
                         value = abs(results['spherical_aberration'])
-                        
+
                         if target.target_type == "minimize":
                             merit += target.weight * value
                         elif target.target_type == "target":
                             merit += target.weight * (value - target.target_value)**2
                     else:
                          merit += 1e6 # Penalty if calculation fails
-            
+
             elif target.name == "coma":
                 if system.elements:
-                    calc = AberrationsCalculator(system.elements[0].lens)
-                    # Use a default field angle if not specified, say 5 degrees
-                    # Or get from target? For now hardcode or use generic
+                    calc = AberrationsCalculator(system)
                     results = calc.calculate_all_aberrations(field_angle_deg=5.0)
                     if results.get('coma') is not None:
                          value = abs(results['coma'])
                          if target.target_type == "minimize":
                             merit += target.weight * value
-            
+
             elif target.name == "astigmatism":
                 if system.elements:
-                    calc = AberrationsCalculator(system.elements[0].lens)
+                    calc = AberrationsCalculator(system)
                     results = calc.calculate_all_aberrations(field_angle_deg=5.0)
                     if results.get('astigmatism') is not None:
                          value = abs(results['astigmatism'])
