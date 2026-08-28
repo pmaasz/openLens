@@ -14,8 +14,14 @@ from datetime import datetime
 
 from .lens import Lens
 from .constants import WAVELENGTH_D_LINE, WAVELENGTH_C_LINE, WAVELENGTH_F_LINE, WAVELENGTH_GREEN
-from .material_database import get_material_database
 from .optical_node import OpticalElement, OpticalAssembly
+
+try:
+    from .material_database import get_material_database
+    HAS_MATERIAL_DATABASE = True
+except ImportError:
+    get_material_database = None
+    HAS_MATERIAL_DATABASE = False
 from .vector3 import vec3
 
 logger = logging.getLogger(__name__)
@@ -488,10 +494,10 @@ class AchromaticDoubletDesigner:
         
         where ν is the Abbe number
         """
-        db = get_material_database()
+        db = get_material_database() if HAS_MATERIAL_DATABASE else None
         
-        crown = db.get_material(crown_material)
-        flint = db.get_material(flint_material)
+        crown = db.get_material(crown_material) if db else None
+        flint = db.get_material(flint_material) if db else None
         
         if not crown or not flint:
             raise ValueError(f"Materials not found: {crown_material}, {flint_material}")

@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple, Any
 # Import vector class
 from .vector3 import Vector3, vec3
 from .transform import Matrix4x4
+from .constants import EPSILON
 import enum
 
 
@@ -122,7 +123,7 @@ except ImportError:
 from .constants import (
     WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR,
     DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_PROPAGATION_DISTANCE,
-    EPSILON, MESH_RESOLUTION_HIGH, LARGE_NUMBER,
+    MESH_RESOLUTION_HIGH, LARGE_NUMBER,
     APERTURE_FILL_FACTOR,
     RAY_START_OFFSET_MM, RAY_START_OFFSET_3D_MM,
     RAY_EXIT_PROPAGATION_2D_MM, RAY_EXIT_PROPAGATION_3D_MM,
@@ -945,39 +946,6 @@ class Ray3D:
         self.n = n2
         return RefractionResult.REFRACTED
 
-        # Fallback to original implementation for polarization
-        cos_i = -self.direction.dot(normal)
-        effective_normal = normal
-        
-        if cos_i < 0:
-            cos_i = -cos_i
-            effective_normal = -normal
-            
-        ratio = n1 / n2
-        sin2_t = ratio**2 * (1.0 - cos_i**2)
-        
-        if sin2_t > 1.0:
-            self.reflect(effective_normal, n1, n2)
-            return False
-        
-        cos_t = math.sqrt(1.0 - sin2_t)
-        
-        new_direction = self.direction * ratio + effective_normal * (ratio * cos_i - cos_t)
-        new_direction = new_direction.normalize()
-        
-        if self.polarization_vector is not None and HAS_POLARIZATION:
-            self._update_polarization(effective_normal, n1, n2, new_direction, 'refract')
-            self.direction = new_direction
-            self.n = n2
-            return True
-        
-        R = self._compute_fresnel_reflectance(n1, n2, cos_i, cos_t)
-        self.intensity *= (1.0 - R)
-        
-        self.direction = new_direction
-        self.n = n2
-        
-        return True
 
 class LensRayTracer3D:
     """
@@ -1096,7 +1064,7 @@ class LensRayTracer3D:
             default_n1 = self.n
             default_n2 = REFRACTIVE_INDEX_AIR
         else:
-            return False
+            return RefractionResult.MISSED
 
         # Intersect
         if is_flat:
@@ -1129,9 +1097,9 @@ class LensRayTracer3D:
                 if already_exited:
                     # We are already in air.
                     ray.n = default_n2
-                    return True
-            
-            return False
+                    return RefractionResult.REFRACTED
+
+            return RefractionResult.MISSED
             
         # Check aperture (distance from optical axis line)
         # Vector from vertex to intersection
@@ -1142,7 +1110,7 @@ class LensRayTracer3D:
         dist_sq = v_to_i.magnitude_sq() - proj**2
         
         if dist_sq > ((self.D/2) + 1e-4)**2: # Tolerance
-             return False
+             return RefractionResult.MISSED
 
         # Move ray
         ray.origin = intersection
