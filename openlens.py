@@ -665,7 +665,15 @@ Ctrl+6         Tolerancing
             if viz and hasattr(viz, 'set_view_mode'):
                 viz.set_view_mode(mode)
         self._update_status(f"View: {mode}")
-    
+
+    def _ensure_system(self, target: Any) -> OpticalSystem:
+        """Return *target* as an OpticalSystem, wrapping a single Lens if needed."""
+        if isinstance(target, Lens):
+            system = OpticalSystem(name=target.name)
+            system.add_lens(target)
+            return system
+        return target
+
     def _on_export_stl(self) -> None:
         """Export current lens or assembly to STL"""
         target = self._current_assembly if self._current_assembly else self._current_lens
@@ -682,11 +690,7 @@ Ctrl+6         Tolerancing
             
         try:
             
-            if isinstance(target, Lens):
-                system = OpticalSystem(name=target.name)
-                system.add_lens(target)
-            else:
-                system = target
+            system = self._ensure_system(target)
                 
             exporter = STLExporter(system)
             exporter.export(filepath)
@@ -711,11 +715,7 @@ Ctrl+6         Tolerancing
             
         try:
             
-            if isinstance(target, Lens):
-                system = OpticalSystem(name=target.name)
-                system.add_lens(target)
-            else:
-                system = target
+            system = self._ensure_system(target)
                 
             exporter = STEPExporter(system)
             exporter.export(filepath)
@@ -743,11 +743,7 @@ Ctrl+6         Tolerancing
             
         try:
             
-            if isinstance(target, Lens):
-                system = OpticalSystem(name=target.name)
-                system.add_lens(target)
-            else:
-                system = target
+            system = self._ensure_system(target)
                 
             generator = ISO10110Generator(system)
             generator.generate_svg(filepath)
@@ -804,11 +800,7 @@ Ctrl+6         Tolerancing
             return
 
         try:
-            if isinstance(target, Lens):
-                system = OpticalSystem(name=target.name)
-                system.add_lens(target)
-            else:
-                system = target
+            system = self._ensure_system(target)
 
             analyzer = GhostAnalyzer(system)
             ghosts = analyzer.trace_ghosts(num_rays=5)
@@ -829,11 +821,7 @@ Ctrl+6         Tolerancing
             return
 
         try:
-            if isinstance(target, Lens):
-                system = OpticalSystem(name=target.name)
-                system.add_lens(target)
-            else:
-                system = target
+            system = self._ensure_system(target)
 
             analyzer = ImageQualityAnalyzer(system)
             psf_data = analyzer.calculate_psf(pixels=64)
@@ -858,11 +846,7 @@ Ctrl+6         Tolerancing
             return
 
         try:
-            if isinstance(target, Lens):
-                system = OpticalSystem(name=target.name)
-                system.add_lens(target)
-            else:
-                system = target
+            system = self._ensure_system(target)
 
             analyzer = ImageQualityAnalyzer(system)
             mtf_data = analyzer.calculate_mtf(max_freq=100)
@@ -882,11 +866,7 @@ Ctrl+6         Tolerancing
             return
 
         try:
-            if isinstance(target, Lens):
-                system = OpticalSystem(name=target.name)
-                system.add_lens(target)
-            else:
-                system = target
+            system = self._ensure_system(target)
 
             sensor = WavefrontSensor(system)
             wf = sensor.get_pupil_wavefront(grid_size=64)

@@ -61,6 +61,17 @@ class OptimizationResult:
     message: str = ""
 
 
+def _get_sag(r: float, h: float) -> float:
+    """Calculate surface sag (z-displacement) at height *h* for radius *r*."""
+    if abs(r) < 1e-6:
+        return 0.0
+    c = 1.0 / r
+    disc = 1.0 - (c * h)**2
+    if disc < 0:
+        return r  # invalid geometry sentinel
+    return c * h**2 / (1.0 + math.sqrt(disc))
+
+
 class MeritFunction:
     """Calculate merit function for optical system quality"""
     
@@ -74,233 +85,189 @@ class MeritFunction:
             'min_air_gap': 0.1,
             'min_edge_clearance': 0.1
         }
-    
-    def evaluate(self, system: OpticalSystem) -> float:
-        """
-        Evaluate merit function (lower is better)
-        
-        Merit function combines multiple targets:
-        - Spherical aberration
-        - Chromatic aberration
-        - Coma
-        - Astigmatism
-        - Focal length target
-        - RMS spot size
-        - System Length
-        - MTF
-        
-        Also adds penalties for invalid geometries (edge thickness).
-        """
+
+    # ------------------------------------------------------------------
+    # Target evaluation helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _apply_target(target: OptimizationTarget, value: float) -> float:
+        """Return the merit contribution for *value* against *target*."""
+        if target.target_type == "minimize":
+            return target.weight * value
+        elif target.target_type == "target":
+            return target.weight * (value - target.target_value)**2
+        elif target.target_type == "maximize":
+            if value > 1e-9:
+                return target.weight * (1.0 / value)
+            return target.weight * 1e3
+        return 0.0
+
+    def _eval_spherical(self, system: OpticalSystem, target: OptimizationTarget) -> float:
+        if not system.elements:
+            return 1e6
+        calc = AberrationsCalculator(system)
+        results = calc.calculate_all_aberrations()
+        value = results.get('spherical_aberration')
+        if value is None:
+            return 1e6
+        return self._apply_target(target, abs(value))
+
+    def _eval_coma(self, system: OpticalSystem, target: OptimizationTarget) -> float:
+        if not system.elements:
+            return 0.0
+        calc = AberrationsCalculator(system)
+        results = calc.calculate_all_aberrations(field_angle_deg=5.0)
+        value = results.get('coma')
+        if value is None:
+            return 0.0
+        return self._apply_target(target, abs(value))
+
+    def _eval_astigmatism(self, system: OpticalSystem, target: OptimizationTarget) -> float:
+        if not system.elements:
+            return 0.0
+        calc = AberrationsCalculator(system)
+        results = calc.calculate_all_aberrations(field_angle_deg=5.0)
+        value = results.get('astigmatism')
+        if value is None:
+            return 0.0
+        return self._apply_target(target, abs(value))
+
+    @staticmethod
+    def _eval_chromatic(system: OpticalSystem, target: OptimizationTarget) -> float:
+        chrom = system.calculate_chromatic_aberration()
+        return MeritFunction._apply_target(target, chrom['longitudinal'])
+
+    @staticmethod
+    def _eval_focal_length(system: OpticalSystem, target: OptimizationTarget) -> float:
+        f = system.get_system_focal_length()
+        if not f:
+            return 1e6
+        return MeritFunction._apply_target(target, f)
+
+    @staticmethod
+    def _eval_system_length(system: OpticalSystem, target: OptimizationTarget) -> float:
+        return MeritFunction._apply_target(target, system.get_total_length())
+
+    @staticmethod
+    def _eval_rms_spot(system: OpticalSystem, target: OptimizationTarget) -> float:
+        try:
+            if 'SpotDiagram' in globals():
+                spot = globals()['SpotDiagram'](system)
+                results = spot.trace_spot(field_angle_x_deg=0, field_angle_y_deg=0)
+                value = results.get('rms_radius', 0.0)
+                return MeritFunction._apply_target(target, value)
+        except Exception:
+            pass
+        return 1e3
+
+    @staticmethod
+    def _eval_mtf(system: OpticalSystem, target: OptimizationTarget) -> float:
+        try:
+            has_deps = ('PSFCalculator' in globals() and
+                        'WavefrontSensor' in globals() and
+                        'NUMPY_AVAILABLE' in globals() and
+                        globals()['NUMPY_AVAILABLE'])
+            if not has_deps:
+                return 0.0
+
+            import numpy as np
+            sensor = globals()['WavefrontSensor'](system)
+            Y, Z, W = sensor.get_pupil_wavefront()
+
+            if W.size == 0 or np.all(np.isnan(W)):
+                return target.weight * 1e3
+
+            psf = globals()['PSFCalculator'].calculate_psf(Y, Z, W)
+            mtf = globals()['PSFCalculator'].calculate_mtf(psf)
+            value = float(np.sum(mtf))
+            return MeritFunction._apply_target(target, value)
+        except Exception:
+            return target.weight * 1e3
+
+    _TARGET_DISPATCH = {
+        "spherical_aberration": _eval_spherical,
+        "coma": _eval_coma,
+        "astigmatism": _eval_astigmatism,
+        "chromatic_aberration": _eval_chromatic,
+        "focal_length": _eval_focal_length,
+        "system_length": _eval_system_length,
+        "rms_spot_radius": _eval_rms_spot,
+        "mtf": _eval_mtf,
+    }
+
+    # ------------------------------------------------------------------
+    # Physical constraint helpers
+    # ------------------------------------------------------------------
+
+    def _penalty_physical(self, system: OpticalSystem) -> float:
+        """Penalties for invalid geometries (thickness, air gaps, edge clearance)."""
         merit = 0.0
-        
-        # Extract constraints for cleaner access
         min_ct = self.constraints.get('min_center_thickness', 1.0)
         max_ct = self.constraints.get('max_center_thickness', 100.0)
         min_et = self.constraints.get('min_edge_thickness', 0.5)
         min_ag = self.constraints.get('min_air_gap', 0.1)
         min_ec = self.constraints.get('min_edge_clearance', 0.1)
-        
-        # 1. Physical Constraints Penalties
-        # 1a. Edge thickness check for all elements
+
         for element in system.elements:
             lens = element.lens
-            # Min/Max Thickness penalties
-            if lens.thickness < min_ct: # Minimum center thickness
+            if lens.thickness < min_ct:
                 merit += 1e5 * (min_ct - lens.thickness)**2
-            if lens.thickness > max_ct: # Maximum thickness sanity check
+            if lens.thickness > max_ct:
                 merit += 1e3 * (lens.thickness - max_ct)**2
-            
-            # Calculate sags
+
             try:
-                # Aperture radius
                 y = lens.diameter / 2.0
-                
-                # Sag 1
-                if abs(lens.radius_of_curvature_1) > y:
-                    sag1 = abs(lens.radius_of_curvature_1) - math.sqrt(lens.radius_of_curvature_1**2 - y**2)
-                    if lens.radius_of_curvature_1 < 0:
-                        sag1 = -sag1 # Concave surface (curves away)
-                else:
-                    # Invalid geometry (hemisphere or more)
-                    merit += 1e5
-                    sag1 = 0
-                    
-                # Sag 2
-                if abs(lens.radius_of_curvature_2) > y:
-                    sag2 = abs(lens.radius_of_curvature_2) - math.sqrt(lens.radius_of_curvature_2**2 - y**2)
-                    if lens.radius_of_curvature_2 > 0:
-                        sag2 = -sag2 # Concave surface (curves away from direction of light?)
-                else:
-                    merit += 1e5
-                
-                s1 = get_sag(lens.radius_of_curvature_1, y)
-                s2 = get_sag(lens.radius_of_curvature_2, y)
-
+                s1 = _get_sag(lens.radius_of_curvature_1, y)
+                s2 = _get_sag(lens.radius_of_curvature_2, y)
                 edge_thickness = lens.thickness - s1 + s2
-
-                if edge_thickness < min_et: # Min edge thickness constraint
+                if edge_thickness < min_et:
                     merit += 1e4 * (min_et - edge_thickness)**2
-
             except Exception:
-                merit += 1e5 # Calculation error penalty
+                merit += 1e5
 
-        def get_sag(r, h):
-            if abs(r) < 1e-6: return 0 # Plane
-            c = 1.0/r
-            if 1 - (c*h)**2 < 0: return r # Invalid
-            return c*h**2 / (1 + math.sqrt(1 - (c*h)**2))
-
-        # 1b. Air Gap Constraints (Collision Detection)
         for i, gap in enumerate(system.air_gaps):
-            if gap.thickness < min_ag: # Minimum air gap (at center)
-                 merit += 1e5 * (min_ag - gap.thickness)**2
-            
-            # Check edge collision
-            # Gap between Element i (Back) and Element i+1 (Front)
+            if gap.thickness < min_ag:
+                merit += 1e5 * (min_ag - gap.thickness)**2
+
             if i < len(system.elements) - 1:
                 lens1 = system.elements[i].lens
                 lens2 = system.elements[i+1].lens
-                
-                # Check at max common height
                 max_h = min(lens1.diameter, lens2.diameter) / 2.0
-                
-                # Sag of Back Surface of Lens 1 (R2)
-                # Note: get_sag returns z = c*r^2 / ...
-                # If R2 < 0 (Convex), c < 0 -> z < 0. Surface bulges Left.
-                # If R2 > 0 (Concave), c > 0 -> z > 0. Surface bulges Right.
-                s_back_1 = get_sag(lens1.radius_of_curvature_2, max_h)
-                
-                # Sag of Front Surface of Lens 2 (R1)
-                # If R1 > 0 (Convex), c > 0 -> z > 0. Surface bulges Right.
-                # If R1 < 0 (Concave), c < 0 -> z < 0. Surface bulges Left.
-                s_front_2 = get_sag(lens2.radius_of_curvature_1, max_h)
-                
-                # Edge Clearance = CenterGap + Sag_Front_2 - Sag_Back_1
+                s_back_1 = _get_sag(lens1.radius_of_curvature_2, max_h)
+                s_front_2 = _get_sag(lens2.radius_of_curvature_1, max_h)
                 edge_clearance = gap.thickness + s_front_2 - s_back_1
-                
-                if edge_clearance < min_ec: # Min edge clearance
+                if edge_clearance < min_ec:
                     merit += 1e5 * (min_ec - edge_clearance)**2
 
+        return merit
+
+    # ------------------------------------------------------------------
+    # Main entry point
+    # ------------------------------------------------------------------
+
+    def evaluate(self, system: OpticalSystem) -> float:
+        """
+        Evaluate merit function (lower is better).
+
+        Combines physical constraint penalties with optical quality targets.
+        """
+        merit = self._penalty_physical(system)
+
         for target in self.targets:
-            if target.name == "spherical_aberration":
-                if system.elements:
-                    calc = AberrationsCalculator(system)
-                    results = calc.calculate_all_aberrations()
-                    if results.get('spherical_aberration') is not None:
-                        value = abs(results['spherical_aberration'])
-
-                        if target.target_type == "minimize":
-                            merit += target.weight * value
-                        elif target.target_type == "target":
-                            merit += target.weight * (value - target.target_value)**2
-                    else:
-                         merit += 1e6 # Penalty if calculation fails
-
-            elif target.name == "coma":
-                if system.elements:
-                    calc = AberrationsCalculator(system)
-                    results = calc.calculate_all_aberrations(field_angle_deg=5.0)
-                    if results.get('coma') is not None:
-                         value = abs(results['coma'])
-                         if target.target_type == "minimize":
-                            merit += target.weight * value
-
-            elif target.name == "astigmatism":
-                if system.elements:
-                    calc = AberrationsCalculator(system)
-                    results = calc.calculate_all_aberrations(field_angle_deg=5.0)
-                    if results.get('astigmatism') is not None:
-                         value = abs(results['astigmatism'])
-                         if target.target_type == "minimize":
-                            merit += target.weight * value
-
-            elif target.name == "chromatic_aberration":
-                chrom = system.calculate_chromatic_aberration()
-                value = chrom['longitudinal']
-                
-                if target.target_type == "minimize":
-                    merit += target.weight * value
-                elif target.target_type == "target":
-                    merit += target.weight * (value - target.target_value)**2
-            
-            elif target.name == "focal_length":
-                f = system.get_system_focal_length()
-                if f:
-                    if target.target_type == "target":
-                        merit += target.weight * (f - target.target_value)**2
-                    elif target.target_type == "minimize":
-                        merit += target.weight * abs(f)
+            handler = self._TARGET_DISPATCH.get(target.name)
+            if handler is not None:
+                if handler.__func__ in (
+                    MeritFunction._eval_chromatic,
+                    MeritFunction._eval_focal_length,
+                    MeritFunction._eval_system_length,
+                    MeritFunction._eval_rms_spot,
+                    MeritFunction._eval_mtf,
+                ):
+                    merit += handler(system, target)
                 else:
-                    merit += 1e6  # Penalty for invalid focal length
-            
-            elif target.name == "system_length":
-                length = system.get_total_length()
-                if target.target_type == "minimize":
-                    merit += target.weight * length
-                elif target.target_type == "target":
-                    merit += target.weight * (length - target.target_value)**2
+                    merit += handler(self, system, target)
 
-            elif target.name == "rms_spot_radius":
-                try:
-                    # Calculate on-axis RMS spot radius
-                    # In try/except blocks at top of file, we import SpotDiagram.
-                    # It might be in globals or locals.
-                    # Best way is to use the imported name if available.
-                    
-                    if 'SpotDiagram' in globals():
-                        spot_cls = globals()['SpotDiagram']
-                        spot = spot_cls(system)
-                        results = spot.trace_spot(field_angle_x_deg=0, field_angle_y_deg=0)
-                        value = results.get('rms_radius', 0.0)
-                        
-                        if target.target_type == "minimize":
-                            merit += target.weight * value
-                        elif target.target_type == "target":
-                            merit += target.weight * (value - target.target_value)**2
-                except Exception:
-                    # Penalty if calculation fails (e.g. ray trace error)
-                    merit += 1e3
-
-            elif target.name == "mtf":
-                # Maximize MTF volume (area under curve) as a proxy for image quality
-                try:
-                    # Check if optional dependencies are available
-                    has_deps = ('PSFCalculator' in globals() and 
-                                'WavefrontSensor' in globals() and 
-                                'NUMPY_AVAILABLE' in globals() and 
-                                globals()['NUMPY_AVAILABLE'])
-                                
-                    if has_deps:
-                        psf_cls = globals()['PSFCalculator']
-                        sensor_cls = globals()['WavefrontSensor']
-                        import numpy as np # Local import if available
-                        
-                        sensor = sensor_cls(system)
-                        Y, Z, W = sensor.get_pupil_wavefront()
-                        
-                        if W.size > 0 and not np.all(np.isnan(W)):
-                            psf = psf_cls.calculate_psf(Y, Z, W)
-                            mtf = psf_cls.calculate_mtf(psf)
-                            
-                            # Metric: MTF Volume (sum of values)
-                            value = np.sum(mtf)
-                            
-                            if target.target_type == "maximize":
-                                if value > 1e-9:
-                                    merit += target.weight * (1.0 / value)
-                                else:
-                                    merit += target.weight * 1e3
-                            elif target.target_type == "target":
-                                merit += target.weight * (value - target.target_value)**2
-                        else:
-                            # Wavefront calculation failed (rays blocked?)
-                            merit += target.weight * 1e3
-                    else:
-                        pass # Cannot calculate, ignore
-                except Exception:
-                    # Calculation crashed (e.g. singular matrix)
-                    merit += target.weight * 1e3
-        
         return merit
 
 
