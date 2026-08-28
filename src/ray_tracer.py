@@ -570,28 +570,31 @@ class LensRayTracer:
     def find_focal_point(self, rays: List[Ray]) -> Optional[Tuple[float, float]]:
         """Find the focal point from a set of traced parallel rays."""
         crossings = []
-        
+
         for ray in rays:
             if len(ray.path) < 2:
                 continue
-            
-            # Check last segment of ray
-            x1, y1 = ray.path[-2]
-            x2, y2 = ray.path[-1]
-            
-            # Check if ray crosses y=0
-            if (y1 * y2 <= 0) and abs(y2 - y1) > 1e-6:
-                # Linear interpolation to find crossing
-                t = -y1 / (y2 - y1)
-                x_cross = x1 + t * (x2 - x1)
-                crossings.append(x_cross)
-        
+
+            # Check all segments for y=0 crossing, take the last one
+            last_crossing = None
+            for i in range(len(ray.path) - 1):
+                x1, y1 = ray.path[i]
+                x2, y2 = ray.path[i + 1]
+
+                if (y1 * y2 <= 0) and abs(y2 - y1) > 1e-6:
+                    t = -y1 / (y2 - y1)
+                    x_cross = x1 + t * (x2 - x1)
+                    last_crossing = x_cross
+
+            if last_crossing is not None:
+                crossings.append(last_crossing)
+
         if not crossings:
             return None
-        
+
         # Focal point is average crossing location
         focal_x = sum(crossings) / len(crossings)
-        
+
         return (focal_x, 0)
     
     def get_lens_outline(self, num_points: int = MESH_RESOLUTION_HIGH) -> List[Tuple[float, float]]:
