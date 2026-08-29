@@ -59,9 +59,9 @@ class TestAberrationsCalculator(unittest.TestCase):
         calc = AberrationsCalculator(self.biconvex)
         # Exact identity: no numerical tolerance is involved in a copy
         self.assertEqual(calc.n, self.biconvex.refractive_index)
-        self.assertEqual(calc.R1, 100.0)
-        self.assertEqual(calc.R2, -100.0)
-        self.assertEqual(calc.D, 50.0)
+        self.assertEqual(calc.radius_1, 100.0)
+        self.assertEqual(calc.radius_2, -100.0)
+        self.assertEqual(calc.diameter, 50.0)
     
     def test_calculate_all_aberrations(self):
         """Test that all aberrations are calculated"""

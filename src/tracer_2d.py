@@ -3,7 +3,7 @@
 """
 
 import math
-from typing import List, Optional, Tuple, Any
+from typing import List, Optional, Tuple, TYPE_CHECKING
 
 from .ray import Ray, RefractionResult, OpticalIntersector
 from .constants import (
@@ -14,6 +14,10 @@ from .constants import (
 )
 from .lens import _is_flat
 
+if TYPE_CHECKING:
+    from .lens import Lens
+    from .optical_system import OpticalSystem
+
 
 class LensRayTracer:
     """
@@ -22,7 +26,7 @@ class LensRayTracer:
     Traces rays through a lens using Snell's law at each surface.
     """
 
-    def __init__(self, lens: Any, x_offset: float = 0.0) -> None:
+    def __init__(self, lens: "Lens", x_offset: float = 0.0) -> None:
         """
         Initialize ray tracer with a lens.
 
@@ -333,7 +337,7 @@ class LensRayTracer:
 class SystemRayTracer:
     """Ray tracer for multi-element optical systems"""
 
-    def __init__(self, optical_system: Any) -> None:
+    def __init__(self, optical_system: "OpticalSystem") -> None:
         self.system = optical_system
 
     def trace_parallel_rays(self, num_rays: int = DEFAULT_NUM_RAYS,

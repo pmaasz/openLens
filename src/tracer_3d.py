@@ -3,7 +3,7 @@
 """
 
 import math
-from typing import List, Optional, Tuple, Any
+from typing import List, Optional, Tuple, TYPE_CHECKING
 
 from .ray import Ray3D, Ray, RefractionResult, OpticalIntersector, HAS_POLARIZATION
 from .vector3 import Vector3, vec3
@@ -15,6 +15,10 @@ from .constants import (
 )
 from .lens import _is_flat
 
+if TYPE_CHECKING:
+    from .lens import Lens
+    from .optical_system import OpticalSystem
+
 
 class LensRayTracer3D:
     """
@@ -22,7 +26,7 @@ class LensRayTracer3D:
     Accepts an optional transformation matrix for position/orientation.
     """
 
-    def __init__(self, lens: Any, transform: Optional[Matrix4x4] = None, x_offset: float = 0.0) -> None:
+    def __init__(self, lens: "Lens", transform: Optional[Matrix4x4] = None, x_offset: float = 0.0) -> None:
         self.lens = lens
         self.R1 = lens.radius_of_curvature_1
         self.R2 = lens.radius_of_curvature_2
@@ -199,7 +203,7 @@ class LensRayTracer3D:
 class SystemRayTracer3D:
     """Ray tracer for multi-element optical systems in 3D"""
 
-    def __init__(self, optical_system: Any) -> None:
+    def __init__(self, optical_system: "OpticalSystem") -> None:
         self.system = optical_system
 
     def trace_ray(self, ray: Ray3D) -> Ray3D:

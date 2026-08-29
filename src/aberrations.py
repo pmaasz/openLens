@@ -54,16 +54,16 @@ class AberrationsCalculator:
             self.is_system = True
             # For system calculations, use effective properties
             self.n = 1.0 # System in air
-            self.D = target.elements[0].lens.diameter if target.elements else 25.0
+            self.diameter = target.elements[0].lens.diameter if target.elements else 25.0
             # focal_length = target.get_system_focal_length()
         else:
             self.is_system = False
             self.lens = target
             self.n = target.refractive_index
-            self.R1 = target.radius_of_curvature_1
-            self.R2 = target.radius_of_curvature_2
-            self.d = target.thickness
-            self.D = target.diameter
+            self.radius_1 = target.radius_of_curvature_1
+            self.radius_2 = target.radius_of_curvature_2
+            self.thickness = target.thickness
+            self.diameter = target.diameter
         
     def calculate_all_aberrations(self, 
                                    object_distance_mm: Optional[float] = None,
@@ -166,16 +166,16 @@ class AberrationsCalculator:
     
     def _calculate_f_number(self, focal_length: float) -> float:
         """Calculate the f-number (f/D)"""
-        if self.D <= 0:
+        if self.diameter <= 0:
             return float('inf')
-        return abs(focal_length) / self.D
+        return abs(focal_length) / self.diameter
 
     def _calculate_numerical_aperture(self, focal_length: float) -> float:
         """Calculate the numerical aperture (NA)"""
         if abs(focal_length) < EPSILON:
             return 0.0
         # For object at infinity: NA = D / (2 * f)
-        return self.D / (2 * abs(focal_length))
+        return self.diameter / (2 * abs(focal_length))
 
     def _calculate_field_metrics_system(self, field_angle: float) -> Dict[str, float]:
         """Calculate field-dependent aberrations for an optical system using real ray tracing"""
@@ -232,10 +232,10 @@ class AberrationsCalculator:
             
         # Coma depends on Shape Factor (B) and Conjugate Factor (C)
         # B = (R2 + R1) / (R2 - R1)
-        if abs(self.R2 - self.R1) < EPSILON:
+        if abs(self.radius_2 - self.radius_1) < EPSILON:
             B = 0.0
         else:
-            B = (self.R2 + self.R1) / (self.R2 - self.R1)
+            B = (self.radius_2 + self.radius_1) / (self.radius_2 - self.radius_1)
             
         # For object at infinity, C = -1
         C = -1.0
@@ -244,7 +244,7 @@ class AberrationsCalculator:
         # (Simplified relative value)
         n = self.n
         factor = ((n + 1.0) / n) * B + ((2.0 * n + 1.0) / n) * C
-        coma = ( (self.D/2.0)**3 * math.radians(field_angle_deg) / focal_length**2 ) * factor
+        coma = ( (self.diameter/2.0)**3 * math.radians(field_angle_deg) / focal_length**2 ) * factor
         return coma
 
     def _calculate_astigmatism(self, focal_length: float, field_angle_deg: float) -> float:
@@ -459,14 +459,14 @@ class AberrationsCalculator:
                     
                 # Original single lens logic
                 tracer = LensRayTracer(self.lens)
-                start_x = -10.0 - self.d
-                y_marginal = self.D / 2.0
+                start_x = -10.0 - self.thickness
+                y_marginal = self.diameter / 2.0
                 ray_marginal = Ray(start_x, y_marginal, angle_rad=0.0)
                 tracer.trace_ray(ray_marginal)
                 if ray_marginal.terminated or abs(math.tan(ray_marginal.angle)) < 1e-9: return None
                 marginal_focus = ray_marginal.x - ray_marginal.y / math.tan(ray_marginal.angle)
                 
-                y_paraxial = self.D / 2.0 * 0.01
+                y_paraxial = self.diameter / 2.0 * 0.01
                 ray_paraxial = Ray(start_x, y_paraxial, angle_rad=0.0)
                 tracer.trace_ray(ray_paraxial)
                 if abs(math.tan(ray_paraxial.angle)) < 1e-9: return None
@@ -606,14 +606,14 @@ INTERPRETATION:
         """Calculate third-order Seidel spherical aberration for a single lens"""
         # Spherical aberration S1 = (y^4 / f^3) * [(n/(n-1))^2 + (n+2)/(n(n-1)^2) * (B + (2(n^2-1)/n+2) * C)^2]
         # B = (R2 + R1) / (R2 - R1)
-        if abs(self.R2 - self.R1) < EPSILON:
+        if abs(self.radius_2 - self.radius_1) < EPSILON:
             B = 0.0
         else:
-            B = (self.R2 + self.R1) / (self.R2 - self.R1)
+            B = (self.radius_2 + self.radius_1) / (self.radius_2 - self.radius_1)
             
         C = -1.0 # Object at infinity
         n = self.n
-        y = self.D / 2.0
+        y = self.diameter / 2.0
         
         # Simplified Seidel coefficient calculation
         term1 = (n / (n - 1.0))**2
