@@ -4,10 +4,6 @@ Tests for PySide6 Widgets and Lens Rendering
 
 import unittest
 import sys
-import os
-
-# Add parent to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class TestLensClassification(unittest.TestCase):

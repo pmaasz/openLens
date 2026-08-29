@@ -8,14 +8,10 @@ import sys
 import os
 import unittest
 
-import sys as _sys
-import os as _os
-_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import json
 from _utils import skip_slow
 import tempfile
-import json
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.lens import Lens
 from src.material_database import MaterialDatabase, get_material_database

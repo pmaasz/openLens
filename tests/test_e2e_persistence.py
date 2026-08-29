@@ -4,16 +4,12 @@ End-to-end verification for Design-Save-Reload-Simulate cycle.
 Verifies that complex nested assemblies are correctly persisted in the database.
 """
 
-import sys
-import os
 import unittest
+import os
 import tempfile
 import math
 import json
 import sqlite3
-
-# Adjust path to find src
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.database import DatabaseManager
 from src.optical_system import OpticalSystem, create_doublet

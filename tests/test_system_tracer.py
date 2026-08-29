@@ -1,11 +1,5 @@
 import unittest
 import math
-import sys
-import os
-
-# Add src to path
-# Use reliable path relative to project root
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.optical_system import OpticalSystem
 from src.lens import Lens

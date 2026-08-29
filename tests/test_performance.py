@@ -6,11 +6,6 @@ Tests system behavior under load and with large datasets
 
 import unittest
 import time
-import sys
-import os
-
-# Add src directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.lens import Lens
 from src.ray_tracer import LensRayTracer

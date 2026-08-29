@@ -4,11 +4,7 @@ Tests for ray tracing engine
 """
 
 import unittest
-import sys
-import os
 import math
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.lens import Lens
 from src.ray_tracer import RefractionResult, Ray, LensRayTracer

@@ -4,10 +4,6 @@ Tests for lens aberrations calculator
 """
 
 import unittest
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.lens import Lens
 from src.aberrations import AberrationsCalculator, analyze_lens_quality

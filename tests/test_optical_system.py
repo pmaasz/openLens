@@ -3,15 +3,11 @@
 Test multi-element optical systems
 """
 
-import sys
-import os
 import unittest
+import os
 import tempfile
 import json
 import math
-
-# Adjust path to find src
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.optical_system import OpticalSystem, AchromaticDoubletDesigner, create_doublet, create_triplet, AirGap
 from src.lens import Lens

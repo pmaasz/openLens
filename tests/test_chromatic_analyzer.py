@@ -5,9 +5,6 @@ Tests wavelength-dependent calculations and chromatic aberration analysis
 """
 
 import unittest
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.chromatic_analyzer import ChromaticAnalyzer, ChromaticResult
 from src.material_database import MaterialDatabase, MaterialProperties
