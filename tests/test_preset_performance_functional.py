@@ -4,10 +4,7 @@ Comprehensive functional tests for preset library and performance metrics
 """
 
 import sys
-import os
 import unittest
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.preset_library import PresetLibrary, LensPreset, get_preset_library
 from src.performance_metrics import PerformanceMetrics

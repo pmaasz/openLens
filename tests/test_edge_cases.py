@@ -6,11 +6,6 @@ Tests extreme input values, boundary conditions, and error handling
 
 import unittest
 import math
-import sys
-import os
-
-# Add src directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.lens import Lens
 from src.ray_tracer import RefractionResult, Ray, LensRayTracer

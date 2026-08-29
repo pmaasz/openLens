@@ -3,12 +3,7 @@ Functional tests for Interactive Ray Tracer, Image Simulator, and Mechanical Des
 """
 
 import unittest
-import os
-import sys
 from pathlib import Path
-
-# Add src to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # numpy is required by the modules under test
 try:

@@ -1,10 +1,5 @@
 import unittest
-import sys
-import os
 import math
-
-# Add src to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.analysis.environmental import EnvironmentalAnalyzer
 from src.optical_system import OpticalSystem

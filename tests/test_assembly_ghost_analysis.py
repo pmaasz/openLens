@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 import unittest
-import sys
-import os
 import math
-
-# Use project root as part of sys.path to allow imports from src
-sys.path.insert(0, os.getcwd())
 
 from src.lens import Lens
 from src.optical_system import OpticalSystem

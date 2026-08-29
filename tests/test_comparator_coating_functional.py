@@ -3,12 +3,9 @@
 Comprehensive functional tests for lens comparator and coating designer
 """
 
-import sys
 import os
 import unittest
 import tempfile
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.lens import Lens
 from src.lens_comparator import LensComparator, ComparisonResult

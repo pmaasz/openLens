@@ -2,12 +2,6 @@
 Functional tests for preset lens library
 """
 
-import sys
-import os
-
-# Add src directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 # Try to import pytest
 try:
     import pytest

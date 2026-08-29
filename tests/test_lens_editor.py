@@ -11,8 +11,6 @@ import tempfile
 from datetime import datetime
 import sys
 
-# Import the modules to test
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.lens import Lens
 from src.lens_editor import LensManager
 

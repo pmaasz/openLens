@@ -17,9 +17,6 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtTest import QTest
 from PySide6.QtCore import Qt
 
-# Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from openlens import OpenLensWindow
 from src.lens import Lens
 from src.optical_system import OpticalSystem

@@ -6,11 +6,6 @@ Tests for OptimizationController
 import unittest
 import tkinter as tk
 from unittest.mock import MagicMock, patch, ANY
-import sys
-import os
-
-# Add src to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from gui.optimization_controller import OptimizationController
 from src.optical_system import OpticalSystem
