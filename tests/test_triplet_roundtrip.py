@@ -20,7 +20,7 @@ class TestTripletRoundTrip(unittest.TestCase):
         self.system = create_triplet()
 
     def _round_trip(self):
-        fd, path = tempfile.mkstemp(suffix='.json')
+        fd, path = tempfile.mkstemp(suffix=".json")
         os.close(fd)
         try:
             self.assertTrue(self.system.save(path))
@@ -39,10 +39,16 @@ class TestTripletRoundTrip(unittest.TestCase):
         loaded = self._round_trip()
         for orig, copy in zip(self.system.elements, loaded.elements):
             self.assertEqual(copy.lens.id, orig.lens.id)
-            self.assertAlmostEqual(copy.lens.radius_of_curvature_1,
-                                   orig.lens.radius_of_curvature_1, places=9)
-            self.assertAlmostEqual(copy.lens.radius_of_curvature_2,
-                                   orig.lens.radius_of_curvature_2, places=9)
+            self.assertAlmostEqual(
+                copy.lens.radius_of_curvature_1,
+                orig.lens.radius_of_curvature_1,
+                places=9,
+            )
+            self.assertAlmostEqual(
+                copy.lens.radius_of_curvature_2,
+                orig.lens.radius_of_curvature_2,
+                places=9,
+            )
             self.assertAlmostEqual(copy.position, orig.position, places=9)
         self.assertEqual(len(loaded.air_gaps), len(self.system.air_gaps))
         for g_orig, g_copy in zip(self.system.air_gaps, loaded.air_gaps):
@@ -58,8 +64,7 @@ class TestTripletRoundTrip(unittest.TestCase):
 
     def test_save_to_unwritable_path_fails_gracefully(self):
         """save() returns False instead of raising on a bad directory"""
-        bad = os.path.join(tempfile.gettempdir(),
-                           'no_such_dir_openlens_test', 'x.json')
+        bad = os.path.join(tempfile.gettempdir(), "no_such_dir_openlens_test", "x.json")
         self.assertFalse(self.system.save(bad))
 
 

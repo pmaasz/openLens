@@ -27,7 +27,7 @@ import math
 WAVELENGTH_D_LINE = 587.6  # Helium d-line (yellow) - Lens design reference
 WAVELENGTH_C_LINE = 656.3  # Hydrogen C-line (red)
 WAVELENGTH_F_LINE = 486.1  # Hydrogen F-line (blue)
-WAVELENGTH_GREEN = 550.0   # Photopic peak - visualization/analysis default
+WAVELENGTH_GREEN = 550.0  # Photopic peak - visualization/analysis default
 
 # Standard refractive indices
 REFRACTIVE_INDEX_AIR = 1.0
@@ -63,11 +63,13 @@ DEFAULT_RAY_HEIGHT_RANGE = (-20.0, 20.0)  # mm
 DEFAULT_ANGLE_RANGE = (-30.0, 30.0)  # degrees
 
 # Geometry of ray bundles (mm)
-APERTURE_FILL_FACTOR = 0.95          # rays span 95% of the lens aperture
-RAY_START_OFFSET_MM = 100.0          # 2D collimated beams start this far before the first surface
-RAY_START_OFFSET_3D_MM = 50.0        # same, for 3D/system traces
-RAY_EXIT_PROPAGATION_2D_MM = 150.0   # draw length after the last element (2D)
-RAY_EXIT_PROPAGATION_3D_MM = 50.0    # draw length after the last element (3D)
+APERTURE_FILL_FACTOR = 0.95  # rays span 95% of the lens aperture
+RAY_START_OFFSET_MM = (
+    100.0  # 2D collimated beams start this far before the first surface
+)
+RAY_START_OFFSET_3D_MM = 50.0  # same, for 3D/system traces
+RAY_EXIT_PROPAGATION_2D_MM = 150.0  # draw length after the last element (2D)
+RAY_EXIT_PROPAGATION_3D_MM = 50.0  # draw length after the last element (3D)
 
 # Ray intersection tolerances
 RAY_INTERSECTION_TOLERANCE = 1e-10
@@ -209,15 +211,15 @@ ALL_LENS_TYPES = [
     LENS_TYPE_PLANO_CONVEX,
     LENS_TYPE_PLANO_CONCAVE,
     LENS_TYPE_MENISCUS_CONVEX,
-    LENS_TYPE_MENISCUS_CONCAVE
+    LENS_TYPE_MENISCUS_CONCAVE,
 ]
 
 # Standard radius preset (R1, R2) in mm applied per lens type
 LENS_TYPE_PRESET_RADII = {
     LENS_TYPE_BICONVEX: (DEFAULT_RADIUS_1, DEFAULT_RADIUS_2),
     LENS_TYPE_BICONCAVE: (-DEFAULT_RADIUS_1, -DEFAULT_RADIUS_2),
-    LENS_TYPE_PLANO_CONVEX: (DEFAULT_RADIUS_1, float('inf')),
-    LENS_TYPE_PLANO_CONCAVE: (float('inf'), DEFAULT_RADIUS_1),
+    LENS_TYPE_PLANO_CONVEX: (DEFAULT_RADIUS_1, float("inf")),
+    LENS_TYPE_PLANO_CONCAVE: (float("inf"), DEFAULT_RADIUS_1),
     LENS_TYPE_MENISCUS_CONVEX: (80.0, -120.0),
     LENS_TYPE_MENISCUS_CONCAVE: (-120.0, 80.0),
 }

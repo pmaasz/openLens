@@ -29,13 +29,25 @@ class TestDoubletBFL(unittest.TestCase):
     def setUp(self):
         self.system = OpticalSystem(name="doublet")
         self.system.add_lens(
-            Lens(radius_of_curvature_1=100.0, radius_of_curvature_2=-100.0,
-                 thickness=10.0, diameter=25.0, refractive_index=1.5),
-            air_gap_before=0.0)
+            Lens(
+                radius_of_curvature_1=100.0,
+                radius_of_curvature_2=-100.0,
+                thickness=10.0,
+                diameter=25.0,
+                refractive_index=1.5,
+            ),
+            air_gap_before=0.0,
+        )
         self.system.add_lens(
-            Lens(radius_of_curvature_1=50.0, radius_of_curvature_2=-50.0,
-                 thickness=5.0, diameter=25.0, refractive_index=1.5),
-            air_gap_before=5.0)
+            Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=25.0,
+                refractive_index=1.5,
+            ),
+            air_gap_before=5.0,
+        )
 
     def test_back_focal_length_known_value(self):
         """BFL of the doublet matches the hand-computed -A/C"""

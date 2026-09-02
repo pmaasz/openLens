@@ -12,12 +12,12 @@ from .optimization_tab import OptimizationTab
 from .tolerancing_tab import TolerancingTab
 
 __all__ = [
-    'BaseTab',
-    'EditorTab', 
-    'SelectionTab',
-    'SimulationTab',
-    'PerformanceTab',
-    'AssemblyTab',
-    'OptimizationTab',
-    'TolerancingTab',
+    "BaseTab",
+    "EditorTab",
+    "SelectionTab",
+    "SimulationTab",
+    "PerformanceTab",
+    "AssemblyTab",
+    "OptimizationTab",
+    "TolerancingTab",
 ]

@@ -9,24 +9,27 @@ from ..ray_tracer import Ray3D, SystemRayTracer3D
 from ..optical_system import OpticalSystem
 from ..constants import NM_TO_MM, WAVELENGTH_GREEN
 
+
 class SpotDiagram:
     """
     Spot Diagram Analysis Tool.
     Generates and analyzes spot diagrams for optical systems.
     """
-    
+
     def __init__(self, system: OpticalSystem):
         self.system = system
         self.tracer = SystemRayTracer3D(system)
-        
-    def generate_hexapolar_grid(self, rings: int = 6, diameter: Optional[float] = None) -> List[Tuple[float, float]]:
+
+    def generate_hexapolar_grid(
+        self, rings: int = 6, diameter: Optional[float] = None
+    ) -> List[Tuple[float, float]]:
         """
         Generate a hexapolar grid of points in the entrance pupil.
-        
+
         Args:
             rings: Number of rings in the hexapolar grid.
             diameter: Diameter of the entrance pupil. If None, uses system first lens diameter.
-            
+
         Returns:
             List of (y, z) offsets from the optical axis.
         """
@@ -35,10 +38,10 @@ class SpotDiagram:
                 diameter = self.system.elements[0].lens.diameter
             else:
                 return [(0.0, 0.0)]
-                
+
         radius = diameter / 2.0
-        points = [(0.0, 0.0)] # Center point
-        
+        points = [(0.0, 0.0)]  # Center point
+
         for i in range(1, rings + 1):
             num_points = 6 * i
             r = radius * (i / rings)
@@ -47,19 +50,21 @@ class SpotDiagram:
                 y = r * math.cos(angle)
                 z = r * math.sin(angle)
                 points.append((y, z))
-                
+
         return points
-        
-    def trace_spot(self, 
-                  field_angle_x_deg: float = 0.0, 
-                  field_angle_y_deg: float = 0.0, 
-                  wavelength_nm: float = WAVELENGTH_GREEN,
-                  image_plane_x_mm: Optional[float] = None,
-                  num_rings: int = 6,
-                  focus_shift_mm: float = 0.0) -> Dict[str, Any]:
+
+    def trace_spot(
+        self,
+        field_angle_x_deg: float = 0.0,
+        field_angle_y_deg: float = 0.0,
+        wavelength_nm: float = WAVELENGTH_GREEN,
+        image_plane_x_mm: Optional[float] = None,
+        num_rings: int = 6,
+        focus_shift_mm: float = 0.0,
+    ) -> Dict[str, Any]:
         """
         Trace rays to generate a spot diagram.
-        
+
         Args:
             field_angle_x_deg: Field angle in degrees (X-Z plane tilt)
             field_angle_y_deg: Angle in degrees relative to optical axis in XY plane.
@@ -67,35 +72,37 @@ class SpotDiagram:
             image_plane_x_mm: Absolute X position of image plane. If None, uses paraxial focus.
             num_rings: Sampling density.
             focus_shift_mm: Offset from the nominal image plane (defocus).
-            
+
         Returns:
             Dictionary containing spot data and statistics.
         """
         # Convert wavelength to mm
         wl_mm = wavelength_nm * NM_TO_MM
-        
+
         # Store original states and update lenses for this wavelength
         original_states = []
         for element in self.system.elements:
             lens = element.lens
             original_states.append((lens, lens.wavelength, lens.refractive_index))
             lens.update_refractive_index(wavelength_nm=wavelength_nm)
-            
+
         target_x = 0.0
-        
+
         try:
             # Determine image plane position
             if image_plane_x_mm is None:
                 # Calculate paraxial focus position
                 # Find system total length
                 length = self.system.get_total_length()
-                
+
                 # Trace a paraxial ray to find focus
                 # Start slightly off-axis
                 start_x = self.system.elements[0].position - 10.0
-                para_ray = Ray3D(vec3(start_x, 0.001, 0), vec3(1, 0, 0), wavelength=wl_mm)
+                para_ray = Ray3D(
+                    vec3(start_x, 0.001, 0), vec3(1, 0, 0), wavelength=wl_mm
+                )
                 self.tracer.trace_ray(para_ray)
-                
+
                 # Find intersection with axis (y=0)
                 if len(para_ray.path) >= 2:
                     p2 = para_ray.path[-1]
@@ -106,106 +113,106 @@ class SpotDiagram:
                     dx = p2.x - p1.x
                     dy = p2.y - p1.y
                     if abs(dy) > 1e-9:
-                        slope = dy/dx
+                        slope = dy / dx
                         # y - y1 = m(x - x1) -> -y1 = m(x_focus - x1) -> x_focus = x1 - y1/m
                         x_focus = p1.x - p1.y / slope
                         image_plane_x_mm = x_focus
                     else:
-                        image_plane_x_mm = length + 100 # Default if collimated
+                        image_plane_x_mm = length + 100  # Default if collimated
                 else:
                     image_plane_x_mm = length + 100
-            
+
             target_x = image_plane_x_mm + focus_shift_mm
-            
+
             # Generate pupil points
             pupil_points = self.generate_hexapolar_grid(rings=num_rings)
-            
+
             # Calculate ray direction based on field angles
             # Tan(theta)
             tan_y = math.tan(math.radians(field_angle_y_deg))
             tan_z = math.tan(math.radians(field_angle_x_deg))
-            
+
             # Direction vector (normalized later by Ray3D)
             # dx=1, dy=tan_y, dz=tan_z
             direction = vec3(1.0, tan_y, tan_z).normalize()
-            
+
             # Start rays before first element
             start_x = self.system.elements[0].position - 50.0
-            
+
             spot_points = []
             valid_rays = 0
-            
+
             first_lens_x = self.system.elements[0].position
-            
+
             for py, pz in pupil_points:
                 # Launch ray from pupil coordinate projected back to start_x
                 # Back-propagate from aperture to start position
                 dist = first_lens_x - start_x
-                
+
                 t = dist / direction.x
                 origin = vec3(first_lens_x, py, pz) - direction * t
-                
+
                 ray = Ray3D(origin, direction, wavelength=wl_mm)
                 self.tracer.trace_ray(ray)
-                
+
                 if not ray.terminated:
                     # Find intersection with image plane X = target_x
                     if abs(ray.direction.x) > 1e-6:
                         t = (target_x - ray.origin.x) / ray.direction.x
-                        
+
                         spot_y = ray.origin.y + t * ray.direction.y
                         spot_z = ray.origin.z + t * ray.direction.z
-                        
+
                         spot_points.append((spot_y, spot_z))
                         valid_rays += 1
-                        
+
         finally:
             # Restore original states
             for lens, wl, n in original_states:
                 lens.wavelength = wl
                 lens.refractive_index = n
-                    
+
             # 3. Calculate Statistics
             if not spot_points:
                 # Return empty stats instead of raising, but log it
                 # The GUI should handle this gracefully
                 logger.warning("No rays reached the image plane (blocked or TIR)")
                 return {
-                    'rms_radius': 0.0,
-                    'geo_radius': 0.0,
-                    'centroid': (0.0, 0.0),
-                    'points': [],
-                    'valid_rays': 0,
-                    'image_plane_x': target_x,
-                    'error': 'No rays reached the image plane'
+                    "rms_radius": 0.0,
+                    "geo_radius": 0.0,
+                    "centroid": (0.0, 0.0),
+                    "points": [],
+                    "valid_rays": 0,
+                    "image_plane_x": target_x,
+                    "error": "No rays reached the image plane",
                 }
-            
+
         # Centroid
         sum_y = sum(p[0] for p in spot_points)
         sum_z = sum(p[1] for p in spot_points)
         cent_y = sum_y / valid_rays
         cent_z = sum_z / valid_rays
-        
+
         # RMS Radius (relative to centroid)
         sum_sq_dist = 0.0
         max_dist_sq = 0.0
-        
+
         for y, z in spot_points:
             dy = y - cent_y
             dz = z - cent_z
-            dist_sq = dy*dy + dz*dz
+            dist_sq = dy * dy + dz * dz
             sum_sq_dist += dist_sq
             if dist_sq > max_dist_sq:
                 max_dist_sq = dist_sq
-                
+
         rms_radius = math.sqrt(sum_sq_dist / valid_rays)
         geo_radius = math.sqrt(max_dist_sq)
-        
+
         return {
-            'rms_radius': rms_radius, # mm
-            'geo_radius': geo_radius, # mm
-            'centroid': (cent_y, cent_z), # mm
-            'points': spot_points,
-            'valid_rays': valid_rays,
-            'image_plane_x': target_x
+            "rms_radius": rms_radius,  # mm
+            "geo_radius": geo_radius,  # mm
+            "centroid": (cent_y, cent_z),  # mm
+            "points": spot_points,
+            "valid_rays": valid_rays,
+            "image_plane_x": target_x,
         }

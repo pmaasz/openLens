@@ -21,7 +21,7 @@ class TestThickLensMatrix(unittest.TestCase):
 
     def _single_lens_system(self, **kwargs):
         lens = Lens(**kwargs)
-        system = OpticalSystem(name='single')
+        system = OpticalSystem(name="single")
         system.add_lens(lens)
         return system, lens
 
@@ -73,14 +73,18 @@ class TestDoublet(unittest.TestCase):
         system = create_doublet(focal_length=100.0, diameter=25.0)
         bfl = system.calculate_back_focal_length()
         self.assertIsNotNone(bfl)
-        self.assertGreater(bfl, 0.0,
-                           'Back focal length of a positive doublet must be > 0; '
-                           'got {!r}'.format(bfl))
+        self.assertGreater(
+            bfl,
+            0.0,
+            "Back focal length of a positive doublet must be > 0; "
+            "got {!r}".format(bfl),
+        )
 
     def test_cemented_doublet_focal_length_near_target(self):
         target = 100.0
         system = AchromaticDoubletDesigner.design_cemented_doublet(
-            focal_length=target, diameter=25.0,
+            focal_length=target,
+            diameter=25.0,
         )
         efl = system.get_system_focal_length()
         self.assertIsNotNone(efl)
@@ -97,5 +101,5 @@ class TestDoublet(unittest.TestCase):
         )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

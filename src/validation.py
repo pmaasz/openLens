@@ -15,16 +15,21 @@ from pathlib import Path
 from typing import Union, Tuple, Optional
 
 from .constants import (
-    MIN_RADIUS_OF_CURVATURE, MAX_RADIUS_OF_CURVATURE,
-    MIN_THICKNESS, MAX_THICKNESS,
-    MIN_DIAMETER, MAX_DIAMETER,
-    MIN_REFRACTIVE_INDEX, MAX_REFRACTIVE_INDEX,
-    EPSILON
+    MIN_RADIUS_OF_CURVATURE,
+    MAX_RADIUS_OF_CURVATURE,
+    MIN_THICKNESS,
+    MAX_THICKNESS,
+    MIN_DIAMETER,
+    MAX_DIAMETER,
+    MIN_REFRACTIVE_INDEX,
+    MAX_REFRACTIVE_INDEX,
+    EPSILON,
 )
 
 
 class ValidationError(Exception):
     """Raised when validation fails"""
+
     pass
 
 
@@ -55,15 +60,14 @@ def _validate_number(value: float, param_name: str = "value") -> float:
         )
 
     if math.isnan(value) or math.isinf(value):
-        raise ValidationError(
-            f"{param_name} must be a finite number, got {value}"
-        )
+        raise ValidationError(f"{param_name} must be a finite number, got {value}")
 
     return float(value)
 
 
-def validate_radius(radius: float, allow_negative: bool = True,
-                   param_name: str = "radius") -> float:
+def validate_radius(
+    radius: float, allow_negative: bool = True, param_name: str = "radius"
+) -> float:
     """
     Validate radius of curvature.
 
@@ -125,14 +129,10 @@ def validate_thickness(thickness: float, param_name: str = "thickness") -> float
         raise ValidationError(f"{param_name} must be positive")
 
     if thickness < MIN_THICKNESS:
-        raise ValidationError(
-            f"{param_name} must be at least {MIN_THICKNESS} mm"
-        )
+        raise ValidationError(f"{param_name} must be at least {MIN_THICKNESS} mm")
 
     if thickness > MAX_THICKNESS:
-        raise ValidationError(
-            f"{param_name} must be at most {MAX_THICKNESS} mm"
-        )
+        raise ValidationError(f"{param_name} must be at most {MAX_THICKNESS} mm")
 
     return thickness
 
@@ -157,14 +157,10 @@ def validate_diameter(diameter: float, param_name: str = "diameter") -> float:
         raise ValidationError(f"{param_name} must be positive")
 
     if diameter < MIN_DIAMETER:
-        raise ValidationError(
-            f"{param_name} must be at least {MIN_DIAMETER} mm"
-        )
+        raise ValidationError(f"{param_name} must be at least {MIN_DIAMETER} mm")
 
     if diameter > MAX_DIAMETER:
-        raise ValidationError(
-            f"{param_name} must be at most {MAX_DIAMETER} mm"
-        )
+        raise ValidationError(f"{param_name} must be at most {MAX_DIAMETER} mm")
 
     return diameter
 
@@ -186,14 +182,10 @@ def validate_refractive_index(n: float, param_name: str = "refractive index") ->
     n = _validate_number(n, param_name)
 
     if n < MIN_REFRACTIVE_INDEX:
-        raise ValidationError(
-            f"{param_name} must be at least {MIN_REFRACTIVE_INDEX}"
-        )
+        raise ValidationError(f"{param_name} must be at least {MIN_REFRACTIVE_INDEX}")
 
     if n > MAX_REFRACTIVE_INDEX:
-        raise ValidationError(
-            f"{param_name} must be at most {MAX_REFRACTIVE_INDEX}"
-        )
+        raise ValidationError(f"{param_name} must be at most {MAX_REFRACTIVE_INDEX}")
 
     return n
 
@@ -248,9 +240,7 @@ def validate_temperature(temperature: float, param_name: str = "temperature") ->
     temperature = _validate_number(temperature, param_name)
 
     if temperature < -273.15:
-        raise ValidationError(
-            f"{param_name} cannot be below absolute zero (-273.15°C)"
-        )
+        raise ValidationError(f"{param_name} cannot be below absolute zero (-273.15°C)")
 
     if temperature < -100 or temperature > 200:
         raise ValidationError(
@@ -305,8 +295,9 @@ def validate_non_negative_number(value: float, param_name: str = "value") -> flo
     return value
 
 
-def validate_range(value: float, min_val: float, max_val: float,
-                  param_name: str = "value") -> float:
+def validate_range(
+    value: float, min_val: float, max_val: float, param_name: str = "value"
+) -> float:
     """
     Validate that a value is within a specified range.
 
@@ -359,9 +350,9 @@ def validate_lens_name(name: str) -> str:
     return name
 
 
-def safe_float_conversion(value: Union[str, int, float],
-                         default: float = 0.0,
-                         param_name: str = "value") -> Tuple[bool, float]:
+def safe_float_conversion(
+    value: Union[str, int, float], default: float = 0.0, param_name: str = "value"
+) -> Tuple[bool, float]:
     """
     Safely convert a value to float.
 
@@ -395,9 +386,13 @@ def safe_float_conversion(value: Union[str, int, float],
     return False, default
 
 
-def validate_lens_parameters(radius1: float, radius2: float,
-                            thickness: float, diameter: float,
-                            refractive_index: float) -> dict:
+def validate_lens_parameters(
+    radius1: float,
+    radius2: float,
+    thickness: float,
+    diameter: float,
+    refractive_index: float,
+) -> dict:
     """
     Validate all lens parameters at once.
 
@@ -415,16 +410,17 @@ def validate_lens_parameters(radius1: float, radius2: float,
         ValidationError: If any parameter is invalid
     """
     return {
-        'radius1': validate_radius(radius1, allow_negative=True, param_name="R1"),
-        'radius2': validate_radius(radius2, allow_negative=True, param_name="R2"),
-        'thickness': validate_thickness(thickness),
-        'diameter': validate_diameter(diameter),
-        'refractive_index': validate_refractive_index(refractive_index)
+        "radius1": validate_radius(radius1, allow_negative=True, param_name="R1"),
+        "radius2": validate_radius(radius2, allow_negative=True, param_name="R2"),
+        "thickness": validate_thickness(thickness),
+        "diameter": validate_diameter(diameter),
+        "refractive_index": validate_refractive_index(refractive_index),
     }
 
 
-def check_physical_feasibility(radius1: float, radius2: float,
-                               thickness: float, diameter: float) -> Tuple[bool, Optional[str]]:
+def check_physical_feasibility(
+    radius1: float, radius2: float, thickness: float, diameter: float
+) -> Tuple[bool, Optional[str]]:
     """
     Check if lens parameters are physically feasible.
 
@@ -468,10 +464,12 @@ def check_physical_feasibility(radius1: float, radius2: float,
     return True, None
 
 
-def validate_file_path(file_path: Union[str, Path],
-                       must_exist: bool = False,
-                       create_parent: bool = False,
-                       param_name: str = "file_path") -> Path:
+def validate_file_path(
+    file_path: Union[str, Path],
+    must_exist: bool = False,
+    create_parent: bool = False,
+    param_name: str = "file_path",
+) -> Path:
     """
     Validate and sanitize file path.
 
@@ -506,9 +504,7 @@ def validate_file_path(file_path: Union[str, Path],
             try:
                 parent.mkdir(parents=True, exist_ok=True)
             except (OSError, PermissionError) as e:
-                raise ValidationError(
-                    f"Cannot create directory for {param_name}: {e}"
-                )
+                raise ValidationError(f"Cannot create directory for {param_name}: {e}")
         else:
             raise ValidationError(
                 f"Parent directory does not exist for {param_name}: {parent}"
@@ -523,10 +519,12 @@ def validate_file_path(file_path: Union[str, Path],
     return path
 
 
-def validate_directory_path(dir_path: Union[str, Path],
-                           must_exist: bool = True,
-                           create_if_missing: bool = False,
-                           param_name: str = "directory") -> Path:
+def validate_directory_path(
+    dir_path: Union[str, Path],
+    must_exist: bool = True,
+    create_if_missing: bool = False,
+    param_name: str = "directory",
+) -> Path:
     """
     Validate and sanitize directory path.
 
@@ -570,9 +568,9 @@ def validate_directory_path(dir_path: Union[str, Path],
     return path
 
 
-def validate_json_file_path(file_path: Union[str, Path],
-                           must_exist: bool = False,
-                           param_name: str = "JSON file") -> Path:
+def validate_json_file_path(
+    file_path: Union[str, Path], must_exist: bool = False, param_name: str = "JSON file"
+) -> Path:
     """
     Validate JSON file path.
 
@@ -587,10 +585,11 @@ def validate_json_file_path(file_path: Union[str, Path],
     Raises:
         ValidationError: If path is invalid or not a JSON file
     """
-    path = validate_file_path(file_path, must_exist=must_exist,
-                             create_parent=True, param_name=param_name)
+    path = validate_file_path(
+        file_path, must_exist=must_exist, create_parent=True, param_name=param_name
+    )
 
-    if path.suffix.lower() != '.json':
+    if path.suffix.lower() != ".json":
         raise ValidationError(
             f"{param_name} must have .json extension, got: {path.suffix}"
         )
@@ -614,37 +613,43 @@ def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> d
     """
     if not isinstance(data, dict):
         idx_str = f" at index {lens_index}" if lens_index is not None else ""
-        raise ValidationError(f"Lens data{idx_str} must be a dictionary, got {type(data)}")
+        raise ValidationError(
+            f"Lens data{idx_str} must be a dictionary, got {type(data)}"
+        )
 
     # Define required fields with their types
     required_fields = {
-        'name': str,
-        'radius_of_curvature_1': (int, float),
-        'radius_of_curvature_2': (int, float),
-        'thickness': (int, float),
-        'diameter': (int, float),
-        'refractive_index': (int, float)
+        "name": str,
+        "radius_of_curvature_1": (int, float),
+        "radius_of_curvature_2": (int, float),
+        "thickness": (int, float),
+        "diameter": (int, float),
+        "refractive_index": (int, float),
     }
 
     # Optional fields with their types
     optional_fields = {
-        'type': str,
-        'material': str,
-        'wavelength': (int, float),
-        'temperature': (int, float),
-        'id': str,
-        'created_at': str,
-        'modified_at': str
+        "type": str,
+        "material": str,
+        "wavelength": (int, float),
+        "temperature": (int, float),
+        "id": str,
+        "created_at": str,
+        "modified_at": str,
     }
 
     # Check required fields exist and have correct type
     idx_str = f" at index {lens_index}" if lens_index is not None else ""
     for field, expected_type in required_fields.items():
         if field not in data:
-            raise ValidationError(f"Missing required field '{field}' in lens data{idx_str}")
+            raise ValidationError(
+                f"Missing required field '{field}' in lens data{idx_str}"
+            )
 
         if not isinstance(data[field], expected_type):
-            type_name = expected_type.__name__ if isinstance(expected_type, type) else 'number'
+            type_name = (
+                expected_type.__name__ if isinstance(expected_type, type) else "number"
+            )
             raise ValidationError(
                 f"Field '{field}'{idx_str} must be {type_name}, got {type(data[field]).__name__}"
             )
@@ -652,7 +657,9 @@ def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> d
     # Check optional fields have correct type if present
     for field, expected_type in optional_fields.items():
         if field in data and not isinstance(data[field], expected_type):
-            type_name = expected_type.__name__ if isinstance(expected_type, type) else 'number'
+            type_name = (
+                expected_type.__name__ if isinstance(expected_type, type) else "number"
+            )
             raise ValidationError(
                 f"Field '{field}'{idx_str} must be {type_name}, got {type(data[field]).__name__}"
             )

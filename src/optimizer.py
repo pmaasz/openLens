@@ -20,6 +20,7 @@ from .analysis.beam_synthesis import PSFCalculator, WavefrontSensor, NUMPY_AVAIL
 @dataclass
 class OptimizationVariable:
     """A variable that can be optimized"""
+
     name: str
     element_index: int  # Which lens element (0-based)
     parameter: str  # 'radius_of_curvature_1', 'radius_of_curvature_2', 'thickness', 'air_gap', etc.
@@ -27,12 +28,14 @@ class OptimizationVariable:
     min_value: float
     max_value: float
     step_size: float = 1.0  # Initial step size for optimization
-    linked_targets: List[Tuple[int, str]] = field(default_factory=list)  # Other parameters controlled by this variable
-    
+    linked_targets: List[Tuple[int, str]] = field(
+        default_factory=list
+    )  # Other parameters controlled by this variable
+
     def is_valid(self, value: float) -> bool:
         """Check if value is within bounds"""
         return self.min_value <= value <= self.max_value
-    
+
     def clamp(self, value: float) -> float:
         """Clamp value to bounds"""
         return max(self.min_value, min(self.max_value, value))
@@ -41,6 +44,7 @@ class OptimizationVariable:
 @dataclass
 class OptimizationTarget:
     """An optimization target/constraint"""
+
     name: str
     target_value: float
     weight: float = 1.0  # Importance weight in merit function
@@ -50,6 +54,7 @@ class OptimizationTarget:
 @dataclass
 class OptimizationResult:
     """Result of optimization"""
+
     success: bool
     iterations: int
     initial_merit: float
@@ -66,7 +71,7 @@ def _get_sag(r: float, h: float) -> float:
     if abs(r) < 1e-6:
         return 0.0
     c = 1.0 / r
-    disc = 1.0 - (c * h)**2
+    disc = 1.0 - (c * h) ** 2
     if disc < 0:
         return r  # invalid geometry sentinel
     return c * h**2 / (1.0 + math.sqrt(disc))
@@ -74,16 +79,21 @@ def _get_sag(r: float, h: float) -> float:
 
 class MeritFunction:
     """Calculate merit function for optical system quality"""
-    
-    def __init__(self, system: OpticalSystem, targets: List[OptimizationTarget], constraints: Optional[Dict[str, float]] = None):
+
+    def __init__(
+        self,
+        system: OpticalSystem,
+        targets: List[OptimizationTarget],
+        constraints: Optional[Dict[str, float]] = None,
+    ):
         self.system = system
         self.targets = targets
         self.constraints = constraints or {
-            'min_center_thickness': 1.0,
-            'max_center_thickness': 100.0,
-            'min_edge_thickness': 0.5,
-            'min_air_gap': 0.1,
-            'min_edge_clearance': 0.1
+            "min_center_thickness": 1.0,
+            "max_center_thickness": 100.0,
+            "min_edge_thickness": 0.5,
+            "min_air_gap": 0.1,
+            "min_edge_clearance": 0.1,
         }
 
     # ------------------------------------------------------------------
@@ -96,19 +106,21 @@ class MeritFunction:
         if target.target_type == "minimize":
             return target.weight * value
         elif target.target_type == "target":
-            return target.weight * (value - target.target_value)**2
+            return target.weight * (value - target.target_value) ** 2
         elif target.target_type == "maximize":
             if value > 1e-9:
                 return target.weight * (1.0 / value)
             return target.weight * 1e3
         return 0.0
 
-    def _eval_spherical(self, system: OpticalSystem, target: OptimizationTarget) -> float:
+    def _eval_spherical(
+        self, system: OpticalSystem, target: OptimizationTarget
+    ) -> float:
         if not system.elements:
             return 1e6
         calc = AberrationsCalculator(system)
         results = calc.calculate_all_aberrations()
-        value = results.get('spherical_aberration')
+        value = results.get("spherical_aberration")
         if value is None:
             return 1e6
         return self._apply_target(target, abs(value))
@@ -118,17 +130,19 @@ class MeritFunction:
             return 0.0
         calc = AberrationsCalculator(system)
         results = calc.calculate_all_aberrations(field_angle_deg=5.0)
-        value = results.get('coma')
+        value = results.get("coma")
         if value is None:
             return 0.0
         return self._apply_target(target, abs(value))
 
-    def _eval_astigmatism(self, system: OpticalSystem, target: OptimizationTarget) -> float:
+    def _eval_astigmatism(
+        self, system: OpticalSystem, target: OptimizationTarget
+    ) -> float:
         if not system.elements:
             return 0.0
         calc = AberrationsCalculator(system)
         results = calc.calculate_all_aberrations(field_angle_deg=5.0)
-        value = results.get('astigmatism')
+        value = results.get("astigmatism")
         if value is None:
             return 0.0
         return self._apply_target(target, abs(value))
@@ -136,7 +150,7 @@ class MeritFunction:
     @staticmethod
     def _eval_chromatic(system: OpticalSystem, target: OptimizationTarget) -> float:
         chrom = system.calculate_chromatic_aberration()
-        return MeritFunction._apply_target(target, chrom['longitudinal'])
+        return MeritFunction._apply_target(target, chrom["longitudinal"])
 
     @staticmethod
     def _eval_focal_length(system: OpticalSystem, target: OptimizationTarget) -> float:
@@ -152,10 +166,10 @@ class MeritFunction:
     @staticmethod
     def _eval_rms_spot(system: OpticalSystem, target: OptimizationTarget) -> float:
         try:
-            if 'SpotDiagram' in globals():
-                spot = globals()['SpotDiagram'](system)
+            if "SpotDiagram" in globals():
+                spot = globals()["SpotDiagram"](system)
                 results = spot.trace_spot(field_angle_x_deg=0, field_angle_y_deg=0)
-                value = results.get('rms_radius', 0.0)
+                value = results.get("rms_radius", 0.0)
                 return MeritFunction._apply_target(target, value)
         except Exception:
             pass
@@ -164,22 +178,25 @@ class MeritFunction:
     @staticmethod
     def _eval_mtf(system: OpticalSystem, target: OptimizationTarget) -> float:
         try:
-            has_deps = ('PSFCalculator' in globals() and
-                        'WavefrontSensor' in globals() and
-                        'NUMPY_AVAILABLE' in globals() and
-                        globals()['NUMPY_AVAILABLE'])
+            has_deps = (
+                "PSFCalculator" in globals()
+                and "WavefrontSensor" in globals()
+                and "NUMPY_AVAILABLE" in globals()
+                and globals()["NUMPY_AVAILABLE"]
+            )
             if not has_deps:
                 return 0.0
 
             import numpy as np
-            sensor = globals()['WavefrontSensor'](system)
+
+            sensor = globals()["WavefrontSensor"](system)
             Y, Z, W = sensor.get_pupil_wavefront()
 
             if W.size == 0 or np.all(np.isnan(W)):
                 return target.weight * 1e3
 
-            psf = globals()['PSFCalculator'].calculate_psf(Y, Z, W)
-            mtf = globals()['PSFCalculator'].calculate_mtf(psf)
+            psf = globals()["PSFCalculator"].calculate_psf(Y, Z, W)
+            mtf = globals()["PSFCalculator"].calculate_mtf(psf)
             value = float(np.sum(mtf))
             return MeritFunction._apply_target(target, value)
         except Exception:
@@ -203,18 +220,18 @@ class MeritFunction:
     def _penalty_physical(self, system: OpticalSystem) -> float:
         """Penalties for invalid geometries (thickness, air gaps, edge clearance)."""
         merit = 0.0
-        min_ct = self.constraints.get('min_center_thickness', 1.0)
-        max_ct = self.constraints.get('max_center_thickness', 100.0)
-        min_et = self.constraints.get('min_edge_thickness', 0.5)
-        min_ag = self.constraints.get('min_air_gap', 0.1)
-        min_ec = self.constraints.get('min_edge_clearance', 0.1)
+        min_ct = self.constraints.get("min_center_thickness", 1.0)
+        max_ct = self.constraints.get("max_center_thickness", 100.0)
+        min_et = self.constraints.get("min_edge_thickness", 0.5)
+        min_ag = self.constraints.get("min_air_gap", 0.1)
+        min_ec = self.constraints.get("min_edge_clearance", 0.1)
 
         for element in system.elements:
             lens = element.lens
             if lens.thickness < min_ct:
-                merit += 1e5 * (min_ct - lens.thickness)**2
+                merit += 1e5 * (min_ct - lens.thickness) ** 2
             if lens.thickness > max_ct:
-                merit += 1e3 * (lens.thickness - max_ct)**2
+                merit += 1e3 * (lens.thickness - max_ct) ** 2
 
             try:
                 y = lens.diameter / 2.0
@@ -222,23 +239,23 @@ class MeritFunction:
                 s2 = _get_sag(lens.radius_of_curvature_2, y)
                 edge_thickness = lens.thickness - s1 + s2
                 if edge_thickness < min_et:
-                    merit += 1e4 * (min_et - edge_thickness)**2
+                    merit += 1e4 * (min_et - edge_thickness) ** 2
             except Exception:
                 merit += 1e5
 
         for i, gap in enumerate(system.air_gaps):
             if gap.thickness < min_ag:
-                merit += 1e5 * (min_ag - gap.thickness)**2
+                merit += 1e5 * (min_ag - gap.thickness) ** 2
 
             if i < len(system.elements) - 1:
                 lens1 = system.elements[i].lens
-                lens2 = system.elements[i+1].lens
+                lens2 = system.elements[i + 1].lens
                 max_h = min(lens1.diameter, lens2.diameter) / 2.0
                 s_back_1 = _get_sag(lens1.radius_of_curvature_2, max_h)
                 s_front_2 = _get_sag(lens2.radius_of_curvature_1, max_h)
                 edge_clearance = gap.thickness + s_front_2 - s_back_1
                 if edge_clearance < min_ec:
-                    merit += 1e5 * (min_ec - edge_clearance)**2
+                    merit += 1e5 * (min_ec - edge_clearance) ** 2
 
         return merit
 
@@ -259,9 +276,19 @@ class MeritFunction:
             if handler is not None:
                 # handler may be a plain function (for staticmethods) or unbound method
                 # Compare underlying function via getattr to handle both
-                h = getattr(handler, '__func__', handler)
-                statics = tuple(getattr(getattr(MeritFunction, n), '__func__', getattr(MeritFunction, n))
-                                for n in ('_eval_chromatic', '_eval_focal_length', '_eval_system_length', '_eval_rms_spot', '_eval_mtf'))
+                h = getattr(handler, "__func__", handler)
+                statics = tuple(
+                    getattr(
+                        getattr(MeritFunction, n), "__func__", getattr(MeritFunction, n)
+                    )
+                    for n in (
+                        "_eval_chromatic",
+                        "_eval_focal_length",
+                        "_eval_system_length",
+                        "_eval_rms_spot",
+                        "_eval_mtf",
+                    )
+                )
                 if h in statics:
                     merit += handler(system, target)
                 else:
@@ -272,21 +299,30 @@ class MeritFunction:
 
 class LensOptimizer:
     """Optimize optical system parameters"""
-    
-    def __init__(self, system: OpticalSystem, variables: List[OptimizationVariable],
-                 targets: List[OptimizationTarget], constraints: Optional[Dict[str, float]] = None):
+
+    def __init__(
+        self,
+        system: OpticalSystem,
+        variables: List[OptimizationVariable],
+        targets: List[OptimizationTarget],
+        constraints: Optional[Dict[str, float]] = None,
+    ):
         self.system = system
         self.variables = variables
         self.targets = targets
         self.merit_function = MeritFunction(system, targets, constraints)
         self._merit_cache = {}
-    
-    def optimize(self, max_iterations: int = 100, tolerance: float = 1e-6, 
-                 callback: Optional[Callable[[int, float, List[float]], None]] = None) -> OptimizationResult:
+
+    def optimize(
+        self,
+        max_iterations: int = 100,
+        tolerance: float = 1e-6,
+        callback: Optional[Callable[[int, float, List[float]], None]] = None,
+    ) -> OptimizationResult:
         """
         Run optimization using the default algorithm (Simplex).
         Wrapper for compatibility with controllers.
-        
+
         Args:
             max_iterations: Maximum number of iterations.
             tolerance: Convergence threshold.
@@ -294,81 +330,90 @@ class LensOptimizer:
         """
         return self.optimize_simplex(max_iterations, tolerance, callback)
 
-    def optimize_simplex(self, max_iterations: int = 100, tolerance: float = 1e-6,
-                        callback: Optional[Callable[[int, float, List[float]], None]] = None) -> OptimizationResult:
+    def optimize_simplex(
+        self,
+        max_iterations: int = 100,
+        tolerance: float = 1e-6,
+        callback: Optional[Callable[[int, float, List[float]], None]] = None,
+    ) -> OptimizationResult:
         """
         Nelder-Mead simplex optimization
         Simple but robust algorithm for lens optimization
         """
         n_vars = len(self.variables)
-        
+
         # Initialize simplex (n+1 vertices in n-dimensional space)
         simplex = []
         current_values = [var.current_value for var in self.variables]
-        
+
         # First vertex is current design
         simplex.append(current_values.copy())
-        
+
         # Create n additional vertices by perturbing each variable
         for i in range(n_vars):
             vertex = current_values.copy()
             vertex[i] += self.variables[i].step_size
             vertex[i] = self.variables[i].clamp(vertex[i])
             simplex.append(vertex)
-        
+
         # Evaluate merit for all vertices
         merit_values = [self._evaluate_design(vertex) for vertex in simplex]
-        
+
         initial_merit = merit_values[0]
         variable_history = [dict(zip([v.name for v in self.variables], current_values))]
         merit_history = [initial_merit]
-        
+
         # Simplex algorithm parameters
         alpha = 1.0  # Reflection
         gamma = 2.0  # Expansion
-        rho = 0.5    # Contraction
+        rho = 0.5  # Contraction
         sigma = 0.5  # Shrinkage
-        
+
         last_iteration = 0
-        
+
         for iteration in range(max_iterations):
             last_iteration = iteration
             # Sort vertices by merit (best to worst)
             order = sorted(range(len(merit_values)), key=lambda i: merit_values[i])
             simplex = [simplex[i] for i in order]
             merit_values = [merit_values[i] for i in order]
-            
+
             # Callback with best solution so far
             if callback:
                 callback(iteration, merit_values[0], simplex[0])
-            
+
             # Check convergence
             merit_range = merit_values[-1] - merit_values[0]
             if merit_range < tolerance:
                 break
-            
+
             # Calculate centroid of best n points (excluding worst)
-            centroid = [sum(simplex[i][j] for i in range(n_vars)) / n_vars 
-                       for j in range(n_vars)]
-            
+            centroid = [
+                sum(simplex[i][j] for i in range(n_vars)) / n_vars
+                for j in range(n_vars)
+            ]
+
             # Reflection
             worst = simplex[-1]
-            reflected = [centroid[j] + alpha * (centroid[j] - worst[j]) 
-                        for j in range(n_vars)]
+            reflected = [
+                centroid[j] + alpha * (centroid[j] - worst[j]) for j in range(n_vars)
+            ]
             reflected = [self.variables[j].clamp(reflected[j]) for j in range(n_vars)]
             reflected_merit = self._evaluate_design(reflected)
-            
+
             if merit_values[0] <= reflected_merit < merit_values[-2]:
                 # Accept reflection
                 simplex[-1] = reflected
                 merit_values[-1] = reflected_merit
             elif reflected_merit < merit_values[0]:
                 # Try expansion
-                expanded = [centroid[j] + gamma * (reflected[j] - centroid[j])
-                           for j in range(n_vars)]
+                expanded = [
+                    centroid[j] + gamma * (reflected[j] - centroid[j])
+                    for j in range(n_vars)
+                ]
                 expanded = [self.variables[j].clamp(expanded[j]) for j in range(n_vars)]
                 expanded_merit = self._evaluate_design(expanded)
-                
+
                 if expanded_merit < reflected_merit:
                     simplex[-1] = expanded
                     merit_values[-1] = expanded_merit
@@ -377,11 +422,14 @@ class LensOptimizer:
                     merit_values[-1] = reflected_merit
             else:
                 # Contraction
-                contracted = [centroid[j] + rho * (worst[j] - centroid[j])
-                             for j in range(n_vars)]
-                contracted = [self.variables[j].clamp(contracted[j]) for j in range(n_vars)]
+                contracted = [
+                    centroid[j] + rho * (worst[j] - centroid[j]) for j in range(n_vars)
+                ]
+                contracted = [
+                    self.variables[j].clamp(contracted[j]) for j in range(n_vars)
+                ]
                 contracted_merit = self._evaluate_design(contracted)
-                
+
                 if contracted_merit < merit_values[-1]:
                     simplex[-1] = contracted
                     merit_values[-1] = contracted_merit
@@ -389,27 +437,37 @@ class LensOptimizer:
                     # Shrink simplex toward best point
                     best = simplex[0]
                     for i in range(1, len(simplex)):
-                        simplex[i] = [best[j] + sigma * (simplex[i][j] - best[j])
-                                     for j in range(n_vars)]
-                        simplex[i] = [self.variables[j].clamp(simplex[i][j]) 
-                                     for j in range(n_vars)]
+                        simplex[i] = [
+                            best[j] + sigma * (simplex[i][j] - best[j])
+                            for j in range(n_vars)
+                        ]
+                        simplex[i] = [
+                            self.variables[j].clamp(simplex[i][j])
+                            for j in range(n_vars)
+                        ]
                         merit_values[i] = self._evaluate_design(simplex[i])
-            
+
             # Record history
-            variable_history.append(dict(zip([v.name for v in self.variables], simplex[0])))
+            variable_history.append(
+                dict(zip([v.name for v in self.variables], simplex[0]))
+            )
             merit_history.append(merit_values[0])
-            
+
             last_iteration = iteration
-        
+
         # Best solution
         best_values = simplex[0]
         final_merit = merit_values[0]
-        
+
         # Apply best values to system
         optimized_system = self._apply_variables(best_values)
-        
-        improvement = ((initial_merit - final_merit) / initial_merit * 100) if initial_merit > 0 else 0
-        
+
+        improvement = (
+            ((initial_merit - final_merit) / initial_merit * 100)
+            if initial_merit > 0
+            else 0
+        )
+
         return OptimizationResult(
             success=True,
             iterations=last_iteration + 1,
@@ -419,55 +477,64 @@ class LensOptimizer:
             optimized_system=optimized_system,
             variable_history=variable_history,
             merit_history=merit_history,
-            message=f"Converged after {last_iteration + 1} iterations"
+            message=f"Converged after {last_iteration + 1} iterations",
         )
-    
-    def optimize_gradient_descent(self, max_iterations: int = 100, 
-                                   learning_rate: float = 0.1,
-                                   tolerance: float = 1e-6) -> OptimizationResult:
+
+    def optimize_gradient_descent(
+        self,
+        max_iterations: int = 100,
+        learning_rate: float = 0.1,
+        tolerance: float = 1e-6,
+    ) -> OptimizationResult:
         """
         Gradient descent optimization with numerical gradients
         """
         current_values = [var.current_value for var in self.variables]
         initial_merit = self._evaluate_design(current_values)
-        
+
         variable_history = [dict(zip([v.name for v in self.variables], current_values))]
         merit_history = [initial_merit]
-        
+
         last_iteration = 0
-        
+
         for iteration in range(max_iterations):
             last_iteration = iteration
             last_iteration = iteration
             # Calculate numerical gradient
             gradient = self._calculate_gradient(current_values)
-            
+
             # Update variables
             new_values = []
             for i, (val, grad) in enumerate(zip(current_values, gradient)):
                 new_val = val - learning_rate * grad
                 new_val = self.variables[i].clamp(new_val)
                 new_values.append(new_val)
-            
+
             # Evaluate new design
             new_merit = self._evaluate_design(new_values)
-            
+
             # Check convergence
             improvement = initial_merit - new_merit
             if abs(new_merit - merit_history[-1]) < tolerance:
                 break
-            
+
             # Accept new values
             current_values = new_values
-            variable_history.append(dict(zip([v.name for v in self.variables], current_values)))
+            variable_history.append(
+                dict(zip([v.name for v in self.variables], current_values))
+            )
             merit_history.append(new_merit)
-            
+
             last_iteration = iteration
-        
+
         optimized_system = self._apply_variables(current_values)
         final_merit = merit_history[-1]
-        improvement = ((initial_merit - final_merit) / initial_merit * 100) if initial_merit > 0 else 0
-        
+        improvement = (
+            ((initial_merit - final_merit) / initial_merit * 100)
+            if initial_merit > 0
+            else 0
+        )
+
         return OptimizationResult(
             success=True,
             iterations=last_iteration + 1,
@@ -477,14 +544,14 @@ class LensOptimizer:
             optimized_system=optimized_system,
             variable_history=variable_history,
             merit_history=merit_history,
-            message=f"Completed {last_iteration + 1} iterations"
+            message=f"Completed {last_iteration + 1} iterations",
         )
-    
+
     def _calculate_gradient(self, values: List[float]) -> List[float]:
         """Calculate numerical gradient using finite differences with optional parallelism"""
         epsilon = 1e-5
         n_vars = len(values)
-        
+
         # Prepare all perturbed designs
         perturbed_designs = []
         for i in range(n_vars):
@@ -492,54 +559,58 @@ class LensOptimizer:
             values_plus[i] += epsilon
             values_plus[i] = self.variables[i].clamp(values_plus[i])
             perturbed_designs.append(values_plus)
-            
+
         # Evaluate f0 (might already be cached)
         f0 = self._evaluate_design(values)
-        
+
         # Evaluate all perturbations
         # If we have many variables, use parallel execution
         if n_vars > 4:
             with ProcessPoolExecutor() as executor:
-                f_plus_list = list(executor.map(self._evaluate_design, perturbed_designs))
+                f_plus_list = list(
+                    executor.map(self._evaluate_design, perturbed_designs)
+                )
         else:
             f_plus_list = [self._evaluate_design(v) for v in perturbed_designs]
-            
+
         gradient = [(f_plus - f0) / epsilon for f_plus in f_plus_list]
         return gradient
-    
+
     def _evaluate_design(self, values: List[float]) -> float:
         """Evaluate merit function for given variable values with caching"""
         # Create a cache key from the values (rounded to avoid precision issues)
         cache_key = tuple(round(v, 10) for v in values)
         if cache_key in self._merit_cache:
             return self._merit_cache[cache_key]
-            
+
         system = self._apply_variables(values)
         merit = self.merit_function.evaluate(system)
-        
+
         self._merit_cache[cache_key] = merit
         return merit
-    
+
     def _apply_variables(self, values: List[float]) -> OpticalSystem:
         """Create a system with variables applied"""
         # Deep copy the system
         system = copy.deepcopy(self.system)
-        
+
         # Apply variable values
         for var, value in zip(self.variables, values):
             # Apply to primary target
             self._apply_single_variable(system, var.element_index, var.parameter, value)
-            
+
             # Apply to linked targets
             for elem_idx, param in var.linked_targets:
                 self._apply_single_variable(system, elem_idx, param, value)
-        
+
         # Update positions after changes
         system._update_positions()
-        
+
         return system
 
-    def _apply_single_variable(self, system: OpticalSystem, element_index: int, parameter: str, value: float):
+    def _apply_single_variable(
+        self, system: OpticalSystem, element_index: int, parameter: str, value: float
+    ):
         """Apply a single variable value to the system"""
         if parameter == "radius_of_curvature_1":
             system.elements[element_index].lens.radius_of_curvature_1 = value
@@ -562,33 +633,63 @@ class LensOptimizer:
             lens.update_refractive_index()
 
 
-def create_doublet_optimizer(system: OpticalSystem, target_focal_length: float = 100.0) -> LensOptimizer:
+def create_doublet_optimizer(
+    system: OpticalSystem, target_focal_length: float = 100.0
+) -> LensOptimizer:
     """
     Create optimizer for achromatic doublet
     Optimizes curvatures to minimize chromatic aberration while maintaining focal length
     """
     variables = [
-        OptimizationVariable("R1 Crown", 0, "radius_of_curvature_1",
-                           system.elements[0].lens.radius_of_curvature_1,
-                           20.0, 500.0, 10.0),
-        OptimizationVariable("R2 Crown", 0, "radius_of_curvature_2",
-                           system.elements[0].lens.radius_of_curvature_2,
-                           -500.0, -20.0, 10.0,
-                           linked_targets=[(1, "radius_of_curvature_1")]),
-        OptimizationVariable("R1 Flint", 1, "radius_of_curvature_1",
-                           system.elements[1].lens.radius_of_curvature_1,
-                           -500.0, -20.0, 10.0),
-        OptimizationVariable("R2 Flint", 1, "radius_of_curvature_2",
-                           system.elements[1].lens.radius_of_curvature_2,
-                           20.0, 500.0, 10.0),
+        OptimizationVariable(
+            "R1 Crown",
+            0,
+            "radius_of_curvature_1",
+            system.elements[0].lens.radius_of_curvature_1,
+            20.0,
+            500.0,
+            10.0,
+        ),
+        OptimizationVariable(
+            "R2 Crown",
+            0,
+            "radius_of_curvature_2",
+            system.elements[0].lens.radius_of_curvature_2,
+            -500.0,
+            -20.0,
+            10.0,
+            linked_targets=[(1, "radius_of_curvature_1")],
+        ),
+        OptimizationVariable(
+            "R1 Flint",
+            1,
+            "radius_of_curvature_1",
+            system.elements[1].lens.radius_of_curvature_1,
+            -500.0,
+            -20.0,
+            10.0,
+        ),
+        OptimizationVariable(
+            "R2 Flint",
+            1,
+            "radius_of_curvature_2",
+            system.elements[1].lens.radius_of_curvature_2,
+            20.0,
+            500.0,
+            10.0,
+        ),
     ]
     # Keep backward compatibility for tests expecting "Interface Curvature"
     # Add alias if needed: ensure interface variable is present
     # The above covers 4 variables as expected by tests; the linked target ensures cemented interface
-    
+
     targets = [
-        OptimizationTarget("chromatic_aberration", 0.0, weight=1.0, target_type="minimize"),
-        OptimizationTarget("focal_length", target_focal_length, weight=100.0, target_type="target"),
+        OptimizationTarget(
+            "chromatic_aberration", 0.0, weight=1.0, target_type="minimize"
+        ),
+        OptimizationTarget(
+            "focal_length", target_focal_length, weight=100.0, target_type="target"
+        ),
     ]
-    
+
     return LensOptimizer(system, variables, targets)

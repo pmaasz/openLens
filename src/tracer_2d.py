@@ -7,10 +7,17 @@ from typing import List, Optional, Tuple, TYPE_CHECKING
 
 from .ray import Ray, RefractionResult, OpticalIntersector
 from .constants import (
-    EPSILON, WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR,
-    DEFAULT_NUM_RAYS, DEFAULT_ANGLE_RANGE, DEFAULT_PROPAGATION_DISTANCE,
-    MESH_RESOLUTION_HIGH, APERTURE_FILL_FACTOR,
-    RAY_START_OFFSET_MM, RAY_EXIT_PROPAGATION_2D_MM,
+    EPSILON,
+    WAVELENGTH_GREEN,
+    NM_TO_MM,
+    REFRACTIVE_INDEX_AIR,
+    DEFAULT_NUM_RAYS,
+    DEFAULT_ANGLE_RANGE,
+    DEFAULT_PROPAGATION_DISTANCE,
+    MESH_RESOLUTION_HIGH,
+    APERTURE_FILL_FACTOR,
+    RAY_START_OFFSET_MM,
+    RAY_EXIT_PROPAGATION_2D_MM,
 )
 from .lens import _is_flat
 
@@ -66,7 +73,7 @@ class LensRayTracer:
 
     def _get_surface_normal_angle(self, x: float, y: float, surface_type: str) -> float:
         """Calculate surface normal angle at a point."""
-        if surface_type == 'front':
+        if surface_type == "front":
             if self.front_is_flat:
                 return 0
             else:
@@ -81,7 +88,9 @@ class LensRayTracer:
                 dy = y
                 return math.atan2(dy, dx)
 
-    def _intersect_flat_surface(self, ray: Ray, vertex_x: float) -> Optional[Tuple[float, float]]:
+    def _intersect_flat_surface(
+        self, ray: Ray, vertex_x: float
+    ) -> Optional[Tuple[float, float]]:
         """Find intersection of ray with a flat surface at vertex_x."""
         if abs(math.cos(ray.angle)) < EPSILON:
             return None
@@ -98,7 +107,11 @@ class LensRayTracer:
         return (vertex_x, y)
 
     def _intersect_sphere_surface(
-        self, ray: Ray, center_x: float, R: float, is_front: bool,
+        self,
+        ray: Ray,
+        center_x: float,
+        R: float,
+        is_front: bool,
     ) -> Optional[Tuple[float, float]]:
         """
         Find intersection of ray with a spherical surface.
@@ -124,7 +137,7 @@ class LensRayTracer:
         valid_ts = [t for t in [t1, t2] if t > EPSILON]
         if not valid_ts:
             if not is_front:
-                dist_sq = (ray.x - center_x)**2 + ray.y**2
+                dist_sq = (ray.x - center_x) ** 2 + ray.y**2
                 R_sq = R**2
                 R_signed = self.R2 if not is_front else self.R1
                 already_exited = False
@@ -163,15 +176,21 @@ class LensRayTracer:
         """Find intersection point of ray with front surface."""
         if self.front_is_flat:
             return self._intersect_flat_surface(ray, self.front_vertex_x)
-        return self._intersect_sphere_surface(ray, self.front_center_x, abs(self.R1), is_front=True)
+        return self._intersect_sphere_surface(
+            ray, self.front_center_x, abs(self.R1), is_front=True
+        )
 
     def _intersect_back_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
         """Find intersection point of ray with back surface."""
         if self.back_is_flat:
             return self._intersect_flat_surface(ray, self.back_vertex_x)
-        return self._intersect_sphere_surface(ray, self.back_center_x, abs(self.R2), is_front=False)
+        return self._intersect_sphere_surface(
+            ray, self.back_center_x, abs(self.R2), is_front=False
+        )
 
-    def trace_ray(self, ray: Ray, propagate_distance: float = DEFAULT_PROPAGATION_DISTANCE) -> Ray:
+    def trace_ray(
+        self, ray: Ray, propagate_distance: float = DEFAULT_PROPAGATION_DISTANCE
+    ) -> Ray:
         """Trace a ray through the lens."""
         intersection = self._intersect_front_surface(ray)
 
@@ -188,8 +207,11 @@ class LensRayTracer:
             ray.path.append((x1, y1))
         ray.hit = True
 
-        normal_angle = self._get_surface_normal_angle(x1, y1, 'front')
-        if ray.refract_or_reflect(REFRACTIVE_INDEX_AIR, self.n, normal_angle) is not RefractionResult.REFRACTED:
+        normal_angle = self._get_surface_normal_angle(x1, y1, "front")
+        if (
+            ray.refract_or_reflect(REFRACTIVE_INDEX_AIR, self.n, normal_angle)
+            is not RefractionResult.REFRACTED
+        ):
             ray.terminated = True
             return ray
 
@@ -213,8 +235,11 @@ class LensRayTracer:
         if len(ray.path) == 0 or ray.path[-1] != (x2, y2):
             ray.path.append((x2, y2))
 
-        normal_angle = self._get_surface_normal_angle(x2, y2, 'back')
-        if ray.refract_or_reflect(self.n, REFRACTIVE_INDEX_AIR, normal_angle) is not RefractionResult.REFRACTED:
+        normal_angle = self._get_surface_normal_angle(x2, y2, "back")
+        if (
+            ray.refract_or_reflect(self.n, REFRACTIVE_INDEX_AIR, normal_angle)
+            is not RefractionResult.REFRACTED
+        ):
             ray.terminated = True
             return ray
 
@@ -223,10 +248,13 @@ class LensRayTracer:
 
         return ray
 
-    def trace_parallel_rays(self, num_rays: int = DEFAULT_NUM_RAYS,
-                           ray_height_range: Optional[Tuple[float, float]] = None,
-                           wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM,
-                           angle_deg: float = 0.0) -> List[Ray]:
+    def trace_parallel_rays(
+        self,
+        num_rays: int = DEFAULT_NUM_RAYS,
+        ray_height_range: Optional[Tuple[float, float]] = None,
+        wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM,
+        angle_deg: float = 0.0,
+    ) -> List[Ray]:
         """Trace parallel rays (collimated beam) through the lens."""
         if ray_height_range is None:
             max_height = self.D / 2 * APERTURE_FILL_FACTOR
@@ -251,9 +279,14 @@ class LensRayTracer:
 
         return rays
 
-    def trace_point_source_rays(self, source_x: float, source_y: float,
-                               num_rays: int = DEFAULT_NUM_RAYS, max_angle_deg: float = DEFAULT_ANGLE_RANGE[1],
-                               wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray]:
+    def trace_point_source_rays(
+        self,
+        source_x: float,
+        source_y: float,
+        num_rays: int = DEFAULT_NUM_RAYS,
+        max_angle_deg: float = DEFAULT_ANGLE_RANGE[1],
+        wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM,
+    ) -> List[Ray]:
         """Trace rays from a point source."""
         rays = []
         max_angle_rad = math.radians(max_angle_deg)
@@ -297,7 +330,9 @@ class LensRayTracer:
         focal_x = sum(crossings) / len(crossings)
         return (focal_x, 0)
 
-    def get_lens_outline(self, num_points: int = MESH_RESOLUTION_HIGH) -> List[Tuple[float, float]]:
+    def get_lens_outline(
+        self, num_points: int = MESH_RESOLUTION_HIGH
+    ) -> List[Tuple[float, float]]:
         """Get points defining the lens outline for visualization."""
         points = []
         y_max = self.D / 2
@@ -308,11 +343,11 @@ class LensRayTracer:
                 x = self.lens_offset
             else:
                 R = abs(self.R1)
-                if y*y <= R*R:
+                if y * y <= R * R:
                     if self.R1 > 0:
-                        x = self.lens_offset - R + math.sqrt(R*R - y*y)
+                        x = self.lens_offset - R + math.sqrt(R * R - y * y)
                     else:
-                        x = self.lens_offset + R - math.sqrt(R*R - y*y)
+                        x = self.lens_offset + R - math.sqrt(R * R - y * y)
                 else:
                     continue
             points.append((x, y))
@@ -322,11 +357,11 @@ class LensRayTracer:
                 x = self.lens_offset + self.d
             else:
                 R = abs(self.R2)
-                if y*y <= R*R:
+                if y * y <= R * R:
                     if self.R2 > 0:
-                        x = self.lens_offset + self.d + R - math.sqrt(R*R - y*y)
+                        x = self.lens_offset + self.d + R - math.sqrt(R * R - y * y)
                     else:
-                        x = self.lens_offset + self.d - R + math.sqrt(R*R - y*y)
+                        x = self.lens_offset + self.d - R + math.sqrt(R * R - y * y)
                 else:
                     continue
             points.append((x, y))
@@ -340,9 +375,12 @@ class SystemRayTracer:
     def __init__(self, optical_system: "OpticalSystem") -> None:
         self.system = optical_system
 
-    def trace_parallel_rays(self, num_rays: int = DEFAULT_NUM_RAYS,
-                           angle_deg: float = 0.0,
-                           wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray]:
+    def trace_parallel_rays(
+        self,
+        num_rays: int = DEFAULT_NUM_RAYS,
+        angle_deg: float = 0.0,
+        wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM,
+    ) -> List[Ray]:
         """Trace parallel rays through the entire optical system."""
         if not self.system.elements:
             return []
@@ -384,7 +422,7 @@ class SystemRayTracer:
             if not ray.hit:
                 ray.terminated = False
                 if i < len(self.system.elements) - 1:
-                    next_pos = self.system.elements[i+1].position
+                    next_pos = self.system.elements[i + 1].position
                     if next_pos > ray.x:
                         dist = next_pos - ray.x
                         ray.propagate(dist)
@@ -398,7 +436,7 @@ class SystemRayTracer:
                 break
 
             if i < len(self.system.elements) - 1:
-                next_pos = self.system.elements[i+1].position
+                next_pos = self.system.elements[i + 1].position
                 if next_pos > ray.x:
                     dist = next_pos - ray.x
                     ray.propagate(dist)

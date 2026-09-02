@@ -4,7 +4,7 @@ from .spot_diagram import SpotDiagram
 from .beam_synthesis import PSFCalculator, WavefrontSensor
 
 __all__ = [
-    'SpotDiagram',
-    'PSFCalculator',
-    'WavefrontSensor',
+    "SpotDiagram",
+    "PSFCalculator",
+    "WavefrontSensor",
 ]

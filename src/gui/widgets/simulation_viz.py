@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 class SimulationVisualizationWidget(QWidget):
     """2D ray tracing simulation visualization widget"""
-    
+
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """Initialize the widget with default view and display state.
 
@@ -26,10 +26,10 @@ class SimulationVisualizationWidget(QWidget):
         self._system = None
         self._rays = []
         self._wavelength = 550  # Default wavelength in nm
-        
+
         self.setMinimumSize(400, 300)
         self.setStyleSheet("background-color: #1e1e1e; border: 2px solid #888888;")
-        
+
         self._bg_color = QColor("#1e1e1e")
         self._axis_color = QColor("#666666")
         self._lens_color = QColor(0, 120, 212, 150)
@@ -39,7 +39,7 @@ class SimulationVisualizationWidget(QWidget):
         self._show_ghosts = False
         self._show_image_sim = False
         self._image_pattern = "Star"
-        
+
         # Zoom and pan state
         self._zoom = 1.0
         self._pan_x = 0
@@ -47,10 +47,10 @@ class SimulationVisualizationWidget(QWidget):
         self._is_panning = False
         self._last_mouse_x = 0
         self._last_mouse_y = 0
-        
+
         # Install event filters
         self.setFocusPolicy(Qt.StrongFocus)
-    
+
     @staticmethod
     def wavelength_to_color(wavelength: float) -> QColor:
         """Convert wavelength (nm) to RGB color
@@ -65,7 +65,7 @@ class SimulationVisualizationWidget(QWidget):
             wavelength = 380
         elif wavelength > 780:
             wavelength = 780
-        
+
         # Simplified spectral color approximation
         if wavelength < 440:
             r = int((440 - wavelength) / (440 - 380) * 255)
@@ -91,9 +91,9 @@ class SimulationVisualizationWidget(QWidget):
             r = 255
             g = 0
             b = 0
-        
+
         return QColor(r, g, b, 200)
-    
+
     def wheelEvent(self, event: "QWheelEvent") -> None:
         """Handle mouse wheel for zooming"""
         if event.angleDelta().y() > 0:
@@ -102,14 +102,14 @@ class SimulationVisualizationWidget(QWidget):
             self._zoom /= 1.1
         self._zoom = max(0.1, min(self._zoom, 50.0))
         self.update()
-    
+
     def mousePressEvent(self, event: "QMouseEvent") -> None:
         """Start panning on mouse press"""
         if event.button() == Qt.LeftButton:
             self._is_panning = True
             self._last_mouse_x = event.position().x()
             self._last_mouse_y = event.position().y()
-    
+
     def mouseMoveEvent(self, event: "QMouseEvent") -> None:
         """Pan the view when dragging"""
         if self._is_panning:
@@ -120,12 +120,12 @@ class SimulationVisualizationWidget(QWidget):
             self._last_mouse_x = event.position().x()
             self._last_mouse_y = event.position().y()
             self.update()
-    
+
     def mouseReleaseEvent(self, event: "QMouseEvent") -> None:
         """Stop panning on mouse release"""
         if event.button() == Qt.LeftButton:
             self._is_panning = False
-    
+
     def keyPressEvent(self, event: "QKeyEvent") -> None:
         """Handle keyboard for zoom/pan reset"""
         if event.key() == Qt.Key_R:
@@ -140,17 +140,23 @@ class SimulationVisualizationWidget(QWidget):
             self._zoom /= 1.2
             self._zoom = max(0.1, self._zoom)
             self.update()
-    
+
     def reset_view(self) -> None:
         """Reset zoom and pan"""
         self._zoom = 1.0
         self._pan_x = 0
         self._pan_y = 0
         self.update()
-    
-    def run_simulation(self, lens_or_system: Union["Lens", "OpticalSystem"],
-                       num_rays: int = 11, angle: float = 0, source_height: float = 0,
-                       show_ghosts: bool = False, wavelength: float = 550) -> None:
+
+    def run_simulation(
+        self,
+        lens_or_system: Union["Lens", "OpticalSystem"],
+        num_rays: int = 11,
+        angle: float = 0,
+        source_height: float = 0,
+        show_ghosts: bool = False,
+        wavelength: float = 550,
+    ) -> None:
         """Run ray tracing simulation
 
         Args:
@@ -163,44 +169,50 @@ class SimulationVisualizationWidget(QWidget):
             wavelength: Wavelength in nanometers used for the ray color.
         """
         from ...optical_system import OpticalSystem
+
         if isinstance(lens_or_system, OpticalSystem):
             self._system = lens_or_system
             self._lens = None
         else:
             self._lens = lens_or_system
             self._system = None
-            
+
         self._rays = []
         self._ghost_rays = []
         self._show_ghosts = show_ghosts
         self._wavelength = wavelength
         self._ray_color = self.wavelength_to_color(wavelength)
-        
+
         try:
             from ...ray_tracer import LensRayTracer, Ray
-            
+
             # Use appropriate tracer
             if self._system:
                 # OpticalSystem has multiple elements
                 from ...ray_tracer import SystemRayTracer
+
                 tracer = SystemRayTracer(self._system)
-                diameter = self._system.elements[0].lens.diameter if self._system.elements else 25.0
+                diameter = (
+                    self._system.elements[0].lens.diameter
+                    if self._system.elements
+                    else 25.0
+                )
             else:
                 tracer = LensRayTracer(self._lens)
                 diameter = self._lens.diameter
-            
+
             angle_rad = angle * math.pi / 180.0
-            
+
             for i in range(num_rays):
                 if num_rays == 1:
                     h = 0
                 else:
-                    h = -diameter/2 + diameter * i / (num_rays - 1)
-                
+                    h = -diameter / 2 + diameter * i / (num_rays - 1)
+
                 ray = Ray(-100, h + source_height, angle_rad=angle_rad)
                 tracer.trace_ray(ray)
                 self._rays.append(ray)
-            
+
             if show_ghosts:
                 if self._system:
                     self._run_ghost_analysis(self._system, tracer)
@@ -209,25 +221,28 @@ class SimulationVisualizationWidget(QWidget):
                     temp_system = OpticalSystem(name="Ghost Analysis")
                     temp_system.add_lens(self._lens)
                     self._run_ghost_analysis(temp_system, tracer)
-        
+
         except Exception as e:
             print(f"Simulation error: {e}")
-        
+
         self.update()
-    
-    def _run_ghost_analysis(self, system: "OpticalSystem", tracer: "SystemRayTracer") -> None:
+
+    def _run_ghost_analysis(
+        self, system: "OpticalSystem", tracer: "SystemRayTracer"
+    ) -> None:
         """Run ghost analysis for 2nd order reflections"""
         try:
             from ...analysis.ghost import GhostAnalyzer
+
             analyzer = GhostAnalyzer(system)
             ghosts = analyzer.trace_ghosts(num_rays=3)
-            
+
             for ghost in ghosts:
                 if ghost.rays:
                     self._ghost_rays.append(ghost.rays)
         except Exception as e:
             print(f"Ghost analysis error: {e}")
-    
+
     def run_image_simulation(self, lens: "Lens", pattern: str = "Star") -> None:
         """Run image simulation pattern through lens
 
@@ -239,7 +254,7 @@ class SimulationVisualizationWidget(QWidget):
         self._show_image_sim = True
         self._image_pattern = pattern
         self.update()
-    
+
     def clear_simulation(self) -> None:
         """Clear simulation results"""
         self._rays = []
@@ -247,52 +262,63 @@ class SimulationVisualizationWidget(QWidget):
         self._lens = None
         self._show_image_sim = False
         self.update()
-    
+
     def paintEvent(self, event: "QPaintEvent") -> None:
         """Paint the simulation"""
         from PySide6.QtGui import QPainter, QPen, QColor, QPainterPath, QBrush
-        
+
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        
+
         w = self.width()
         h = self.height()
-        
+
         painter.fillRect(0, 0, w, h, self._bg_color)
-        
+
         if not self._lens and not self._system:
             painter.setPen(QPen(self._text_color, 1))
-            painter.drawText(w//2 - 80, h//2, "Run simulation to see rays")
+            painter.drawText(w // 2 - 80, h // 2, "Run simulation to see rays")
             return
-        
+
         # Draw axis
         painter.setPen(QPen(self._axis_color, 1, Qt.DashLine))
-        painter.drawLine(0, h//2, w, h//2)
-        
+        painter.drawLine(0, h // 2, w, h // 2)
+
         # Determine total bounds for scaling
         if self._system:
             total_thickness = self._system.get_total_length()
-            max_diameter = max((e.lens.diameter for e in self._system.elements), default=25.0)
+            max_diameter = max(
+                (e.lens.diameter for e in self._system.elements), default=25.0
+            )
         else:
             total_thickness = self._lens.thickness
             max_diameter = self._lens.diameter
-            
+
         max_dim = max(total_thickness * 2, max_diameter, 30) * 1.2
         scale = min(w, h) / max_dim * self._zoom
-        
+
         cx = w / 4 + self._pan_x
         cy = h / 2 + self._pan_y
 
-        def draw_single_lens(pnt: QPainter, lens: "Lens", start_x: float,
-                             center_y: float, sc: float, color: QColor) -> None:
+        def draw_single_lens(
+            pnt: QPainter,
+            lens: "Lens",
+            start_x: float,
+            center_y: float,
+            sc: float,
+            color: QColor,
+        ) -> None:
             """Draw the filled cross-section of a single lens."""
+
             # Helper to get sag at y
             def get_sag(r: float, y: float) -> float:
                 """Return the surface sag for radius ``r`` at height ``y``."""
-                if abs(r) < 1e-6: return 0
+                if abs(r) < 1e-6:
+                    return 0
                 r_a = abs(r)
-                if y > r_a: return r_a
-                sag = r_a - (r_a**2 - y**2)**0.5
+                if y > r_a:
+                    return r_a
+                sag = r_a - (r_a**2 - y**2) ** 0.5
                 return sag if r > 0 else -sag
 
             r1 = lens.radius_of_curvature_1
@@ -304,33 +330,35 @@ class SimulationVisualizationWidget(QWidget):
             x1_vertex = start_x
             sag1_edge = get_sag(r1, half_d)
             x1_edge = x1_vertex + sag1_edge * sc
-            
+
             x2_edge = x1_edge + t * sc
             sag2_edge = get_sag(r2, half_d)
             x2_vertex = x2_edge - sag2_edge * sc
 
             path = QPainterPath()
             pts = 50
-            
+
             # 1. Front Surface (top to bottom)
             for i in range(pts + 1):
                 y = -half_d + (d * i / pts)
                 x = x1_vertex + get_sag(r1, abs(y)) * sc
-                if i == 0: path.moveTo(x, center_y + y * sc)
-                else: path.lineTo(x, center_y + y * sc)
-                
+                if i == 0:
+                    path.moveTo(x, center_y + y * sc)
+                else:
+                    path.lineTo(x, center_y + y * sc)
+
             # 2. Bottom Edge
             path.lineTo(x2_edge, center_y + half_d * sc)
-            
+
             # 3. Back Surface (bottom to top)
             for i in range(pts + 1):
                 y = half_d - (d * i / pts)
                 x = x2_vertex + get_sag(r2, abs(y)) * sc
                 path.lineTo(x, center_y + y * sc)
-                
+
             # 4. Top Edge
             path.closeSubpath()
-            
+
             pnt.setPen(QPen(color, 2))
             pnt.setBrush(QBrush(color))
             pnt.drawPath(path)
@@ -338,52 +366,81 @@ class SimulationVisualizationWidget(QWidget):
         # Draw lenses
         if self._system:
             for element in self._system.elements:
-                draw_single_lens(painter, element.lens, cx + element.position * scale, cy, scale, self._lens_color)
+                draw_single_lens(
+                    painter,
+                    element.lens,
+                    cx + element.position * scale,
+                    cy,
+                    scale,
+                    self._lens_color,
+                )
         else:
             draw_single_lens(painter, self._lens, cx, cy, scale, self._lens_color)
-        
+
         # Draw rays
         painter.setPen(QPen(self._ray_color, 1.5))
         for ray in self._rays:
-            if len(ray.path) < 2: continue
+            if len(ray.path) < 2:
+                continue
             for j in range(len(ray.path) - 1):
                 p1, p2 = ray.path[j], ray.path[j + 1]
-                if hasattr(p1, 'x'): x1, y1, x2, y2 = p1.x, p1.y, p2.x, p2.y
-                else: x1, y1, x2, y2 = p1[0], p1[1], p2[0], p2[1]
-                painter.drawLine(int(cx + x1 * scale), int(cy - y1 * scale), int(cx + x2 * scale), int(cy - y2 * scale))
-        
+                if hasattr(p1, "x"):
+                    x1, y1, x2, y2 = p1.x, p1.y, p2.x, p2.y
+                else:
+                    x1, y1, x2, y2 = p1[0], p1[1], p2[0], p2[1]
+                painter.drawLine(
+                    int(cx + x1 * scale),
+                    int(cy - y1 * scale),
+                    int(cx + x2 * scale),
+                    int(cy - y2 * scale),
+                )
+
         # Ghost rays
         if self._show_ghosts and self._ghost_rays:
             painter.setPen(QPen(self._ghost_color, 1))
             for ghost_path in self._ghost_rays:
                 for ray in ghost_path:
-                    if len(ray.path) < 2: continue
+                    if len(ray.path) < 2:
+                        continue
                     for j in range(len(ray.path) - 1):
                         p1, p2 = ray.path[j], ray.path[j + 1]
-                        if hasattr(p1, 'x'): x1, y1, x2, y2 = p1.x, p1.y, p2.x, p2.y
-                        else: x1, y1, x2, y2 = p1[0], p1[1], p2[0], p2[1]
-                        painter.drawLine(int(cx + x1 * scale), int(cy - y1 * scale), int(cx + x2 * scale), int(cy - y2 * scale))
-        
+                        if hasattr(p1, "x"):
+                            x1, y1, x2, y2 = p1.x, p1.y, p2.x, p2.y
+                        else:
+                            x1, y1, x2, y2 = p1[0], p1[1], p2[0], p2[1]
+                        painter.drawLine(
+                            int(cx + x1 * scale),
+                            int(cy - y1 * scale),
+                            int(cx + x2 * scale),
+                            int(cy - y2 * scale),
+                        )
+
         if self._show_image_sim and self._lens:
             painter.setPen(QPen(QColor(0, 255, 136), 2))
             cx_img = w // 2
             cy_img = h // 2
             pattern = self._image_pattern
-            
+
             if pattern == "Star":
                 for i in range(8):
                     angle = i * math.pi / 4
                     x2 = cx_img + 80 * (1 if i % 2 else 0.5) * (1 if i < 4 else -1)
-                    y2 = cy_img + 80 * (1 if i % 2 else 0.5) * (1 if (i % 8) < 4 else -1)
+                    y2 = cy_img + 80 * (1 if i % 2 else 0.5) * (
+                        1 if (i % 8) < 4 else -1
+                    )
                     painter.drawLine(cx_img, cy_img, int(x2), int(y2))
             elif pattern == "Grid":
                 for i in range(-3, 4):
-                    painter.drawLine(cx_img + i * 25, cy_img - 75, cx_img + i * 25, cy_img + 75)
-                    painter.drawLine(cx_img - 75, cy_img + i * 25, cx_img + 75, cy_img + i * 25)
+                    painter.drawLine(
+                        cx_img + i * 25, cy_img - 75, cx_img + i * 25, cy_img + 75
+                    )
+                    painter.drawLine(
+                        cx_img - 75, cy_img + i * 25, cx_img + 75, cy_img + i * 25
+                    )
             elif pattern == "USAF 1951":
                 for i in range(6):
                     for j in range(6):
-                        size = 5 * (1.122 ** i)
+                        size = 5 * (1.122**i)
                         x = cx_img - 50 + j * 20
                         y = cy_img - 50 + i * 15
                         painter.drawRect(int(x), int(y), int(size), int(size))

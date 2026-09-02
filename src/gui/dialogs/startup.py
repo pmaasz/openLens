@@ -5,17 +5,27 @@ Fixed layout and styling based on user feedback.
 
 from typing import Any, List, Optional, Tuple
 
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, 
-                               QListWidget, QLabel, QWidget, QFileDialog, QMessageBox, QFrame,
-                               QScrollArea)
+from PySide6.QtWidgets import (
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QListWidget,
+    QLabel,
+    QWidget,
+    QFileDialog,
+    QMessageBox,
+    QFrame,
+    QScrollArea,
+)
 from PySide6.QtCore import Qt, Signal
 
 
 class StartupDialog(QDialog):
     """Startup dialog for creating or opening lenses"""
-    
+
     result_selected = Signal(str, object)  # action, data
-    
+
     def __init__(self) -> None:
         """Initialize the dialog and load stored lenses and assemblies.
 
@@ -26,29 +36,31 @@ class StartupDialog(QDialog):
         self.setWindowTitle("Welcome to OpenLens")
         self.setModal(True)
         self.setFixedSize(650, 650)
-        
+
         self._selected_action = None
         self._selected_data = None
         self._force_centered_count = 0
-        
+
         # Load database items once
         from ..storage import LensStorage
+
         try:
             storage = LensStorage("openlens.db", lambda x: None)
             self._all_items = storage.load_lenses()
         except Exception as e:
             print(f"Error loading database: {e}")
             self._all_items = []
-            
+
         self._setup_ui()
-    
+
     def _recenter(self) -> None:
         """Center the dialog on the screen containing the mouse cursor."""
         from PySide6.QtGui import QGuiApplication, QCursor
+
         screen = QGuiApplication.screenAt(QCursor.pos())
         if not screen:
             screen = QGuiApplication.primaryScreen()
-        
+
         if screen:
             avail_geom = screen.availableGeometry()
             x = avail_geom.x() + (avail_geom.width() - self.width()) // 2
@@ -60,12 +72,14 @@ class StartupDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
         layout.setContentsMargins(40, 40, 40, 40)
-        
+
         title = QLabel("Welcome to OpenLens")
-        title.setStyleSheet("font-size: 26px; font-weight: bold; color: #ffffff; margin-bottom: 10px;")
+        title.setStyleSheet(
+            "font-size: 26px; font-weight: bold; color: #ffffff; margin-bottom: 10px;"
+        )
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
-        
+
         button_width = 350
         btn_style = """
             QPushButton {
@@ -81,38 +95,40 @@ class StartupDialog(QDialog):
                 border: 1px solid #0078d4;
             }
         """
-        
+
         # 1. Create New Lens
         new_lens_btn = QPushButton("Create New Lens")
         new_lens_btn.setFixedWidth(button_width)
         new_lens_btn.setStyleSheet(btn_style)
         new_lens_btn.clicked.connect(self._create_new_lens)
         layout.addWidget(new_lens_btn, alignment=Qt.AlignCenter)
-        
+
         # 2. Create New Assembly
         new_assembly_btn = QPushButton("Create New Assembly")
         new_assembly_btn.setFixedWidth(button_width)
         new_assembly_btn.setStyleSheet(btn_style)
         new_assembly_btn.clicked.connect(self._create_new_assembly)
         layout.addWidget(new_assembly_btn, alignment=Qt.AlignCenter)
-        
+
         # 3. Open Existing Lens
         open_lens_btn = QPushButton("Open Existing Lens")
         open_lens_btn.setFixedWidth(button_width)
         open_lens_btn.setStyleSheet(btn_style)
         open_lens_btn.clicked.connect(lambda: self._show_list("lens"))
         layout.addWidget(open_lens_btn, alignment=Qt.AlignCenter)
-        
+
         # 4. Open Existing Assembly
         open_asm_btn = QPushButton("Open Existing Assembly")
         open_asm_btn.setFixedWidth(button_width)
         open_asm_btn.setStyleSheet(btn_style)
         open_asm_btn.clicked.connect(lambda: self._show_list("assembly"))
         layout.addWidget(open_asm_btn, alignment=Qt.AlignCenter)
-        
+
         # Area for title and list
         self.list_header_label = QLabel("")
-        self.list_header_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff; margin-top: 10px;")
+        self.list_header_label.setStyleSheet(
+            "font-size: 14px; font-weight: bold; color: #ffffff; margin-top: 10px;"
+        )
         self.list_header_label.setVisible(False)
         layout.addWidget(self.list_header_label)
 
@@ -121,13 +137,13 @@ class StartupDialog(QDialog):
         self.list_scroll.setWidgetResizable(True)
         self.list_scroll.setFrameShape(QFrame.NoFrame)
         self.list_scroll.setStyleSheet("background: transparent;")
-        
+
         self.list_container = QWidget()
         self.list_layout = QVBoxLayout(self.list_container)
         self.list_layout.setContentsMargins(0, 0, 0, 0)
         self.list_scroll.setWidget(self.list_container)
         layout.addWidget(self.list_scroll)
-        
+
         # Bottom controls area (fixed at bottom, outside scroll)
         self.bottom_controls = QWidget()
         self.bottom_controls.setFixedHeight(60)
@@ -135,7 +151,7 @@ class StartupDialog(QDialog):
         self.bottom_controls_layout.setContentsMargins(0, 0, 0, 10)
         self.bottom_controls.setVisible(False)
         layout.addWidget(self.bottom_controls)
-        
+
         layout.addStretch()
 
     def _show_list(self, list_type: str) -> None:
@@ -147,7 +163,7 @@ class StartupDialog(QDialog):
                 item.widget().deleteLater()
             elif item.layout():
                 self._clear_layout(item.layout())
-        
+
         # Clear existing bottom controls
         while self.bottom_controls_layout.count():
             item = self.bottom_controls_layout.takeAt(0)
@@ -166,7 +182,7 @@ class StartupDialog(QDialog):
         # Update and show header
         self.list_header_label.setText(title)
         self.list_header_label.setVisible(True)
-        
+
         # Main container for list (inside scroll area)
         container = QFrame()
         container.setStyleSheet("""
@@ -198,18 +214,18 @@ class StartupDialog(QDialog):
                 color: #ffffff;
             }
         """)
-        
+
         # Filter items
         items = [item for item in self._all_items if isinstance(item, TypeClass)]
         for item in items:
-            list_widget.addItem(getattr(item, 'name', 'Unnamed'))
-            
+            list_widget.addItem(getattr(item, "name", "Unnamed"))
+
         container_layout.addWidget(list_widget)
         self.list_layout.addWidget(container)
 
         # Rebuild fixed bottom controls
         self.bottom_controls.setVisible(True)
-        
+
         # Spacer to push buttons
         self.bottom_controls_layout.addStretch(1)
 
@@ -229,7 +245,9 @@ class StartupDialog(QDialog):
                 border: 1px solid #555555;
             }
         """)
-        open_btn.clicked.connect(lambda: self._open_selected(list_widget, items, list_type))
+        open_btn.clicked.connect(
+            lambda: self._open_selected(list_widget, items, list_type)
+        )
         self.bottom_controls_layout.addWidget(open_btn)
 
         self.bottom_controls_layout.addStretch(1)
@@ -254,6 +272,7 @@ class StartupDialog(QDialog):
         """)
         # Create a simple SVG-like icon using a painter or just better styling
         from PySide6.QtGui import QIcon, QPainter, QPen, QPixmap, QColor
+
         def create_icon(icon_type: str) -> QIcon:
             """Draw a plus ("plus") or minus icon pixmap."""
             pixmap = QPixmap(32, 32)
@@ -286,20 +305,26 @@ class StartupDialog(QDialog):
             }
         """)
         minus_btn.setIcon(create_icon("minus"))
-        minus_btn.clicked.connect(lambda: self._on_delete(list_widget, items, list_type))
+        minus_btn.clicked.connect(
+            lambda: self._on_delete(list_widget, items, list_type)
+        )
 
         action_layout.addWidget(plus_btn)
         action_layout.addWidget(minus_btn)
         self.bottom_controls_layout.addWidget(action_btns)
-        
+
         # Double-click to open
-        list_widget.itemDoubleClicked.connect(lambda item: self._open_selected(list_widget, items, list_type))
-        
+        list_widget.itemDoubleClicked.connect(
+            lambda item: self._open_selected(list_widget, items, list_type)
+        )
+
         self._recenter()
-        
+
         # Double-click to open
-        list_widget.itemDoubleClicked.connect(lambda item: self._open_selected(list_widget, items, list_type))
-        
+        list_widget.itemDoubleClicked.connect(
+            lambda item: self._open_selected(list_widget, items, list_type)
+        )
+
         self._recenter()
 
     def _clear_layout(self, layout: QVBoxLayout) -> None:
@@ -311,7 +336,9 @@ class StartupDialog(QDialog):
             elif child.layout():
                 self._clear_layout(child.layout())
 
-    def _open_selected(self, list_widget: QListWidget, items: List[Any], list_type: str) -> None:
+    def _open_selected(
+        self, list_widget: QListWidget, items: List[Any], list_type: str
+    ) -> None:
         """Accept the dialog with an ``open_<list_type>`` action for the highlighted item.
 
         Sets ``_selected_action`` to "open_lens" or "open_assembly" and
@@ -326,51 +353,59 @@ class StartupDialog(QDialog):
     def _on_import(self, list_type: str) -> None:
         """Import from JSON file"""
         filename, _ = QFileDialog.getOpenFileName(
-            self, f"Import {list_type.capitalize()}", "", "JSON Files (*.json);;All Files (*)"
+            self,
+            f"Import {list_type.capitalize()}",
+            "",
+            "JSON Files (*.json);;All Files (*)",
         )
         if filename:
             try:
                 import json
-                with open(filename, 'r') as f:
+
+                with open(filename, "r") as f:
                     data = json.load(f)
-                
+
                 from ...lens import Lens
                 from ...optical_system import OpticalSystem
-                
+
                 if list_type == "lens":
                     imported = Lens.from_dict(data)
                 else:
                     imported = OpticalSystem.from_dict(data)
-                
+
                 self._selected_data = imported
                 self._selected_action = f"open_{list_type}"
                 self.accept()
             except Exception as e:
                 QMessageBox.critical(self, "Import Error", f"Failed to import: {e}")
 
-    def _on_delete(self, list_widget: QListWidget, items: List[Any], list_type: str) -> None:
+    def _on_delete(
+        self, list_widget: QListWidget, items: List[Any], list_type: str
+    ) -> None:
         """Delete from database"""
         idx = list_widget.currentRow()
         if idx < 0:
             return
-            
+
         item = items[idx]
-        name = getattr(item, 'name', 'Unnamed')
-        
+        name = getattr(item, "name", "Unnamed")
+
         reply = QMessageBox.question(
-            self, "Confirm Delete", 
+            self,
+            "Confirm Delete",
             f"Are you sure you want to delete '{name}' from the database?",
-            QMessageBox.Yes | QMessageBox.No
+            QMessageBox.Yes | QMessageBox.No,
         )
-        
+
         if reply == QMessageBox.Yes:
             from ..storage import LensStorage
+
             try:
                 storage = LensStorage("openlens.db", lambda x: None)
                 remaining = [i for i in self._all_items if i != item]
                 storage.save_lenses(remaining)
                 self._all_items = remaining
-                self._show_list(list_type) # Refresh
+                self._show_list(list_type)  # Refresh
             except Exception as e:
                 QMessageBox.critical(self, "Delete Error", f"Failed to delete: {e}")
 
