@@ -29,34 +29,78 @@ jobs:
         continue-on-error: true
 
   test:
+    name: Test (py${{ matrix.python-version }})
     needs: lint
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
       - name: Install dependencies
         run: |
           pip install -e .[dev]
           pip install matplotlib numpy scipy Pillow
-
       - name: Run quick tests (skip slow suites)
         env:
           OPENLENS_SKIP_SLOW: "1"
           QT_QPA_PLATFORM: offscreen
         run: python3 -m unittest discover -s tests -t .
-
       - name: Run full test suite
         env:
           QT_QPA_PLATFORM: offscreen
         run: python3 -m unittest discover -s tests -t .
+
+  coverage:
+    name: Coverage
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install -e .[dev] pytest-cov matplotlib numpy
+      - name: Run with coverage
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest --cov=src --cov-report=xml tests/
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+
+  docs:
+    name: Docs
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          pip install -e .[dev]
+          pip install sphinx sphinx-rtd-theme
+      - name: Build Sphinx docs
+        run: cd docs/sphinx && make html
+
+  build:
+    name: Build
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install build deps
+        run: pip install build twine
+      - name: Build package
+        run: python -m build
+      - name: Check with twine
+        run: twine check dist/*
