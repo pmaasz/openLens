@@ -1,0 +1,18 @@
+name: Coverage
+on: [push, pull_request]
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install -e .[dev] pytest-cov matplotlib numpy
+      - name: Run with coverage
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest --cov=src --cov-report=xml tests/
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
