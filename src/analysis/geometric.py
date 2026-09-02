@@ -151,6 +151,7 @@ class GeometricTraceAnalysis:
         return {
             'pupil_coords': valid_coords,
             'ray_errors_mm': ray_errors_mm,
+            'ray_errors': ray_errors_mm,  # Alias for backward compatibility
             'transverse_aberration': ray_errors_mm, # Added for compatibility
             'axis': pupil_axis,
             'field_angle_deg': field_angle_deg,
@@ -160,7 +161,8 @@ class GeometricTraceAnalysis:
     def calculate_field_curvature_distortion(self, 
                                            max_field_angle_deg: float = 20.0, 
                                            num_points: int = 11,
-                                           wavelength_nm: float = WAVELENGTH_GREEN) -> Dict[str, Any]:
+                                           wavelength_nm: float = WAVELENGTH_GREEN,
+                                           **kwargs) -> Dict[str, Any]:
         """
         Calculate Field Curvature and Distortion.
         
@@ -172,6 +174,11 @@ class GeometricTraceAnalysis:
         Returns:
             Dictionary with arrays for field angles, tangential/sagittal focus shift, and distortion %.
         """
+        # Backward compatibility: accept max_field_angle as alias
+        if 'max_field_angle' in kwargs:
+            max_field_angle_deg = kwargs.pop('max_field_angle')
+        if kwargs:
+            raise TypeError(f"Unexpected kwargs: {list(kwargs.keys())}")
         wl_mm = wavelength_nm * NM_TO_MM
         image_plane_x = self._get_image_plane_x(wavelength_nm)
         
@@ -266,6 +273,8 @@ class GeometricTraceAnalysis:
             'field_angles_deg': angles,
             'tan_focus_shift_mm': tan_focus_shifts_mm,
             'sag_focus_shift_mm': sag_focus_shifts_mm,
+            'tan_focus_shift': tan_focus_shifts_mm,  # Alias
+            'sag_focus_shift': sag_focus_shifts_mm,  # Alias
             'distortion_pct': distortion_pcts,
             'image_plane_x_mm': image_plane_x
         }

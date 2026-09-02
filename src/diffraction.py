@@ -14,6 +14,7 @@ Requires:
 """
 
 import logging
+import math
 from typing import Dict, Tuple, Optional, Any
 
 # Setup module logger
@@ -46,18 +47,38 @@ try:
 except ImportError:
     SCIPY_AVAILABLE = False
     logger.warning("scipy not available. Diffraction calculations will use approximations.")
-    
+
     # Fallback approximation for j1(x) Bessel function
-    def j1(x: float) -> float:
-        """Approximation of first-order Bessel function for small x"""
-        if hasattr(x, '__iter__'):
-            return np.array([j1(xi) for xi in x])
-        # Taylor series approximation: J1(x) ≈ x/2 - x³/16 + x⁵/384
-        x = float(x)
-        if abs(x) < 0.1:
-            return x/2.0 - x**3/16.0 + x**5/384.0
-        # For larger x, use a simpler approximation
-        return 0.5 * x * (1 - x**2/8.0)
+    # Uses series expansion for |x|<8 and asymptotic form for larger x
+    def j1(x):
+        """Accurate fallback for Bessel J1."""
+        # Handle array-like via numpy vectorization
+        if hasattr(x, '__len__') or isinstance(x, np.ndarray):
+            arr = np.asarray(x, dtype=float)
+            # Vectorize recursively
+            res = np.zeros_like(arr, dtype=float)
+            for i, val in enumerate(arr.flat):
+                res.flat[i] = j1(float(val))
+            return res
+        xv = float(x)
+        if abs(xv) < 1e-12:
+            return 0.0
+        ax = abs(xv)
+        sign = 1.0 if xv >= 0 else -1.0
+        if ax < 8.0:
+            # Series: J1(x) = sum_{m=0}^\infty (-1)^m (x/2)^{2m+1} / (m! (m+1)!)
+            term = ax / 2.0
+            total = term  # m=0
+            # iterative
+            for m in range(1, 30):
+                term *= - (ax * ax) / (4.0 * m * (m + 1))
+                total += term
+                if abs(term) < 1e-14 * abs(total):
+                    break
+            return sign * total
+        else:
+            # Asymptotic: J1(x) ~ sqrt(2/(pi*x)) * cos(x - 3*pi/4)
+            return sign * math.sqrt(2.0 / (math.pi * ax)) * math.cos(ax - 3 * math.pi / 4.0)
 
 # Optional matplotlib import
 try:
@@ -116,6 +137,10 @@ class DiffractionCalculator:
         # Convert to micrometers
         return radius * 1e6
     
+    def rayleigh_criterion(self, aperture_diameter_mm: float) -> float:
+        """Alias for rayleigh_criterion_arcsec."""
+        return self.rayleigh_criterion_arcsec(aperture_diameter_mm)
+
     def rayleigh_criterion_arcsec(self, aperture_diameter_mm: float) -> float:
         """
         Calculate Rayleigh diffraction limit (angular resolution)
@@ -137,6 +162,10 @@ class DiffractionCalculator:
         
         return theta_arcsec
     
+    def diffraction_limited_spot_size(self, f_number: float) -> float:
+        """Alias for diffraction_limited_spot_size_um."""
+        return self.diffraction_limited_spot_size_um(f_number)
+
     def diffraction_limited_spot_size_um(self, f_number: float) -> float:
         """
         Calculate diffraction-limited spot size
@@ -153,6 +182,10 @@ class DiffractionCalculator:
         # Convert to micrometers
         return diameter * 1e6
     
+    def numerical_aperture_resolution(self, numerical_aperture: float) -> float:
+        """Alias for numerical_aperture_resolution_um."""
+        return self.numerical_aperture_resolution_um(numerical_aperture)
+
     def numerical_aperture_resolution_um(self, numerical_aperture: float) -> float:
         """
         Calculate resolution limit based on numerical aperture

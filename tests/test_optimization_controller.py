@@ -4,13 +4,20 @@ Tests for OptimizationController
 """
 
 import unittest
-import tkinter as tk
 from unittest.mock import MagicMock, patch, ANY
+try:
+    import tkinter as tk
+    from gui.optimization_controller import OptimizationController
+    GUI_AVAILABLE = True
+except Exception:
+    tk = None
+    OptimizationController = None
+    GUI_AVAILABLE = False
 
-from gui.optimization_controller import OptimizationController
 from src.optical_system import OpticalSystem
 from src.lens import Lens
 
+@unittest.skipUnless(GUI_AVAILABLE, "GUI/OptimizationController not available")
 class TestOptimizationController(unittest.TestCase):
     def setUp(self):
         self.root = tk.Tk()

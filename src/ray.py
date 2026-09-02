@@ -365,7 +365,24 @@ class Ray3D:
                            normal: Vector3) -> RefractionResult:
         """Apply Snell's law at an interface using vector math."""
         if self.polarization_vector is not None and HAS_POLARIZATION:
-            return RefractionResult.MISSED
+            # Handle polarized refraction with Fresnel coefficients
+            incident_dir = (self.direction.x, self.direction.y, self.direction.z)
+            normal_tuple = (normal.x, normal.y, normal.z)
+            result = OpticalIntersector.apply_snell(incident_dir, normal_tuple, n1, n2)
+            if result is None:
+                return RefractionResult.MISSED
+            rx, ry, rz, is_tir = result
+            new_direction = vec3(rx, ry, rz)
+            if is_tir:
+                # Total internal reflection - treat as reflection
+                self._update_polarization(normal, n1, n2, new_direction, 'reflect')
+                self.direction = new_direction
+                return RefractionResult.REFLECTED
+            # Update polarization and intensity for transmission
+            self._update_polarization(normal, n1, n2, new_direction, 'refract')
+            self.direction = new_direction
+            self.n = n2
+            return RefractionResult.REFRACTED
 
         incident_dir = (self.direction.x, self.direction.y, self.direction.z)
         normal_tuple = (normal.x, normal.y, normal.z)
