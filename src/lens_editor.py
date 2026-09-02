@@ -113,8 +113,7 @@ class LensManager:
         )
 
         lens_type = (
-            input("Type (Biconvex/Biconcave/Plano-Convex/etc) [Biconvex]: ").strip()
-            or "Biconvex"
+            input("Type (Biconvex/Biconcave/Plano-Convex/etc) [Biconvex]: ").strip() or "Biconvex"
         )
         material = input("Material (BK7/Fused Silica/etc) [BK7]: ").strip() or "BK7"
 
@@ -163,9 +162,7 @@ class LensManager:
         for idx, lens in enumerate(self.lenses, 1):
             focal = lens.calculate_focal_length()
             focal_str = f"{focal:.2f}mm" if focal is not None else "Undefined"
-            print(
-                f"{idx}. {lens.name} - {lens.material} ({lens.lens_type}) - f={focal_str}"
-            )
+            print(f"{idx}. {lens.name} - {lens.material} ({lens.lens_type}) - f={focal_str}")
 
     def get_lens_by_index(self, idx: int) -> Optional[Lens]:
         """

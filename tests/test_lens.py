@@ -67,9 +67,7 @@ class TestLensOptics(unittest.TestCase):
     def test_optical_power_in_diopters(self):
         """Power is 1000/f for f in mm"""
         f = self.lens.calculate_focal_length()
-        self.assertAlmostEqual(
-            self.lens.calculate_optical_power(), 1000.0 / f, places=6
-        )
+        self.assertAlmostEqual(self.lens.calculate_optical_power(), 1000.0 / f, places=6)
 
     def test_back_and_front_focal_length_defined(self):
         """BFL/FFL return finite values for a normal lens"""

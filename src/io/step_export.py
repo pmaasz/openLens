@@ -146,9 +146,7 @@ class StepExporter:
         self.dir_x = self.writer.add_entity("DIRECTION", ["'axis_x'", (1.0, 0.0, 0.0)])
         self.dir_y = self.writer.add_entity("DIRECTION", ["'axis_y'", (0.0, 1.0, 0.0)])
 
-        self.origin = self.writer.add_entity(
-            "CARTESIAN_POINT", ["'origin'", (0.0, 0.0, 0.0)]
-        )
+        self.origin = self.writer.add_entity("CARTESIAN_POINT", ["'origin'", (0.0, 0.0, 0.0)])
 
         self.axis2_placement = self.writer.add_entity(
             "AXIS2_PLACEMENT_3D", ["'global_axis'", self.origin, self.dir_z, self.dir_x]
@@ -191,14 +189,10 @@ class StepExporter:
 
         # Use get_surface_profile to get the rim points (index 0 of the profile is r=h)
         # We only need the z-coordinate at r=h
-        profile1 = LensGeometry.get_surface_profile(
-            0 if is_flat1 else r1, diam, num_points=2
-        )
+        profile1 = LensGeometry.get_surface_profile(0 if is_flat1 else r1, diam, num_points=2)
         z_edge1 = z_offset + profile1[0][0]  # z of top rim
 
-        profile2 = LensGeometry.get_surface_profile(
-            0 if is_flat2 else r2, diam, num_points=2
-        )
+        profile2 = LensGeometry.get_surface_profile(0 if is_flat2 else r2, diam, num_points=2)
         z_edge2 = z_offset + thick + profile2[0][0]  # z of top rim relative to vertex 2
 
         # Original logic for sag calculation if needed elsewhere (kept for consistency)
@@ -209,9 +203,7 @@ class StepExporter:
         # Vertex 1 (on axis)
         p_v1 = self.writer.add_entity("CARTESIAN_POINT", ["'v1'", (0.0, 0.0, z_offset)])
         # Vertex 2 (on axis)
-        p_v2 = self.writer.add_entity(
-            "CARTESIAN_POINT", ["'v2'", (0.0, 0.0, z_offset + thick)]
-        )
+        p_v2 = self.writer.add_entity("CARTESIAN_POINT", ["'v2'", (0.0, 0.0, z_offset + thick)])
 
         # Edge Point 1 (Start of edge loop 1) at (h, 0, z_edge1)
         p_e1 = self.writer.add_entity("CARTESIAN_POINT", ["'e1'", (h, 0.0, z_edge1)])
@@ -244,14 +236,10 @@ class StepExporter:
         # A single EDGE_CURVE with same start/end vertex on a circle is allowed in some schemas,
         # but robust exporters use 2 semicircles or just declare it as an EDGE_LOOP with one edge.
         # Let's try single edge.
-        edge1 = self.writer.add_entity(
-            "EDGE_CURVE", ["'edge1'", v_e1, v_e1, circle1, ".T."]
-        )
+        edge1 = self.writer.add_entity("EDGE_CURVE", ["'edge1'", v_e1, v_e1, circle1, ".T."])
 
         # EDGE_CURVE for Edge 2
-        edge2 = self.writer.add_entity(
-            "EDGE_CURVE", ["'edge2'", v_e2, v_e2, circle2, ".T."]
-        )
+        edge2 = self.writer.add_entity("EDGE_CURVE", ["'edge2'", v_e2, v_e2, circle2, ".T."])
 
         # Longitudinal Seam Edge (connecting e1 to e2 along cylinder)
         # Line segment
@@ -308,15 +296,11 @@ class StepExporter:
             else:
                 c_z = z_offset + r1  # r1 is negative
 
-            p_center1 = self.writer.add_entity(
-                "CARTESIAN_POINT", ["'center1'", (0.0, 0.0, c_z)]
-            )
+            p_center1 = self.writer.add_entity("CARTESIAN_POINT", ["'center1'", (0.0, 0.0, c_z)])
             axis_s1 = self.writer.add_entity(
                 "AXIS2_PLACEMENT_3D", ["'axis_s1'", p_center1, self.dir_z, self.dir_x]
             )
-            surf1 = self.writer.add_entity(
-                "SPHERICAL_SURFACE", ["'sphere1'", axis_s1, abs(r1)]
-            )
+            surf1 = self.writer.add_entity("SPHERICAL_SURFACE", ["'sphere1'", axis_s1, abs(r1)])
 
         # Surface 2 (Back)
         if is_flat2:
@@ -329,15 +313,11 @@ class StepExporter:
             else:  # Concave back
                 c_z = z_offset + thick + r2
 
-            p_center2 = self.writer.add_entity(
-                "CARTESIAN_POINT", ["'center2'", (0.0, 0.0, c_z)]
-            )
+            p_center2 = self.writer.add_entity("CARTESIAN_POINT", ["'center2'", (0.0, 0.0, c_z)])
             axis_s2 = self.writer.add_entity(
                 "AXIS2_PLACEMENT_3D", ["'axis_s2'", p_center2, self.dir_z, self.dir_x]
             )
-            surf2 = self.writer.add_entity(
-                "SPHERICAL_SURFACE", ["'sphere2'", axis_s2, abs(r2)]
-            )
+            surf2 = self.writer.add_entity("SPHERICAL_SURFACE", ["'sphere2'", axis_s2, abs(r2)])
 
         # Surface 3 (Cylinder)
         axis_cyl = self.writer.add_entity(
@@ -383,14 +363,10 @@ class StepExporter:
         b3_1 = self.writer.add_entity("FACE_BOUND", ["'b3_1'", loop1, ".T."])
         b3_2 = self.writer.add_entity("FACE_BOUND", ["'b3_2'", loop2, ".T."])
 
-        face3 = self.writer.add_entity(
-            "ADVANCED_FACE", ["'face3'", [b3_1, b3_2], surf3, ".T."]
-        )
+        face3 = self.writer.add_entity("ADVANCED_FACE", ["'face3'", [b3_1, b3_2], surf3, ".T."])
 
         # --- Shell ---
-        shell = self.writer.add_entity(
-            "CLOSED_SHELL", ["'shell'", [face1, face2, face3]]
-        )
+        shell = self.writer.add_entity("CLOSED_SHELL", ["'shell'", [face1, face2, face3]])
 
         # --- Solid ---
         solid = self.writer.add_entity("MANIFOLD_SOLID_BREP", [f"'{lens.name}'", shell])

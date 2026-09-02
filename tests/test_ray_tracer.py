@@ -49,9 +49,7 @@ class TestRay(unittest.TestCase):
         ray = Ray(x=0, y=0, angle_rad=math.pi / 2)
 
         # Ray hitting surface with normal at 90° - ray is perpendicular to surface
-        success = ray.refract_or_reflect(
-            n1=1.0, n2=1.5, surface_normal_angle=math.pi / 2
-        )
+        success = ray.refract_or_reflect(n1=1.0, n2=1.5, surface_normal_angle=math.pi / 2)
 
         self.assertIs(success, RefractionResult.REFRACTED)
         # At normal incidence, ray should not change direction
@@ -63,9 +61,7 @@ class TestRay(unittest.TestCase):
 
         # Refraction from air (n=1) to glass (n=1.5)
         # Surface normal pointing up (90 degrees)
-        success = ray.refract_or_reflect(
-            n1=1.0, n2=1.5, surface_normal_angle=math.pi / 2
-        )
+        success = ray.refract_or_reflect(n1=1.0, n2=1.5, surface_normal_angle=math.pi / 2)
 
         self.assertIs(success, RefractionResult.REFRACTED)
 
@@ -97,9 +93,7 @@ class TestRay(unittest.TestCase):
         # Due to floating point precision, we test very close to it
         ray = Ray(x=0, y=0, angle_rad=critical_angle_rad)
         success = ray.refract_or_reflect(n1=n1, n2=n2, surface_normal_angle=0)
-        self.assertTrue(
-            success, "Should refract at critical angle (grazing transmission)"
-        )
+        self.assertTrue(success, "Should refract at critical angle (grazing transmission)")
 
         # 3. Just above critical angle (should reflect)
         angle_above = critical_angle_rad + 0.001
@@ -322,22 +316,16 @@ class TestLensRayTracer(unittest.TestCase):
 
         # Check that geometry is calculated (lens now starts at offset)
         self.assertEqual(tracer.front_vertex_x, tracer.lens_offset)
-        self.assertEqual(
-            tracer.back_vertex_x, tracer.lens_offset + self.biconvex.thickness
-        )
+        self.assertEqual(tracer.back_vertex_x, tracer.lens_offset + self.biconvex.thickness)
 
         # Front surface center: For R1>0 (convex), center is to the RIGHT (standard sign convention)
         # Center = Vertex + R
-        expected_front_center = (
-            tracer.front_vertex_x + self.biconvex.radius_of_curvature_1
-        )
+        expected_front_center = tracer.front_vertex_x + self.biconvex.radius_of_curvature_1
         self.assertAlmostEqual(tracer.front_center_x, expected_front_center)
 
         # Back surface center: For R2<0 (convex), center is to the LEFT (standard sign convention)
         # Center = Vertex + R
-        expected_back_center = (
-            tracer.back_vertex_x + self.biconvex.radius_of_curvature_2
-        )
+        expected_back_center = tracer.back_vertex_x + self.biconvex.radius_of_curvature_2
         self.assertAlmostEqual(tracer.back_center_x, expected_back_center)
 
 

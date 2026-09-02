@@ -91,9 +91,7 @@ class ChromaticAnalyzer:
 
         for wavelength in wavelengths:
             # Get wavelength-dependent refractive index
-            n = self.material_db.get_refractive_index(
-                material_name, wavelength, temperature_c
-            )
+            n = self.material_db.get_refractive_index(material_name, wavelength, temperature_c)
 
             # Calculate focal length using lensmaker's equation
             # 1/f = (n-1)[1/R1 - 1/R2 + (n-1)d/(nR1R2)]
@@ -136,15 +134,9 @@ class ChromaticAnalyzer:
         Calculate Abbe number (V_d) from material data
         V_d = (n_d - 1) / (n_F - n_C)
         """
-        n_d = self.material_db.get_refractive_index(
-            material_name, self.WAVELENGTHS["d"]
-        )
-        n_F = self.material_db.get_refractive_index(
-            material_name, self.WAVELENGTHS["F"]
-        )
-        n_C = self.material_db.get_refractive_index(
-            material_name, self.WAVELENGTHS["C"]
-        )
+        n_d = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["d"])
+        n_F = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["F"])
+        n_C = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["C"])
 
         return (n_d - 1.0) / (n_F - n_C)
 
@@ -154,18 +146,10 @@ class ChromaticAnalyzer:
         """
         Calculate partial dispersion P_x,y = (n_x - n_y) / (n_F - n_C)
         """
-        n_x = self.material_db.get_refractive_index(
-            material_name, self.WAVELENGTHS[line1]
-        )
-        n_y = self.material_db.get_refractive_index(
-            material_name, self.WAVELENGTHS[line2]
-        )
-        n_F = self.material_db.get_refractive_index(
-            material_name, self.WAVELENGTHS["F"]
-        )
-        n_C = self.material_db.get_refractive_index(
-            material_name, self.WAVELENGTHS["C"]
-        )
+        n_x = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS[line1])
+        n_y = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS[line2])
+        n_F = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["F"])
+        n_C = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["C"])
 
         return (n_x - n_y) / (n_F - n_C)
 
@@ -191,12 +175,8 @@ class ChromaticAnalyzer:
         V2 = self.calculate_abbe_number(flint_material)
 
         # Get refractive indices at d-line
-        n1 = self.material_db.get_refractive_index(
-            crown_material, self.WAVELENGTHS["d"]
-        )
-        n2 = self.material_db.get_refractive_index(
-            flint_material, self.WAVELENGTHS["d"]
-        )
+        n1 = self.material_db.get_refractive_index(crown_material, self.WAVELENGTHS["d"])
+        n2 = self.material_db.get_refractive_index(flint_material, self.WAVELENGTHS["d"])
 
         # Calculate power distribution (thin lens approximation)
         # For achromatic doublet: φ1/V1 + φ2/V2 = 0

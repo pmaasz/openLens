@@ -56,9 +56,7 @@ class AberrationsCalculator:
             self.is_system = True
             # For system calculations, use effective properties
             self.n = 1.0  # System in air
-            self.diameter = (
-                target.elements[0].lens.diameter if target.elements else 25.0
-            )
+            self.diameter = target.elements[0].lens.diameter if target.elements else 25.0
             # focal_length = target.get_system_focal_length()
         else:
             self.is_system = False
@@ -205,25 +203,16 @@ class AberrationsCalculator:
 
             # Extract metrics at the requested field_angle
             # fc_data['tan_focus_shift_mm'] etc are lists, we want the last element if we sampled up to field_angle
-            field_curv = (
-                fc_data["tan_focus_shift_mm"][-1]
-                if fc_data["tan_focus_shift_mm"]
-                else 0.0
-            )
+            field_curv = fc_data["tan_focus_shift_mm"][-1] if fc_data["tan_focus_shift_mm"] else 0.0
             dist = fc_data["distortion_pct"][-1] if fc_data["distortion_pct"] else 0.0
             astig = (
-                abs(
-                    fc_data["tan_focus_shift_mm"][-1]
-                    - fc_data["sag_focus_shift_mm"][-1]
-                )
+                abs(fc_data["tan_focus_shift_mm"][-1] - fc_data["sag_focus_shift_mm"][-1])
                 if fc_data["tan_focus_shift_mm"] and fc_data["sag_focus_shift_mm"]
                 else 0.0
             )
 
             # Coma estimation from ray fan (asymmetry in transverse error)
-            errors = fan_data.get(
-                "ray_errors_mm", fan_data.get("transverse_aberration", [])
-            )
+            errors = fan_data.get("ray_errors_mm", fan_data.get("transverse_aberration", []))
             coma_val = 0.0
             if len(errors) >= 2:
                 # Coma ~= (y_top + y_bottom) / 2 - y_chief
@@ -237,9 +226,7 @@ class AberrationsCalculator:
                 "coma": coma_val,
             }
         except Exception as e:
-            logger.warning(
-                "Field metrics computation failed at %.1f deg: %s", field_angle, e
-            )
+            logger.warning("Field metrics computation failed at %.1f deg: %s", field_angle, e)
             return None
 
     def _calculate_coma(self, focal_length: float, field_angle_deg: float) -> float:
@@ -267,9 +254,7 @@ class AberrationsCalculator:
         ) * factor
         return coma
 
-    def _calculate_astigmatism(
-        self, focal_length: float, field_angle_deg: float
-    ) -> float:
+    def _calculate_astigmatism(self, focal_length: float, field_angle_deg: float) -> float:
         """
         Calculate third-order Seidel astigmatism for a single lens.
 
@@ -294,9 +279,7 @@ class AberrationsCalculator:
         # Petzval Radius R_p = n * f (for a single thin lens)
         return self.n * focal_length
 
-    def _calculate_distortion(
-        self, focal_length: float, field_angle_deg: float
-    ) -> float:
+    def _calculate_distortion(self, focal_length: float, field_angle_deg: float) -> float:
         """
         Calculate third-order Seidel distortion for a single lens.
 
@@ -499,18 +482,14 @@ class AberrationsCalculator:
 
                 if ray_m.terminated or abs(ray_m.direction.y) < 1e-9:
                     return None
-                m_focus = ray_m.origin.x - ray_m.origin.y * (
-                    ray_m.direction.x / ray_m.direction.y
-                )
+                m_focus = ray_m.origin.x - ray_m.origin.y * (ray_m.direction.x / ray_m.direction.y)
 
                 # Trace Paraxial Ray (near axis)
                 ray_p = rays_m[len(rays_m) // 2 + 1]  # Slightly off center
 
                 if ray_p.terminated or abs(ray_p.direction.y) < 1e-9:
                     return None
-                p_focus = ray_p.origin.x - ray_p.origin.y * (
-                    ray_p.direction.x / ray_p.direction.y
-                )
+                p_focus = ray_p.origin.x - ray_p.origin.y * (ray_p.direction.x / ray_p.direction.y)
 
                 return m_focus - p_focus
             else:
@@ -527,18 +506,14 @@ class AberrationsCalculator:
                 tracer.trace_ray(ray_marginal)
                 if ray_marginal.terminated or abs(math.tan(ray_marginal.angle)) < 1e-9:
                     return None
-                marginal_focus = ray_marginal.x - ray_marginal.y / math.tan(
-                    ray_marginal.angle
-                )
+                marginal_focus = ray_marginal.x - ray_marginal.y / math.tan(ray_marginal.angle)
 
                 y_paraxial = self.diameter / 2.0 * 0.01
                 ray_paraxial = Ray(start_x, y_paraxial, angle_rad=0.0)
                 tracer.trace_ray(ray_paraxial)
                 if abs(math.tan(ray_paraxial.angle)) < 1e-9:
                     return None
-                paraxial_focus = ray_paraxial.x - ray_paraxial.y / math.tan(
-                    ray_paraxial.angle
-                )
+                paraxial_focus = ray_paraxial.x - ray_paraxial.y / math.tan(ray_paraxial.angle)
 
                 return marginal_focus - paraxial_focus
         except Exception as e:
@@ -696,17 +671,11 @@ INTERPRETATION:
         term3 = (B + (2.0 * (n**2 - 1.0) / (n + 2.0)) * C) ** 2
 
         # Longitudinal spherical aberration estimation
-        lsa = (
-            -(y**2 / (8.0 * focal_length**3))
-            * (term1 + term2 * term3)
-            * focal_length**2
-        )
+        lsa = -(y**2 / (8.0 * focal_length**3)) * (term1 + term2 * term3) * focal_length**2
         return lsa
 
 
-def analyze_lens_quality(
-    lens: Any, field_angle: float = 5.0, **kwargs
-) -> Dict[str, Any]:
+def analyze_lens_quality(lens: Any, field_angle: float = 5.0, **kwargs) -> Dict[str, Any]:
     """
     Convenience function to analyze lens quality.
 

@@ -61,6 +61,4 @@ class PerformanceVisualizationWidget(QWidget):
         painter.setPen(QColor("#4fc3f7"))
         painter.drawText(20, 30, f"Performance: {self._lens.name}")
         if self._metrics:
-            painter.drawText(
-                20, 50, f"RMS Spot: {self._metrics.get('rms_spot', 0):.4f}"
-            )
+            painter.drawText(20, 50, f"RMS Spot: {self._metrics.get('rms_spot', 0):.4f}")

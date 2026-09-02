@@ -95,9 +95,7 @@ class RobustMeritFunction(MeritFunction):
 
         return nominal_merit + self.sensitivity_weight * sensitivity
 
-    def _get_param_value(
-        self, system: OpticalSystem, tol: ToleranceOperand
-    ) -> Optional[float]:
+    def _get_param_value(self, system: OpticalSystem, tol: ToleranceOperand) -> Optional[float]:
         # Helper to get value based on tolerance operand
         # Needs to handle the flattened index logic from tolerancing.py
         # This is duplicated logic, ideally should be refactored.
@@ -121,9 +119,7 @@ class RobustMeritFunction(MeritFunction):
             return lens.refractive_index
         return None
 
-    def _set_param_value(
-        self, system: OpticalSystem, tol: ToleranceOperand, value: float
-    ):
+    def _set_param_value(self, system: OpticalSystem, tol: ToleranceOperand, value: float):
         nodes = system.root.get_flat_list()
         element_nodes = [n for n, _ in nodes if getattr(n, "is_element", False)]
 

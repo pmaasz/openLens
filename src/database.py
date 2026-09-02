@@ -139,12 +139,8 @@ class DatabaseManager:
                     (
                         lens_dict.get("id"),
                         lens_dict.get("name"),
-                        lens_dict.get(
-                            "radius_of_curvature_1", lens_dict.get("radius1")
-                        ),
-                        lens_dict.get(
-                            "radius_of_curvature_2", lens_dict.get("radius2")
-                        ),
+                        lens_dict.get("radius_of_curvature_1", lens_dict.get("radius1")),
+                        lens_dict.get("radius_of_curvature_2", lens_dict.get("radius2")),
                         lens_dict.get("thickness"),
                         lens_dict.get("material"),
                         lens_dict.get("refractive_index"),
@@ -464,9 +460,7 @@ class DatabaseManager:
             try:
                 # Lens branch: refuse while still referenced by any assembly.
                 refs = []
-                if conn.execute(
-                    "SELECT 1 FROM lenses WHERE id = ?", (item_id,)
-                ).fetchone():
+                if conn.execute("SELECT 1 FROM lenses WHERE id = ?", (item_id,)).fetchone():
                     cursor.execute(
                         """
                         SELECT a.id, a.name

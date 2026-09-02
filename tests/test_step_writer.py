@@ -31,8 +31,7 @@ class TestStepWriter(unittest.TestCase):
     def test_entity_ids_sequential_from_one(self):
         """add_entity returns monotonically increasing ids starting at 1"""
         ids = [
-            self.writer.add_entity("CARTESIAN_POINT", ["'P'", (0.0, 0.0, 0.0)])
-            for _ in range(5)
+            self.writer.add_entity("CARTESIAN_POINT", ["'P'", (0.0, 0.0, 0.0)]) for _ in range(5)
         ]
         self.assertEqual(ids, [1, 2, 3, 4, 5])
 

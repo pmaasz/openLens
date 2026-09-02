@@ -33,10 +33,7 @@ def draw_system_outline(ax, system: OpticalSystem) -> None:
         half_d = lens.diameter / 2
         y = [v / 10.0 for v in range(int(-half_d * 10), int(half_d * 10) + 1)]
         z1 = [current_z + _sag(lens.radius_of_curvature_1, yv) for yv in y]
-        z2 = [
-            current_z + lens.thickness + _sag(lens.radius_of_curvature_2, yv)
-            for yv in y
-        ]
+        z2 = [current_z + lens.thickness + _sag(lens.radius_of_curvature_2, yv) for yv in y]
 
         ax.plot(z1, y, "b-", alpha=0.5)
         ax.plot(z2, y, "b-", alpha=0.5)

@@ -324,16 +324,11 @@ class OpticalSystem:
                 }
                 for e in self.elements
             ],
-            "air_gaps": [
-                {"thickness": g.thickness, "position": g.position}
-                for g in self.air_gaps
-            ],
+            "air_gaps": [{"thickness": g.thickness, "position": g.position} for g in self.air_gaps],
         }
 
     @classmethod
-    def from_dict(
-        cls, data: Dict[str, Any], lens_lookup: Optional[dict] = None
-    ) -> "OpticalSystem":
+    def from_dict(cls, data: Dict[str, Any], lens_lookup: Optional[dict] = None) -> "OpticalSystem":
         """Create optical system from dictionary.
 
         If ``lens_lookup`` is provided, elements with a matching ``lens_id``
@@ -388,9 +383,7 @@ class OpticalSystem:
 
         bfls = {}
         for line, wl in lines.items():
-            n_map = {
-                i: el.lens.refractive_index_at(wl) for i, el in enumerate(self.elements)
-            }
+            n_map = {i: el.lens.refractive_index_at(wl) for i, el in enumerate(self.elements)}
             bfls[line] = self.calculate_back_focal_length(n_overrides=n_map)
 
         if bfls["F"] is not None and bfls["C"] is not None:
@@ -428,11 +421,7 @@ class OpticalSystem:
 
         for i, element in enumerate(self.elements):
             lens = element.lens
-            n_lens = (
-                n_overrides[i]
-                if n_overrides and i in n_overrides
-                else lens.refractive_index
-            )
+            n_lens = n_overrides[i] if n_overrides and i in n_overrides else lens.refractive_index
 
             # Refraction at first surface (n_current → n_lens).
             # Standard paraxial refraction matrix is [[1, 0], [-P, 1]].
@@ -623,16 +612,12 @@ class AchromaticDoubletDesigner:
         return system
 
 
-def create_doublet(
-    focal_length: float = 100.0, diameter: float = 50.0
-) -> OpticalSystem:
+def create_doublet(focal_length: float = 100.0, diameter: float = 50.0) -> OpticalSystem:
     """Quick function to create an achromatic doublet"""
     return AchromaticDoubletDesigner.design_cemented_doublet(focal_length, diameter)
 
 
-def create_triplet(
-    focal_length: float = 100.0, diameter: float = 50.0
-) -> OpticalSystem:
+def create_triplet(focal_length: float = 100.0, diameter: float = 50.0) -> OpticalSystem:
     """Create a simple triplet (Cooke triplet approximation)"""
 
     # Simplified Cooke triplet design

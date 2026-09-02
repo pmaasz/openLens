@@ -125,9 +125,7 @@ class TestPSF(unittest.TestCase):
         self.assertAlmostEqual(psf[center, center], 1.0, places=5)
 
         # Should be symmetric (Airy disk like)
-        self.assertAlmostEqual(
-            psf[center + 1, center], psf[center - 1, center], places=5
-        )
+        self.assertAlmostEqual(psf[center + 1, center], psf[center - 1, center], places=5)
 
 
 if __name__ == "__main__":

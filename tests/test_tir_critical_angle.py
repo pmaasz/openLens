@@ -38,9 +38,7 @@ class TestTIRCriticalAngle(unittest.TestCase):
         tir, ray = self._refract_out_of_glass(CRITICAL_DEG - 0.25)
         self.assertFalse(tir)
         # Snell: sin(theta_t) = n * sin(theta_i) must be <= 1 and near 1 here
-        theta_t = math.degrees(
-            math.atan2(math.sin(ray.angle_rad), math.cos(ray.angle_rad))
-        )
+        theta_t = math.degrees(math.atan2(math.sin(ray.angle_rad), math.cos(ray.angle_rad)))
         self.assertGreater(theta_t, 80.0)  # grazing-ish exit
         self.assertLessEqual(theta_t, 90.0 + 1e-9)
 

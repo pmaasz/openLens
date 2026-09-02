@@ -55,9 +55,7 @@ def _validate_number(value: float, param_name: str = "value") -> float:
         raise ValidationError(f"{param_name} must be a number, got bool")
 
     if not isinstance(value, (int, float)):
-        raise ValidationError(
-            f"{param_name} must be a number, got {type(value).__name__}"
-        )
+        raise ValidationError(f"{param_name} must be a number, got {type(value).__name__}")
 
     if math.isnan(value) or math.isinf(value):
         raise ValidationError(f"{param_name} must be a finite number, got {value}")
@@ -316,9 +314,7 @@ def validate_range(
     value = _validate_number(value, param_name)
 
     if value < min_val or value > max_val:
-        raise ValidationError(
-            f"{param_name} must be between {min_val} and {max_val}, got {value}"
-        )
+        raise ValidationError(f"{param_name} must be between {min_val} and {max_val}, got {value}")
 
     return value
 
@@ -506,15 +502,11 @@ def validate_file_path(
             except (OSError, PermissionError) as e:
                 raise ValidationError(f"Cannot create directory for {param_name}: {e}")
         else:
-            raise ValidationError(
-                f"Parent directory does not exist for {param_name}: {parent}"
-            )
+            raise ValidationError(f"Parent directory does not exist for {param_name}: {parent}")
 
     # Check if parent is writable (for new files)
     if not must_exist and not os.access(parent, os.W_OK):
-        raise ValidationError(
-            f"Parent directory is not writable for {param_name}: {parent}"
-        )
+        raise ValidationError(f"Parent directory is not writable for {param_name}: {parent}")
 
     return path
 
@@ -590,9 +582,7 @@ def validate_json_file_path(
     )
 
     if path.suffix.lower() != ".json":
-        raise ValidationError(
-            f"{param_name} must have .json extension, got: {path.suffix}"
-        )
+        raise ValidationError(f"{param_name} must have .json extension, got: {path.suffix}")
 
     return path
 
@@ -613,9 +603,7 @@ def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> d
     """
     if not isinstance(data, dict):
         idx_str = f" at index {lens_index}" if lens_index is not None else ""
-        raise ValidationError(
-            f"Lens data{idx_str} must be a dictionary, got {type(data)}"
-        )
+        raise ValidationError(f"Lens data{idx_str} must be a dictionary, got {type(data)}")
 
     # Define required fields with their types
     required_fields = {
@@ -642,14 +630,10 @@ def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> d
     idx_str = f" at index {lens_index}" if lens_index is not None else ""
     for field, expected_type in required_fields.items():
         if field not in data:
-            raise ValidationError(
-                f"Missing required field '{field}' in lens data{idx_str}"
-            )
+            raise ValidationError(f"Missing required field '{field}' in lens data{idx_str}")
 
         if not isinstance(data[field], expected_type):
-            type_name = (
-                expected_type.__name__ if isinstance(expected_type, type) else "number"
-            )
+            type_name = expected_type.__name__ if isinstance(expected_type, type) else "number"
             raise ValidationError(
                 f"Field '{field}'{idx_str} must be {type_name}, got {type(data[field]).__name__}"
             )
@@ -657,9 +641,7 @@ def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> d
     # Check optional fields have correct type if present
     for field, expected_type in optional_fields.items():
         if field in data and not isinstance(data[field], expected_type):
-            type_name = (
-                expected_type.__name__ if isinstance(expected_type, type) else "number"
-            )
+            type_name = expected_type.__name__ if isinstance(expected_type, type) else "number"
             raise ValidationError(
                 f"Field '{field}'{idx_str} must be {type_name}, got {type(data[field]).__name__}"
             )
@@ -681,9 +663,7 @@ def validate_lenses_json_schema(data: list) -> list:
         ValidationError: If schema is invalid
     """
     if not isinstance(data, list):
-        raise ValidationError(
-            f"Lenses JSON root must be an array, got {type(data).__name__}"
-        )
+        raise ValidationError(f"Lenses JSON root must be an array, got {type(data).__name__}")
 
     # Validate each lens in the array
     for i, lens_data in enumerate(data):

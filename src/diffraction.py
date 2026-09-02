@@ -64,9 +64,7 @@ try:
     SCIPY_AVAILABLE = True
 except ImportError:
     SCIPY_AVAILABLE = False
-    logger.warning(
-        "scipy not available. Diffraction calculations will use approximations."
-    )
+    logger.warning("scipy not available. Diffraction calculations will use approximations.")
 
     # Fallback approximation for j1(x) Bessel function
     # Uses series expansion for |x|<8 and asymptotic form for larger x
@@ -98,11 +96,7 @@ except ImportError:
             return sign * total
         else:
             # Asymptotic: J1(x) ~ sqrt(2/(pi*x)) * cos(x - 3*pi/4)
-            return (
-                sign
-                * math.sqrt(2.0 / (math.pi * ax))
-                * math.cos(ax - 3 * math.pi / 4.0)
-            )
+            return sign * math.sqrt(2.0 / (math.pi * ax)) * math.cos(ax - 3 * math.pi / 4.0)
 
 
 # Optional matplotlib import
@@ -112,9 +106,7 @@ try:
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
-    logger.warning(
-        "matplotlib not available. Plotting disabled for diffraction module."
-    )
+    logger.warning("matplotlib not available. Plotting disabled for diffraction module.")
 
 
 class DiffractionCalculator:
@@ -144,9 +136,7 @@ class DiffractionCalculator:
         """Alias for airy_disk_radius_um with backward compatibility for argument names."""
         return self.airy_disk_radius_um(focal_length, aperture_diameter)
 
-    def airy_disk_radius_um(
-        self, focal_length_mm: float, aperture_diameter_mm: float
-    ) -> float:
+    def airy_disk_radius_um(self, focal_length_mm: float, aperture_diameter_mm: float) -> float:
         """
         Calculate Airy disk radius (first zero of Airy pattern)
 
@@ -362,9 +352,7 @@ class DiffractionCalculator:
 
         return r, encircled
 
-    def calculate_metrics(
-        self, focal_length_mm: float, aperture_diameter_mm: float
-    ) -> Dict:
+    def calculate_metrics(self, focal_length_mm: float, aperture_diameter_mm: float) -> Dict:
         """
         Calculate comprehensive diffraction metrics
 
@@ -378,12 +366,8 @@ class DiffractionCalculator:
         f_number = focal_length_mm / aperture_diameter_mm
 
         metrics = {
-            "airy_disk_radius_um": self.airy_disk_radius_um(
-                focal_length_mm, aperture_diameter_mm
-            ),
-            "rayleigh_limit_arcsec": self.rayleigh_criterion_arcsec(
-                aperture_diameter_mm
-            ),
+            "airy_disk_radius_um": self.airy_disk_radius_um(focal_length_mm, aperture_diameter_mm),
+            "rayleigh_limit_arcsec": self.rayleigh_criterion_arcsec(aperture_diameter_mm),
             "diffraction_spot_um": self.diffraction_limited_spot_size_um(f_number),
             "f_number": f_number,
             "wavelength_nm": self.wavelength_m * 1e9,

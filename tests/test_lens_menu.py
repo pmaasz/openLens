@@ -104,9 +104,7 @@ else:
             self.window._on_new_lens()
             self.window._rebuild_lens_menu()
 
-            action = next(
-                a for a in self.window._lens_menu.actions() if a.text() == "Lens 1"
-            )
+            action = next(a for a in self.window._lens_menu.actions() if a.text() == "Lens 1")
             action.triggered.emit()
             self.assertEqual(self.window._current_lens.name, "Lens 1")
             self.assertIsNone(self.window._current_assembly)

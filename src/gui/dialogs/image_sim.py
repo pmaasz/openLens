@@ -28,9 +28,7 @@ if TYPE_CHECKING:
 class ImageSimulationDialog(QDialog):
     """Dialog for image simulation with side-by-side comparison."""
 
-    def __init__(
-        self, system: "OpticalSystem", parent: Optional["QWidget"] = None
-    ) -> None:
+    def __init__(self, system: "OpticalSystem", parent: Optional["QWidget"] = None) -> None:
         """Initialize the dialog for simulating an image through a system.
 
         Args:

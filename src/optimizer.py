@@ -113,9 +113,7 @@ class MeritFunction:
             return target.weight * 1e3
         return 0.0
 
-    def _eval_spherical(
-        self, system: OpticalSystem, target: OptimizationTarget
-    ) -> float:
+    def _eval_spherical(self, system: OpticalSystem, target: OptimizationTarget) -> float:
         if not system.elements:
             return 1e6
         calc = AberrationsCalculator(system)
@@ -135,9 +133,7 @@ class MeritFunction:
             return 0.0
         return self._apply_target(target, abs(value))
 
-    def _eval_astigmatism(
-        self, system: OpticalSystem, target: OptimizationTarget
-    ) -> float:
+    def _eval_astigmatism(self, system: OpticalSystem, target: OptimizationTarget) -> float:
         if not system.elements:
             return 0.0
         calc = AberrationsCalculator(system)
@@ -278,9 +274,7 @@ class MeritFunction:
                 # Compare underlying function via getattr to handle both
                 h = getattr(handler, "__func__", handler)
                 statics = tuple(
-                    getattr(
-                        getattr(MeritFunction, n), "__func__", getattr(MeritFunction, n)
-                    )
+                    getattr(getattr(MeritFunction, n), "__func__", getattr(MeritFunction, n))
                     for n in (
                         "_eval_chromatic",
                         "_eval_focal_length",
@@ -388,16 +382,11 @@ class LensOptimizer:
                 break
 
             # Calculate centroid of best n points (excluding worst)
-            centroid = [
-                sum(simplex[i][j] for i in range(n_vars)) / n_vars
-                for j in range(n_vars)
-            ]
+            centroid = [sum(simplex[i][j] for i in range(n_vars)) / n_vars for j in range(n_vars)]
 
             # Reflection
             worst = simplex[-1]
-            reflected = [
-                centroid[j] + alpha * (centroid[j] - worst[j]) for j in range(n_vars)
-            ]
+            reflected = [centroid[j] + alpha * (centroid[j] - worst[j]) for j in range(n_vars)]
             reflected = [self.variables[j].clamp(reflected[j]) for j in range(n_vars)]
             reflected_merit = self._evaluate_design(reflected)
 
@@ -408,8 +397,7 @@ class LensOptimizer:
             elif reflected_merit < merit_values[0]:
                 # Try expansion
                 expanded = [
-                    centroid[j] + gamma * (reflected[j] - centroid[j])
-                    for j in range(n_vars)
+                    centroid[j] + gamma * (reflected[j] - centroid[j]) for j in range(n_vars)
                 ]
                 expanded = [self.variables[j].clamp(expanded[j]) for j in range(n_vars)]
                 expanded_merit = self._evaluate_design(expanded)
@@ -422,12 +410,8 @@ class LensOptimizer:
                     merit_values[-1] = reflected_merit
             else:
                 # Contraction
-                contracted = [
-                    centroid[j] + rho * (worst[j] - centroid[j]) for j in range(n_vars)
-                ]
-                contracted = [
-                    self.variables[j].clamp(contracted[j]) for j in range(n_vars)
-                ]
+                contracted = [centroid[j] + rho * (worst[j] - centroid[j]) for j in range(n_vars)]
+                contracted = [self.variables[j].clamp(contracted[j]) for j in range(n_vars)]
                 contracted_merit = self._evaluate_design(contracted)
 
                 if contracted_merit < merit_values[-1]:
@@ -438,19 +422,13 @@ class LensOptimizer:
                     best = simplex[0]
                     for i in range(1, len(simplex)):
                         simplex[i] = [
-                            best[j] + sigma * (simplex[i][j] - best[j])
-                            for j in range(n_vars)
+                            best[j] + sigma * (simplex[i][j] - best[j]) for j in range(n_vars)
                         ]
-                        simplex[i] = [
-                            self.variables[j].clamp(simplex[i][j])
-                            for j in range(n_vars)
-                        ]
+                        simplex[i] = [self.variables[j].clamp(simplex[i][j]) for j in range(n_vars)]
                         merit_values[i] = self._evaluate_design(simplex[i])
 
             # Record history
-            variable_history.append(
-                dict(zip([v.name for v in self.variables], simplex[0]))
-            )
+            variable_history.append(dict(zip([v.name for v in self.variables], simplex[0])))
             merit_history.append(merit_values[0])
 
             last_iteration = iteration
@@ -463,9 +441,7 @@ class LensOptimizer:
         optimized_system = self._apply_variables(best_values)
 
         improvement = (
-            ((initial_merit - final_merit) / initial_merit * 100)
-            if initial_merit > 0
-            else 0
+            ((initial_merit - final_merit) / initial_merit * 100) if initial_merit > 0 else 0
         )
 
         return OptimizationResult(
@@ -520,9 +496,7 @@ class LensOptimizer:
 
             # Accept new values
             current_values = new_values
-            variable_history.append(
-                dict(zip([v.name for v in self.variables], current_values))
-            )
+            variable_history.append(dict(zip([v.name for v in self.variables], current_values)))
             merit_history.append(new_merit)
 
             last_iteration = iteration
@@ -530,9 +504,7 @@ class LensOptimizer:
         optimized_system = self._apply_variables(current_values)
         final_merit = merit_history[-1]
         improvement = (
-            ((initial_merit - final_merit) / initial_merit * 100)
-            if initial_merit > 0
-            else 0
+            ((initial_merit - final_merit) / initial_merit * 100) if initial_merit > 0 else 0
         )
 
         return OptimizationResult(
@@ -567,9 +539,7 @@ class LensOptimizer:
         # If we have many variables, use parallel execution
         if n_vars > 4:
             with ProcessPoolExecutor() as executor:
-                f_plus_list = list(
-                    executor.map(self._evaluate_design, perturbed_designs)
-                )
+                f_plus_list = list(executor.map(self._evaluate_design, perturbed_designs))
         else:
             f_plus_list = [self._evaluate_design(v) for v in perturbed_designs]
 
@@ -684,12 +654,8 @@ def create_doublet_optimizer(
     # The above covers 4 variables as expected by tests; the linked target ensures cemented interface
 
     targets = [
-        OptimizationTarget(
-            "chromatic_aberration", 0.0, weight=1.0, target_type="minimize"
-        ),
-        OptimizationTarget(
-            "focal_length", target_focal_length, weight=100.0, target_type="target"
-        ),
+        OptimizationTarget("chromatic_aberration", 0.0, weight=1.0, target_type="minimize"),
+        OptimizationTarget("focal_length", target_focal_length, weight=100.0, target_type="target"),
     ]
 
     return LensOptimizer(system, variables, targets)

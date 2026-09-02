@@ -118,9 +118,7 @@ class ImageSimulator:
         # Simulate through system
         return self.simulate_image(pattern, object_distance)
 
-    def _calculate_image_distance(
-        self, object_distance: float, wavelength: float
-    ) -> float:
+    def _calculate_image_distance(self, object_distance: float, wavelength: float) -> float:
         """Calculate image distance using lens equation."""
         if not hasattr(self.optical_system, "effective_focal_length"):
             return object_distance  # Simple assumption
@@ -294,11 +292,7 @@ class ImageSimulator:
                 # Fallback: simple nearest neighbor resize using numpy
                 h, w = simulated.shape[:2]
                 original = (
-                    np.array(
-                        Image.fromarray((original * 255).astype(np.uint8)).resize(
-                            (w, h)
-                        )
-                    )
+                    np.array(Image.fromarray((original * 255).astype(np.uint8)).resize((w, h)))
                     / 255.0
                     if PIL_AVAILABLE
                     else original
@@ -385,9 +379,7 @@ class ImageSimulator:
         return float(gradient_magnitude.mean())
 
     # Test pattern generators
-    def _create_grid_pattern(
-        self, size: Tuple[int, int], spacing: int = 50
-    ) -> np.ndarray:
+    def _create_grid_pattern(self, size: Tuple[int, int], spacing: int = 50) -> np.ndarray:
         """Create grid test pattern."""
         h, w = size
         pattern = np.ones((h, w))
@@ -409,9 +401,7 @@ class ImageSimulator:
 
         return pattern
 
-    def _create_star_pattern(
-        self, size: Tuple[int, int], num_rays: int = 8
-    ) -> np.ndarray:
+    def _create_star_pattern(self, size: Tuple[int, int], num_rays: int = 8) -> np.ndarray:
         """Create star test pattern."""
         h, w = size
         y, x = np.ogrid[:h, :w]
@@ -422,9 +412,7 @@ class ImageSimulator:
 
         return pattern.astype(float)
 
-    def _create_siemens_star(
-        self, size: Tuple[int, int], num_spokes: int = 36
-    ) -> np.ndarray:
+    def _create_siemens_star(self, size: Tuple[int, int], num_spokes: int = 36) -> np.ndarray:
         """Create Siemens star resolution target."""
         h, w = size
         y, x = np.ogrid[:h, :w]
@@ -441,9 +429,7 @@ class ImageSimulator:
 
         return pattern.astype(float)
 
-    def _create_text_pattern(
-        self, size: Tuple[int, int], text: str = "TEST"
-    ) -> np.ndarray:
+    def _create_text_pattern(self, size: Tuple[int, int], text: str = "TEST") -> np.ndarray:
         """Create text pattern."""
         from PIL import Image, ImageDraw, ImageFont
 
@@ -451,9 +437,7 @@ class ImageSimulator:
         draw = ImageDraw.Draw(img)
 
         try:
-            font = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 48
-            )
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 48)
         except (IOError, OSError) as e:
             logger.debug("Failed to load system font, using default: %s", e)
             font = ImageFont.load_default()
@@ -466,9 +450,7 @@ class ImageSimulator:
 
         return np.array(img) / 255.0
 
-    def _create_slant_edge(
-        self, size: Tuple[int, int], angle: float = 5.0
-    ) -> np.ndarray:
+    def _create_slant_edge(self, size: Tuple[int, int], angle: float = 5.0) -> np.ndarray:
         """Create slanted edge for MTF measurement."""
         h, w = size
         y, x = np.ogrid[:h, :w]

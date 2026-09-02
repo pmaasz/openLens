@@ -192,11 +192,7 @@ class SimulationVisualizationWidget(QWidget):
                 from ...ray_tracer import SystemRayTracer
 
                 tracer = SystemRayTracer(self._system)
-                diameter = (
-                    self._system.elements[0].lens.diameter
-                    if self._system.elements
-                    else 25.0
-                )
+                diameter = self._system.elements[0].lens.diameter if self._system.elements else 25.0
             else:
                 tracer = LensRayTracer(self._lens)
                 diameter = self._lens.diameter
@@ -227,9 +223,7 @@ class SimulationVisualizationWidget(QWidget):
 
         self.update()
 
-    def _run_ghost_analysis(
-        self, system: "OpticalSystem", tracer: "SystemRayTracer"
-    ) -> None:
+    def _run_ghost_analysis(self, system: "OpticalSystem", tracer: "SystemRayTracer") -> None:
         """Run ghost analysis for 2nd order reflections"""
         try:
             from ...analysis.ghost import GhostAnalyzer
@@ -287,9 +281,7 @@ class SimulationVisualizationWidget(QWidget):
         # Determine total bounds for scaling
         if self._system:
             total_thickness = self._system.get_total_length()
-            max_diameter = max(
-                (e.lens.diameter for e in self._system.elements), default=25.0
-            )
+            max_diameter = max((e.lens.diameter for e in self._system.elements), default=25.0)
         else:
             total_thickness = self._lens.thickness
             max_diameter = self._lens.diameter
@@ -425,18 +417,12 @@ class SimulationVisualizationWidget(QWidget):
                 for i in range(8):
                     angle = i * math.pi / 4
                     x2 = cx_img + 80 * (1 if i % 2 else 0.5) * (1 if i < 4 else -1)
-                    y2 = cy_img + 80 * (1 if i % 2 else 0.5) * (
-                        1 if (i % 8) < 4 else -1
-                    )
+                    y2 = cy_img + 80 * (1 if i % 2 else 0.5) * (1 if (i % 8) < 4 else -1)
                     painter.drawLine(cx_img, cy_img, int(x2), int(y2))
             elif pattern == "Grid":
                 for i in range(-3, 4):
-                    painter.drawLine(
-                        cx_img + i * 25, cy_img - 75, cx_img + i * 25, cy_img + 75
-                    )
-                    painter.drawLine(
-                        cx_img - 75, cy_img + i * 25, cx_img + 75, cy_img + i * 25
-                    )
+                    painter.drawLine(cx_img + i * 25, cy_img - 75, cx_img + i * 25, cy_img + 75)
+                    painter.drawLine(cx_img - 75, cy_img + i * 25, cx_img + 75, cy_img + i * 25)
             elif pattern == "USAF 1951":
                 for i in range(6):
                     for j in range(6):

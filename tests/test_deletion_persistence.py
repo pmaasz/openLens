@@ -67,9 +67,7 @@ else:
                     os.unlink(p)
 
         def stored_names(self):
-            return sorted(
-                o.name for o in self.storage.load_lenses() if hasattr(o, "name")
-            )
+            return sorted(o.name for o in self.storage.load_lenses() if hasattr(o, "name"))
 
     class TestReconciliation(unittest.TestCase):
         def setUp(self):
@@ -131,8 +129,7 @@ else:
             storage.save_lenses(lens_only, show_status=False, reconcile=False)
 
             kinds = [
-                ("assembly" if hasattr(d, "elements") else "lens")
-                for d in storage.load_lenses()
+                ("assembly" if hasattr(d, "elements") else "lens") for d in storage.load_lenses()
             ]
             self.assertIn("assembly", kinds)
 

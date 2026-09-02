@@ -145,9 +145,7 @@ class JonesMatrices:
     def rotator(angle_deg: float) -> np.ndarray:
         """Optical rotator (e.g., quartz)"""
         theta = np.radians(angle_deg)
-        return np.array(
-            [[np.cos(theta), np.sin(theta)], [-np.sin(theta), np.cos(theta)]]
-        )
+        return np.array([[np.cos(theta), np.sin(theta)], [-np.sin(theta), np.cos(theta)]])
 
     @staticmethod
     def retarder(phase_deg: float, fast_axis_angle_deg: float = 0) -> np.ndarray:
@@ -187,9 +185,7 @@ class PolarizationCalculator:
         theta_b = np.arctan(n2 / n1)
         return np.degrees(theta_b)
 
-    def fresnel_coefficients(
-        self, n1: float, n2: float, angle_deg: float
-    ) -> Dict[str, complex]:
+    def fresnel_coefficients(self, n1: float, n2: float, angle_deg: float) -> Dict[str, complex]:
         """
         Calculate Fresnel reflection and transmission coefficients
 
@@ -239,9 +235,7 @@ class PolarizationCalculator:
             "total_internal_reflection": False,
         }
 
-    def reflectance_transmittance(
-        self, n1: float, n2: float, angle_deg: float
-    ) -> Dict[str, float]:
+    def reflectance_transmittance(self, n1: float, n2: float, angle_deg: float) -> Dict[str, float]:
         """
         Calculate reflectance and transmittance (power)
 
@@ -271,16 +265,8 @@ class PolarizationCalculator:
             T_s = 0.0
             T_p = 0.0
         else:
-            T_s = (
-                (n2 * np.cos(theta2))
-                / (n1 * np.cos(theta1))
-                * np.abs(coeffs["t_s"]) ** 2
-            )
-            T_p = (
-                (n2 * np.cos(theta2))
-                / (n1 * np.cos(theta1))
-                * np.abs(coeffs["t_p"]) ** 2
-            )
+            T_s = (n2 * np.cos(theta2)) / (n1 * np.cos(theta1)) * np.abs(coeffs["t_s"]) ** 2
+            T_p = (n2 * np.cos(theta2)) / (n1 * np.cos(theta1)) * np.abs(coeffs["t_p"]) ** 2
 
         return {"R_s": R_s, "R_p": R_p, "T_s": T_s, "T_p": T_p}
 
@@ -320,9 +306,7 @@ class PolarizationCalculator:
         theta = np.radians(angle_deg)
         return incident_intensity * np.cos(theta) ** 2
 
-    def plot_fresnel_curves(
-        self, n1: float, n2: float, save_path: Optional[str] = None
-    ):
+    def plot_fresnel_curves(self, n1: float, n2: float, save_path: Optional[str] = None):
         """
         Plot Fresnel reflectance vs angle
 
@@ -387,9 +371,7 @@ class PolarizationCalculator:
 
         plt.close()
 
-    def plot_polarization_ellipse(
-        self, state: PolarizationState, save_path: Optional[str] = None
-    ):
+    def plot_polarization_ellipse(self, state: PolarizationState, save_path: Optional[str] = None):
         """
         Plot polarization ellipse
 

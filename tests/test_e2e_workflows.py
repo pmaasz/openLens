@@ -60,9 +60,7 @@ class TestCompleteDesignWorkflow(unittest.TestCase):
         self.assertIn("chromatic_aberration", aberrations)
 
         # Step 5: Create comparison report
-        print(
-            f"✓ Lens designed: f={focal_length:.1f}mm, f/#{all_metrics['f_number']:.2f}"
-        )
+        print(f"✓ Lens designed: f={focal_length:.1f}mm, f/#{all_metrics['f_number']:.2f}")
 
         print("✓ Complete design workflow successful!")
 

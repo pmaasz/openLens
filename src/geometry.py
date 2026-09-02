@@ -44,18 +44,14 @@ class LensGeometry:
             # This is mathematically equivalent to R - sign(R)*sqrt(R^2 - r^2)
             # but more numerically stable for large radii.
             try:
-                z = (r**2) / (
-                    radius + math.copysign(math.sqrt(radius**2 - r**2), radius)
-                )
+                z = (r**2) / (radius + math.copysign(math.sqrt(radius**2 - r**2), radius))
             except (ValueError, ZeroDivisionError):
                 z = 0.0
             profile.append((z, r))
         return profile
 
     @staticmethod
-    def get_lens_polyline(
-        lens: Lens, num_points: int = 50
-    ) -> List[Tuple[float, float]]:
+    def get_lens_polyline(lens: Lens, num_points: int = 50) -> List[Tuple[float, float]]:
         """Get a closed (z, r) polyline representing the lens cross-section.
 
         Args:
@@ -79,9 +75,7 @@ class LensGeometry:
         return front + back_shifted[::-1]
 
     @staticmethod
-    def generate_mesh(
-        lens: Lens, radial_div: int = 32, circular_div: int = 32
-    ) -> Dict[str, Any]:
+    def generate_mesh(lens: Lens, radial_div: int = 32, circular_div: int = 32) -> Dict[str, Any]:
         """Generate a 3D mesh (vertices and faces) for the lens.
 
         Args:

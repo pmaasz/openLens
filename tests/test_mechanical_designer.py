@@ -46,9 +46,7 @@ class TestMechanicalDesigner(unittest.TestCase):
         cell = self.designer.design_lens_cells()[0]
         # First lens has 25 mm diameter
         self.assertAlmostEqual(cell.inner_diameter, 25.0 + 0.1, places=9)
-        self.assertAlmostEqual(
-            cell.outer_diameter, cell.inner_diameter + 2 * 2.0, places=9
-        )
+        self.assertAlmostEqual(cell.outer_diameter, cell.inner_diameter + 2 * 2.0, places=9)
 
     def test_total_length_accounts_for_cells_and_spacers(self):
         self.designer.design_lens_cells()

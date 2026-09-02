@@ -134,9 +134,7 @@ class OpticStudioExporter:
             )
 
             # Image surface
-            f.write(
-                f"{'IMA':<10} {'STANDARD':<12} {'Infinity':<14} {'':<12} {'':<10} {'':<10}\n"
-            )
+            f.write(f"{'IMA':<10} {'STANDARD':<12} {'Infinity':<14} {'':<12} {'':<10} {'':<10}\n")
 
             f.write("\n")
             f.write("# End of OpenLens Export\n")
@@ -175,9 +173,7 @@ class OpticStudioExporter:
             f.write("-" * 60 + "\n")
 
             # Object
-            f.write(
-                f"{'OBJ':<10} {'STANDARD':<12} {'Infinity':<14} {'Infinity':<12} {'':<10}\n"
-            )
+            f.write(f"{'OBJ':<10} {'STANDARD':<12} {'Infinity':<14} {'Infinity':<12} {'':<10}\n")
 
             surf_num = 1
             for i, elem in enumerate(system.elements):
@@ -207,15 +203,11 @@ class OpticStudioExporter:
                     if abs(lens.radius_of_curvature_2) < 1e10
                     else "Infinity"
                 )
-                f.write(
-                    f"{surf_num:<10} {'STANDARD':<12} {r2_str:<14} {'100.0000':<12} {'':<10}\n"
-                )
+                f.write(f"{surf_num:<10} {'STANDARD':<12} {r2_str:<14} {'100.0000':<12} {'':<10}\n")
                 surf_num += 1
 
             # Image
-            f.write(
-                f"{'IMA':<10} {'STANDARD':<12} {'Infinity':<14} {'':<12} {'':<10}\n"
-            )
+            f.write(f"{'IMA':<10} {'STANDARD':<12} {'Infinity':<14} {'':<12} {'':<10}\n")
 
             f.write("\n")
             f.write("# End of OpenLens Export\n")
@@ -279,17 +271,13 @@ class SVGExporter:
         return f"M {x_top:.2f} {y_top:.2f} A {radius:.2f} {radius:.2f} 0 {large_arc} {sweep} {x_bottom:.2f} {y_bottom:.2f}"
 
     @staticmethod
-    def _get_surface_x(
-        radius: float, half_diameter: float, base_x: float, is_front: bool
-    ) -> float:
+    def _get_surface_x(radius: float, half_diameter: float, base_x: float, is_front: bool) -> float:
         """Calculate x position of surface edge given radius and y position"""
         if abs(radius) > 1e9:  # Flat surface
             return base_x
 
         try:
-            sag = abs(radius) - math.sqrt(
-                radius * radius - half_diameter * half_diameter
-            )
+            sag = abs(radius) - math.sqrt(radius * radius - half_diameter * half_diameter)
         except ValueError:
             sag = 0
 
@@ -354,12 +342,8 @@ class SVGExporter:
             f.write("  <defs>\n")
             f.write("    <style>\n")
             f.write("      .lens-fill { fill: #b3d9ff; fill-opacity: 0.5; }\n")
-            f.write(
-                "      .lens-stroke { stroke: #0066cc; stroke-width: 2; fill: none; }\n"
-            )
-            f.write(
-                "      .axis { stroke: #999999; stroke-width: 1; stroke-dasharray: 5,5; }\n"
-            )
+            f.write("      .lens-stroke { stroke: #0066cc; stroke-width: 2; fill: none; }\n")
+            f.write("      .axis { stroke: #999999; stroke-width: 1; stroke-dasharray: 5,5; }\n")
             f.write("      .ray { stroke: #ff6600; stroke-width: 1.5; fill: none; }\n")
             f.write(
                 "      .label { font-family: Arial, sans-serif; font-size: 12px; fill: #333333; }\n"
@@ -447,9 +431,7 @@ class SVGExporter:
                     ctrl_x = front_top_x + sag1 * 2
 
                 path_parts.append(f"M {front_top_x:.2f} {top_y:.2f}")
-                path_parts.append(
-                    f"Q {ctrl_x:.2f} {cy:.2f} {front_bot_x:.2f} {bot_y:.2f}"
-                )
+                path_parts.append(f"Q {ctrl_x:.2f} {cy:.2f} {front_bot_x:.2f} {bot_y:.2f}")
 
             # Bottom edge
             path_parts.append(f"L {back_bot_x:.2f} {bot_y:.2f}")
@@ -464,9 +446,7 @@ class SVGExporter:
                 else:  # Concave back
                     ctrl_x = back_bot_x - sag2 * 2
 
-                path_parts.append(
-                    f"Q {ctrl_x:.2f} {cy:.2f} {back_top_x:.2f} {top_y:.2f}"
-                )
+                path_parts.append(f"Q {ctrl_x:.2f} {cy:.2f} {back_top_x:.2f} {top_y:.2f}")
 
             # Close path
             path_parts.append("Z")
@@ -516,27 +496,19 @@ class SVGExporter:
             f.write("</svg>\n")
 
     @staticmethod
-    def export_system(
-        system: OpticalSystem, filename: str, width: int = 600, height: int = 300
-    ):
+    def export_system(system: OpticalSystem, filename: str, width: int = 600, height: int = 300):
         """Export optical system as SVG diagram"""
         margin = 40
 
         with open(filename, "w") as f:
             # SVG header
             f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-            f.write(
-                f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">\n'
-            )
+            f.write(f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">\n')
             f.write("  <defs>\n")
             f.write("    <style>\n")
             f.write("      .lens-fill { fill: #b3d9ff; fill-opacity: 0.5; }\n")
-            f.write(
-                "      .lens-stroke { stroke: #0066cc; stroke-width: 2; fill: none; }\n"
-            )
-            f.write(
-                "      .axis { stroke: #999999; stroke-width: 1; stroke-dasharray: 5,5; }\n"
-            )
+            f.write("      .lens-stroke { stroke: #0066cc; stroke-width: 2; fill: none; }\n")
+            f.write("      .axis { stroke: #999999; stroke-width: 1; stroke-dasharray: 5,5; }\n")
             f.write(
                 "      .title { font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; }\n"
             )
@@ -561,9 +533,7 @@ class SVGExporter:
             total_length = system.get_total_length() or 100
 
             # Get max diameter for vertical scaling
-            max_diameter = max(
-                (elem.lens.diameter for elem in system.elements), default=50
-            )
+            max_diameter = max((elem.lens.diameter for elem in system.elements), default=50)
 
             available_width = width - 2 * margin
             available_height = height - 2 * margin

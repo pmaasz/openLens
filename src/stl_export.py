@@ -54,9 +54,7 @@ class STLExporter:
                 z_sag = 0.0
             else:
                 try:
-                    z_sag = (y**2) / (
-                        radius + math.copysign(math.sqrt(radius**2 - y**2), radius)
-                    )
+                    z_sag = (y**2) / (radius + math.copysign(math.sqrt(radius**2 - y**2), radius))
                 except (ValueError, ZeroDivisionError):
                     z_sag = 0.0
 
@@ -243,9 +241,7 @@ class STLExporter:
         )
         if profile1:
             self.triangles.extend(
-                self.generate_surface_triangles(
-                    profile1, 0.0, num_segments=resolution * 2
-                )
+                self.generate_surface_triangles(profile1, 0.0, num_segments=resolution * 2)
             )
             last_z_front = profile1[-1][1]  # Z at the edge
         else:
@@ -264,9 +260,7 @@ class STLExporter:
         )
         if profile2:
             self.triangles.extend(
-                self.generate_surface_triangles(
-                    profile2, thickness, num_segments=resolution * 2
-                )
+                self.generate_surface_triangles(profile2, thickness, num_segments=resolution * 2)
             )
             last_z_back = profile2[-1][1] + thickness  # Add offset
         else:
@@ -335,9 +329,7 @@ def export_lens_stl(item: Any, filename: str, resolution: int = 50) -> int:
             )
             if profile1:
                 exporter.triangles.extend(
-                    exporter.generate_surface_triangles(
-                        profile1, pos, num_segments=resolution * 2
-                    )
+                    exporter.generate_surface_triangles(profile1, pos, num_segments=resolution * 2)
                 )
                 last_z_front = profile1[-1][1] + pos
             else:

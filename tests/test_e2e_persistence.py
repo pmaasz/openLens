@@ -52,8 +52,7 @@ class TestEndToEndPersistence(unittest.TestCase):
         assemblies = [
             item
             for item in loaded_items
-            if item.get("id") == "e2e_doublet_123"
-            and item.get("type") == "OpticalSystem"
+            if item.get("id") == "e2e_doublet_123" and item.get("type") == "OpticalSystem"
         ]
         self.assertEqual(len(assemblies), 1, "Assembly not found in database")
         loaded_dict = assemblies[0]

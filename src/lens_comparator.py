@@ -75,15 +75,11 @@ class LensComparator:
 
             # Safely extract aberration values
             spherical_val = 0
-            if "spherical" in aberrations and isinstance(
-                aberrations["spherical"], dict
-            ):
+            if "spherical" in aberrations and isinstance(aberrations["spherical"], dict):
                 spherical_val = abs(aberrations["spherical"].get("longitudinal", 0))
 
             chromatic_val = 0
-            if "chromatic" in aberrations and isinstance(
-                aberrations["chromatic"], dict
-            ):
+            if "chromatic" in aberrations and isinstance(aberrations["chromatic"], dict):
                 chromatic_val = aberrations["chromatic"].get("longitudinal", 0)
 
             coma_val = 0
@@ -141,23 +137,17 @@ class LensComparator:
                 "min": min_val,
                 "max": max_val,
                 "range": max_val - min_val,
-                "percent_diff": (
-                    ((max_val - min_val) / max_val * 100) if max_val != 0 else 0
-                ),
+                "percent_diff": (((max_val - min_val) / max_val * 100) if max_val != 0 else 0),
             }
 
         return diffs
 
-    def rank_by_parameter(
-        self, parameter: str, ascending: bool = True
-    ) -> List[ComparisonResult]:
+    def rank_by_parameter(self, parameter: str, ascending: bool = True) -> List[ComparisonResult]:
         """Rank lenses by a specific parameter"""
         if not self.results:
             return []
 
-        return sorted(
-            self.results, key=lambda r: getattr(r, parameter), reverse=not ascending
-        )
+        return sorted(self.results, key=lambda r: getattr(r, parameter), reverse=not ascending)
 
     def get_best_overall(self, weights: Dict[str, float] = None) -> ComparisonResult:
         """
@@ -199,9 +189,7 @@ class LensComparator:
         lines.append("")
 
         # Header
-        lines.append(
-            f"{'Parameter':<25} " + " ".join(f"{r.name[:12]:>12}" for r in self.results)
-        )
+        lines.append(f"{'Parameter':<25} " + " ".join(f"{r.name[:12]:>12}" for r in self.results))
         lines.append("-" * 80)
 
         # Rows

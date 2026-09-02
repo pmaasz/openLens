@@ -115,9 +115,7 @@ class CoatingDesigner:
         """
         if not layers:
             # No coating - Fresnel reflection
-            r = (self.substrate_index - self.air_index) / (
-                self.substrate_index + self.air_index
-            )
+            r = (self.substrate_index - self.air_index) / (self.substrate_index + self.air_index)
             return r**2
 
         # Simplified calculation for normal incidence
@@ -134,9 +132,7 @@ class CoatingDesigner:
             phases = []
             for layer in layers:
                 thickness_m = layer.thickness_nm * 1e-9
-                phase = (
-                    2 * math.pi * layer.refractive_index * thickness_m / wavelength_m
-                )
+                phase = 2 * math.pi * layer.refractive_index * thickness_m / wavelength_m
                 phases.append(phase)
 
             # Transfer matrix method (simplified for normal incidence)
@@ -171,9 +167,7 @@ class CoatingDesigner:
             List of (wavelength_nm, reflectivity) tuples
         """
         min_wl, max_wl = wavelength_range
-        wavelengths = [
-            min_wl + (max_wl - min_wl) * i / (num_points - 1) for i in range(num_points)
-        ]
+        wavelengths = [min_wl + (max_wl - min_wl) * i / (num_points - 1) for i in range(num_points)]
 
         curve = []
         for wl in wavelengths:
@@ -198,9 +192,7 @@ class CoatingDesigner:
 
         return layers
 
-    def get_coating_info(
-        self, layers: List[CoatingLayer], design_wavelength: float
-    ) -> str:
+    def get_coating_info(self, layers: List[CoatingLayer], design_wavelength: float) -> str:
         """Generate coating specification string"""
         lines = []
         lines.append("COATING SPECIFICATION")
@@ -216,9 +208,7 @@ class CoatingDesigner:
             lines.append(f"Layer {i}: {layer.material}")
             lines.append(f"  Refractive Index: {layer.refractive_index:.4f}")
             lines.append(f"  Physical Thickness: {layer.thickness_nm:.2f} nm")
-            lines.append(
-                f"  Optical Thickness: {optical_thickness:.2f} nm ({waves:.3f}λ)"
-            )
+            lines.append(f"  Optical Thickness: {optical_thickness:.2f} nm ({waves:.3f}λ)")
             lines.append("")
 
         R = self.calculate_reflectivity(layers, design_wavelength)

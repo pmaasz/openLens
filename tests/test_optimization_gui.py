@@ -28,10 +28,7 @@ class TestOptimizationIntegration(unittest.TestCase):
 
     def test_optimization_tab_exists(self):
         """Verify the optimization tab is created in the notebook."""
-        tabs = [
-            self.app.notebook.tab(i, "text")
-            for i in range(self.app.notebook.index("end"))
-        ]
+        tabs = [self.app.notebook.tab(i, "text") for i in range(self.app.notebook.index("end"))]
         self.assertIn("Optimization", tabs)
 
     def test_optimization_controller_initialized(self):
@@ -121,9 +118,7 @@ class TestOptimizationIntegration(unittest.TestCase):
             # Mock apply_results to capture result
             applied_results = []
             original_apply = ctrl._apply_results
-            ctrl._apply_results = lambda res: applied_results.append(
-                res
-            ) or original_apply(res)
+            ctrl._apply_results = lambda res: applied_results.append(res) or original_apply(res)
 
             # Run optimization
             ctrl.run_optimization()
@@ -143,9 +138,7 @@ class TestOptimizationIntegration(unittest.TestCase):
             # Actually apply
             ctrl._confirm_apply()
             # Should have updated the current lens in main window
-            self.assertAlmostEqual(
-                self.app.current_lens.calculate_focal_length(), new_fl
-            )
+            self.assertAlmostEqual(self.app.current_lens.calculate_focal_length(), new_fl)
 
         finally:
             threading.Thread = original_thread
@@ -153,15 +146,9 @@ class TestOptimizationIntegration(unittest.TestCase):
     def test_assembly_optimization_flow(self):
         """Verify optimization flow for multi-element assemblies."""
         system = OpticalSystem(name="Triplet")
-        l1 = Lens(
-            name="L1", radius_of_curvature_1=50, radius_of_curvature_2=-50, thickness=5
-        )
-        l2 = Lens(
-            name="L2", radius_of_curvature_1=-50, radius_of_curvature_2=50, thickness=3
-        )
-        l3 = Lens(
-            name="L3", radius_of_curvature_1=50, radius_of_curvature_2=-50, thickness=5
-        )
+        l1 = Lens(name="L1", radius_of_curvature_1=50, radius_of_curvature_2=-50, thickness=5)
+        l2 = Lens(name="L2", radius_of_curvature_1=-50, radius_of_curvature_2=50, thickness=3)
+        l3 = Lens(name="L3", radius_of_curvature_1=50, radius_of_curvature_2=-50, thickness=5)
 
         system.add_lens(l1)
         system.add_lens(l2, air_gap_before=2.0)

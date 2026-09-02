@@ -28,13 +28,9 @@ class OpticalNode:
     def get_local_transform(self) -> Matrix4x4:
         """Calculates local transformation matrix (T * R)"""
         # Create rotation matrix (R)
-        rot_mat = Matrix4x4.from_euler(
-            self.rotation.x, self.rotation.y, self.rotation.z
-        )
+        rot_mat = Matrix4x4.from_euler(self.rotation.x, self.rotation.y, self.rotation.z)
         # Create translation matrix (T)
-        trans_mat = Matrix4x4.from_translation(
-            self.position.x, self.position.y, self.position.z
-        )
+        trans_mat = Matrix4x4.from_translation(self.position.x, self.position.y, self.position.z)
         # Combine: M = T * R (Standard: Rotate then Translate relative to parent)
         return trans_mat * rot_mat
 

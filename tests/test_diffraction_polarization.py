@@ -123,12 +123,8 @@ class TestDiffraction(unittest.TestCase):
         self.assertEqual(max_idx[1], center)
 
         # Should be symmetric
-        self.assertAlmostEqual(
-            psf[center, center + 1], psf[center, center - 1], places=3
-        )
-        self.assertAlmostEqual(
-            psf[center + 1, center], psf[center - 1, center], places=3
-        )
+        self.assertAlmostEqual(psf[center, center + 1], psf[center, center - 1], places=3)
+        self.assertAlmostEqual(psf[center + 1, center], psf[center - 1, center], places=3)
 
     def test_encircled_energy(self):
         """Test encircled energy calculation"""

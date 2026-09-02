@@ -245,9 +245,7 @@ class StartupDialog(QDialog):
                 border: 1px solid #555555;
             }
         """)
-        open_btn.clicked.connect(
-            lambda: self._open_selected(list_widget, items, list_type)
-        )
+        open_btn.clicked.connect(lambda: self._open_selected(list_widget, items, list_type))
         self.bottom_controls_layout.addWidget(open_btn)
 
         self.bottom_controls_layout.addStretch(1)
@@ -305,9 +303,7 @@ class StartupDialog(QDialog):
             }
         """)
         minus_btn.setIcon(create_icon("minus"))
-        minus_btn.clicked.connect(
-            lambda: self._on_delete(list_widget, items, list_type)
-        )
+        minus_btn.clicked.connect(lambda: self._on_delete(list_widget, items, list_type))
 
         action_layout.addWidget(plus_btn)
         action_layout.addWidget(minus_btn)
@@ -336,9 +332,7 @@ class StartupDialog(QDialog):
             elif child.layout():
                 self._clear_layout(child.layout())
 
-    def _open_selected(
-        self, list_widget: QListWidget, items: List[Any], list_type: str
-    ) -> None:
+    def _open_selected(self, list_widget: QListWidget, items: List[Any], list_type: str) -> None:
         """Accept the dialog with an ``open_<list_type>`` action for the highlighted item.
 
         Sets ``_selected_action`` to "open_lens" or "open_assembly" and
@@ -379,9 +373,7 @@ class StartupDialog(QDialog):
             except Exception as e:
                 QMessageBox.critical(self, "Import Error", f"Failed to import: {e}")
 
-    def _on_delete(
-        self, list_widget: QListWidget, items: List[Any], list_type: str
-    ) -> None:
+    def _on_delete(self, list_widget: QListWidget, items: List[Any], list_type: str) -> None:
         """Delete from database"""
         idx = list_widget.currentRow()
         if idx < 0:

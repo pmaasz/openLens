@@ -56,9 +56,7 @@ class TestEnvironmental(unittest.TestCase):
 
         expected_scaling = 1.0 + 7.1e-6 * 100
 
-        self.assertAlmostEqual(
-            new_lens.radius_of_curvature_1, 100.0 * expected_scaling, places=4
-        )
+        self.assertAlmostEqual(new_lens.radius_of_curvature_1, 100.0 * expected_scaling, places=4)
         self.assertAlmostEqual(new_lens.thickness, 10.0 * expected_scaling, places=4)
 
     def test_pressure_effect_on_index(self):

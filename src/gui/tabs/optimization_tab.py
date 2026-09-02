@@ -487,14 +487,9 @@ class OptimizationTab(BaseTab):
                         2.4,
                     )
                 )
-            if (
-                self._opt_check_vars.get("d_0")
-                and self._opt_check_vars.get("d_0").isChecked()
-            ):
+            if self._opt_check_vars.get("d_0") and self._opt_check_vars.get("d_0").isChecked():
                 variables.append(
-                    OptimizationVariable(
-                        "Diameter", 0, "diameter", active_target.diameter, 1, 500
-                    )
+                    OptimizationVariable("Diameter", 0, "diameter", active_target.diameter, 1, 500)
                 )
 
         if not variables:
@@ -514,21 +509,13 @@ class OptimizationTab(BaseTab):
                 )
             )
         if self._opt_target_spot.isChecked():
-            targets.append(
-                OptimizationTarget("spot_size", 0, weight=1.0, target_type="minimize")
-            )
+            targets.append(OptimizationTarget("spot_size", 0, weight=1.0, target_type="minimize"))
         if self._opt_target_spherical.isChecked():
-            targets.append(
-                OptimizationTarget("spherical", 0, weight=1.0, target_type="minimize")
-            )
+            targets.append(OptimizationTarget("spherical", 0, weight=1.0, target_type="minimize"))
         if self._opt_target_coma.isChecked():
-            targets.append(
-                OptimizationTarget("coma", 0, weight=1.0, target_type="minimize")
-            )
+            targets.append(OptimizationTarget("coma", 0, weight=1.0, target_type="minimize"))
         if self._opt_target_astig.isChecked():
-            targets.append(
-                OptimizationTarget("astigmatism", 0, weight=1.0, target_type="minimize")
-            )
+            targets.append(OptimizationTarget("astigmatism", 0, weight=1.0, target_type="minimize"))
 
         if not targets:
             self._opt_results_text.setPlainText("Select at least one target.")
@@ -556,9 +543,7 @@ class OptimizationTab(BaseTab):
         self._opt_worker.start()
 
     @Slot(object, list)
-    def _on_optimization_finished(
-        self, result, variables: List[OptimizationVariable]
-    ) -> None:
+    def _on_optimization_finished(self, result, variables: List[OptimizationVariable]) -> None:
         """Callback for finished optimization.
 
         Args:
@@ -584,14 +569,10 @@ class OptimizationTab(BaseTab):
                     self._opt_asm_viz.update_system(result.optimized_system)
                     for var in variables:
                         if var.parameter == "air_gap":
-                            val = result.optimized_system.air_gaps[
-                                var.element_index
-                            ].thickness
+                            val = result.optimized_system.air_gaps[var.element_index].thickness
                         else:
                             val = getattr(
-                                result.optimized_system.elements[
-                                    var.element_index
-                                ].lens,
+                                result.optimized_system.elements[var.element_index].lens,
                                 var.parameter,
                             )
                         text += f"  {var.name}: {val:.4f}\n"
@@ -607,13 +588,9 @@ class OptimizationTab(BaseTab):
                         text += f"  {var.name}: {val:.4f}\n"
 
             self._opt_results_text.setPlainText(text)
-            self._opt_results_text.append(
-                "\nClick 'Apply & Keep' to save these changes."
-            )
+            self._opt_results_text.append("\nClick 'Apply & Keep' to save these changes.")
         else:
-            self._opt_results_text.setPlainText(
-                f"Optimization failed: {result.message}"
-            )
+            self._opt_results_text.setPlainText(f"Optimization failed: {result.message}")
 
     @Slot(str)
     def _on_optimization_failed(self, message: str) -> None:
@@ -637,9 +614,7 @@ class OptimizationTab(BaseTab):
         if isinstance(self._opt_pending_target, OpticalSystem):
             self._parent._current_assembly = self._opt_pending_target
             self._parent._optical_system = self._opt_pending_target
-            self._parent._assembly_tab_widget._assembly_viz.update_system(
-                self._opt_pending_target
-            )
+            self._parent._assembly_tab_widget._assembly_viz.update_system(self._opt_pending_target)
         else:
             self._parent._current_lens = self._opt_pending_target
             self._parent._lens_editor.load_lens(self._opt_pending_target)

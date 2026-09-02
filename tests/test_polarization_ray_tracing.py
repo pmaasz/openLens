@@ -57,9 +57,7 @@ class TestPolarizationRayTracing(unittest.TestCase):
         # Create ray with p-polarization
         p_pol_array = np.array([p_vec.x, p_vec.y, p_vec.z], dtype=complex)
 
-        ray = Ray3D(
-            self.origin, self.incident_dir, n=self.n1, polarization_vector=p_pol_array
-        )
+        ray = Ray3D(self.origin, self.incident_dir, n=self.n1, polarization_vector=p_pol_array)
 
         # Reflect
         # Note: Ray3D.reflect modifies the ray in place
@@ -85,18 +83,14 @@ class TestPolarizationRayTracing(unittest.TestCase):
 
         s_pol_array = np.array([s_vec.x, s_vec.y, s_vec.z], dtype=complex)
 
-        ray = Ray3D(
-            self.origin, self.incident_dir, n=self.n1, polarization_vector=s_pol_array
-        )
+        ray = Ray3D(self.origin, self.incident_dir, n=self.n1, polarization_vector=s_pol_array)
 
         ray.reflect(self.normal, self.n1, self.n2)
 
         # Intensity should be significant
         # Calculate expected Fresnel reflectance
         calc = PolarizationCalculator()
-        coeffs = calc.reflectance_transmittance(
-            self.n1, self.n2, self.brewster_angle_deg
-        )
+        coeffs = calc.reflectance_transmittance(self.n1, self.n2, self.brewster_angle_deg)
         expected_Rs = coeffs["R_s"]
 
         self.assertGreater(ray.intensity, 0.01)

@@ -114,12 +114,8 @@ class EnvironmentalAnalyzer:
             # n_new_rel = n_rel_T * (n_air(T, P_ref) / n_air(T, P_new))
 
             # Note: n_rel_T is relative to air at the NEW temperature T (but reference pressure)
-            n_air_ref = cls.calculate_air_index(
-                lens.wavelength, temperature_c, cls.REF_PRESSURE
-            )
-            n_air_new = cls.calculate_air_index(
-                lens.wavelength, temperature_c, pressure_atm
-            )
+            n_air_ref = cls.calculate_air_index(lens.wavelength, temperature_c, cls.REF_PRESSURE)
+            n_air_new = cls.calculate_air_index(lens.wavelength, temperature_c, pressure_atm)
 
             if n_air_new != 0:
                 lens.refractive_index = n_rel_T * (n_air_ref / n_air_new)

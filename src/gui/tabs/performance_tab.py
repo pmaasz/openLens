@@ -159,9 +159,7 @@ class PerformanceTab(BaseTab):
             else self._parent._current_lens
         )
         if not active_system:
-            QMessageBox.warning(
-                self, "No Selection", "Please select a lens or assembly first"
-            )
+            QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
 
         try:
@@ -188,9 +186,7 @@ class PerformanceTab(BaseTab):
                 logger.error("Import error in image simulation: %s", e)
         except Exception as e:
             logger.error("Image simulation error: %s", e)
-            QMessageBox.critical(
-                self, "Analysis Error", f"Failed to start image simulation: {e}"
-            )
+            QMessageBox.critical(self, "Analysis Error", f"Failed to start image simulation: {e}")
 
     def _on_calculate_performance_metrics(self) -> None:
         """Calculate and display performance metrics for the active lens or assembly."""
@@ -252,7 +248,9 @@ class PerformanceTab(BaseTab):
             if isinstance(active_system, OpticalSystem):
                 chromatic = active_system.calculate_chromatic_aberration()
                 if chromatic and chromatic.get("longitudinal") is not None:
-                    chromatic_text = f"Chromatic Focal Shift (C-F): {chromatic['longitudinal']:.4f} mm\n"
+                    chromatic_text = (
+                        f"Chromatic Focal Shift (C-F): {chromatic['longitudinal']:.4f} mm\n"
+                    )
                     if chromatic.get("bfl_d") is not None:
                         bfl_F = chromatic.get("bfl_F")
                         chromatic_text += f"  BFL (F=486nm): {f'{bfl_F:.3f}' if bfl_F is not None else 'N/A'} mm\n"
@@ -312,9 +310,7 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             else self._parent._current_lens
         )
         if not active_system:
-            QMessageBox.warning(
-                self, "No Selection", "Please select a lens or assembly first"
-            )
+            QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
 
         try:
@@ -378,9 +374,7 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
 
         except Exception as e:
             logger.error("Spot diagram error: %s", e)
-            QMessageBox.critical(
-                self, "Analysis Error", f"Failed to generate spot diagram: {e}"
-            )
+            QMessageBox.critical(self, "Analysis Error", f"Failed to generate spot diagram: {e}")
 
     def _on_show_ray_fan(self) -> None:
         """Show ray fan plot for active system."""
@@ -390,9 +384,7 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             else self._parent._current_lens
         )
         if not active_system:
-            QMessageBox.warning(
-                self, "No Selection", "Please select a lens or assembly first"
-            )
+            QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
 
         try:
@@ -452,9 +444,7 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
 
         except Exception as e:
             logger.error("Ray fan error: %s", e)
-            QMessageBox.critical(
-                self, "Analysis Error", f"Failed to generate ray fan: {e}"
-            )
+            QMessageBox.critical(self, "Analysis Error", f"Failed to generate ray fan: {e}")
 
     def _on_show_field_curves(self) -> None:
         """Show field curvature and distortion plots."""
@@ -464,9 +454,7 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
             else self._parent._current_lens
         )
         if not active_system:
-            QMessageBox.warning(
-                self, "No Selection", "Please select a lens or assembly first"
-            )
+            QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
 
         try:
@@ -537,9 +525,7 @@ Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
 
         except Exception as e:
             logger.error("Field curves error: %s", e)
-            QMessageBox.critical(
-                self, "Analysis Error", f"Failed to generate field curves: {e}"
-            )
+            QMessageBox.critical(self, "Analysis Error", f"Failed to generate field curves: {e}")
 
     def _on_show_psf(self) -> None:
         """Show PSF Analysis through parent."""

@@ -47,9 +47,7 @@ class TestAdvancedOptimizer(unittest.TestCase):
     def test_optimize_spot_size(self):
         """Test optimizing for RMS spot size"""
         targets = [
-            OptimizationTarget(
-                "rms_spot_radius", 0.0, weight=100.0, target_type="minimize"
-            ),
+            OptimizationTarget("rms_spot_radius", 0.0, weight=100.0, target_type="minimize"),
             OptimizationTarget("focal_length", 96.8, weight=1.0, target_type="target"),
         ]
 
@@ -95,9 +93,7 @@ class TestAdvancedOptimizer(unittest.TestCase):
     def test_coma_target(self):
         """Test that coma target can be evaluated"""
         targets = [
-            OptimizationTarget(
-                name="coma", target_value=0.0, weight=1.0, target_type="minimize"
-            )
+            OptimizationTarget(name="coma", target_value=0.0, weight=1.0, target_type="minimize")
         ]
         optimizer = LensOptimizer(self.system, self.variables, targets)
         merit = optimizer._evaluate_design([100.0, -100.0])

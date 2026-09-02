@@ -91,11 +91,7 @@ class MonteCarloAnalyzer:
                         "r1": lens.radius_of_curvature_1,
                         "r2": lens.radius_of_curvature_2,
                         "thickness": lens.thickness,
-                        "nd": (
-                            lens.model_nd
-                            if lens.model_glass_mode
-                            else lens.refractive_index
-                        ),
+                        "nd": (lens.model_nd if lens.model_glass_mode else lens.refractive_index),
                         "vd": lens.model_vd if lens.model_glass_mode else 0,
                         "glass_mode": lens.model_glass_mode,
                     }
@@ -316,11 +312,7 @@ class InverseSensitivityAnalyzer:
                         "r1": lens.radius_of_curvature_1,
                         "r2": lens.radius_of_curvature_2,
                         "thickness": lens.thickness,
-                        "nd": (
-                            lens.model_nd
-                            if lens.model_glass_mode
-                            else lens.refractive_index
-                        ),
+                        "nd": (lens.model_nd if lens.model_glass_mode else lens.refractive_index),
                         "vd": lens.model_vd if lens.model_glass_mode else 0,
                         "glass_mode": lens.model_glass_mode,
                     }
@@ -359,9 +351,7 @@ class InverseSensitivityAnalyzer:
                     lens.update_refractive_index()
         system._update_positions()
 
-    def calculate_sensitivities(
-        self, criterion: str = "rms_spot_radius"
-    ) -> List[Dict[str, Any]]:
+    def calculate_sensitivities(self, criterion: str = "rms_spot_radius") -> List[Dict[str, Any]]:
         """
         Calculate sensitivity of each operand.
         Returns list of dicts with 'operand', 'sensitivity', 'change'.
@@ -409,9 +399,7 @@ class InverseSensitivityAnalyzer:
 
         return results
 
-    def _apply_single_tolerance(
-        self, system: OpticalSystem, tol: ToleranceOperand, value: float
-    ):
+    def _apply_single_tolerance(self, system: OpticalSystem, tol: ToleranceOperand, value: float):
         """Helper to apply a single tolerance value."""
         nodes = system.root.get_flat_list()
         element_nodes = [n for n, _ in nodes if getattr(n, "is_element", False)]
@@ -486,11 +474,7 @@ class InverseSensitivityAnalyzer:
                         "r1": lens.radius_of_curvature_1,
                         "r2": lens.radius_of_curvature_2,
                         "thickness": lens.thickness,
-                        "nd": (
-                            lens.model_nd
-                            if lens.model_glass_mode
-                            else lens.refractive_index
-                        ),
+                        "nd": (lens.model_nd if lens.model_glass_mode else lens.refractive_index),
                         "vd": lens.model_vd if lens.model_glass_mode else 0,
                         "glass_mode": lens.model_glass_mode,
                     }

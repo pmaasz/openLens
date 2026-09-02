@@ -31,9 +31,7 @@ class TestGlobalOptimizer(unittest.TestCase):
         ]
 
         # Target: specific focal length
-        self.targets = [
-            OptimizationTarget("focal_length", 80.0, weight=1.0, target_type="target")
-        ]
+        self.targets = [OptimizationTarget("focal_length", 80.0, weight=1.0, target_type="target")]
 
     def test_simulated_annealing(self):
         """Test Simulated Annealing convergence"""
@@ -49,9 +47,7 @@ class TestGlobalOptimizer(unittest.TestCase):
 
         # Check result
         f = result.optimized_system.get_system_focal_length()
-        self.assertAlmostEqual(
-            f, 80.0, delta=1.0
-        )  # SA is stochastic, allow loose delta
+        self.assertAlmostEqual(f, 80.0, delta=1.0)  # SA is stochastic, allow loose delta
 
     def test_genetic_algorithm_seeded(self):
         """Seeded GA improves merit on the focal-length target"""

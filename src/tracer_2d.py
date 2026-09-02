@@ -88,9 +88,7 @@ class LensRayTracer:
                 dy = y
                 return math.atan2(dy, dx)
 
-    def _intersect_flat_surface(
-        self, ray: Ray, vertex_x: float
-    ) -> Optional[Tuple[float, float]]:
+    def _intersect_flat_surface(self, ray: Ray, vertex_x: float) -> Optional[Tuple[float, float]]:
         """Find intersection of ray with a flat surface at vertex_x."""
         if abs(math.cos(ray.angle)) < EPSILON:
             return None
@@ -176,21 +174,15 @@ class LensRayTracer:
         """Find intersection point of ray with front surface."""
         if self.front_is_flat:
             return self._intersect_flat_surface(ray, self.front_vertex_x)
-        return self._intersect_sphere_surface(
-            ray, self.front_center_x, abs(self.R1), is_front=True
-        )
+        return self._intersect_sphere_surface(ray, self.front_center_x, abs(self.R1), is_front=True)
 
     def _intersect_back_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
         """Find intersection point of ray with back surface."""
         if self.back_is_flat:
             return self._intersect_flat_surface(ray, self.back_vertex_x)
-        return self._intersect_sphere_surface(
-            ray, self.back_center_x, abs(self.R2), is_front=False
-        )
+        return self._intersect_sphere_surface(ray, self.back_center_x, abs(self.R2), is_front=False)
 
-    def trace_ray(
-        self, ray: Ray, propagate_distance: float = DEFAULT_PROPAGATION_DISTANCE
-    ) -> Ray:
+    def trace_ray(self, ray: Ray, propagate_distance: float = DEFAULT_PROPAGATION_DISTANCE) -> Ray:
         """Trace a ray through the lens."""
         intersection = self._intersect_front_surface(ray)
 
@@ -330,9 +322,7 @@ class LensRayTracer:
         focal_x = sum(crossings) / len(crossings)
         return (focal_x, 0)
 
-    def get_lens_outline(
-        self, num_points: int = MESH_RESOLUTION_HIGH
-    ) -> List[Tuple[float, float]]:
+    def get_lens_outline(self, num_points: int = MESH_RESOLUTION_HIGH) -> List[Tuple[float, float]]:
         """Get points defining the lens outline for visualization."""
         points = []
         y_max = self.D / 2

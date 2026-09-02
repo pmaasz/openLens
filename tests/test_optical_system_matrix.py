@@ -76,8 +76,7 @@ class TestDoublet(unittest.TestCase):
         self.assertGreater(
             bfl,
             0.0,
-            "Back focal length of a positive doublet must be > 0; "
-            "got {!r}".format(bfl),
+            "Back focal length of a positive doublet must be > 0; " "got {!r}".format(bfl),
         )
 
     def test_cemented_doublet_focal_length_near_target(self):

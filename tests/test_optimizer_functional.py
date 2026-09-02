@@ -42,9 +42,7 @@ class TestOptimizationVariable(unittest.TestCase):
 
     def test_is_valid(self):
         """Test value validation"""
-        var = OptimizationVariable(
-            "Test", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0
-        )
+        var = OptimizationVariable("Test", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0)
 
         self.assertTrue(var.is_valid(100.0))
         self.assertTrue(var.is_valid(50.0))
@@ -54,9 +52,7 @@ class TestOptimizationVariable(unittest.TestCase):
 
     def test_clamp(self):
         """Test value clamping"""
-        var = OptimizationVariable(
-            "Test", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0
-        )
+        var = OptimizationVariable("Test", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0)
 
         self.assertEqual(var.clamp(100.0), 100.0)
         self.assertEqual(var.clamp(49.0), 50.0)
@@ -141,9 +137,7 @@ class TestLensOptimizer(unittest.TestCase):
         system = OpticalSystem()
         system.add_lens(lens)
 
-        variables = [
-            OptimizationVariable("R1", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0)
-        ]
+        variables = [OptimizationVariable("R1", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0)]
 
         targets = [OptimizationTarget("focal_length", 100.0, 1.0, "target")]
 
@@ -164,9 +158,7 @@ class TestLensOptimizer(unittest.TestCase):
         system = OpticalSystem()
         system.add_lens(lens)
 
-        variables = [
-            OptimizationVariable("R1", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0)
-        ]
+        variables = [OptimizationVariable("R1", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0)]
 
         targets = [OptimizationTarget("focal_length", 100.0, 1.0, "target")]
 
@@ -190,9 +182,7 @@ class TestLensOptimizer(unittest.TestCase):
         system = OpticalSystem()
         system.add_lens(lens)
 
-        variables = [
-            OptimizationVariable("R1", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0)
-        ]
+        variables = [OptimizationVariable("R1", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0)]
 
         targets = [OptimizationTarget("focal_length", 100.0, 1.0, "target")]
 
@@ -216,9 +206,7 @@ class TestLensOptimizer(unittest.TestCase):
 
         variables = [
             OptimizationVariable("R1", 0, "radius_of_curvature_1", 80.0, 50.0, 150.0),
-            OptimizationVariable(
-                "R2", 0, "radius_of_curvature_2", -120.0, -150.0, -50.0
-            ),
+            OptimizationVariable("R2", 0, "radius_of_curvature_2", -120.0, -150.0, -50.0),
         ]
 
         targets = [OptimizationTarget("focal_length", 100.0, 1.0, "target")]
@@ -240,9 +228,7 @@ class TestLensOptimizer(unittest.TestCase):
         system = OpticalSystem()
         system.add_lens(lens)
 
-        variables = [
-            OptimizationVariable("R1", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0)
-        ]
+        variables = [OptimizationVariable("R1", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0)]
 
         targets = [OptimizationTarget("focal_length", 100.0, 1.0, "target")]
 
@@ -270,9 +256,7 @@ class TestLensOptimizer(unittest.TestCase):
         system = OpticalSystem()
         system.add_lens(lens)
 
-        variables = [
-            OptimizationVariable("R1", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0)
-        ]
+        variables = [OptimizationVariable("R1", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0)]
 
         targets = [OptimizationTarget("focal_length", 100.0, 1.0, "target")]
 
@@ -372,9 +356,7 @@ class TestOptimizationConvergence(unittest.TestCase):
         system = OpticalSystem()
         system.add_lens(lens)
 
-        variables = [
-            OptimizationVariable("R1", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0)
-        ]
+        variables = [OptimizationVariable("R1", 0, "radius_of_curvature_1", 100.0, 50.0, 200.0)]
 
         targets = [OptimizationTarget("focal_length", 100.0, 1.0, "target")]
 

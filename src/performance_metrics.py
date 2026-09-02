@@ -41,11 +41,7 @@ class PerformanceMetrics:
         """
         if self.lens:
             f = self.lens.calculate_focal_length()
-            D = (
-                entrance_pupil_diameter
-                if entrance_pupil_diameter
-                else self.lens.diameter
-            )
+            D = entrance_pupil_diameter if entrance_pupil_diameter else self.lens.diameter
         elif self.system:
             f = self.system.get_system_focal_length()
             if entrance_pupil_diameter:
@@ -230,9 +226,7 @@ class PerformanceMetrics:
 
         return mtf_cutoff
 
-    def calculate_airy_disk_radius(
-        self, wavelength: float = WAVELENGTH_GREEN
-    ) -> Optional[float]:
+    def calculate_airy_disk_radius(self, wavelength: float = WAVELENGTH_GREEN) -> Optional[float]:
         """
         Calculate Airy disk radius at focal plane
         r = 1.22 * λ * f / D (mm)
@@ -344,9 +338,7 @@ class PerformanceMetrics:
         # Focal length
         if self.lens:
             metrics["effective_focal_length"] = self.lens.calculate_focal_length()
-            metrics["entrance_pupil_diameter"] = (
-                entrance_pupil_diameter or self.lens.diameter
-            )
+            metrics["entrance_pupil_diameter"] = entrance_pupil_diameter or self.lens.diameter
         elif self.system:
             metrics["effective_focal_length"] = self.system.get_system_focal_length()
             metrics["system_length"] = self.system.get_total_length()
@@ -405,27 +397,19 @@ class PerformanceMetrics:
         lines.append("-" * 30)
 
         if "effective_focal_length" in metrics and metrics["effective_focal_length"]:
-            lines.append(
-                f"  Effective Focal Length: {metrics['effective_focal_length']:.2f} mm"
-            )
+            lines.append(f"  Effective Focal Length: {metrics['effective_focal_length']:.2f} mm")
 
         if "f_number" in metrics and metrics["f_number"]:
             lines.append(f"  F-Number:               f/{metrics['f_number']:.2f}")
 
         if "numerical_aperture" in metrics and metrics["numerical_aperture"]:
-            lines.append(
-                f"  Numerical Aperture:     {metrics['numerical_aperture']:.4f}"
-            )
+            lines.append(f"  Numerical Aperture:     {metrics['numerical_aperture']:.4f}")
 
         if "back_focal_length" in metrics and metrics["back_focal_length"]:
-            lines.append(
-                f"  Back Focal Length:      {metrics['back_focal_length']:.2f} mm"
-            )
+            lines.append(f"  Back Focal Length:      {metrics['back_focal_length']:.2f} mm")
 
         if "entrance_pupil_diameter" in metrics and metrics["entrance_pupil_diameter"]:
-            lines.append(
-                f"  Entrance Pupil:         {metrics['entrance_pupil_diameter']:.2f} mm"
-            )
+            lines.append(f"  Entrance Pupil:         {metrics['entrance_pupil_diameter']:.2f} mm")
 
         lines.append("")
         lines.append("RESOLUTION & IMAGE QUALITY")
@@ -435,9 +419,7 @@ class PerformanceMetrics:
             lines.append(f"  Resolution (Rayleigh):  {metrics['resolution_um']:.3f} μm")
 
         if "mtf_cutoff_lpmm" in metrics and metrics["mtf_cutoff_lpmm"]:
-            lines.append(
-                f"  MTF Cutoff:             {metrics['mtf_cutoff_lpmm']:.1f} lp/mm"
-            )
+            lines.append(f"  MTF Cutoff:             {metrics['mtf_cutoff_lpmm']:.1f} lp/mm")
 
         if "airy_disk_radius_mm" in metrics and metrics["airy_disk_radius_mm"]:
             airy_um = metrics["airy_disk_radius_mm"] * 1000  # mm to μm
@@ -448,9 +430,7 @@ class PerformanceMetrics:
         lines.append("-" * 30)
 
         if "field_of_view_deg" in metrics and metrics["field_of_view_deg"]:
-            lines.append(
-                f"  Field of View:          {metrics['field_of_view_deg']:.2f}°"
-            )
+            lines.append(f"  Field of View:          {metrics['field_of_view_deg']:.2f}°")
 
         if "dof_near_mm" in metrics and metrics["dof_near_mm"]:
             near = metrics["dof_near_mm"]
@@ -462,9 +442,7 @@ class PerformanceMetrics:
             lines.append(f"  Hyperfocal Distance:    {metrics['hyperfocal_mm']:.1f} mm")
 
         if "working_distance_1x" in metrics and metrics["working_distance_1x"]:
-            lines.append(
-                f"  Working Distance (1x):  {metrics['working_distance_1x']:.2f} mm"
-            )
+            lines.append(f"  Working Distance (1x):  {metrics['working_distance_1x']:.2f} mm")
 
         lines.append("")
         lines.append("=" * 50)

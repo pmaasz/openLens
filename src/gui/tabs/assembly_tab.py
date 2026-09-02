@@ -191,9 +191,7 @@ class AssemblyTab(BaseTab):
             gap_index = index - 1
             if gap_index < len(self._optical_system.air_gaps):
                 gap_obj = self._optical_system.air_gaps[gap_index]
-                gap_value = (
-                    gap_obj.thickness if isinstance(gap_obj, AirGap) else gap_obj
-                )
+                gap_value = gap_obj.thickness if isinstance(gap_obj, AirGap) else gap_obj
                 self._air_gap_input.blockSignals(True)
                 self._air_gap_input.setValue(gap_value)
                 self._air_gap_input.blockSignals(False)
@@ -246,10 +244,7 @@ class AssemblyTab(BaseTab):
         self.refresh_lens_list()
 
         # Sync with parent's current assembly if it exists
-        if (
-            hasattr(self._parent, "_current_assembly")
-            and self._parent._current_assembly
-        ):
+        if hasattr(self._parent, "_current_assembly") and self._parent._current_assembly:
             self._optical_system = self._parent._current_assembly
             self._update_system_list()
 

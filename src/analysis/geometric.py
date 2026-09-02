@@ -210,9 +210,7 @@ class GeometricTraceAnalysis:
             # 1. Trace Chief Ray
             first_lens_x = self.system.elements[0].position
             t_principal = (first_lens_x - start_x) / direction_principal.x
-            origin_principal = (
-                vec3(first_lens_x, 0, 0) - direction_principal * t_principal
-            )
+            origin_principal = vec3(first_lens_x, 0, 0) - direction_principal * t_principal
 
             chief_ray = Ray3D(origin_principal, direction_principal, wavelength=wl_mm)
             self.tracer.trace_ray(chief_ray)
@@ -233,9 +231,7 @@ class GeometricTraceAnalysis:
 
             distortion = 0.0
             if abs(paraxial_height) > 1e-6:
-                distortion = (
-                    100.0 * (real_image_height - paraxial_height) / paraxial_height
-                )
+                distortion = 100.0 * (real_image_height - paraxial_height) / paraxial_height
             elif abs(angle) < 1e-6:
                 distortion = 0.0
             else:

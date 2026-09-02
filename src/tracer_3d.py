@@ -67,9 +67,7 @@ class LensRayTracer3D:
             self.back_center = self.back_vertex
             self.back_is_flat = True
         else:
-            self.back_center = self.transform.multiply_point(
-                vec3(self.d + self.R2, 0, 0)
-            )
+            self.back_center = self.transform.multiply_point(vec3(self.d + self.R2, 0, 0))
             self.back_is_flat = False
 
         self.optical_axis = self.transform.multiply_vector(vec3(1, 0, 0)).normalize()
@@ -209,10 +207,7 @@ class LensRayTracer3D:
     def trace_ray(
         self, ray: Ray3D, propagate_distance: float = DEFAULT_PROPAGATION_DISTANCE
     ) -> Ray3D:
-        if (
-            self.trace_surface(ray, "front", "refract")
-            is not RefractionResult.REFRACTED
-        ):
+        if self.trace_surface(ray, "front", "refract") is not RefractionResult.REFRACTED:
             if not ray.terminated:
                 ray.propagate(propagate_distance)
                 ray.terminated = True

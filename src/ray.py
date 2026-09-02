@@ -233,9 +233,7 @@ class Ray3D:
         self.polarization_vector = polarization_vector
         if self.polarization_vector is not None and HAS_POLARIZATION and np is not None:
             if not isinstance(self.polarization_vector, np.ndarray):
-                self.polarization_vector = np.array(
-                    self.polarization_vector, dtype=complex
-                )
+                self.polarization_vector = np.array(self.polarization_vector, dtype=complex)
 
     def propagate(self, distance: float) -> None:
         """Propagate ray in current direction"""
@@ -326,9 +324,7 @@ class Ray3D:
 
             P_total_old = np.abs(E_s) ** 2 + np.abs(E_p) ** 2
             if P_total_old > 1e-9:
-                reflectance_factor = (
-                    R_s * np.abs(E_s) ** 2 + R_p * np.abs(E_p) ** 2
-                ) / P_total_old
+                reflectance_factor = (R_s * np.abs(E_s) ** 2 + R_p * np.abs(E_p) ** 2) / P_total_old
                 self.intensity *= reflectance_factor
             else:
                 self.intensity = 0.0
@@ -401,9 +397,7 @@ class Ray3D:
 
             self.intensity *= R
 
-    def refract_or_reflect(
-        self, n1: float, n2: float, normal: Vector3
-    ) -> RefractionResult:
+    def refract_or_reflect(self, n1: float, n2: float, normal: Vector3) -> RefractionResult:
         """Apply Snell's law at an interface using vector math."""
         if self.polarization_vector is not None and HAS_POLARIZATION:
             # Handle polarized refraction with Fresnel coefficients

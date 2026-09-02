@@ -75,9 +75,7 @@ class TestInteractiveRayTracer(unittest.TestCase):
 
     def test_add_ray(self):
         """Test adding interactive ray."""
-        ray = self.tracer.add_ray(
-            origin=(0, 0, 0), direction=(1, 0, 0), wavelength=587.6
-        )
+        ray = self.tracer.add_ray(origin=(0, 0, 0), direction=(1, 0, 0), wavelength=587.6)
 
         assert ray is not None
         assert len(self.tracer.interactive_rays) == 1
@@ -261,9 +259,7 @@ class TestImageSimulator(unittest.TestCase):
 
     def test_checkerboard_pattern(self):
         """Test checkerboard pattern."""
-        pattern = self.simulator._create_checkerboard_pattern(
-            (128, 128), square_size=16
-        )
+        pattern = self.simulator._create_checkerboard_pattern((128, 128), square_size=16)
         assert pattern.shape == (128, 128)
         # Should have alternating squares
         assert 0 in pattern

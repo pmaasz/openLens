@@ -327,9 +327,7 @@ class MechanicalDesigner:
             step += 1
 
             if i < len(self.spacers):
-                instructions.append(
-                    f"{step}. Add Spacer {i+1} ({self.spacers[i].thickness:.2f}mm)"
-                )
+                instructions.append(f"{step}. Add Spacer {i+1} ({self.spacers[i].thickness:.2f}mm)")
                 instructions.append(f"   - Verify spacer thickness with calipers")
                 instructions.append(f"   - Thread onto previous cell")
                 instructions.append("")

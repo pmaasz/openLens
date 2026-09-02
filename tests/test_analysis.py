@@ -44,9 +44,7 @@ class TestSpotDiagram(unittest.TestCase):
 
     def test_on_axis_spot(self):
         """Test on-axis spot diagram"""
-        results = self.spot.trace_spot(
-            field_angle_x_deg=0, field_angle_y_deg=0, num_rings=3
-        )
+        results = self.spot.trace_spot(field_angle_x_deg=0, field_angle_y_deg=0, num_rings=3)
 
         # For a symmetric lens on axis, centroid should be at (0,0)
         cent_y, cent_z = results["centroid"]

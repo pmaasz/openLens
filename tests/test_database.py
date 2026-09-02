@@ -16,9 +16,7 @@ def _make_db():
     return DatabaseManager(tmp.name), tmp.name
 
 
-def _make_lens_dict(
-    lens_id: str = "lens-1", name: str = "Test Lens", **overrides
-) -> dict:
+def _make_lens_dict(lens_id: str = "lens-1", name: str = "Test Lens", **overrides) -> dict:
     base = {
         "id": lens_id,
         "name": name,
@@ -198,9 +196,7 @@ class TestLensInUseError(unittest.TestCase):
     def test_can_delete_after_removing_from_assembly(self):
         self.db.save_assembly(_make_assembly_dict(lens_ids=["shared-lens"]))
         # Replace assembly with one that doesn't reference the lens
-        self.db.save_assembly(
-            _make_assembly_dict(asm_id="asm-1", name="Updated", lens_ids=[])
-        )
+        self.db.save_assembly(_make_assembly_dict(asm_id="asm-1", name="Updated", lens_ids=[]))
         self.db.delete_item("shared-lens")
         lenses = _load_lenses(self.db)
         ids = {r["id"] for r in lenses}
@@ -243,19 +239,13 @@ class TestGetReferencingAssemblies(unittest.TestCase):
         os.unlink(self._path)
 
     def test_single_assembly(self):
-        self.db.save_assembly(
-            _make_assembly_dict(asm_id="a1", name="Assembly A", lens_ids=["L1"])
-        )
+        self.db.save_assembly(_make_assembly_dict(asm_id="a1", name="Assembly A", lens_ids=["L1"]))
         refs = self.db.get_referencing_assemblies("L1")
         self.assertEqual(refs, [("a1", "Assembly A")])
 
     def test_multiple_assemblies(self):
-        self.db.save_assembly(
-            _make_assembly_dict(asm_id="a1", name="Alpha", lens_ids=["L1"])
-        )
-        self.db.save_assembly(
-            _make_assembly_dict(asm_id="a2", name="Beta", lens_ids=["L1", "L2"])
-        )
+        self.db.save_assembly(_make_assembly_dict(asm_id="a1", name="Alpha", lens_ids=["L1"]))
+        self.db.save_assembly(_make_assembly_dict(asm_id="a2", name="Beta", lens_ids=["L1", "L2"]))
         refs = self.db.get_referencing_assemblies("L1")
         names = [name for _, name in refs]
         self.assertEqual(sorted(names), ["Alpha", "Beta"])

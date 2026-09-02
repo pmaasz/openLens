@@ -96,10 +96,7 @@ class TestPresetLensLibrary(unittest.TestCase):
             assert (
                 "microscope" in preset["name"].lower()
                 or "microscope" in preset["description"].lower()
-                or any(
-                    "microscope" in app.lower()
-                    for app in preset.get("applications", [])
-                )
+                or any("microscope" in app.lower() for app in preset.get("applications", []))
             )
 
         # Search by application

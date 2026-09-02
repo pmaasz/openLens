@@ -49,12 +49,8 @@ def _make_system(r2=-100.0):
 
 
 def _make_optimizer(system, optimizer_cls=LensOptimizer, **kwargs):
-    variables = [
-        OptimizationVariable("R2", 0, "radius_of_curvature_2", -100.0, -150.0, -50.0)
-    ]
-    targets = [
-        OptimizationTarget("focal_length", TARGET_F, weight=1.0, target_type="target")
-    ]
+    variables = [OptimizationVariable("R2", 0, "radius_of_curvature_2", -100.0, -150.0, -50.0)]
+    targets = [OptimizationTarget("focal_length", TARGET_F, weight=1.0, target_type="target")]
     return optimizer_cls(system, variables, targets, **kwargs)
 
 
@@ -72,9 +68,7 @@ class TestOptimizerConvergence(unittest.TestCase):
             "insufficient merit reduction",
         )
         f_final = result.optimized_system.get_system_focal_length()
-        self.assertAlmostEqual(
-            f_final, TARGET_F, delta=F_TOL_MM, msg="physical endpoint missed"
-        )
+        self.assertAlmostEqual(f_final, TARGET_F, delta=F_TOL_MM, msg="physical endpoint missed")
 
     def test_simplex_converges(self):
         """Deterministic Nelder-Mead via the high-level optimize() wrapper"""
@@ -87,9 +81,7 @@ class TestOptimizerConvergence(unittest.TestCase):
         """Numerical-gradient descent (deterministic)"""
         system = _make_system()
         optimizer = _make_optimizer(system)
-        result = optimizer.optimize_gradient_descent(
-            max_iterations=300, learning_rate=0.05
-        )
+        result = optimizer.optimize_gradient_descent(max_iterations=300, learning_rate=0.05)
         self._assert_converged(result)
 
     def test_simulated_annealing_converges_seeded(self):
@@ -123,16 +115,8 @@ class TestOptimizerConvergence(unittest.TestCase):
             ),
         ]
         system = _make_system()
-        variables = [
-            OptimizationVariable(
-                "R2", 0, "radius_of_curvature_2", -100.0, -150.0, -50.0
-            )
-        ]
-        targets = [
-            OptimizationTarget(
-                "focal_length", TARGET_F, weight=1.0, target_type="target"
-            )
-        ]
+        variables = [OptimizationVariable("R2", 0, "radius_of_curvature_2", -100.0, -150.0, -50.0)]
+        targets = [OptimizationTarget("focal_length", TARGET_F, weight=1.0, target_type="target")]
         optimizer = DesensitizationOptimizer(system, variables, targets)
         result = optimizer.optimize_robust(tolerances=tolerances, max_iterations=30)
 

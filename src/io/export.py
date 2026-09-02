@@ -161,18 +161,14 @@ class ISO10110Generator:
             lens = elem.lens
 
             # Surface 1 (Front)
-            lines.append(
-                f'<text x="{col_x[0]}" y="{curr_y}" class="text">{surf_idx}</text>'
-            )
+            lines.append(f'<text x="{col_x[0]}" y="{curr_y}" class="text">{surf_idx}</text>')
             lines.append(
                 f'<text x="{col_x[1]}" y="{curr_y}" class="text">{lens.radius_of_curvature_1:.2f}</text>'
             )
             lines.append(
                 f'<text x="{col_x[2]}" y="{curr_y}" class="text">{lens.thickness:.2f}</text>'
             )
-            lines.append(
-                f'<text x="{col_x[3]}" y="{curr_y}" class="text">{lens.material}</text>'
-            )
+            lines.append(f'<text x="{col_x[3]}" y="{curr_y}" class="text">{lens.material}</text>')
             lines.append(
                 f'<text x="{col_x[4]}" y="{curr_y}" class="text">{lens.diameter:.2f}</text>'
             )
@@ -180,9 +176,7 @@ class ISO10110Generator:
             surf_idx += 1
 
             # Surface 2 (Back)
-            lines.append(
-                f'<text x="{col_x[0]}" y="{curr_y}" class="text">{surf_idx}</text>'
-            )
+            lines.append(f'<text x="{col_x[0]}" y="{curr_y}" class="text">{surf_idx}</text>')
             lines.append(
                 f'<text x="{col_x[1]}" y="{curr_y}" class="text">{lens.radius_of_curvature_2:.2f}</text>'
             )

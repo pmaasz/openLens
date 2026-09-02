@@ -434,10 +434,7 @@ class BeamSynthesisPropagator:
             tracer = LensRayTracer3D(element.lens, x_offset=element.position)
 
             # Front
-            if (
-                tracer.trace_surface(beam.ray, "front", "refract")
-                is not RefractionResult.REFRACTED
-            ):
+            if tracer.trace_surface(beam.ray, "front", "refract") is not RefractionResult.REFRACTED:
                 beam.ray.terminated = True
                 return
 
@@ -448,15 +445,10 @@ class BeamSynthesisPropagator:
                 beam.q_y += dist
 
             # Refract beam q
-            beam.refract(
-                1.0, element.lens.refractive_index, element.lens.radius_of_curvature_1
-            )
+            beam.refract(1.0, element.lens.refractive_index, element.lens.radius_of_curvature_1)
 
             # Back
-            if (
-                tracer.trace_surface(beam.ray, "back", "refract")
-                is not RefractionResult.REFRACTED
-            ):
+            if tracer.trace_surface(beam.ray, "back", "refract") is not RefractionResult.REFRACTED:
                 beam.ray.terminated = True
                 return
 
@@ -466,6 +458,4 @@ class BeamSynthesisPropagator:
                 beam.q_y += dist
 
             # Refract beam q
-            beam.refract(
-                element.lens.refractive_index, 1.0, element.lens.radius_of_curvature_2
-            )
+            beam.refract(element.lens.refractive_index, 1.0, element.lens.radius_of_curvature_2)

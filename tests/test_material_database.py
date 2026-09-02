@@ -140,9 +140,7 @@ class TestTransmission(unittest.TestCase):
         """Test that transmission is high in visible range"""
         for wavelength in [450, 550, 650]:
             trans = self.db.get_transmission("BK7", wavelength)
-            self.assertGreater(
-                trans, 0.95, f"BK7 transmission at {wavelength}nm should be >95%"
-            )
+            self.assertGreater(trans, 0.95, f"BK7 transmission at {wavelength}nm should be >95%")
 
     def test_transmission_interpolation(self):
         """Test that transmission values are interpolated"""

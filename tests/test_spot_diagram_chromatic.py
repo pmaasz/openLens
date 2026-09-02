@@ -75,14 +75,10 @@ class TestSpotDiagramChromatic(unittest.TestCase):
         # For a positive singlet, Blue focus is shorter than Red focus
         # f_blue < f_red => plane_F < plane_C
 
-        self.assertLess(
-            plane_F, plane_C, "Blue focus should be shorter than Red focus for singlet"
-        )
+        self.assertLess(plane_F, plane_C, "Blue focus should be shorter than Red focus for singlet")
 
         # Also verify that the lens state was restored
-        self.assertEqual(
-            self.lens.wavelength, 587.6, "Lens wavelength should be restored"
-        )
+        self.assertEqual(self.lens.wavelength, 587.6, "Lens wavelength should be restored")
         # approximate check for refractive index restoration
         self.assertAlmostEqual(
             self.lens.refractive_index,

@@ -242,9 +242,7 @@ class ImageQualityAnalyzer:
             # If L_pupil_grid is exactly D (which we try to set), then Fs = Cutoff * (something).
 
             # Let's use physical parameters.
-            ep_diam = (
-                self.system.elements[0].lens.diameter if self.system.elements else 1.0
-            )
+            ep_diam = self.system.elements[0].lens.diameter if self.system.elements else 1.0
             efl = self.system.get_system_focal_length() or 100.0
 
             # Pupil Grid physical size L = ep_diam (approx, based on get_pupil_wavefront range)

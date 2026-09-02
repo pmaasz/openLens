@@ -33,9 +33,7 @@ class TestTolerancing(unittest.TestCase):
 
     def test_tolerance_generation(self):
         # Test Uniform
-        tol = ToleranceOperand(
-            0, ToleranceType.RADIUS_1, -1.0, 1.0, distribution="uniform"
-        )
+        tol = ToleranceOperand(0, ToleranceType.RADIUS_1, -1.0, 1.0, distribution="uniform")
         val = tol.generate_value()
         self.assertTrue(-1.0 <= val <= 1.0)
 
@@ -51,9 +49,7 @@ class TestTolerancing(unittest.TestCase):
         # Define tolerances
         tols = [
             ToleranceOperand(0, ToleranceType.RADIUS_1, -1.0, 1.0),  # +/- 1mm on R1
-            ToleranceOperand(
-                0, ToleranceType.THICKNESS, -0.1, 0.1
-            ),  # +/- 0.1mm on Thickness
+            ToleranceOperand(0, ToleranceType.THICKNESS, -0.1, 0.1),  # +/- 0.1mm on Thickness
         ]
 
         mc = MonteCarloAnalyzer(self.sys, tols, seed=42)

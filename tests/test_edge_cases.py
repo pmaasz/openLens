@@ -17,9 +17,7 @@ class TestExtremeInputValues(unittest.TestCase):
 
     def test_zero_radius_of_curvature(self):
         """Test lens with zero radius (flat surface)"""
-        lens = Lens(
-            radius_of_curvature_1=0, radius_of_curvature_2=-100.0, material="Custom"
-        )
+        lens = Lens(radius_of_curvature_1=0, radius_of_curvature_2=-100.0, material="Custom")
         focal_length = lens.calculate_focal_length()
         # Zero radius is converted to flat (inf) -> plano-convex, should be valid
         self.assertIsNotNone(focal_length)
@@ -122,9 +120,7 @@ class TestBoundaryConditions(unittest.TestCase):
     def test_ray_perpendicular_to_surface(self):
         """Test ray hitting surface perpendicularly"""
         ray = Ray(x=0, y=0, angle_rad=math.pi / 2)
-        success = ray.refract_or_reflect(
-            n1=1.0, n2=1.5, surface_normal_angle=math.pi / 2
-        )
+        success = ray.refract_or_reflect(n1=1.0, n2=1.5, surface_normal_angle=math.pi / 2)
         self.assertIs(success, RefractionResult.REFRACTED)
         # Should pass through with no bending at normal incidence
         self.assertAlmostEqual(ray.angle_rad, math.pi / 2, places=5)
@@ -132,9 +128,7 @@ class TestBoundaryConditions(unittest.TestCase):
     def test_ray_parallel_to_surface(self):
         """Test ray parallel to surface (grazing incidence)"""
         ray = Ray(x=0, y=0, angle_rad=0)
-        success = ray.refract_or_reflect(
-            n1=1.0, n2=1.5, surface_normal_angle=math.pi / 2
-        )
+        success = ray.refract_or_reflect(n1=1.0, n2=1.5, surface_normal_angle=math.pi / 2)
         # Should refract but at extreme angle
         self.assertIs(success, RefractionResult.REFRACTED)
 
@@ -239,9 +233,7 @@ class TestNumericalStability(unittest.TestCase):
 
     def test_very_small_differences(self):
         """Test calculations with very small differences"""
-        lens1 = Lens(
-            radius_of_curvature_1=100.0, radius_of_curvature_2=-100.0, material="Custom"
-        )
+        lens1 = Lens(radius_of_curvature_1=100.0, radius_of_curvature_2=-100.0, material="Custom")
         lens2 = Lens(
             radius_of_curvature_1=100.00001,
             radius_of_curvature_2=-100.00001,

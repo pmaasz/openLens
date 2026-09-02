@@ -111,9 +111,7 @@ class GlobalOptimizer(LensOptimizer):
             temperature *= cooling_rate
 
             # History
-            variable_history.append(
-                dict(zip([v.name for v in self.variables], current_values))
-            )
+            variable_history.append(dict(zip([v.name for v in self.variables], current_values)))
             merit_history.append(current_merit)
 
             # Early stop if converged (optional, usually SA runs full course)

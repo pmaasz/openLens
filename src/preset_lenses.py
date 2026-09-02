@@ -215,9 +215,7 @@ class PresetLensLibrary:
     def get_presets_by_category(self, category: str) -> Dict[str, Dict[str, Any]]:
         """Get all presets in a specific category"""
         return {
-            key: preset
-            for key, preset in self.presets.items()
-            if preset["category"] == category
+            key: preset for key, preset in self.presets.items() if preset["category"] == category
         }
 
     def get_preset(self, preset_id: str) -> Dict[str, Any]:
@@ -254,9 +252,7 @@ class PresetLensLibrary:
             preset = json.load(f)
 
         # Generate a unique ID
-        preset_id = (
-            f"custom_{len([k for k in self.presets if k.startswith('custom_')])}"
-        )
+        preset_id = f"custom_{len([k for k in self.presets if k.startswith('custom_')])}"
         self.presets[preset_id] = preset
         return preset_id
 

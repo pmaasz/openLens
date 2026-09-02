@@ -250,12 +250,8 @@ class TestPrescriptionExport(unittest.TestCase):
 
             # Verify all properties match
             self.assertEqual(imported_lens.name, self.lens.name)
-            self.assertEqual(
-                imported_lens.radius_of_curvature_1, self.lens.radius_of_curvature_1
-            )
-            self.assertEqual(
-                imported_lens.radius_of_curvature_2, self.lens.radius_of_curvature_2
-            )
+            self.assertEqual(imported_lens.radius_of_curvature_1, self.lens.radius_of_curvature_1)
+            self.assertEqual(imported_lens.radius_of_curvature_2, self.lens.radius_of_curvature_2)
             self.assertEqual(imported_lens.thickness, self.lens.thickness)
             self.assertEqual(imported_lens.diameter, self.lens.diameter)
             self.assertEqual(imported_lens.material, self.lens.material)

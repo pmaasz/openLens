@@ -47,9 +47,7 @@ class TestSeededMonteCarlo(unittest.TestCase):
     """RNG-seeded Monte Carlo reproducibility"""
 
     def _run(self, seed, num_trials=40, distribution="uniform"):
-        analyzer = MonteCarloAnalyzer(
-            _make_system(), _make_tolerances(distribution), seed=seed
-        )
+        analyzer = MonteCarloAnalyzer(_make_system(), _make_tolerances(distribution), seed=seed)
         return analyzer.run(num_trials=num_trials)
 
     def test_same_seed_reproduces_statistics(self):

@@ -107,9 +107,7 @@ class TestOpticalSystem(unittest.TestCase):
         # Entrance pupil is still lens1 diameter (approximation used in implementation)
         expected_f_num_sys = abs(f_sys) / D
 
-        self.assertAlmostEqual(
-            system.get_system_f_number(), expected_f_num_sys, places=2
-        )
+        self.assertAlmostEqual(system.get_system_f_number(), expected_f_num_sys, places=2)
 
     def test_achromatic_doublet_creation(self):
         doublet = create_doublet(focal_length=100, diameter=50)
@@ -160,12 +158,8 @@ class TestOpticalSystem(unittest.TestCase):
             self.assertEqual(len(loaded_sys.air_gaps), len(system.air_gaps))
 
             # Check element details
-            self.assertEqual(
-                loaded_sys.elements[0].lens.name, system.elements[0].lens.name
-            )
-            self.assertEqual(
-                loaded_sys.air_gaps[0].thickness, system.air_gaps[0].thickness
-            )
+            self.assertEqual(loaded_sys.elements[0].lens.name, system.elements[0].lens.name)
+            self.assertEqual(loaded_sys.air_gaps[0].thickness, system.air_gaps[0].thickness)
 
         finally:
             if os.path.exists(tmp_path):

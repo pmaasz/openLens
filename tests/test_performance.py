@@ -33,9 +33,7 @@ class TestPerformance(unittest.TestCase):
 
         # Should create 1000 lenses in reasonable time
         self.assertEqual(len(lenses), 1000)
-        self.assertLess(
-            elapsed, 5.0, f"Creating 1000 lenses took {elapsed:.2f}s (expected <5s)"
-        )
+        self.assertLess(elapsed, 5.0, f"Creating 1000 lenses took {elapsed:.2f}s (expected <5s)")
 
     def test_focal_length_calculation_performance(self):
         """Test performance of focal length calculations"""
@@ -69,9 +67,7 @@ class TestPerformance(unittest.TestCase):
         elapsed = time.time() - start_time
 
         # Should trace 1000 rays reasonably fast
-        self.assertLess(
-            elapsed, 10.0, f"Tracing 1000 rays took {elapsed:.2f}s (expected <10s)"
-        )
+        self.assertLess(elapsed, 10.0, f"Tracing 1000 rays took {elapsed:.2f}s (expected <10s)")
 
     def test_aberration_calculation_performance(self):
         """Test performance of aberration calculations"""
@@ -249,9 +245,7 @@ class TestScalability(unittest.TestCase):
             # and CI overhead. Original 100 is too strict for loaded runners.
             # On CI 10 rays can be ~0.0005s and 500 rays ~0.3s -> ratio ~600.
             # Use 1000 to avoid flakiness; absolute time is the real guard.
-            self.assertLess(
-                ratio, 1000, f"Performance degradation too severe: {ratio}x"
-            )
+            self.assertLess(ratio, 1000, f"Performance degradation too severe: {ratio}x")
         # Absolute time for 500 rays stays reasonable
         self.assertLess(times[-1], 5.0, f"500 rays took {times[-1]:.2f}s, expected <5s")
 
@@ -270,9 +264,7 @@ class TestScalability(unittest.TestCase):
             elapsed = time.time() - start
 
             # Should complete in reasonable time
-            self.assertLess(
-                elapsed, 5.0, f"{num_angles} angle calculations took {elapsed:.2f}s"
-            )
+            self.assertLess(elapsed, 5.0, f"{num_angles} angle calculations took {elapsed:.2f}s")
 
 
 class TestConcurrency(unittest.TestCase):
@@ -292,12 +284,8 @@ class TestConcurrency(unittest.TestCase):
 
     def test_multiple_ray_tracers_independent(self):
         """Test that multiple ray tracers don't interfere"""
-        lens1 = Lens(
-            radius_of_curvature_1=100, radius_of_curvature_2=-100, material="Custom"
-        )
-        lens2 = Lens(
-            radius_of_curvature_1=50, radius_of_curvature_2=-50, material="Custom"
-        )
+        lens1 = Lens(radius_of_curvature_1=100, radius_of_curvature_2=-100, material="Custom")
+        lens2 = Lens(radius_of_curvature_1=50, radius_of_curvature_2=-50, material="Custom")
 
         tracer1 = LensRayTracer(lens1)
         tracer2 = LensRayTracer(lens2)

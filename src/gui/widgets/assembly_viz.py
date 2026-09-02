@@ -85,9 +85,7 @@ class AssemblyVisualizationWidget(QWidget):
             self._draw_lens(painter, lens, cx, cy, scale, color)
 
             if i < len(self._system.air_gaps):
-                cx += (
-                    lens.thickness * scale + self._system.air_gaps[i].thickness * scale
-                )
+                cx += lens.thickness * scale + self._system.air_gaps[i].thickness * scale
             else:
                 cx += lens.thickness * scale
 

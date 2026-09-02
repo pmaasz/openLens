@@ -153,9 +153,7 @@ class TestLensManager(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
         # Create a temporary file for testing
-        self.temp_file = tempfile.NamedTemporaryFile(
-            mode="w", delete=False, suffix=".json"
-        )
+        self.temp_file = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json")
         self.temp_file.close()
         self.storage_file = self.temp_file.name
         self.manager = LensManager(storage_file=self.storage_file)
@@ -207,9 +205,7 @@ class TestLensManager(unittest.TestCase):
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmp:
-            manager = LensManager(
-                storage_file=os.path.join(tmp, "nonexistent_file.json")
-            )
+            manager = LensManager(storage_file=os.path.join(tmp, "nonexistent_file.json"))
             self.assertEqual(len(manager.lenses), 0)
 
     def test_load_from_corrupt_file(self):
@@ -324,9 +320,7 @@ class TestDataIntegrity(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.temp_file = tempfile.NamedTemporaryFile(
-            mode="w", delete=False, suffix=".json"
-        )
+        self.temp_file = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json")
         self.temp_file.close()
         self.storage_file = self.temp_file.name
 
@@ -430,9 +424,7 @@ class TestDataIntegrity(unittest.TestCase):
         self.assertEqual(lens.name, "Incomplete Lens")
         self.assertEqual(lens.material, "BK7")
         self.assertEqual(lens.radius_of_curvature_1, 100.0)  # Default
-        self.assertAlmostEqual(
-            lens.refractive_index, 1.5168, places=4
-        )  # Default from material DB
+        self.assertAlmostEqual(lens.refractive_index, 1.5168, places=4)  # Default from material DB
 
 
 def run_tests():

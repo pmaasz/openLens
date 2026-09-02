@@ -78,31 +78,17 @@ class TestOptimizationController(unittest.TestCase):
         return {
             "variables": {k: v.get() for k, v in self.controller.variable_vars.items()},
             "targets": {
-                "focal_length_enabled": self.controller.target_vars[
-                    "focal_length_enabled"
-                ].get(),
-                "focal_length_value": self.controller.target_vars[
-                    "focal_length_value"
-                ].get(),
-                "spot_size_enabled": self.controller.target_vars[
-                    "spot_size_enabled"
-                ].get(),
-                "spherical_enabled": self.controller.target_vars[
-                    "spherical_enabled"
-                ].get(),
+                "focal_length_enabled": self.controller.target_vars["focal_length_enabled"].get(),
+                "focal_length_value": self.controller.target_vars["focal_length_value"].get(),
+                "spot_size_enabled": self.controller.target_vars["spot_size_enabled"].get(),
+                "spherical_enabled": self.controller.target_vars["spherical_enabled"].get(),
                 "coma_enabled": self.controller.target_vars["coma_enabled"].get(),
-                "astigmatism_enabled": self.controller.target_vars[
-                    "astigmatism_enabled"
-                ].get(),
+                "astigmatism_enabled": self.controller.target_vars["astigmatism_enabled"].get(),
                 "min_thickness": self.controller.target_vars["min_thickness"].get(),
                 "max_thickness": self.controller.target_vars["max_thickness"].get(),
                 "min_air_gap": self.controller.target_vars["min_air_gap"].get(),
-                "min_edge_thickness": self.controller.target_vars[
-                    "min_edge_thickness"
-                ].get(),
-                "maintain_cemented": self.controller.target_vars[
-                    "maintain_cemented"
-                ].get(),
+                "min_edge_thickness": self.controller.target_vars["min_edge_thickness"].get(),
+                "maintain_cemented": self.controller.target_vars["maintain_cemented"].get(),
                 "robust_mode": self.controller.target_vars["robust_mode"].get(),
             },
             "algorithm": self.controller.algorithm_var.get(),
@@ -134,9 +120,7 @@ class TestOptimizationController(unittest.TestCase):
         mock_instance.optimize.return_value = mock_result
 
         # Run worker directly
-        self.controller._optimization_worker(
-            self.controller.current_lens, self._get_config()
-        )
+        self.controller._optimization_worker(self.controller.current_lens, self._get_config())
 
         # Verify OptimizationVariable construction
         # We expect R2 of lens 0 to have linked_target to R1 of lens 1
@@ -200,9 +184,7 @@ class TestOptimizationController(unittest.TestCase):
         mock_instance.optimize.return_value = mock_result
 
         # Run worker
-        self.controller._optimization_worker(
-            self.controller.current_lens, self._get_config()
-        )
+        self.controller._optimization_worker(self.controller.current_lens, self._get_config())
 
         # Verify that controller.current_lens is updated to the LENS object, not the system
         self.assertIsInstance(self.controller.current_lens, Lens)
@@ -253,21 +235,15 @@ class TestOptimizationController(unittest.TestCase):
         mock_instance.optimize.return_value = mock_result
 
         # Run worker
-        self.controller._optimization_worker(
-            self.controller.current_lens, self._get_config()
-        )
+        self.controller._optimization_worker(self.controller.current_lens, self._get_config())
 
         # Verify variables passed to optimizer
         call_args = MockOptimizer.call_args
         if call_args:
             variables_passed = call_args[0][1]
 
-            nd_var = next(
-                (v for v in variables_passed if v.parameter == "refractive_index"), None
-            )
-            vd_var = next(
-                (v for v in variables_passed if v.parameter == "abbe_number"), None
-            )
+            nd_var = next((v for v in variables_passed if v.parameter == "refractive_index"), None)
+            vd_var = next((v for v in variables_passed if v.parameter == "abbe_number"), None)
 
             self.assertIsNotNone(nd_var)
             self.assertIsNotNone(vd_var)

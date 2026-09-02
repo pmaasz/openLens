@@ -137,9 +137,7 @@ class InverseSensitivityWorker(QThread):
 
             analyzer = InverseSensitivityAnalyzer(system, self.tol_operands)
 
-            results = analyzer.optimize_limits(
-                target_yield_criterion=self.criterion, method="rss"
-            )
+            results = analyzer.optimize_limits(target_yield_criterion=self.criterion, method="rss")
 
             text = f"=== INVERSE SENSITIVITY RESULTS ===\n\n"
             text += f"Target Yield Criterion: {self.criterion} mm RMS\n\n"

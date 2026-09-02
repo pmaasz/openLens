@@ -130,14 +130,10 @@ class TestAberrationsCalculator(unittest.TestCase):
         calc_large = AberrationsCalculator(large_lens)
 
         sa_small = abs(
-            calc_small._calculate_spherical_aberration(
-                small_lens.calculate_focal_length()
-            )
+            calc_small._calculate_spherical_aberration(small_lens.calculate_focal_length())
         )
         sa_large = abs(
-            calc_large._calculate_spherical_aberration(
-                large_lens.calculate_focal_length()
-            )
+            calc_large._calculate_spherical_aberration(large_lens.calculate_focal_length())
         )
 
         # Larger aperture should have more spherical aberration
@@ -449,9 +445,7 @@ class TestAberrationsBehavior(unittest.TestCase):
         self.assertGreater(quality_good["quality_score"], quality_poor["quality_score"])
 
         # Poor lens should have more issues
-        self.assertGreaterEqual(
-            len(quality_poor["issues"]), len(quality_good["issues"])
-        )
+        self.assertGreaterEqual(len(quality_poor["issues"]), len(quality_good["issues"]))
 
     def test_field_curvature_sign(self):
         """Test that field curvature has correct sign (Petzval radius has same sign as focal length)"""
@@ -503,9 +497,7 @@ class TestAberrationsBehavior(unittest.TestCase):
         results_slow = calc_slow.calculate_all_aberrations()
 
         # Slow lens (high f/#) should have larger Airy disk
-        self.assertGreater(
-            results_slow["airy_disk_diameter"], results_fast["airy_disk_diameter"]
-        )
+        self.assertGreater(results_slow["airy_disk_diameter"], results_fast["airy_disk_diameter"])
 
     def test_summary_output_format(self):
         """Test that summary output is properly formatted and complete"""
@@ -617,17 +609,13 @@ class TestAberrationPhysicsIdentities(unittest.TestCase):
         """Longitudinal CA of a thin singlet = f / Vd (BK7 Vd = 64.17)"""
         f = self.results["focal_length"]
         expected = f / 64.17
-        self.assertAlmostEqual(
-            self.results["chromatic_aberration"] / expected, 1.0, places=9
-        )
+        self.assertAlmostEqual(self.results["chromatic_aberration"] / expected, 1.0, places=9)
 
     def test_airy_disk_matches_diffraction_formula(self):
         """Airy diameter = 2.44 * lambda * f/# with lambda = 550 nm"""
         f_number = self.results["focal_length"] / self.lens.diameter
         expected = 2.44 * 550e-6 * f_number  # mm
-        self.assertAlmostEqual(
-            self.results["airy_disk_diameter"] / expected, 1.0, places=9
-        )
+        self.assertAlmostEqual(self.results["airy_disk_diameter"] / expected, 1.0, places=9)
 
     def test_f_number_is_f_over_diameter(self):
         """f/# identity"""
@@ -637,9 +625,7 @@ class TestAberrationPhysicsIdentities(unittest.TestCase):
     def test_numerical_aperture_is_d_over_two_f(self):
         """NA = D / (2f) for object at infinity"""
         expected = self.lens.diameter / (2.0 * self.results["focal_length"])
-        self.assertAlmostEqual(
-            self.results["numerical_aperture"] / expected, 1.0, places=12
-        )
+        self.assertAlmostEqual(self.results["numerical_aperture"] / expected, 1.0, places=12)
 
 
 if __name__ == "__main__":

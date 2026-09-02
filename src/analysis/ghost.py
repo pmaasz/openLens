@@ -155,9 +155,7 @@ class GhostAnalyzer:
         tracer = LensRayTracer3D(surf["lens"], x_offset=surf["element"].position)
         return tracer.trace_surface(ray, surf["type"], interaction)
 
-    def _trace_sequence(
-        self, ray: Ray3D, start_idx: int, end_idx: int, interaction: str
-    ) -> bool:
+    def _trace_sequence(self, ray: Ray3D, start_idx: int, end_idx: int, interaction: str) -> bool:
         """Trace forward sequence of interactions."""
         if start_idx > end_idx:
             return True
@@ -167,9 +165,7 @@ class GhostAnalyzer:
                 return False
         return True
 
-    def _trace_sequence_backward(
-        self, ray: Ray3D, start_idx: int, end_idx: int
-    ) -> bool:
+    def _trace_sequence_backward(self, ray: Ray3D, start_idx: int, end_idx: int) -> bool:
         """Trace backward sequence of interactions (always refract)."""
         if start_idx < end_idx:
             return True

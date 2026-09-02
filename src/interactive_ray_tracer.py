@@ -89,9 +89,7 @@ class InteractiveRayTracer:
         self.interactive_rays.clear()
         self.selected_ray = None
 
-    def update_ray_origin(
-        self, ray: InteractiveRay, new_origin: Tuple[float, float, float]
-    ):
+    def update_ray_origin(self, ray: InteractiveRay, new_origin: Tuple[float, float, float]):
         """Update ray origin and retrace."""
         if HAS_NUMPY:
             ray.origin = np.array(new_origin)
@@ -99,9 +97,7 @@ class InteractiveRayTracer:
             ray.origin = Vector3(*new_origin)
         self._trace_ray(ray)
 
-    def update_ray_direction(
-        self, ray: InteractiveRay, new_direction: Tuple[float, float, float]
-    ):
+    def update_ray_direction(self, ray: InteractiveRay, new_direction: Tuple[float, float, float]):
         """Update ray direction and retrace."""
         if HAS_NUMPY:
             ray.direction = np.array(new_direction)
@@ -122,9 +118,7 @@ class InteractiveRayTracer:
 
         # Convert to Vector3 for core tracer
         if HAS_NUMPY and isinstance(ray.origin, np.ndarray):
-            origin = Vector3(
-                float(ray.origin[0]), float(ray.origin[1]), float(ray.origin[2])
-            )
+            origin = Vector3(float(ray.origin[0]), float(ray.origin[1]), float(ray.origin[2]))
             direction = Vector3(
                 float(ray.direction[0]),
                 float(ray.direction[1]),
@@ -194,9 +188,7 @@ class InteractiveRayTracer:
             "color": ray.color,
             "num_segments": len(ray.path_segments),
             "total_path_length": total_path_length,
-            "final_position": (
-                to_list(ray.path_segments[-1][1]) if ray.path_segments else None
-            ),
+            "final_position": (to_list(ray.path_segments[-1][1]) if ray.path_segments else None),
         }
 
     def get_all_rays_data(self) -> List[Dict[str, Any]]:
@@ -212,9 +204,7 @@ class RayManipulator:
         self.drag_mode = None  # 'origin' or 'direction'
         self.drag_start = None
 
-    def start_drag(
-        self, ray: InteractiveRay, mode: str, mouse_pos: Tuple[float, float]
-    ):
+    def start_drag(self, ray: InteractiveRay, mode: str, mouse_pos: Tuple[float, float]):
         """Start dragging a ray."""
         self.tracer.selected_ray = ray
         self.drag_mode = mode
@@ -279,9 +269,7 @@ class RayManipulator:
         self.drag_mode = None  # 'origin' or 'direction'
         self.drag_start = None
 
-    def start_drag(
-        self, ray: InteractiveRay, mode: str, mouse_pos: Tuple[float, float]
-    ):
+    def start_drag(self, ray: InteractiveRay, mode: str, mouse_pos: Tuple[float, float]):
         """Start dragging a ray."""
         self.tracer.selected_ray = ray
         self.drag_mode = mode

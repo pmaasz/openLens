@@ -32,9 +32,7 @@ class TestMaterialCache(unittest.TestCase):
         info2 = self.db.get_refractive_index.cache_info()
 
         self.assertEqual(n1, n2)
-        self.assertGreater(
-            info2.hits, info1.hits, "Cache hits should increase on second call"
-        )
+        self.assertGreater(info2.hits, info1.hits, "Cache hits should increase on second call")
 
     def test_cache_invalidation_on_update(self):
         """Test that updating a material clears the cache"""

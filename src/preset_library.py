@@ -219,10 +219,7 @@ class PresetLibrary:
         query_lower = query.lower()
         results = []
         for preset in self.presets.values():
-            if (
-                query_lower in preset.name.lower()
-                or query_lower in preset.description.lower()
-            ):
+            if query_lower in preset.name.lower() or query_lower in preset.description.lower():
                 results.append(preset)
         return results
 

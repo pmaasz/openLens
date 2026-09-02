@@ -88,9 +88,7 @@ class TestPerformanceMetrics(unittest.TestCase):
     def test_depth_of_field(self):
         """Test depth of field calculation"""
         calc = PerformanceMetrics(self.lens)
-        dof_result = calc.calculate_depth_of_field(
-            object_distance=1000.0, circle_of_confusion=0.03
-        )
+        dof_result = calc.calculate_depth_of_field(object_distance=1000.0, circle_of_confusion=0.03)
 
         self.assertIsNotNone(dof_result)
         self.assertIn("near", dof_result)

@@ -33,24 +33,9 @@ class Matrix4x4:
 
     def multiply_point(self, point: Vector3) -> Vector3:
         """Transforms a point (w=1)."""
-        x = (
-            self.m[0][0] * point.x
-            + self.m[0][1] * point.y
-            + self.m[0][2] * point.z
-            + self.m[0][3]
-        )
-        y = (
-            self.m[1][0] * point.x
-            + self.m[1][1] * point.y
-            + self.m[1][2] * point.z
-            + self.m[1][3]
-        )
-        z = (
-            self.m[2][0] * point.x
-            + self.m[2][1] * point.y
-            + self.m[2][2] * point.z
-            + self.m[2][3]
-        )
+        x = self.m[0][0] * point.x + self.m[0][1] * point.y + self.m[0][2] * point.z + self.m[0][3]
+        y = self.m[1][0] * point.x + self.m[1][1] * point.y + self.m[1][2] * point.z + self.m[1][3]
+        z = self.m[2][0] * point.x + self.m[2][1] * point.y + self.m[2][2] * point.z + self.m[2][3]
         # w = self.m[3][0] * point.x + self.m[3][1] * point.y + self.m[3][2] * point.z + self.m[3][3]
         # Assuming w is always 1 for affine transforms and we don't need perspective divide for now
         return Vector3(x, y, z)

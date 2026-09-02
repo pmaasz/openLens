@@ -23,9 +23,7 @@ except ImportError:
         import sys
         import os
 
-        sys.path.append(
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "io")
-        )
+        sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "io"))
         from step_export import StepExporter
 
 from src.lens import Lens
@@ -59,9 +57,7 @@ class TestStepExporterMultiBody(unittest.TestCase):
             # Verify we have multiple MANIFOLD_SOLID_BREP entities
             # One for each lens in the doublet
             solid_count = content.count("MANIFOLD_SOLID_BREP")
-            self.assertEqual(
-                solid_count, 2, f"Expected 2 solids for doublet, found {solid_count}"
-            )
+            self.assertEqual(solid_count, 2, f"Expected 2 solids for doublet, found {solid_count}")
 
             # Verify lens names are present in the solids
             for element in self.system.elements:

@@ -98,9 +98,7 @@ class SpotDiagram:
                 # Trace a paraxial ray to find focus
                 # Start slightly off-axis
                 start_x = self.system.elements[0].position - 10.0
-                para_ray = Ray3D(
-                    vec3(start_x, 0.001, 0), vec3(1, 0, 0), wavelength=wl_mm
-                )
+                para_ray = Ray3D(vec3(start_x, 0.001, 0), vec3(1, 0, 0), wavelength=wl_mm)
                 self.tracer.trace_ray(para_ray)
 
                 # Find intersection with axis (y=0)

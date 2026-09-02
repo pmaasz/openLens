@@ -32,9 +32,7 @@ class LensEditorWidget(QWidget):
     # Signal emitted when lens properties change
     lens_updated = Signal()
     # Signal emitted when lens model is modified and needs saving/refreshing
-    lens_modified = Signal(
-        object
-    )  # Using object for Lens class to avoid circularity if any
+    lens_modified = Signal(object)  # Using object for Lens class to avoid circularity if any
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """Initialize the editor widget and build its UI.
@@ -67,9 +65,7 @@ class LensEditorWidget(QWidget):
         # Right: Visualization
         self._viz_widget = LensVisualizationWidget()
         # Connect interactive signals from the 2D visualization widget
-        self._viz_widget._2d_widget.property_changed.connect(
-            self._on_interactive_property_changed
-        )
+        self._viz_widget._2d_widget.property_changed.connect(self._on_interactive_property_changed)
 
         main_layout.addWidget(self._viz_widget, 2)
 
@@ -310,11 +306,7 @@ class LensEditorWidget(QWidget):
 
     def _update_groove_count(self):
         """Calculate number of grooves"""
-        if (
-            not self._lens
-            or not hasattr(self._lens, "is_fresnel")
-            or not self._lens.is_fresnel
-        ):
+        if not self._lens or not hasattr(self._lens, "is_fresnel") or not self._lens.is_fresnel:
             return
         pitch = self._groove_pitch_input.value()
         diameter = self._lens.diameter

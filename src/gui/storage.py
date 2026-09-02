@@ -148,10 +148,7 @@ class LensStorage:
             # Serialize and save items to DB
             for item in items:
                 item_dict = item.to_dict()
-                if (
-                    isinstance(item, OpticalSystem)
-                    or item_dict.get("type") == "OpticalSystem"
-                ):
+                if isinstance(item, OpticalSystem) or item_dict.get("type") == "OpticalSystem":
                     self.db.save_assembly(item_dict)
                 else:
                     self.db.save_lens(item_dict)

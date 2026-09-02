@@ -330,11 +330,7 @@ class MaterialDatabase:
         if temperature_c != 20.0:
             delta_T = temperature_c - 20.0
             dn_abs = mat.D0 * delta_T + mat.D1 * delta_T**2 + mat.D2 * delta_T**3
-            dn_rel = (
-                (n_base**2 - 1)
-                / (2 * n_base)
-                * (mat.E0 * delta_T + mat.E1 * delta_T**2)
-            )
+            dn_rel = (n_base**2 - 1) / (2 * n_base) * (mat.E0 * delta_T + mat.E1 * delta_T**2)
             n_base += dn_abs + dn_rel
 
         return n_base

@@ -166,18 +166,14 @@ class _3DVisualizationWidget(QWidget):
             Z_front = x1_vertex + get_sag(r1, R)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
-            self._ax.plot_surface(
-                X, Y, Z_front, alpha=0.5, color="blue", rstride=2, cstride=2
-            )
+            self._ax.plot_surface(X, Y, Z_front, alpha=0.5, color="blue", rstride=2, cstride=2)
 
         # Back surface (green)
         if r2_abs > 0.1:
             Z_back = x2_vertex + get_sag(r2, R)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
-            self._ax.plot_surface(
-                X, Y, Z_back, alpha=0.5, color="green", rstride=2, cstride=2
-            )
+            self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color="green", rstride=2, cstride=2)
 
         # Set axis limits on lens axis only
         z_min = min(

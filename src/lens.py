@@ -101,9 +101,7 @@ class Lens:
         if refractive_index is not None:
             self.refractive_index = float(refractive_index)
         else:
-            self.refractive_index = DEFAULT_MATERIAL_INDICES.get(
-                material, REFRACTIVE_INDEX_BK7
-            )
+            self.refractive_index = DEFAULT_MATERIAL_INDICES.get(material, REFRACTIVE_INDEX_BK7)
 
         self.lens_type = lens_type
 
@@ -168,15 +166,13 @@ class Lens:
                     )
                 else:
                     logger.warning(
-                        "material DB lacks calculate_model_index; "
-                        "keeping model index %.4f",
+                        "material DB lacks calculate_model_index; " "keeping model index %.4f",
                         self.model_nd,
                     )
                     self.refractive_index = self.model_nd
             except _MATERIAL_DB_ERRORS as e:
                 logger.warning(
-                    "Model-glass index update failed (wl=%snm): %s - "
-                    "keeping model index",
+                    "Model-glass index update failed (wl=%snm): %s - " "keeping model index",
                     self.wavelength,
                     e,
                 )
@@ -203,18 +199,14 @@ class Lens:
             try:
                 db = get_material_database()
                 if hasattr(db, "calculate_model_index"):
-                    return db.calculate_model_index(
-                        self.model_nd, self.model_vd, wavelength_nm
-                    )
+                    return db.calculate_model_index(self.model_nd, self.model_vd, wavelength_nm)
             except _MATERIAL_DB_ERRORS as e:
                 logger.debug("Model index lookup failed: %s", e)
             return self.model_nd
         if MATERIAL_DB_AVAILABLE:
             try:
                 db = get_material_database()
-                return db.get_refractive_index(
-                    self.material, wavelength_nm, self.temperature
-                )
+                return db.get_refractive_index(self.material, wavelength_nm, self.temperature)
             except _MATERIAL_DB_ERRORS as e:
                 logger.debug("Material index lookup failed: %s", e)
         return self.refractive_index
@@ -301,9 +293,7 @@ class Lens:
             refractive_index=data.get("refractive_index", REFRACTIVE_INDEX_BK7),
             lens_type=lens_type,
             material=data.get("material", "BK7"),
-            wavelength_nm=data.get(
-                "wavelength_nm", data.get("wavelength", WAVELENGTH_D_LINE)
-            ),
+            wavelength_nm=data.get("wavelength_nm", data.get("wavelength", WAVELENGTH_D_LINE)),
             temperature=data.get("temperature", 20.0),
             is_fresnel=data.get("is_fresnel", False),
             groove_pitch=data.get("groove_pitch", DEFAULT_THICKNESS),
@@ -380,11 +370,7 @@ class Lens:
         elif r1 > 0 and r2 > 0:
             return LENS_TYPE_MENISCUS_CONVEX if r1 < r2 else LENS_TYPE_MENISCUS_CONCAVE
         elif r1 < 0 and r2 < 0:
-            return (
-                LENS_TYPE_MENISCUS_CONCAVE
-                if abs(r1) < abs(r2)
-                else LENS_TYPE_MENISCUS_CONVEX
-            )
+            return LENS_TYPE_MENISCUS_CONCAVE if abs(r1) < abs(r2) else LENS_TYPE_MENISCUS_CONVEX
         else:
             return LENS_TYPE_UNKNOWN
 
