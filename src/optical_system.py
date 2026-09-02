@@ -389,6 +389,9 @@ class OpticalSystem:
                 "bfl_F": bfls['F'],
                 "bfl_d": bfls['d'],
                 "bfl_C": bfls['C'],
+                "f_F": bfls['F'],
+                "f_d": bfls['d'],
+                "f_C": bfls['C'],
                 "corrected": abs(longitudinal) < 0.1
             }
         return {"longitudinal": 0.0, "corrected": False}

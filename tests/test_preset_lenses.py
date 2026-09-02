@@ -2,13 +2,13 @@
 Functional tests for preset lens library
 """
 
+import unittest
 # Try to import pytest
 try:
     import pytest
     PYTEST_AVAILABLE = True
 except ImportError:
     PYTEST_AVAILABLE = False
-    import unittest
 
 from src.preset_lenses import PresetLensLibrary, get_preset_library
 
@@ -211,30 +211,30 @@ class TestPresetLensLibrary(unittest.TestCase):
 class TestPresetLibraryIntegration(unittest.TestCase):
     def test_preset_library_integration(self):
         """Integration test for the complete preset library"""
-    library = get_preset_library()
-    
-    # Get all categories
-    categories = library.get_categories()
-    assert len(categories) >= 5
-    
-    # Verify we have presets in each category
-    for category in categories:
-        presets = library.get_presets_by_category(category)
-        assert len(presets) > 0
-    
-    # Search functionality
-    telescope_results = library.search_presets("telescope")
-    assert len(telescope_results) > 0
-    
-    # Get specific preset and verify it's complete
-    preset = library.get_preset("biconvex_symmetric")
-    assert preset is not None
-    assert preset["radius1"] == 50.0
-    assert preset["radius2"] == -50.0
-    
-    # Get summary
-    summary = library.get_preset_summary("biconvex_symmetric")
-    assert "Symmetric Biconvex" in summary
+        library = get_preset_library()
+        
+        # Get all categories
+        categories = library.get_categories()
+        assert len(categories) >= 5
+        
+        # Verify we have presets in each category
+        for category in categories:
+            presets = library.get_presets_by_category(category)
+            assert len(presets) > 0
+        
+        # Search functionality
+        telescope_results = library.search_presets("telescope")
+        assert len(telescope_results) > 0
+        
+        # Get specific preset and verify it's complete
+        preset = library.get_preset("biconvex_symmetric")
+        assert preset is not None
+        assert preset["radius1"] == 50.0
+        assert preset["radius2"] == -50.0
+        
+        # Get summary
+        summary = library.get_preset_summary("biconvex_symmetric")
+        assert "Symmetric Biconvex" in summary
 
 
 if __name__ == "__main__":

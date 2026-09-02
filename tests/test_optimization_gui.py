@@ -1,11 +1,20 @@
 
 import unittest
-import tkinter as tk
-from tkinter import ttk
-from src.gui.main_window import LensEditorWindow
+try:
+    import tkinter as tk
+    from tkinter import ttk
+    from src.gui.main_window import LensEditorWindow
+    GUI_MAIN_AVAILABLE = True
+except Exception:
+    tk = None
+    ttk = None
+    LensEditorWindow = None
+    GUI_MAIN_AVAILABLE = False
+
 from src.lens import Lens
 from src.optical_system import OpticalSystem
 
+@unittest.skipUnless(GUI_MAIN_AVAILABLE, "GUI main_window not available")
 class TestOptimizationIntegration(unittest.TestCase):
     def setUp(self):
         self.root = tk.Tk()

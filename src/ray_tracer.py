@@ -11,6 +11,8 @@ Existing ``from .ray_tracer import …`` statements continue to work.
 """
 
 # Re-export everything so existing imports are unaffected
+from .vector3 import Vector3, vec3  # noqa: F401
+from .transform import Matrix4x4  # noqa: F401
 from .ray import (  # noqa: F401
     RefractionResult,
     OpticalIntersector,

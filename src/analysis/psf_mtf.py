@@ -142,7 +142,8 @@ class ImageQualityAnalyzer:
                       wavelength_nm: float = WAVELENGTH_GREEN,
                       focus_shift_mm: float = 0.0,
                       max_freq: float = 100.0,
-                      use_diffraction: bool = False) -> Dict[str, Any]:
+                      use_diffraction: bool = False,
+                      **kwargs) -> Dict[str, Any]:
         """
         Calculate the Modulation Transfer Function (MTF).
         
@@ -159,6 +160,13 @@ class ImageQualityAnalyzer:
                 - mtf_tan: Tangential MTF values
                 - mtf_sag: Sagittal MTF values
         """
+        # Handle legacy aliases
+        if 'field_angle' in kwargs:
+            field_angle_deg = kwargs.pop('field_angle')
+        if 'max_freq' in kwargs:
+            max_freq = kwargs.pop('max_freq')
+        if kwargs:
+            raise TypeError(f"Unexpected kwargs: {list(kwargs.keys())}")
         if use_diffraction:
             # For diffraction MTF, we calculate the autocorrelation of the pupil function
             # OR take the FFT of the Diffraction PSF.
@@ -475,7 +483,8 @@ class ImageQualityAnalyzer:
                       pixel_size_mm: float = 0.005, 
                       wavelengths_nm: Tuple[float, float, float] = (WAVELENGTH_C_LINE, WAVELENGTH_D_LINE, WAVELENGTH_F_LINE),
                       field_angle_deg: float = 0.0,
-                      focus_shift_mm: float = 0.0) -> np.ndarray:
+                      focus_shift_mm: float = 0.0,
+                      **kwargs) -> np.ndarray:
         """
         Simulate image degradation by convolving with PSF.
         
@@ -489,6 +498,13 @@ class ImageQualityAnalyzer:
         Returns:
             Simulated image (H, W, 3) normalized 0-1.
         """
+        # Handle legacy alias pixel_size
+        if 'pixel_size' in kwargs:
+            pixel_size_mm = kwargs.pop('pixel_size')
+        if 'wavelengths' in kwargs:
+            wavelengths_nm = kwargs.pop('wavelengths')
+        if kwargs:
+            raise TypeError(f"Unexpected kwargs: {list(kwargs.keys())}")
         try:
             from scipy.signal import fftconvolve
             # Helper for when scipy is available

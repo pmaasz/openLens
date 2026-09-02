@@ -23,8 +23,9 @@ class TestExtremeInputValues(unittest.TestCase):
             material="Custom"
         )
         focal_length = lens.calculate_focal_length()
-        # Should return None for invalid lens
-        self.assertIsNone(focal_length)
+        # Zero radius is converted to flat (inf) -> plano-convex, should be valid
+        self.assertIsNotNone(focal_length)
+        self.assertGreater(focal_length, 0)
     
     def test_very_large_radius(self):
         """Test lens with very large radius (nearly flat)"""

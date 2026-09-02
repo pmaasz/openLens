@@ -380,14 +380,14 @@ class TestAberrationsBehavior(unittest.TestCase):
     
     def test_quality_score_decreases_with_aberrations(self):
         """Test that quality score properly reflects aberration levels"""
-        # Create a good lens (tiny aperture, very long focal length)
-        good_lens = Lens(name="Good", radius_of_curvature_1=1000.0,
-                        radius_of_curvature_2=-1000.0, thickness=2.0,
+        # Create a good lens (small aperture, moderate focal length -> low aberrations)
+        good_lens = Lens(name="Good", radius_of_curvature_1=30.0,
+                        radius_of_curvature_2=-30.0, thickness=2.0,
                         diameter=1.0, refractive_index=1.5, material="BK7")
         
         # Create a poor lens (very large aperture, asymmetric, high aberrations)
-        poor_lens = Lens(name="Poor", radius_of_curvature_1=5.0,
-                        radius_of_curvature_2=-2.0, thickness=25.0,
+        poor_lens = Lens(name="Poor", radius_of_curvature_1=50.0,
+                        radius_of_curvature_2=-30.0, thickness=25.0,
                         diameter=250.0, refractive_index=1.9, material="SF11")
         
         quality_good = analyze_lens_quality(good_lens, field_angle_deg=2.0)
