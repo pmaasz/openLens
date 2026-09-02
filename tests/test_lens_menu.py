@@ -11,12 +11,13 @@ import os
 import sys
 import unittest
 
-if os.environ.get('DISPLAY', '') == '' and sys.platform.startswith('linux'):
-    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+if os.environ.get("DISPLAY", "") == "" and sys.platform.startswith("linux"):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
     from PySide6.QtWidgets import QApplication
     from openlens import OpenLensWindow
+
     PYSIDE_AVAILABLE = True
 except ImportError as _e:
     QApplication = None  # type: ignore
@@ -25,11 +26,14 @@ except ImportError as _e:
     _PYSIDE_ERROR = _e
 
 if not PYSIDE_AVAILABLE:
+
     class TestLensMenu(unittest.TestCase):
         @unittest.skip(f"PySide6 not available: {_PYSIDE_ERROR}")
         def test_skip(self):
             pass
+
 else:
+
     class TestLensMenu(unittest.TestCase):
         """Dynamic rebuild of the Lens menu via aboutToShow"""
 
@@ -76,8 +80,11 @@ else:
             self.window._on_new_lens()
             self.window._rebuild_lens_menu()
 
-            checked = [a.text() for a in self.window._lens_menu.actions()
-                       if a.isCheckable() and a.isChecked()]
+            checked = [
+                a.text()
+                for a in self.window._lens_menu.actions()
+                if a.isCheckable() and a.isChecked()
+            ]
             self.assertEqual(checked, ["Lens 2"])
 
         def test_delete_shrinks_next_open(self):
@@ -97,8 +104,7 @@ else:
             self.window._on_new_lens()
             self.window._rebuild_lens_menu()
 
-            action = next(a for a in self.window._lens_menu.actions()
-                          if a.text() == "Lens 1")
+            action = next(a for a in self.window._lens_menu.actions() if a.text() == "Lens 1")
             action.triggered.emit()
             self.assertEqual(self.window._current_lens.name, "Lens 1")
             self.assertIsNone(self.window._current_assembly)

@@ -12,11 +12,11 @@ from .assembly_viz import AssemblyVisualizationWidget
 from .performance_viz import PerformanceVisualizationWidget
 
 __all__ = [
-    'LensEditorWidget',
-    'LensViz2DWidget', 
-    '_3DVisualizationWidget',
-    'LensVisualizationWidget',
-    'SimulationVisualizationWidget',
-    'AssemblyVisualizationWidget',
-    'PerformanceVisualizationWidget',
+    "LensEditorWidget",
+    "LensViz2DWidget",
+    "_3DVisualizationWidget",
+    "LensVisualizationWidget",
+    "SimulationVisualizationWidget",
+    "AssemblyVisualizationWidget",
+    "PerformanceVisualizationWidget",
 ]

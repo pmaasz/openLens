@@ -9,9 +9,14 @@ from .ray import Ray3D, Ray, RefractionResult, OpticalIntersector, HAS_POLARIZAT
 from .vector3 import Vector3, vec3
 from .transform import Matrix4x4
 from .constants import (
-    EPSILON, WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR,
-    DEFAULT_NUM_RAYS, DEFAULT_PROPAGATION_DISTANCE,
-    RAY_START_OFFSET_3D_MM, RAY_EXIT_PROPAGATION_3D_MM,
+    EPSILON,
+    WAVELENGTH_GREEN,
+    NM_TO_MM,
+    REFRACTIVE_INDEX_AIR,
+    DEFAULT_NUM_RAYS,
+    DEFAULT_PROPAGATION_DISTANCE,
+    RAY_START_OFFSET_3D_MM,
+    RAY_EXIT_PROPAGATION_3D_MM,
 )
 from .lens import _is_flat
 
@@ -26,7 +31,9 @@ class LensRayTracer3D:
     Accepts an optional transformation matrix for position/orientation.
     """
 
-    def __init__(self, lens: "Lens", transform: Optional[Matrix4x4] = None, x_offset: float = 0.0) -> None:
+    def __init__(
+        self, lens: "Lens", transform: Optional[Matrix4x4] = None, x_offset: float = 0.0
+    ) -> None:
         self.lens = lens
         self.R1 = lens.radius_of_curvature_1
         self.R2 = lens.radius_of_curvature_2
@@ -65,13 +72,21 @@ class LensRayTracer3D:
 
         self.optical_axis = self.transform.multiply_vector(vec3(1, 0, 0)).normalize()
 
-    def _intersect_sphere(self, ray: Ray3D, center: Vector3, radius: float, is_convex: bool) -> Optional[Vector3]:
+    def _intersect_sphere(
+        self, ray: Ray3D, center: Vector3, radius: float, is_convex: bool
+    ) -> Optional[Vector3]:
         """Intersect ray with a sphere."""
         t_solutions = OpticalIntersector.intersect_sphere(
-            ray.origin.x, ray.origin.y, ray.origin.z,
-            ray.direction.x, ray.direction.y, ray.direction.z,
-            center.x, center.y, center.z,
-            radius
+            ray.origin.x,
+            ray.origin.y,
+            ray.origin.z,
+            ray.direction.x,
+            ray.direction.y,
+            ray.direction.z,
+            center.x,
+            center.y,
+            center.z,
+            radius,
         )
 
         if t_solutions is None:
@@ -87,13 +102,15 @@ class LensRayTracer3D:
         is_inside = dist_sq < radius**2
 
         if is_inside:
-             t = max(valid_ts)
+            t = max(valid_ts)
         else:
-             t = min(valid_ts)
+            t = min(valid_ts)
 
         return ray.origin + ray.direction * t
 
-    def _intersect_plane(self, ray: Ray3D, point_on_plane: Vector3, normal: Vector3) -> Optional[Vector3]:
+    def _intersect_plane(
+        self, ray: Ray3D, point_on_plane: Vector3, normal: Vector3
+    ) -> Optional[Vector3]:
         denom = normal.dot(ray.direction)
         if abs(denom) < EPSILON:
             return None
@@ -104,16 +121,18 @@ class LensRayTracer3D:
 
         return ray.origin + ray.direction * t
 
-    def trace_surface(self, ray: Ray3D, surface_type: str, interaction: str = 'refract') -> RefractionResult:
+    def trace_surface(
+        self, ray: Ray3D, surface_type: str, interaction: str = "refract"
+    ) -> RefractionResult:
         """Trace ray interaction with a specific surface."""
-        if surface_type == 'front':
+        if surface_type == "front":
             center = self.front_center
             is_flat = self.front_is_flat
             vertex = self.front_vertex
             R = self.R1
             default_n1 = REFRACTIVE_INDEX_AIR
             default_n2 = self.n
-        elif surface_type == 'back':
+        elif surface_type == "back":
             center = self.back_center
             is_flat = self.back_is_flat
             vertex = self.back_vertex
@@ -130,7 +149,7 @@ class LensRayTracer3D:
             intersection = self._intersect_sphere(ray, center, abs(R), (R > 0))
 
         if intersection is None:
-            if surface_type == 'back' and not is_flat:
+            if surface_type == "back" and not is_flat:
                 dist_sq = (ray.origin - center).magnitude_sq()
                 R_abs = abs(R)
                 already_exited = False
@@ -150,14 +169,14 @@ class LensRayTracer3D:
         proj = v_to_i.dot(self.optical_axis)
         dist_sq = v_to_i.magnitude_sq() - proj**2
 
-        if dist_sq > ((self.D/2) + 1e-4)**2:
-             return RefractionResult.MISSED
+        if dist_sq > ((self.D / 2) + 1e-4) ** 2:
+            return RefractionResult.MISSED
 
         ray.origin = intersection
         ray.path.append(intersection)
 
         if is_flat:
-            if surface_type == 'front':
+            if surface_type == "front":
                 normal = -self.optical_axis
             else:
                 normal = self.optical_axis
@@ -165,7 +184,7 @@ class LensRayTracer3D:
             normal = (intersection - center).normalize()
             if R < 0:
                 normal = -normal
-            if surface_type == 'back' and R > 0:
+            if surface_type == "back" and R > 0:
                 normal = -normal
 
         current_n = ray.n
@@ -177,24 +196,26 @@ class LensRayTracer3D:
         else:
             n1, n2 = current_n, default_n2
 
-        if interaction == 'reflect':
+        if interaction == "reflect":
             ray.reflect(normal, n1, n2)
             return RefractionResult.REFLECTED
-        elif interaction == 'refract':
+        elif interaction == "refract":
             return ray.refract_or_reflect(n1, n2, normal)
 
         return RefractionResult.MISSED
 
-    def trace_ray(self, ray: Ray3D, propagate_distance: float = DEFAULT_PROPAGATION_DISTANCE) -> Ray3D:
-        if self.trace_surface(ray, 'front', 'refract') is not RefractionResult.REFRACTED:
+    def trace_ray(
+        self, ray: Ray3D, propagate_distance: float = DEFAULT_PROPAGATION_DISTANCE
+    ) -> Ray3D:
+        if self.trace_surface(ray, "front", "refract") is not RefractionResult.REFRACTED:
             if not ray.terminated:
-                 ray.propagate(propagate_distance)
-                 ray.terminated = True
+                ray.propagate(propagate_distance)
+                ray.terminated = True
             return ray
 
-        if self.trace_surface(ray, 'back', 'refract') is not RefractionResult.REFRACTED:
-             ray.terminated = True
-             return ray
+        if self.trace_surface(ray, "back", "refract") is not RefractionResult.REFRACTED:
+            ray.terminated = True
+            return ray
 
         ray.propagate(propagate_distance)
         return ray
@@ -210,16 +231,16 @@ class SystemRayTracer3D:
         """Trace a single ray through the entire system."""
 
         elements = []
-        if hasattr(self.system, 'root'):
-             nodes = self.system.root.get_flat_list()
-             for node, _ in nodes:
-                 if getattr(node, 'is_element', False):
-                     transform = node.get_global_transform()
-                     elements.append((node.element_model, transform))
+        if hasattr(self.system, "root"):
+            nodes = self.system.root.get_flat_list()
+            for node, _ in nodes:
+                if getattr(node, "is_element", False):
+                    transform = node.get_global_transform()
+                    elements.append((node.element_model, transform))
         else:
-             for elem in self.system.elements:
-                 t = Matrix4x4.from_translation(elem.position, 0, 0)
-                 elements.append((elem.lens, t))
+            for elem in self.system.elements:
+                t = Matrix4x4.from_translation(elem.position, 0, 0)
+                elements.append((elem.lens, t))
 
         for lens, transform in elements:
             if ray.terminated:
@@ -229,13 +250,16 @@ class SystemRayTracer3D:
             tracer.trace_ray(ray, propagate_distance=0)
 
         if not ray.terminated:
-             ray.propagate(RAY_EXIT_PROPAGATION_3D_MM)
+            ray.propagate(RAY_EXIT_PROPAGATION_3D_MM)
 
         return ray
 
-    def trace_off_axis_rays(self, field_angle_deg: float,
-                           num_rays: int = DEFAULT_NUM_RAYS,
-                           wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray3D]:
+    def trace_off_axis_rays(
+        self,
+        field_angle_deg: float,
+        num_rays: int = DEFAULT_NUM_RAYS,
+        wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM,
+    ) -> List[Ray3D]:
         """
         Trace a bundle of rays at a given field angle.
         Rays are distributed across the entrance pupil.
@@ -267,8 +291,12 @@ class SystemRayTracer3D:
 
         return rays
 
-    def trace_grid(self, size: float = 10.0, grid_points: int = 5,
-                   wavelength: float = WAVELENGTH_GREEN * NM_TO_MM) -> List[Ray3D]:
+    def trace_grid(
+        self,
+        size: float = 10.0,
+        grid_points: int = 5,
+        wavelength: float = WAVELENGTH_GREEN * NM_TO_MM,
+    ) -> List[Ray3D]:
         """
         Trace a grid of parallel rays (simulating a collimated beam).
         """

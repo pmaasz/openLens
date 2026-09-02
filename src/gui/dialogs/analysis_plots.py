@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 class AnalysisPlotDialog(QDialog):
     """Reusable dialog for displaying Matplotlib plots."""
-    
+
     def __init__(self, title: str, parent: Optional["QWidget"] = None) -> None:
         """Initialize the dialog with an empty figure and navigation toolbar.
 
@@ -29,23 +29,23 @@ class AnalysisPlotDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.resize(800, 600)
-        
+
         layout = QVBoxLayout(self)
-        
+
         # Create figure and canvas
         self.figure = Figure(figsize=(8, 6), dpi=100)
         # Use a safe way to check theme from parent
-        theme = getattr(parent, '_theme', 'dark') if parent else 'dark'
-        if theme == 'dark':
-            self.figure.patch.set_facecolor('#1e1e1e')
-            
+        theme = getattr(parent, "_theme", "dark") if parent else "dark"
+        if theme == "dark":
+            self.figure.patch.set_facecolor("#1e1e1e")
+
         self.canvas = FigureCanvas(self.figure)
         layout.addWidget(self.canvas)
-        
+
         # Add navigation toolbar
         self.toolbar = NavigationToolbar(self.canvas, self)
         layout.addWidget(self.toolbar)
-        
+
         # Add close button
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.accept)
@@ -62,13 +62,13 @@ class AnalysisPlotDialog(QDialog):
             The newly created axes, restyled for the dark theme when active.
         """
         ax = self.figure.add_subplot(*args, **kwargs)
-        theme = getattr(self.parent(), '_theme', 'dark') if self.parent() else 'dark'
-        if theme == 'dark':
-            ax.set_facecolor('#1e1e1e')
-            ax.tick_params(colors='#e0e0e0')
-            ax.xaxis.label.set_color('#e0e0e0')
-            ax.yaxis.label.set_color('#e0e0e0')
-            ax.title.set_color('#e0e0e0')
+        theme = getattr(self.parent(), "_theme", "dark") if self.parent() else "dark"
+        if theme == "dark":
+            ax.set_facecolor("#1e1e1e")
+            ax.tick_params(colors="#e0e0e0")
+            ax.xaxis.label.set_color("#e0e0e0")
+            ax.yaxis.label.set_color("#e0e0e0")
+            ax.title.set_color("#e0e0e0")
             for spine in ax.spines.values():
-                spine.set_edgecolor('#3f3f3f')
+                spine.set_edgecolor("#3f3f3f")
         return ax

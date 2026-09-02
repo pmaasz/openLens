@@ -4,25 +4,26 @@ import os
 from typing import List
 
 # Add src to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.lens import Lens
 from src.optical_system import OpticalSystem
 from src.optimizer import LensOptimizer, OptimizationVariable, OptimizationTarget
 
+
 class TestLensOptimizerAPI(unittest.TestCase):
     def setUp(self):
         # Create a simple system for testing
         self.lens = Lens(
-            radius_of_curvature_1=50.0, 
-            radius_of_curvature_2=-50.0, 
-            thickness=10.0, 
-            diameter=50.0, 
-            refractive_index=1.5
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=-50.0,
+            thickness=10.0,
+            diameter=50.0,
+            refractive_index=1.5,
         )
         self.system = OpticalSystem("Test System")
         self.system.add_lens(self.lens)
-        
+
         # Setup variables
         self.variables = [
             OptimizationVariable(
@@ -31,17 +32,17 @@ class TestLensOptimizerAPI(unittest.TestCase):
                 parameter="radius_of_curvature_1",
                 current_value=50.0,
                 min_value=10.0,
-                max_value=100.0
+                max_value=100.0,
             )
         ]
-        
+
         # Setup targets
         self.targets = [
             OptimizationTarget(
                 name="focal_length",
                 target_value=100.0,
                 weight=1.0,
-                target_type="target"
+                target_type="target",
             )
         ]
 
@@ -60,12 +61,12 @@ class TestLensOptimizerAPI(unittest.TestCase):
             name="spherical_aberration",
             target_value=0.0,
             weight=1.0,
-            target_type="minimize"
+            target_type="minimize",
         )
         self.targets.append(sa_target)
-        
+
         optimizer = LensOptimizer(self.system, self.variables, self.targets)
-        
+
         # Manually evaluate merit to check for crash
         try:
             merit = optimizer._evaluate_design([50.0])
@@ -73,5 +74,6 @@ class TestLensOptimizerAPI(unittest.TestCase):
         except Exception as e:
             self.fail(f"Merit evaluation failed with exception: {e}")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

@@ -12,7 +12,7 @@ except ImportError:
     StartupDialog = None  # type: ignore
 
 __all__ = [
-    'LensEditorWidget',
-    'LensVisualizationWidget',
-    'StartupDialog',
+    "LensEditorWidget",
+    "LensVisualizationWidget",
+    "StartupDialog",
 ]

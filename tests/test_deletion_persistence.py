@@ -14,11 +14,12 @@ import sys
 import tempfile
 import unittest
 
-if os.environ.get('DISPLAY', '') == '' and sys.platform.startswith('linux'):
-    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+if os.environ.get("DISPLAY", "") == "" and sys.platform.startswith("linux"):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
     from PySide6.QtWidgets import QApplication
+
     PYSIDE_AVAILABLE = True
 except ImportError as _e:
     QApplication = None  # type: ignore
@@ -30,23 +31,28 @@ from src.optical_system import OpticalSystem
 from src.gui.storage import LensStorage
 
 if not PYSIDE_AVAILABLE:
+
     class TestReconciliation(unittest.TestCase):
         @unittest.skip(f"PySide6 not available: {_PYSIDE_ERROR}")
         def test_skip(self):
             pass
+
 else:
+
     class _Harness:
         """Owns a temp database and a window bound to it."""
 
         def __init__(self):
-            fd, self.db_path = tempfile.mkstemp(suffix='.db')
+            fd, self.db_path = tempfile.mkstemp(suffix=".db")
             os.close(fd)
             self.app = QApplication.instance() or QApplication(sys.argv)
             import openlens
+
             self.openlens = openlens
             self.window = openlens.OpenLensWindow()
             self.window._db_path = self.db_path
             from src.gui.storage import LensStorage
+
             self.storage = LensStorage(self.db_path)
             self.window._storage = self.storage
             # Detach from real user data
@@ -55,14 +61,13 @@ else:
 
         def close(self):
             self.window.close()
-            for suffix in ('', '-shm', '-wal'):
+            for suffix in ("", "-shm", "-wal"):
                 p = self.db_path + suffix
                 if os.path.exists(p):
                     os.unlink(p)
 
         def stored_names(self):
-            return sorted(o.name for o in self.storage.load_lenses()
-                          if hasattr(o, 'name'))
+            return sorted(o.name for o in self.storage.load_lenses() if hasattr(o, "name"))
 
     class TestReconciliation(unittest.TestCase):
         def setUp(self):
@@ -72,8 +77,9 @@ else:
         def test_deleted_item_stays_deleted_across_sessions(self):
             """Regression: deleting then relaunching must not resurrect."""
             w = self.h.window
-            w._on_new_lens(); w._on_new_lens()
-            w._save_to_database()          # ensure both rows are persisted
+            w._on_new_lens()
+            w._on_new_lens()
+            w._save_to_database()  # ensure both rows are persisted
             w._current_lens = w._lenses[0]
             w._on_delete_lens()
 
@@ -122,9 +128,10 @@ else:
             lens_only = [Lens(name="JustALens")]
             storage.save_lenses(lens_only, show_status=False, reconcile=False)
 
-            kinds = [('assembly' if hasattr(d, 'elements') else 'lens')
-                     for d in storage.load_lenses()]
-            self.assertIn('assembly', kinds)
+            kinds = [
+                ("assembly" if hasattr(d, "elements") else "lens") for d in storage.load_lenses()
+            ]
+            self.assertIn("assembly", kinds)
 
 
 if __name__ == "__main__":

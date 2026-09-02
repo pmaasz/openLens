@@ -23,7 +23,10 @@ class TestTIRCriticalAngle(unittest.TestCase):
         ray.n = N_BK7  # travelling inside glass towards the exit surface
         # Flat surface: normal along +x; incident direction makes the
         # angle with the normal equal to the ray's own angle.
-        tir = ray.refract_or_reflect(N_BK7, 1.0, surface_normal_angle=0.0) is RefractionResult.REFLECTED
+        tir = (
+            ray.refract_or_reflect(N_BK7, 1.0, surface_normal_angle=0.0)
+            is RefractionResult.REFLECTED
+        )
         return tir, ray
 
     def test_critical_angle_value(self):
@@ -35,9 +38,8 @@ class TestTIRCriticalAngle(unittest.TestCase):
         tir, ray = self._refract_out_of_glass(CRITICAL_DEG - 0.25)
         self.assertFalse(tir)
         # Snell: sin(theta_t) = n * sin(theta_i) must be <= 1 and near 1 here
-        theta_t = math.degrees(math.atan2(
-            math.sin(ray.angle_rad), math.cos(ray.angle_rad)))
-        self.assertGreater(theta_t, 80.0)   # grazing-ish exit
+        theta_t = math.degrees(math.atan2(math.sin(ray.angle_rad), math.cos(ray.angle_rad)))
+        self.assertGreater(theta_t, 80.0)  # grazing-ish exit
         self.assertLessEqual(theta_t, 90.0 + 1e-9)
 
     def test_above_critical_tir(self):

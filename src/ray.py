@@ -13,12 +13,16 @@ from typing import List, Optional, Tuple, Any
 
 from .vector3 import Vector3, vec3
 from .constants import (
-    EPSILON, WAVELENGTH_GREEN, NM_TO_MM, REFRACTIVE_INDEX_AIR,
+    EPSILON,
+    WAVELENGTH_GREEN,
+    NM_TO_MM,
+    REFRACTIVE_INDEX_AIR,
 )
 
 try:
     import numpy as np
     from .polarization import PolarizationCalculator
+
     HAS_POLARIZATION = True
 except ImportError:
     np = None
@@ -28,9 +32,10 @@ except ImportError:
 
 class RefractionResult(enum.Enum):
     """Outcome of applying Snell's law at an interface."""
-    REFRACTED = "refracted"   # transmitted into new medium; n updated
-    REFLECTED = "reflected"   # total internal reflection; direction mutated
-    MISSED    = "missed"      # no intersection; state unchanged
+
+    REFRACTED = "refracted"  # transmitted into new medium; n updated
+    REFLECTED = "reflected"  # total internal reflection; direction mutated
+    MISSED = "missed"  # no intersection; state unchanged
 
 
 class OpticalIntersector:
@@ -63,7 +68,7 @@ class OpticalIntersector:
         b = 2.0 * (oc_x * dir_x + oc_y * dir_y + oc_z * dir_z)
         c = oc_x**2 + oc_y**2 + oc_z**2 - radius**2
 
-        discriminant = b*b - 4*a*c
+        discriminant = b * b - 4 * a * c
         if discriminant < -EPSILON:
             return None
 
@@ -128,9 +133,14 @@ class Ray:
         path: List of (x, y) points along the ray path
     """
 
-    def __init__(self, x: float = 0.0, y: float = 0.0, angle_rad: float = 0.0,
-                 wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM,
-                 n: float = REFRACTIVE_INDEX_AIR) -> None:
+    def __init__(
+        self,
+        x: float = 0.0,
+        y: float = 0.0,
+        angle_rad: float = 0.0,
+        wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM,
+        n: float = REFRACTIVE_INDEX_AIR,
+    ) -> None:
         self.x = x
         self.y = y
         self.angle_rad = angle_rad
@@ -164,8 +174,9 @@ class Ray:
         self.y += distance_mm * math.sin(self.angle_rad)
         self.path.append((self.x, self.y))
 
-    def refract_or_reflect(self, n1: float, n2: float,
-                           surface_normal_angle: float = 0.0) -> RefractionResult:
+    def refract_or_reflect(
+        self, n1: float, n2: float, surface_normal_angle: float = 0.0
+    ) -> RefractionResult:
         """
         Apply Snell's law at an interface.
 
@@ -201,10 +212,15 @@ class Ray3D:
     Represents a light ray in 3D space with optional polarization.
     """
 
-    def __init__(self, origin: Vector3, direction: Vector3,
-                 wavelength: float = WAVELENGTH_GREEN * NM_TO_MM,
-                 intensity: float = 1.0, n: float = REFRACTIVE_INDEX_AIR,
-                 polarization_vector: Optional[Any] = None) -> None:
+    def __init__(
+        self,
+        origin: Vector3,
+        direction: Vector3,
+        wavelength: float = WAVELENGTH_GREEN * NM_TO_MM,
+        intensity: float = 1.0,
+        n: float = REFRACTIVE_INDEX_AIR,
+        polarization_vector: Optional[Any] = None,
+    ) -> None:
         self.origin = origin
         self.direction = direction.normalize()
         self.wavelength = wavelength
@@ -225,26 +241,42 @@ class Ray3D:
         self.path.append(self.origin)
         self.optical_path_length += distance * self.n
 
-    def _compute_fresnel_reflectance(self, n1: float, n2: float, cos_i: float, cos_t: float) -> float:
+    def _compute_fresnel_reflectance(
+        self, n1: float, n2: float, cos_i: float, cos_t: float
+    ) -> float:
         """Calculate Fresnel reflectance for unpolarized light."""
-        if n1 == n2: return 0.0
+        if n1 == n2:
+            return 0.0
 
         rs_den = n1 * cos_i + n2 * cos_t
-        if rs_den == 0: return 1.0
-        rs = ((n1 * cos_i - n2 * cos_t) / rs_den)**2
+        if rs_den == 0:
+            return 1.0
+        rs = ((n1 * cos_i - n2 * cos_t) / rs_den) ** 2
 
         rp_den = n1 * cos_t + n2 * cos_i
-        if rp_den == 0: return 1.0
-        rp = ((n1 * cos_t - n2 * cos_i) / rp_den)**2
+        if rp_den == 0:
+            return 1.0
+        rp = ((n1 * cos_t - n2 * cos_i) / rp_den) ** 2
 
         return 0.5 * (rs + rp)
 
-    def _update_polarization(self, normal: Vector3, n1: float, n2: float,
-                             new_direction: Vector3, interaction: str) -> None:
+    def _update_polarization(
+        self,
+        normal: Vector3,
+        n1: float,
+        n2: float,
+        new_direction: Vector3,
+        interaction: str,
+    ) -> None:
         """
         Update polarization vector based on interaction (reflect/refract).
         """
-        if self.polarization_vector is None or not HAS_POLARIZATION or np is None or PolarizationCalculator is None:
+        if (
+            self.polarization_vector is None
+            or not HAS_POLARIZATION
+            or np is None
+            or PolarizationCalculator is None
+        ):
             return
 
         k_inc = self.direction
@@ -281,56 +313,60 @@ class Ray3D:
         calc = PolarizationCalculator()
         coeffs = calc.fresnel_coefficients(n1, n2, angle_deg)
 
-        if interaction == 'reflect':
-            r_s = coeffs['r_s']
-            r_p = coeffs['r_p']
+        if interaction == "reflect":
+            r_s = coeffs["r_s"]
+            r_p = coeffs["r_p"]
 
             E_new = r_s * E_s * s_np + r_p * E_p * p_out_np
 
-            R_s = np.abs(r_s)**2
-            R_p = np.abs(r_p)**2
+            R_s = np.abs(r_s) ** 2
+            R_p = np.abs(r_p) ** 2
 
-            P_total_old = np.abs(E_s)**2 + np.abs(E_p)**2
+            P_total_old = np.abs(E_s) ** 2 + np.abs(E_p) ** 2
             if P_total_old > 1e-9:
-                reflectance_factor = (R_s * np.abs(E_s)**2 + R_p * np.abs(E_p)**2) / P_total_old
+                reflectance_factor = (R_s * np.abs(E_s) ** 2 + R_p * np.abs(E_p) ** 2) / P_total_old
                 self.intensity *= reflectance_factor
             else:
                 self.intensity = 0.0
 
             self.polarization_vector = E_new
 
-        elif interaction == 'refract':
-            t_s = coeffs['t_s']
-            t_p = coeffs['t_p']
+        elif interaction == "refract":
+            t_s = coeffs["t_s"]
+            t_p = coeffs["t_p"]
 
             E_new = t_s * E_s * s_np + t_p * E_p * p_out_np
 
-            if coeffs['total_internal_reflection']:
-                 self.intensity = 0.0
-                 self.polarization_vector = np.zeros(3, dtype=complex)
-                 return
+            if coeffs["total_internal_reflection"]:
+                self.intensity = 0.0
+                self.polarization_vector = np.zeros(3, dtype=complex)
+                return
 
             theta1_rad = math.radians(angle_deg)
-            theta2_rad = math.radians(float(coeffs['theta_transmitted_deg'].real))
+            theta2_rad = math.radians(float(coeffs["theta_transmitted_deg"].real))
 
             if n1 * math.cos(theta1_rad) > 1e-9:
                 geo_factor = (n2 * math.cos(theta2_rad)) / (n1 * math.cos(theta1_rad))
             else:
                 geo_factor = 0
 
-            T_s = geo_factor * np.abs(t_s)**2
-            T_p = geo_factor * np.abs(t_p)**2
+            T_s = geo_factor * np.abs(t_s) ** 2
+            T_p = geo_factor * np.abs(t_p) ** 2
 
-            P_total_old = np.abs(E_s)**2 + np.abs(E_p)**2
+            P_total_old = np.abs(E_s) ** 2 + np.abs(E_p) ** 2
             if P_total_old > 1e-9:
-                transmittance_factor = (T_s * np.abs(E_s)**2 + T_p * np.abs(E_p)**2) / P_total_old
+                transmittance_factor = (
+                    T_s * np.abs(E_s) ** 2 + T_p * np.abs(E_p) ** 2
+                ) / P_total_old
                 self.intensity *= transmittance_factor
             else:
                 self.intensity = 0.0
 
             self.polarization_vector = E_new
 
-    def reflect(self, normal: Vector3, n1: Optional[float] = None, n2: Optional[float] = None) -> None:
+    def reflect(
+        self, normal: Vector3, n1: Optional[float] = None, n2: Optional[float] = None
+    ) -> None:
         """
         Reflect ray off a surface normal.
         """
@@ -342,27 +378,26 @@ class Ray3D:
         self.direction = new_direction
 
         if n1 is not None and n2 is not None:
-             if self.polarization_vector is not None and HAS_POLARIZATION:
-                 temp_ray_dir = self.direction
-                 self.direction = old_direction
-                 self._update_polarization(normal, n1, n2, new_direction, 'reflect')
-                 self.direction = temp_ray_dir
-                 return
+            if self.polarization_vector is not None and HAS_POLARIZATION:
+                temp_ray_dir = self.direction
+                self.direction = old_direction
+                self._update_polarization(normal, n1, n2, new_direction, "reflect")
+                self.direction = temp_ray_dir
+                return
 
-             cos_i = abs(dot)
-             ratio = n1 / n2
-             sin2_t = ratio**2 * (1.0 - cos_i**2)
+            cos_i = abs(dot)
+            ratio = n1 / n2
+            sin2_t = ratio**2 * (1.0 - cos_i**2)
 
-             if sin2_t > 1.0:
-                 R = 1.0
-             else:
-                 cos_t = math.sqrt(1.0 - sin2_t)
-                 R = self._compute_fresnel_reflectance(n1, n2, cos_i, cos_t)
+            if sin2_t > 1.0:
+                R = 1.0
+            else:
+                cos_t = math.sqrt(1.0 - sin2_t)
+                R = self._compute_fresnel_reflectance(n1, n2, cos_i, cos_t)
 
-             self.intensity *= R
+            self.intensity *= R
 
-    def refract_or_reflect(self, n1: float, n2: float,
-                           normal: Vector3) -> RefractionResult:
+    def refract_or_reflect(self, n1: float, n2: float, normal: Vector3) -> RefractionResult:
         """Apply Snell's law at an interface using vector math."""
         if self.polarization_vector is not None and HAS_POLARIZATION:
             # Handle polarized refraction with Fresnel coefficients
@@ -375,11 +410,11 @@ class Ray3D:
             new_direction = vec3(rx, ry, rz)
             if is_tir:
                 # Total internal reflection - treat as reflection
-                self._update_polarization(normal, n1, n2, new_direction, 'reflect')
+                self._update_polarization(normal, n1, n2, new_direction, "reflect")
                 self.direction = new_direction
                 return RefractionResult.REFLECTED
             # Update polarization and intensity for transmission
-            self._update_polarization(normal, n1, n2, new_direction, 'refract')
+            self._update_polarization(normal, n1, n2, new_direction, "refract")
             self.direction = new_direction
             self.n = n2
             return RefractionResult.REFRACTED
@@ -401,7 +436,7 @@ class Ray3D:
         cos_i = abs(self.direction.dot(normal))
         cos_t = abs(new_direction.dot(normal))
         R = self._compute_fresnel_reflectance(n1, n2, cos_i, cos_t)
-        self.intensity *= (1.0 - R)
+        self.intensity *= 1.0 - R
 
         self.direction = new_direction
         self.n = n2

@@ -9,36 +9,43 @@ widget sets; within a template every color comes from the palette.
 
 from ..constants import (
     COLOR_ACCENT,
-    COLOR_BG_DARK, COLOR_BG_LIGHT, COLOR_BG_MEDIUM,
-    COLOR_BORDER_DARK, COLOR_BORDER_LIGHT,
-    COLOR_FG, COLOR_HOVER_LIGHT, COLOR_SURFACE_ALT_LIGHT,
-    COLOR_SURFACE_LIGHT, COLOR_TEXT_ON_ACCENT, COLOR_TEXT_ON_LIGHT,
+    COLOR_BG_DARK,
+    COLOR_BG_LIGHT,
+    COLOR_BG_MEDIUM,
+    COLOR_BORDER_DARK,
+    COLOR_BORDER_LIGHT,
+    COLOR_FG,
+    COLOR_HOVER_LIGHT,
+    COLOR_SURFACE_ALT_LIGHT,
+    COLOR_SURFACE_LIGHT,
+    COLOR_TEXT_ON_ACCENT,
+    COLOR_TEXT_ON_LIGHT,
     COLOR_WINDOW_LIGHT,
 )
 
-DARK = 'dark'
-LIGHT = 'light'
+DARK = "dark"
+LIGHT = "light"
 
 # Shared palette values per theme (only colors referenced by templates)
 _PALETTES = {
     DARK: {
-        'window': COLOR_BG_DARK,
-        'surface': COLOR_BG_MEDIUM,
-        'hover': COLOR_BG_LIGHT,
-        'text': COLOR_FG,
-        'border': COLOR_BORDER_DARK,
-        'accent': COLOR_ACCENT,
-        'accent_text': COLOR_TEXT_ON_ACCENT,
+        "window": COLOR_BG_DARK,
+        "surface": COLOR_BG_MEDIUM,
+        "hover": COLOR_BG_LIGHT,
+        "text": COLOR_FG,
+        "border": COLOR_BORDER_DARK,
+        "accent": COLOR_ACCENT,
+        "accent_text": COLOR_TEXT_ON_ACCENT,
     },
     LIGHT: {
-        'window': COLOR_WINDOW_LIGHT,
-        'surface': COLOR_SURFACE_ALT_LIGHT,
-        'hover': COLOR_HOVER_LIGHT,
-        'text': COLOR_TEXT_ON_LIGHT,
-        'input_bg': COLOR_SURFACE_LIGHT,
-        'border': COLOR_BORDER_LIGHT,
-        'accent': COLOR_ACCENT,
-        'accent_text': COLOR_TEXT_ON_ACCENT,
+        "window": COLOR_WINDOW_LIGHT,
+        "surface": COLOR_SURFACE_ALT_LIGHT,
+        "hover": COLOR_HOVER_LIGHT,
+        "text": COLOR_TEXT_ON_LIGHT,
+        "input_bg": COLOR_SURFACE_LIGHT,
+        "border": COLOR_BORDER_LIGHT,
+        "accent": COLOR_ACCENT,
+        "accent_text": COLOR_TEXT_ON_ACCENT,
     },
 }
 
@@ -47,7 +54,7 @@ def _fill(template: str, palette: dict) -> str:
     """Substitute @@name@@ tokens with palette values."""
     out = template
     for key, value in palette.items():
-        out = out.replace('@@%s@@' % key, value)
+        out = out.replace("@@%s@@" % key, value)
     return out
 
 

@@ -27,7 +27,7 @@ class TestLensConstruction(unittest.TestCase):
     def test_radius_zero_converted_to_flat(self):
         """A radius of 0 is stored as infinity (flat surface)"""
         lens = Lens(radius_of_curvature_1=0, radius_of_curvature_2=-50.0)
-        self.assertEqual(lens.radius_of_curvature_1, float('inf'))
+        self.assertEqual(lens.radius_of_curvature_1, float("inf"))
 
     def test_ids_are_unique_per_instance(self):
         """Two lenses never share an id (uuid4)"""
@@ -67,14 +67,12 @@ class TestLensOptics(unittest.TestCase):
     def test_optical_power_in_diopters(self):
         """Power is 1000/f for f in mm"""
         f = self.lens.calculate_focal_length()
-        self.assertAlmostEqual(
-            self.lens.calculate_optical_power(), 1000.0 / f, places=6
-        )
+        self.assertAlmostEqual(self.lens.calculate_optical_power(), 1000.0 / f, places=6)
 
     def test_back_and_front_focal_length_defined(self):
         """BFL/FFL return finite values for a normal lens"""
-        self.assertTrue(hasattr(self.lens.calculate_back_focal_length(), '__abs__'))
-        self.assertTrue(hasattr(self.lens.calculate_front_focal_length(), '__abs__'))
+        self.assertTrue(hasattr(self.lens.calculate_back_focal_length(), "__abs__"))
+        self.assertTrue(hasattr(self.lens.calculate_front_focal_length(), "__abs__"))
 
 
 class TestLensTypePresets(unittest.TestCase):
@@ -84,13 +82,15 @@ class TestLensTypePresets(unittest.TestCase):
         """Selecting a type with use_type_defaults applies the preset"""
         lens = Lens(lens_type="Plano-Convex", use_type_defaults=True)
         self.assertEqual(lens.radius_of_curvature_1, 100.0)
-        self.assertEqual(lens.radius_of_curvature_2, float('inf'))
+        self.assertEqual(lens.radius_of_curvature_2, float("inf"))
 
     def test_custom_radii_preserved(self):
         """Explicit radii are not overwritten by the type preset"""
-        lens = Lens(radius_of_curvature_1=42.0,
-                    radius_of_curvature_2=-42.0,
-                    lens_type="Meniscus Convex")
+        lens = Lens(
+            radius_of_curvature_1=42.0,
+            radius_of_curvature_2=-42.0,
+            lens_type="Meniscus Convex",
+        )
         self.assertEqual(lens.radius_of_curvature_1, 42.0)
 
     def test_unknown_type_leaves_radii(self):
@@ -111,10 +111,12 @@ class TestLensSerialization(unittest.TestCase):
 
     def test_round_trip_preserves_geometry(self):
         """Dict round-trip keeps radii, thickness and identity"""
-        lens = Lens(name="RoundTrip",
-                    radius_of_curvature_1=42.0,
-                    radius_of_curvature_2=-42.0,
-                    thickness=3.0)
+        lens = Lens(
+            name="RoundTrip",
+            radius_of_curvature_1=42.0,
+            radius_of_curvature_2=-42.0,
+            thickness=3.0,
+        )
         clone = Lens.from_dict(lens.to_dict())
         self.assertEqual(clone.id, lens.id)
         self.assertEqual(clone.radius_of_curvature_1, 42.0)
