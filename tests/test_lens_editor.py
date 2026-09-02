@@ -163,8 +163,19 @@ class TestLensManager(unittest.TestCase):
     
     def tearDown(self):
         """Clean up test fixtures"""
-        if os.path.exists(self.storage_file):
-            os.unlink(self.storage_file)
+        for path in [self.storage_file, self.storage_file.replace('.json', '.db')]:
+            if os.path.exists(path):
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+            for ext in ['-shm', '-wal']:
+                pp = path + ext
+                if os.path.exists(pp):
+                    try:
+                        os.unlink(pp)
+                    except OSError:
+                        pass
     
     def test_manager_initialization(self):
         """Test LensManager initialization"""
@@ -318,8 +329,19 @@ class TestDataIntegrity(unittest.TestCase):
     
     def tearDown(self):
         """Clean up test fixtures"""
-        if os.path.exists(self.storage_file):
-            os.unlink(self.storage_file)
+        for path in [self.storage_file, self.storage_file.replace('.json', '.db')]:
+            if os.path.exists(path):
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+            for ext in ['-shm', '-wal']:
+                pp = path + ext
+                if os.path.exists(pp):
+                    try:
+                        os.unlink(pp)
+                    except OSError:
+                        pass
     
     def test_unique_lens_ids(self):
         """Test that each lens gets a unique ID"""
