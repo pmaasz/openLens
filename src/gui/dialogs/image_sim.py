@@ -28,9 +28,7 @@ if TYPE_CHECKING:
 class ImageSimulationDialog(QDialog):
     """Dialog for image simulation with side-by-side comparison."""
 
-    def __init__(
-        self, system: "OpticalSystem", parent: Optional["QWidget"] = None
-    ) -> None:
+    def __init__(self, system: "OpticalSystem", parent: Optional["QWidget"] = None) -> None:
         """Initialize the dialog for simulating an image through a system.
 
         Args:
@@ -88,9 +86,7 @@ class ImageSimulationDialog(QDialog):
 
         # Initialize plots – share view so zoom/pan is synchronized
         self._ax_orig = self.figure.add_subplot(121)
-        self._ax_sim = self.figure.add_subplot(
-            122, sharex=self._ax_orig, sharey=self._ax_orig
-        )
+        self._ax_sim = self.figure.add_subplot(122, sharex=self._ax_orig, sharey=self._ax_orig)
         self._setup_axes(self._ax_orig, "Original Image")
         self._setup_axes(self._ax_sim, "Simulated Image")
         self.figure.tight_layout()
@@ -130,18 +126,14 @@ class ImageSimulationDialog(QDialog):
             ylim = self._ax_orig.get_ylim()
             w, h = self._original_image.shape[1], self._original_image.shape[0]
             # imshow extent is [-0.5, w-0.5] / [h-0.5, -0.5] (origin upper)
-            return not (
-                abs((xlim[1] - xlim[0]) - w) < 1 and abs(abs(ylim[1] - ylim[0]) - h) < 1
-            )
+            return not (abs((xlim[1] - xlim[0]) - w) < 1 and abs(abs(ylim[1] - ylim[0]) - h) < 1)
         except Exception:
             return False
 
     def _update_reset_button(self) -> None:
         """Enable Reset only when zoomed and an image is loaded."""
         try:
-            self._reset_btn.setEnabled(
-                self._original_image is not None and self._is_zoomed()
-            )
+            self._reset_btn.setEnabled(self._original_image is not None and self._is_zoomed())
         except Exception:
             pass
 
@@ -294,9 +286,7 @@ class ImageSimulationDialog(QDialog):
         if self._original_image is None or event.xdata is None or event.ydata is None:
             return
         # Typical scroll: step 1.5x
-        factor = (
-            1.5 if event.button == "up" else 0.67 if event.button == "down" else 1.0
-        )
+        factor = 1.5 if event.button == "up" else 0.67 if event.button == "down" else 1.0
         if factor == 1.0:
             return
         self._zoom_at(event.xdata, event.ydata, factor=factor)
@@ -358,8 +348,7 @@ class ImageSimulationDialog(QDialog):
                 prev_ylim = self._ax_orig.get_ylim()
                 was_zoomed = not (
                     abs(prev_xlim[1] - prev_xlim[0] - self._original_image.shape[1]) < 1
-                    and abs(prev_ylim[1] - prev_ylim[0] - self._original_image.shape[0])
-                    < 1
+                    and abs(prev_ylim[1] - prev_ylim[0] - self._original_image.shape[0]) < 1
                 )
             except Exception:
                 was_zoomed = False
