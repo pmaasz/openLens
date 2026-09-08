@@ -19,32 +19,74 @@ def _sag(radius: float, y: float) -> float:
     if abs(radius) < 1e-6:
         return 0
     r_a = abs(radius)
-    if y > r_a:
-        return r_a
-    sag = r_a - (r_a**2 - y**2) ** 0.5
+    y_safe = min(abs(y), r_a)
+    sag = r_a - (r_a**2 - y_safe**2) ** 0.5
     return sag if radius > 0 else -sag
 
 
 def draw_system_outline(ax, system: OpticalSystem) -> None:
-    """Draw the lens element outlines of ``system`` onto ``ax`` (Z vs Y)."""
+    """Draw the lens element outlines of ``system`` onto ``ax`` (Z vs Y).
+
+    Uses the same edge-thickness convention as the 2D editor widgets
+    (lens_viz_2d, simulation_viz, assembly_viz) so the ghost dialog
+    matches the Editor tab: the rim-to-rim distance is ``lens.thickness``
+    and the vertex separation is ``thickness + sag1 - sag2``. The
+    previous center-thickness placement (``current_z + thickness + sag2``)
+    produced a pointy/spindle outline for large apertures that did not
+    match the editor.
+    """
     current_z = 0.0
     for i, element in enumerate(system.elements):
         lens = element.lens
         half_d = lens.diameter / 2
-        y = [v / 10.0 for v in range(int(-half_d * 10), int(half_d * 10) + 1)]
-        z1 = [current_z + _sag(lens.radius_of_curvature_1, yv) for yv in y]
-        z2 = [current_z + lens.thickness + _sag(lens.radius_of_curvature_2, yv) for yv in y]
+        r1 = lens.radius_of_curvature_1
+        r2 = lens.radius_of_curvature_2
+        thickness = lens.thickness
 
-        ax.plot(z1, y, "b-", alpha=0.5)
-        ax.plot(z2, y, "b-", alpha=0.5)
-        # Edges
-        ax.plot([z1[0], z2[0]], [y[0], y[0]], "b-", alpha=0.5)
-        ax.plot([z1[-1], z2[-1]], [y[-1], y[-1]], "b-", alpha=0.5)
+        # Editor convention: front vertex at current_z, rim distance = thickness
+        # Matches src/gui/widgets/lens_viz_2d.py:147 / simulation_viz:295
+        sag1_edge = _sag(r1, half_d)
+        x1_vertex = current_z
+        x1_edge = x1_vertex + sag1_edge
+        x2_edge = x1_edge + thickness
+        sag2_edge = _sag(r2, half_d)
+        x2_vertex = x2_edge - sag2_edge
+
+        # Use same 50-point sampling as the editor widgets for pixel-perfect match
+        pts = 50
+        y_front = [-half_d + (2 * half_d * j / pts) for j in range(pts + 1)]
+        z1 = [x1_vertex + _sag(r1, abs(yv)) for yv in y_front]
+        y_back = [half_d - (2 * half_d * j / pts) for j in range(pts + 1)]
+        z2 = [x2_vertex + _sag(r2, abs(yv)) for yv in y_back]
+
+        # Filled lens (matches editor's translucent fill) + colored outlines
+        # Build closed polygon: front (top->bottom) -> bottom edge -> back (bottom->top) -> top edge
+        try:
+            from matplotlib.patches import Polygon
+
+            poly_z = z1 + [x2_edge] + z2 + [x1_edge]
+            poly_y = y_front + [half_d] + y_back + [-half_d]
+            poly = Polygon(
+                list(zip(poly_z, poly_y)),
+                closed=True,
+                facecolor="#96c8e6",
+                edgecolor="none",
+                alpha=0.25,
+            )
+            ax.add_patch(poly)
+        except Exception:
+            pass
+
+        ax.plot(z1, y_front, color="#0096ff", alpha=0.9, linewidth=1.5)
+        ax.plot(z2, y_back, color="#00c864", alpha=0.9, linewidth=1.5)
+        # Flat rims
+        ax.plot([x1_edge, x2_edge], [half_d, half_d], color="#969696", alpha=0.7, linewidth=1)
+        ax.plot([x1_edge, x2_edge], [-half_d, -half_d], color="#969696", alpha=0.7, linewidth=1)
 
         if i < len(system.air_gaps):
-            current_z += lens.thickness + system.air_gaps[i].thickness
+            current_z += thickness + system.air_gaps[i].thickness
         else:
-            current_z += lens.thickness
+            current_z += thickness
 
 
 def plot_ghost_analysis(ax, system: OpticalSystem, ghosts) -> int:
