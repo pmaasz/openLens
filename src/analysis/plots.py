@@ -80,8 +80,20 @@ def draw_system_outline(ax, system: OpticalSystem) -> None:
         ax.plot(z1, y_front, color="#0096ff", alpha=0.9, linewidth=1.5)
         ax.plot(z2, y_back, color="#00c864", alpha=0.9, linewidth=1.5)
         # Flat rims
-        ax.plot([x1_edge, x2_edge], [half_d, half_d], color="#969696", alpha=0.7, linewidth=1)
-        ax.plot([x1_edge, x2_edge], [-half_d, -half_d], color="#969696", alpha=0.7, linewidth=1)
+        ax.plot(
+            [x1_edge, x2_edge],
+            [half_d, half_d],
+            color="#969696",
+            alpha=0.7,
+            linewidth=1,
+        )
+        ax.plot(
+            [x1_edge, x2_edge],
+            [-half_d, -half_d],
+            color="#969696",
+            alpha=0.7,
+            linewidth=1,
+        )
 
         if i < len(system.air_gaps):
             current_z += thickness + system.air_gaps[i].thickness

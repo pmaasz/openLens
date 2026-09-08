@@ -28,7 +28,9 @@ if TYPE_CHECKING:
 class ImageSimulationDialog(QDialog):
     """Dialog for image simulation with side-by-side comparison."""
 
-    def __init__(self, system: "OpticalSystem", parent: Optional["QWidget"] = None) -> None:
+    def __init__(
+        self, system: "OpticalSystem", parent: Optional["QWidget"] = None
+    ) -> None:
         """Initialize the dialog for simulating an image through a system.
 
         Args:
@@ -79,10 +81,21 @@ class ImageSimulationDialog(QDialog):
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
 
-        # Initialize plots
-        self._ax_orig = self._setup_axes(self.figure.add_subplot(121), "Original Image")
-        self._ax_sim = self._setup_axes(self.figure.add_subplot(122), "Simulated Image")
+        # Initialize plots – share view so zoom/pan is synchronized
+        self._ax_orig = self.figure.add_subplot(121)
+        self._ax_sim = self.figure.add_subplot(
+            122, sharex=self._ax_orig, sharey=self._ax_orig
+        )
+        self._setup_axes(self._ax_orig, "Original Image")
+        self._setup_axes(self._ax_sim, "Simulated Image")
         self.figure.tight_layout()
+
+        # Bidirectional view sync (covers toolbar rect-zoom, wheel, drag)
+        self._is_syncing = False
+        self._ax_orig.callbacks.connect("xlim_changed", self._on_orig_xlim_changed)
+        self._ax_orig.callbacks.connect("ylim_changed", self._on_orig_ylim_changed)
+        self._ax_sim.callbacks.connect("xlim_changed", self._on_sim_xlim_changed)
+        self._ax_sim.callbacks.connect("ylim_changed", self._on_sim_ylim_changed)
 
     def _setup_axes(self, ax: "Axes", title: str) -> "Axes":
         """Apply dark-theme styling, hide axes, and set the subplot title."""
@@ -98,6 +111,36 @@ class ImageSimulationDialog(QDialog):
         ax.set_title(title)
         ax.axis("off")
         return ax
+
+    def _sync_from_to(self, source: "Axes", target: "Axes") -> None:
+        """Copy view limits from source to target without recursion."""
+        if getattr(self, "_is_syncing", False):
+            return
+        # Only sync if both have valid limits and source has an image
+        try:
+            sx, sy = source.get_xlim(), source.get_ylim()
+            tx, ty = target.get_xlim(), target.get_ylim()
+            if sx == tx and sy == ty:
+                return
+            self._is_syncing = True
+            target.set_xlim(sx)
+            target.set_ylim(sy)
+            # draw_idle avoids re-entrant draw during toolbar interaction
+            self.canvas.draw_idle()
+        finally:
+            self._is_syncing = False
+
+    def _on_orig_xlim_changed(self, ax: "Axes") -> None:
+        self._sync_from_to(self._ax_orig, self._ax_sim)
+
+    def _on_orig_ylim_changed(self, ax: "Axes") -> None:
+        self._sync_from_to(self._ax_orig, self._ax_sim)
+
+    def _on_sim_xlim_changed(self, ax: "Axes") -> None:
+        self._sync_from_to(self._ax_sim, self._ax_orig)
+
+    def _on_sim_ylim_changed(self, ax: "Axes") -> None:
+        self._sync_from_to(self._ax_sim, self._ax_orig)
 
     def _on_import_image(self) -> None:
         """Load a user-selected image and display it as the original."""
@@ -121,6 +164,12 @@ class ImageSimulationDialog(QDialog):
                 self._ax_orig.imshow(self._original_image)
                 self._ax_orig.set_title(f"Original: {os.path.basename(filepath)}")
                 self._run_btn.setEnabled(True)
+                # Keep sim in sync with orig (shared axes already, but ensure)
+                try:
+                    self._ax_sim.set_xlim(self._ax_orig.get_xlim())
+                    self._ax_sim.set_ylim(self._ax_orig.get_ylim())
+                except Exception:
+                    pass
                 self.canvas.draw()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load image: {e}")
@@ -143,10 +192,41 @@ class ImageSimulationDialog(QDialog):
             # Simulate
             self._simulated_image = analyzer.simulate_image(self._original_image)
 
-            # Show results
+            # Show results – keep view synchronized with original
+            # Save current view (so zoom is preserved across simulation)
+            try:
+                prev_xlim = self._ax_orig.get_xlim()
+                prev_ylim = self._ax_orig.get_ylim()
+                was_zoomed = not (
+                    abs(prev_xlim[1] - prev_xlim[0] - self._original_image.shape[1]) < 1
+                    and abs(prev_ylim[1] - prev_ylim[0] - self._original_image.shape[0])
+                    < 1
+                )
+            except Exception:
+                was_zoomed = False
+                prev_xlim = prev_ylim = None
+
             self._ax_sim.clear()
             self._setup_axes(self._ax_sim, "Simulated Image")
             self._ax_sim.imshow(self._simulated_image)
+            # Restore synchronized view if user was zoomed, otherwise show full
+            if was_zoomed and prev_xlim is not None and prev_ylim is not None:
+                try:
+                    self._is_syncing = True
+                    self._ax_sim.set_xlim(prev_xlim)
+                    self._ax_sim.set_ylim(prev_ylim)
+                    self._ax_orig.set_xlim(prev_xlim)
+                    self._ax_orig.set_ylim(prev_ylim)
+                finally:
+                    self._is_syncing = False
+            else:
+                # Ensure both show full image initially (shared axes will keep them equal)
+                try:
+                    self._is_syncing = True
+                    self._ax_sim.set_xlim(self._ax_orig.get_xlim())
+                    self._ax_sim.set_ylim(self._ax_orig.get_ylim())
+                finally:
+                    self._is_syncing = False
             self.canvas.draw()
 
         except Exception as e:
