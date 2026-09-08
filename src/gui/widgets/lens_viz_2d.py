@@ -153,6 +153,10 @@ class LensViz2DWidget(QWidget):
         r2 = self._lens.radius_of_curvature_2
         thickness = self._lens.thickness
         diameter = self._lens.diameter
+        is_para1 = bool(getattr(self._lens, "is_parabolic_1", False))
+        para_sag1 = float(getattr(self._lens, "parabolic_sag_1", 0.0))
+        is_para2 = bool(getattr(self._lens, "is_parabolic_2", False))
+        para_sag2 = float(getattr(self._lens, "parabolic_sag_2", 0.0))
 
         # Larger scale for bigger lens
         max_dim = max(thickness * 2, diameter, 100)
@@ -186,9 +190,14 @@ class LensViz2DWidget(QWidget):
         r2_abs = abs(r2)
         half_d = diameter / 2
 
-        # Helper to get sag at y
-        def get_sag(r: float, y: float) -> float:
+        # Helper to get sag at y – handles parabolic (sag at D/2)
+        def get_sag(r: float, y: float, is_para: bool = False, para_sag: float = 0.0) -> float:
             """Return the surface sag for radius ``r`` at height ``y``."""
+            if is_para:
+                if abs(half_d) < 1e-9:
+                    return 0
+                y_c = max(-half_d, min(y, half_d))
+                return para_sag * (y_c * y_c) / (half_d * half_d) if half_d else 0
             if abs(r) < 1e-6:
                 return 0
             r_a = abs(r)
@@ -196,13 +205,13 @@ class LensViz2DWidget(QWidget):
             sag = r_a - math.sqrt(max(0, r_a**2 - y_safe**2))
             return sag if r > 0 else -sag
 
-        # X positions
+        # X positions – parabolic uses sag at D/2
         x1_vertex = cx
-        sag1_edge = get_sag(r1, half_d)
+        sag1_edge = get_sag(r1, half_d, is_para1, para_sag1)
         x1_edge = x1_vertex + sag1_edge * scale
 
         x2_edge = x1_edge + thickness * scale
-        sag2_edge = get_sag(r2, half_d)
+        sag2_edge = get_sag(r2, half_d, is_para2, para_sag2)
         x2_vertex = x2_edge - sag2_edge * scale
 
         # Safety check: if x2_vertex or x1_vertex is NaN, use defaults to prevent crash
@@ -225,7 +234,7 @@ class LensViz2DWidget(QWidget):
         pts = 50
         for i in range(pts + 1):
             y = -half_d + (diameter * i / pts)
-            x = x1_vertex + get_sag(r1, abs(y)) * scale
+            x = x1_vertex + get_sag(r1, abs(y), is_para1, para_sag1) * scale
             if i == 0:
                 path_lens.moveTo(x, cy + y * scale)
             else:
@@ -237,7 +246,7 @@ class LensViz2DWidget(QWidget):
         # 3. Back Surface (bottom to top)
         for i in range(pts + 1):
             y = half_d - (diameter * i / pts)
-            x = x2_vertex + get_sag(r2, abs(y)) * scale
+            x = x2_vertex + get_sag(r2, abs(y), is_para2, para_sag2) * scale
             path_lens.lineTo(x, cy + y * scale)
 
         # 4. Top Edge
@@ -253,7 +262,7 @@ class LensViz2DWidget(QWidget):
         path_r1 = QPainterPath()
         for i in range(pts + 1):
             y = -half_d + (diameter * i / pts)
-            x = x1_vertex + get_sag(r1, abs(y)) * scale
+            x = x1_vertex + get_sag(r1, abs(y), is_para1, para_sag1) * scale
             if i == 0:
                 path_r1.moveTo(x, cy + y * scale)
             else:
@@ -265,7 +274,7 @@ class LensViz2DWidget(QWidget):
         path_r2 = QPainterPath()
         for i in range(pts + 1):
             y = -half_d + (diameter * i / pts)
-            x = x2_vertex + get_sag(r2, abs(y)) * scale
+            x = x2_vertex + get_sag(r2, abs(y), is_para2, para_sag2) * scale
             if i == 0:
                 path_r2.moveTo(x, cy + y * scale)
             else:

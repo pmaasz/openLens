@@ -42,12 +42,25 @@ class LensRayTracer:
             x_offset: X position of the front vertex (mm)
         """
         self.lens = lens
-        self.R1 = lens.radius_of_curvature_1
-        self.R2 = lens.radius_of_curvature_2
+        self.R1 = (
+            lens.get_effective_radius_1()
+            if hasattr(lens, "get_effective_radius_1")
+            else lens.radius_of_curvature_1
+        )
+        self.R2 = (
+            lens.get_effective_radius_2()
+            if hasattr(lens, "get_effective_radius_2")
+            else lens.radius_of_curvature_2
+        )
         self.d = lens.thickness
         self.D = lens.diameter
         self.n = lens.refractive_index
         self.x_offset = x_offset
+        # Parabolic flags
+        self.is_parabolic_1 = bool(getattr(lens, "is_parabolic_1", False))
+        self.is_parabolic_2 = bool(getattr(lens, "is_parabolic_2", False))
+        self.parabolic_sag_1 = float(getattr(lens, "parabolic_sag_1", 0.0))
+        self.parabolic_sag_2 = float(getattr(lens, "parabolic_sag_2", 0.0))
 
         self._calculate_geometry()
 
@@ -57,25 +70,46 @@ class LensRayTracer:
         self.front_vertex_x = self.lens_offset
         self.back_vertex_x = self.lens_offset + self.d
 
-        if _is_flat(self.R1):
+        # Parabolic surfaces are not flat but have no spherical center
+        if self.is_parabolic_1 and abs(self.parabolic_sag_1) > EPSILON:
+            self.front_is_flat = False
+            self.front_is_parabolic = True
+            self.front_center_x = self.front_vertex_x  # not used
+        elif _is_flat(self.R1):
             self.front_center_x = self.front_vertex_x
             self.front_is_flat = True
+            self.front_is_parabolic = False
         else:
             self.front_center_x = self.front_vertex_x + self.R1
             self.front_is_flat = False
+            self.front_is_parabolic = False
 
-        if _is_flat(self.R2):
+        if self.is_parabolic_2 and abs(self.parabolic_sag_2) > EPSILON:
+            self.back_is_flat = False
+            self.back_is_parabolic = True
+            self.back_center_x = self.back_vertex_x
+        elif _is_flat(self.R2):
             self.back_center_x = self.back_vertex_x
             self.back_is_flat = True
+            self.back_is_parabolic = False
         else:
             self.back_center_x = self.back_vertex_x + self.R2
             self.back_is_flat = False
+            self.back_is_parabolic = False
 
     def _get_surface_normal_angle(self, x: float, y: float, surface_type: str) -> float:
         """Calculate surface normal angle at a point."""
         if surface_type == "front":
             if self.front_is_flat:
                 return 0
+            if getattr(self, "front_is_parabolic", False):
+                r_max = self.D / 2
+                if abs(r_max) < EPSILON:
+                    return 0
+                # Parabola x = vertex + a*y^2, a = sag/r_max^2
+                a = self.parabolic_sag_1 / (r_max * r_max)
+                # Gradient (1, -2*a*y) -> normal
+                return math.atan2(-2 * a * y, 1)
             else:
                 dx = x - self.front_center_x
                 dy = y
@@ -83,6 +117,12 @@ class LensRayTracer:
         else:
             if self.back_is_flat:
                 return 0
+            if getattr(self, "back_is_parabolic", False):
+                r_max = self.D / 2
+                if abs(r_max) < EPSILON:
+                    return 0
+                a = self.parabolic_sag_2 / (r_max * r_max)
+                return math.atan2(-2 * a * y, 1)
             else:
                 dx = x - self.back_center_x
                 dy = y
@@ -170,14 +210,68 @@ class LensRayTracer:
 
         return (x, y)
 
+    def _intersect_parabolic_surface(
+        self, ray: Ray, vertex_x: float, sag: float
+    ) -> Optional[Tuple[float, float]]:
+        """Intersect ray with a parabolic surface x = vertex + a*y^2, a=sag/r_max^2."""
+        r_max = self.D / 2
+        if abs(r_max) < EPSILON or abs(sag) < EPSILON:
+            return self._intersect_flat_surface(ray, vertex_x)
+        a = sag / (r_max * r_max)
+        # Ray: x = ray.x + t*cos, y = ray.y + t*sin
+        cos_a = math.cos(ray.angle)
+        sin_a = math.sin(ray.angle)
+        # Equation: ray.x + t*cos = vertex_x + a*(ray.y + t*sin)^2
+        # => a*sin^2 * t^2 + (2*a*ray.y*sin - cos)*t + (a*ray.y^2 + vertex_x - ray.x)=0
+        A = a * sin_a * sin_a
+        B = 2 * a * ray.y * sin_a - cos_a
+        C = a * ray.y * ray.y + vertex_x - ray.x
+        # Linear case when A ~0 (ray nearly parallel to axis)
+        if abs(A) < EPSILON:
+            if abs(B) < EPSILON:
+                return None
+            t = -C / B
+            if t < EPSILON:
+                return None
+            y = ray.y + t * sin_a
+            if abs(y) > r_max + 1e-6:
+                return None
+            return (vertex_x + a * y * y, y)
+        disc = B * B - 4 * A * C
+        if disc < -EPSILON:
+            return None
+        disc = max(0.0, disc)
+        sqrt_disc = math.sqrt(disc)
+        t1 = (-B - sqrt_disc) / (2 * A)
+        t2 = (-B + sqrt_disc) / (2 * A)
+        valid = [t for t in (t1, t2) if t > EPSILON]
+        if not valid:
+            return None
+        # Choose smallest positive t (first intersection)
+        t = min(valid)
+        y = ray.y + t * sin_a
+        if abs(y) > r_max + 1e-6:
+            # Try other if first is outside aperture but second inside
+            if len(valid) > 1:
+                t_other = max(valid)
+                y_other = ray.y + t_other * sin_a
+                if abs(y_other) <= r_max:
+                    return (vertex_x + a * y_other * y_other, y_other)
+            return None
+        return (vertex_x + a * y * y, y)
+
     def _intersect_front_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
         """Find intersection point of ray with front surface."""
+        if getattr(self, "front_is_parabolic", False):
+            return self._intersect_parabolic_surface(ray, self.front_vertex_x, self.parabolic_sag_1)
         if self.front_is_flat:
             return self._intersect_flat_surface(ray, self.front_vertex_x)
         return self._intersect_sphere_surface(ray, self.front_center_x, abs(self.R1), is_front=True)
 
     def _intersect_back_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
         """Find intersection point of ray with back surface."""
+        if getattr(self, "back_is_parabolic", False):
+            return self._intersect_parabolic_surface(ray, self.back_vertex_x, self.parabolic_sag_2)
         if self.back_is_flat:
             return self._intersect_flat_surface(ray, self.back_vertex_x)
         return self._intersect_sphere_surface(ray, self.back_center_x, abs(self.R2), is_front=False)
@@ -329,7 +423,10 @@ class LensRayTracer:
         y_values = [y_max - 2 * y_max * i / (num_points - 1) for i in range(num_points)]
 
         for y in y_values:
-            if self.front_is_flat:
+            if getattr(self, "front_is_parabolic", False):
+                a = self.parabolic_sag_1 / (y_max * y_max) if abs(y_max) > EPSILON else 0
+                x = self.lens_offset + a * y * y
+            elif self.front_is_flat:
                 x = self.lens_offset
             else:
                 R = abs(self.R1)
@@ -343,7 +440,10 @@ class LensRayTracer:
             points.append((x, y))
 
         for y in reversed(y_values):
-            if self.back_is_flat:
+            if getattr(self, "back_is_parabolic", False):
+                a = self.parabolic_sag_2 / (y_max * y_max) if abs(y_max) > EPSILON else 0
+                x = self.lens_offset + self.d + a * y * y
+            elif self.back_is_flat:
                 x = self.lens_offset + self.d
             else:
                 R = abs(self.R2)

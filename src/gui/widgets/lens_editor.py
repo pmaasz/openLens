@@ -154,6 +154,40 @@ class LensEditorWidget(QWidget):
 
         layout.addWidget(dim_group)
 
+        # Parabolic surfaces – sag at clear aperture (vertex to rim)
+        para_group = QGroupBox("Parabolic Surfaces (sag at D/2)")
+        para_layout = QFormLayout(para_group)
+
+        self._para1_check = QCheckBox("Parabolic Surface 1")
+        self._para1_check.stateChanged.connect(self._on_parabolic_changed)
+        para_layout.addRow(self._para1_check)
+
+        self._para1_sag_input = QDoubleSpinBox()
+        self._para1_sag_input.setRange(-100, 100)
+        self._para1_sag_input.setValue(3.0)
+        self._para1_sag_input.setSuffix(" mm")
+        self._para1_sag_input.setDecimals(3)
+        self._para1_sag_input.setSingleStep(0.1)
+        self._para1_sag_input.valueChanged.connect(self._on_parabolic_changed)
+        self._para1_sag_input.setEnabled(False)
+        para_layout.addRow("Sag 1 (peak→rim):", self._para1_sag_input)
+
+        self._para2_check = QCheckBox("Parabolic Surface 2")
+        self._para2_check.stateChanged.connect(self._on_parabolic_changed)
+        para_layout.addRow(self._para2_check)
+
+        self._para2_sag_input = QDoubleSpinBox()
+        self._para2_sag_input.setRange(-100, 100)
+        self._para2_sag_input.setValue(-3.0)
+        self._para2_sag_input.setSuffix(" mm")
+        self._para2_sag_input.setDecimals(3)
+        self._para2_sag_input.setSingleStep(0.1)
+        self._para2_sag_input.valueChanged.connect(self._on_parabolic_changed)
+        self._para2_sag_input.setEnabled(False)
+        para_layout.addRow("Sag 2 (peak→rim):", self._para2_sag_input)
+
+        layout.addWidget(para_group)
+
         # Material
         mat_group = QGroupBox("Material")
         mat_layout = QFormLayout(mat_group)
@@ -233,6 +267,25 @@ class LensEditorWidget(QWidget):
             self._lens.name = name
             self.lens_modified.emit(self._lens)
 
+    def _on_parabolic_changed(self) -> None:
+        """Handle parabolic checkbox / sag changes."""
+        is_p1 = self._para1_check.isChecked()
+        is_p2 = self._para2_check.isChecked()
+        self._para1_sag_input.setEnabled(is_p1)
+        self._para2_sag_input.setEnabled(is_p2)
+        # Disable radius when parabolic (spherical not used)
+        self._r1_input.setEnabled(not is_p1)
+        self._r2_input.setEnabled(not is_p2)
+        if self._lens:
+            self._lens.is_parabolic_1 = is_p1
+            self._lens.parabolic_sag_1 = self._para1_sag_input.value()
+            self._lens.is_parabolic_2 = is_p2
+            self._lens.parabolic_sag_2 = self._para2_sag_input.value()
+            self._update_calculated()
+            self._viz_widget.update_lens(self._lens)
+            self.lens_modified.emit(self._lens)
+            self.lens_updated.emit()
+
     def _on_property_changed(self) -> None:
         """Handle property changes with auto-save"""
         if self._lens:
@@ -241,6 +294,7 @@ class LensEditorWidget(QWidget):
             self._lens.thickness = self._thickness_input.value()
             self._lens.diameter = self._diameter_input.value()
             self._lens.refractive_index = self._n_input.value()
+            # Sync parabolic sag diameters if needed (sag stays as absolute distance)
             self._update_calculated()
             self._viz_widget.update_lens(self._lens)
 
@@ -320,8 +374,13 @@ class LensEditorWidget(QWidget):
             return
 
         n = self._lens.refractive_index
-        r1 = self._lens.radius_of_curvature_1
-        r2 = self._lens.radius_of_curvature_2
+        # Use effective radius for parabolic surfaces
+        if hasattr(self._lens, "get_effective_radius_1"):
+            r1 = self._lens.get_effective_radius_1()
+            r2 = self._lens.get_effective_radius_2()
+        else:
+            r1 = self._lens.radius_of_curvature_1
+            r2 = self._lens.radius_of_curvature_2
         t = self._lens.thickness
 
         if r1 == 0:
@@ -344,11 +403,15 @@ class LensEditorWidget(QWidget):
             self._focal_label.setText(f"{f:.2f} mm")
             self._power_label.setText(f"{1000/f:.2f} D")
 
-            # BFL and FFL
-            bfl = f - t * (n - 1) / n
-            ffl = f - t * (n - 1)
-            self._bfl_label.setText(f"{bfl:.2f} mm")
-            self._ffl_label.setText(f"{ffl:.2f} mm")
+            # BFL and FFL – use effective radii
+            try:
+                bfl = self._lens.calculate_back_focal_length()
+                ffl = self._lens.calculate_front_focal_length()
+                self._bfl_label.setText(f"{bfl:.2f} mm" if abs(bfl) != float("inf") else "--")
+                self._ffl_label.setText(f"{ffl:.2f} mm" if abs(ffl) != float("inf") else "--")
+            except Exception:
+                self._bfl_label.setText("--")
+                self._ffl_label.setText("--")
         else:
             self._focal_label.setText("--")
             self._power_label.setText("--")
@@ -370,6 +433,25 @@ class LensEditorWidget(QWidget):
         self._thickness_input.setValue(lens.thickness)
         self._diameter_input.setValue(lens.diameter)
         self._n_input.setValue(lens.refractive_index)
+        # Parabolic
+        is_p1 = bool(getattr(lens, "is_parabolic_1", False))
+        is_p2 = bool(getattr(lens, "is_parabolic_2", False))
+        self._para1_check.blockSignals(True)
+        self._para1_check.setChecked(is_p1)
+        self._para1_check.blockSignals(False)
+        self._para1_sag_input.blockSignals(True)
+        self._para1_sag_input.setValue(float(getattr(lens, "parabolic_sag_1", 0.0)))
+        self._para1_sag_input.blockSignals(False)
+        self._para2_check.blockSignals(True)
+        self._para2_check.setChecked(is_p2)
+        self._para2_check.blockSignals(False)
+        self._para2_sag_input.blockSignals(True)
+        self._para2_sag_input.setValue(float(getattr(lens, "parabolic_sag_2", 0.0)))
+        self._para2_sag_input.blockSignals(False)
+        self._para1_sag_input.setEnabled(is_p1)
+        self._para2_sag_input.setEnabled(is_p2)
+        self._r1_input.setEnabled(not is_p1)
+        self._r2_input.setEnabled(not is_p2)
         self._update_calculated()
         self._viz_widget.update_lens(lens)
         self._class_type_label.setText(lens.classify_lens_type())
