@@ -189,6 +189,26 @@ else:
             self.assertIn("-1.5", self.widget._edge_label.text())
             self.assertFalse(self.widget._feas_warning_label.isHidden())
 
+        def test_parabolic_drag_is_ignored(self):
+            """Radius drags on a parabolic surface change nothing."""
+            lens = self._load(lock=True)
+            lens.is_parabolic_1 = True
+            lens.parabolic_sag_1 = 2.0
+            self.widget._on_interactive_property_changed("r1", 5.0)
+            self.assertEqual(lens.radius_of_curvature_1, 100.0)
+            self.assertEqual(lens.parabolic_sag_1, 2.0)
+
+        def test_uncheck_parabolic_zeroes_sag(self):
+            """Unchecking a parabolic surface resets its sag to zero."""
+            self._load(lock=True)
+            self.widget._para1_check.setChecked(True)
+            self.widget._para1_sag_input.setValue(3.0)
+            self.assertEqual(self.widget._lens.parabolic_sag_1, 3.0)
+            self.widget._para1_check.setChecked(False)
+            self.assertEqual(self.widget._lens.parabolic_sag_1, 0.0)
+            self.assertEqual(self.widget._para1_sag_input.value(), 0.0)
+            self.assertFalse(self.widget._lens.is_parabolic_1)
+
     class TestOutlineRenderingSmoke(unittest.TestCase):
         """Every 2D renderer draws every geometry without crashing."""
 
@@ -240,6 +260,31 @@ else:
                 widget = LensViz2DWidget()
                 widget.update_lens(lens)
                 self._grab(widget)
+
+        def test_parabolic_hides_radius_handles(self):
+            """No r1/r2 drag handles while the surface is parabolic."""
+            from src.gui.widgets.lens_viz_2d import LensViz2DWidget
+
+            widget = LensViz2DWidget()
+            widget.resize(400, 300)
+            widget.update_lens(
+                Lens(
+                    radius_of_curvature_1=100.0,
+                    radius_of_curvature_2=-100.0,
+                    thickness=5.0,
+                    diameter=40.0,
+                    is_parabolic_1=True,
+                    parabolic_sag_1=2.0,
+                )
+            )
+            widget.show()
+            QApplication.processEvents()
+            widget.grab()
+            self.assertNotIn("r1", widget._handles)
+            self.assertIn("r2", widget._handles)
+            self.assertIn("thickness", widget._handles)
+            self.assertIn("diameter", widget._handles)
+            widget.close()
 
         def test_simulation_viz_renders(self):
             """Simulation view renders single lenses and systems."""

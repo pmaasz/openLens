@@ -674,11 +674,22 @@ class LensOptimizer:
     def _apply_single_variable(
         self, system: OpticalSystem, element_index: int, parameter: str, value: float
     ):
-        """Apply a single variable value to the system"""
+        """Apply a single variable value to the system.
+
+        Spherical and parabolic definitions are exclusive per surface: a
+        radius write clears the parabolic flag (otherwise the tracer would
+        keep using the sag and the variable would silently no-op), while a
+        sag write latches it on (a sag variable is meaningless on a
+        spherical surface).
+        """
         if parameter == "radius_of_curvature_1":
-            system.elements[element_index].lens.radius_of_curvature_1 = value
+            lens = system.elements[element_index].lens
+            lens.is_parabolic_1 = False
+            lens.radius_of_curvature_1 = value
         elif parameter == "radius_of_curvature_2":
-            system.elements[element_index].lens.radius_of_curvature_2 = value
+            lens = system.elements[element_index].lens
+            lens.is_parabolic_2 = False
+            lens.radius_of_curvature_2 = value
         elif parameter == "parabolic_sag_1":
             system.elements[element_index].lens.is_parabolic_1 = True
             system.elements[element_index].lens.parabolic_sag_1 = value

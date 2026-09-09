@@ -90,6 +90,8 @@ class LensViz2DWidget(QWidget):
             dy = (pos.y() - self._last_mouse_pos.y()) / self._scale
 
             if self._active_handle == "r1":
+                if bool(getattr(self._lens, "is_parabolic_1", False)):
+                    return
                 # Dragging R1 vertex horizontally
                 new_r1 = self._lens.radius_of_curvature_1 + dx
                 # Snap to flat if close to zero
@@ -97,6 +99,8 @@ class LensViz2DWidget(QWidget):
                     new_r1 = 0.0
                 self.property_changed.emit("r1", new_r1)
             elif self._active_handle == "r2":
+                if bool(getattr(self._lens, "is_parabolic_2", False)):
+                    return
                 # Dragging R2 vertex horizontally
                 new_r2 = self._lens.radius_of_curvature_2 + dx
                 # Snap to flat if close to zero
@@ -281,10 +285,13 @@ class LensViz2DWidget(QWidget):
                 p.setBrush(QBrush(QColor(255, 255, 255, 50)))
             p.drawEllipse(pos, 6, 6)
 
-        # R1 handle at vertex
-        draw_handle(painter, "r1", QPoint(int(x1_vertex), int(cy)))
-        # R2 handle at vertex
-        draw_handle(painter, "r2", QPoint(int(x2_vertex), int(cy)))
+        # R1/R2 handles at vertices - skipped while the surface is parabolic:
+        # radius drags would mutate hidden state the tracer ignores (it uses
+        # the parabolic sag), so there is nothing honest to grab.
+        if not bool(getattr(self._lens, "is_parabolic_1", False)):
+            draw_handle(painter, "r1", QPoint(int(x1_vertex), int(cy)))
+        if not bool(getattr(self._lens, "is_parabolic_2", False)):
+            draw_handle(painter, "r2", QPoint(int(x2_vertex), int(cy)))
         # Thickness handle at bottom center
         draw_handle(
             painter,
