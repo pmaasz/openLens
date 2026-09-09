@@ -109,60 +109,52 @@ class AssemblyVisualizationWidget(QWidget):
             color: Fill and outline color for the lens.
         """
 
-        def get_sag(r: float, y: float, is_para: bool = False, para_sag: float = 0.0) -> float:
-            """Return the surface sag for radius ``r`` at height ``y``."""
-            if is_para:
-                r_max = half_d
-                if abs(r_max) < 1e-9:
-                    return 0
-                y_c = max(-r_max, min(y, r_max))
-                return para_sag * (y_c * y_c) / (r_max * r_max) if r_max else 0
-            if abs(r) < 1e-6:
-                return 0
-            r_a = abs(r)
-            if y > r_a:
-                return r_a
-            sag = r_a - (r_a**2 - y**2) ** 0.5
-            return sag if r > 0 else -sag
+        # Shared outline (same helper as every 2D view); ``color``
+        # distinguishes elements in the assembly, surface/rim strokes use
+        # the shared R1/R2 palette.
+        from ...constants import COLOR_LENS_R1, COLOR_LENS_R2, COLOR_LENS_RIM, COLOR_LENS_BAD
+        from ...geometry import LensGeometry
 
-        r1 = lens.radius_of_curvature_1
-        r2 = lens.radius_of_curvature_2
-        thickness = lens.thickness
-        diameter = lens.diameter
-        is_para1 = bool(getattr(lens, "is_parabolic_1", False))
-        para_sag1 = float(getattr(lens, "parabolic_sag_1", 0.0))
-        is_para2 = bool(getattr(lens, "is_parabolic_2", False))
-        para_sag2 = float(getattr(lens, "parabolic_sag_2", 0.0))
+        half_d = lens.diameter / 2
+        outline = LensGeometry.lens_outline(lens, num_points=50)
+        bad = not outline["feasible"]
+        bad_color = QColor(COLOR_LENS_BAD)
 
-        # thickness is CENTER (vertex to vertex) thickness.
-        half_d = diameter / 2
-        x1_vertex = cx
-        x2_vertex = x1_vertex + thickness * scale
-        sag1_edge = get_sag(r1, half_d, is_para1, para_sag1)
-        sag2_edge = get_sag(r2, half_d, is_para2, para_sag2)
-        x1_edge = x1_vertex + sag1_edge * scale
-        x2_edge = x2_vertex + sag2_edge * scale
+        def _to_screen(pt) -> tuple:
+            """Map a vertex-frame (x, y) outline point to widget pixels."""
+            return (cx + pt[0] * scale, cy + pt[1] * scale)
+
+        x2_edge = cx + outline["x2_edge"] * scale
 
         path = QPainterPath()
-        pts = 50
 
-        for i in range(pts + 1):
-            y = -half_d + (diameter * i / pts)
-            x = x1_vertex + get_sag(r1, abs(y), is_para1, para_sag1) * scale
+        for i, pt in enumerate(outline["front"]):
+            x, y = _to_screen(pt)
             if i == 0:
-                path.moveTo(x, cy + y * scale)
+                path.moveTo(x, y)
             else:
-                path.lineTo(x, cy + y * scale)
+                path.lineTo(x, y)
 
         path.lineTo(x2_edge, cy + half_d * scale)
 
-        for i in range(pts + 1):
-            y = half_d - (diameter * i / pts)
-            x = x2_vertex + get_sag(r2, abs(y), is_para2, para_sag2) * scale
-            path.lineTo(x, cy + y * scale)
+        for pt in outline["back"]:
+            path.lineTo(*_to_screen(pt))
 
         path.closeSubpath()
 
-        painter.setPen(QPen(color, 2))
-        painter.setBrush(QBrush(color))
+        body = QColor(bad_color.red(), bad_color.green(), bad_color.blue(), 90) if bad else color
+        painter.setPen(QPen(QColor(COLOR_LENS_RIM), 1))
+        painter.setBrush(QBrush(body))
         painter.drawPath(path)
+
+        surfaces = ((outline["front"], COLOR_LENS_R1), (outline["back"], COLOR_LENS_R2))
+        for pts, hex_color in surfaces:
+            surf = QPainterPath()
+            for i, pt in enumerate(pts):
+                x, y = _to_screen(pt)
+                if i == 0:
+                    surf.moveTo(x, y)
+                else:
+                    surf.lineTo(x, y)
+            painter.setPen(QPen(bad_color if bad else QColor(hex_color), 2))
+            painter.drawPath(surf)

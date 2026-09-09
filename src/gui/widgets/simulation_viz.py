@@ -4,6 +4,8 @@ from PySide6.QtGui import QColor, QPainter, QPen, QBrush
 import math
 from typing import Optional, TYPE_CHECKING, Union
 
+from ...constants import COLOR_LENS_FILL
+
 if TYPE_CHECKING:
     from PySide6.QtGui import QKeyEvent, QMouseEvent, QPaintEvent, QWheelEvent
 
@@ -32,7 +34,9 @@ class SimulationVisualizationWidget(QWidget):
 
         self._bg_color = QColor("#1e1e1e")
         self._axis_color = QColor("#666666")
-        self._lens_color = QColor(0, 120, 212, 150)
+        # Shared glass fill so simulation matches the editor view.
+        self._lens_color = QColor(COLOR_LENS_FILL)
+        self._lens_color.setAlpha(80)
         self._ray_color = QColor(255, 200, 0, 200)
         self._text_color = QColor("#e0e0e0")
         self._ghost_color = QColor(255, 100, 100, 180)
@@ -300,70 +304,65 @@ class SimulationVisualizationWidget(QWidget):
             sc: float,
             color: QColor,
         ) -> None:
-            """Draw the filled cross-section of a single lens."""
+            """Draw the filled cross-section of a single lens.
 
-            # Helper to get sag at y – handles parabolic (sag at D/2)
-            def get_sag(r: float, y: float, is_para: bool = False, para_sag: float = 0.0) -> float:
-                """Return the surface sag for radius ``r`` at height ``y``."""
-                if is_para:
-                    r_max = half_d
-                    if abs(r_max) < 1e-9:
-                        return 0
-                    y_c = max(-r_max, min(y, r_max))
-                    return para_sag * (y_c * y_c) / (r_max * r_max) if r_max else 0
-                if abs(r) < 1e-6:
-                    return 0
-                r_a = abs(r)
-                if y > r_a:
-                    return r_a
-                sag = r_a - (r_a**2 - y**2) ** 0.5
-                return sag if r > 0 else -sag
+            Shape comes from the shared LensGeometry outline (same as every
+            2D view); ``color`` only tints the glass body.
+            """
+            from ...constants import COLOR_LENS_R1, COLOR_LENS_R2, COLOR_LENS_RIM, COLOR_LENS_BAD
+            from ...geometry import LensGeometry
 
-            r1 = lens.radius_of_curvature_1
-            r2 = lens.radius_of_curvature_2
-            t = lens.thickness
-            d = lens.diameter
-            half_d = d / 2
-            is_para1 = bool(getattr(lens, "is_parabolic_1", False))
-            para_sag1 = float(getattr(lens, "parabolic_sag_1", 0.0))
-            is_para2 = bool(getattr(lens, "is_parabolic_2", False))
-            para_sag2 = float(getattr(lens, "parabolic_sag_2", 0.0))
+            half_d = lens.diameter / 2
+            outline = LensGeometry.lens_outline(lens, num_points=50)
+            bad = not outline["feasible"]
+            bad_color = QColor(COLOR_LENS_BAD)
 
-            # thickness is CENTER (vertex to vertex) thickness.
-            x1_vertex = start_x
-            x2_vertex = x1_vertex + t * sc
-            sag1_edge = get_sag(r1, half_d, is_para1, para_sag1)
-            sag2_edge = get_sag(r2, half_d, is_para2, para_sag2)
-            x1_edge = x1_vertex + sag1_edge * sc
-            x2_edge = x2_vertex + sag2_edge * sc
+            def _to_screen(pt) -> tuple:
+                """Map a vertex-frame (x, y) outline point to widget pixels."""
+                return (start_x + pt[0] * sc, center_y + pt[1] * sc)
+
+            x2_edge = start_x + outline["x2_edge"] * sc
 
             path = QPainterPath()
-            pts = 50
 
             # 1. Front Surface (top to bottom)
-            for i in range(pts + 1):
-                y = -half_d + (d * i / pts)
-                x = x1_vertex + get_sag(r1, abs(y), is_para1, para_sag1) * sc
+            for i, pt in enumerate(outline["front"]):
+                x, y = _to_screen(pt)
                 if i == 0:
-                    path.moveTo(x, center_y + y * sc)
+                    path.moveTo(x, y)
                 else:
-                    path.lineTo(x, center_y + y * sc)
+                    path.lineTo(x, y)
 
             # 2. Bottom Edge
             path.lineTo(x2_edge, center_y + half_d * sc)
 
             # 3. Back Surface (bottom to top)
-            for i in range(pts + 1):
-                y = half_d - (d * i / pts)
-                x = x2_vertex + get_sag(r2, abs(y), is_para2, para_sag2) * sc
-                path.lineTo(x, center_y + y * sc)
+            for pt in outline["back"]:
+                path.lineTo(*_to_screen(pt))
 
             # 4. Top Edge
             path.closeSubpath()
 
-            pnt.setPen(QPen(color, 2))
-            pnt.setBrush(QBrush(color))
+            body = (
+                QColor(bad_color.red(), bad_color.green(), bad_color.blue(), 90) if bad else color
+            )
+            pnt.setPen(QPen(QColor(COLOR_LENS_RIM), 1))
+            pnt.setBrush(QBrush(body))
             pnt.drawPath(path)
+
+            # Surface highlights use the shared R1/R2 palette (red if bad).
+            surfaces = ((outline["front"], COLOR_LENS_R1), (outline["back"], COLOR_LENS_R2))
+            for pts, hex_color in surfaces:
+                surf = QPainterPath()
+                for i, pt in enumerate(pts):
+                    x, y = _to_screen(pt)
+                    if i == 0:
+                        surf.moveTo(x, y)
+                    else:
+                        surf.lineTo(x, y)
+                stroke = bad_color if bad else QColor(hex_color)
+                pnt.setPen(QPen(stroke, 2))
+                pnt.drawPath(surf)
 
         # Draw lenses
         if self._system:

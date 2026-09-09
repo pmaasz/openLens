@@ -1,8 +1,16 @@
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt, QPoint, Signal
 from PySide6.QtGui import QColor, QPainter, QPen, QPainterPath, QBrush
-import math
 from typing import Optional, TYPE_CHECKING
+
+from ...constants import (
+    COLOR_LENS_BAD,
+    COLOR_LENS_FILL,
+    COLOR_LENS_R1,
+    COLOR_LENS_R2,
+    COLOR_LENS_RIM,
+)
+from ...geometry import LensGeometry
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QMouseEvent, QPaintEvent
@@ -30,10 +38,13 @@ class LensViz2DWidget(QWidget):
         self.setStyleSheet("background-color: #1e1e1e;")
 
         self._bg_color = QColor("#1e1e1e")
-        self._r1_color = QColor(0, 150, 255, 180)  # Blue for radius 1
-        self._r2_color = QColor(0, 200, 100, 180)  # Green for radius 2
-        self._fill_color = QColor(150, 200, 230, 80)  # Light blue fill
-        self._edge_color = QColor(150, 150, 150, 200)  # Grey for lens edge
+        # Shared lens palette (constants.py) so every 2D view matches.
+        self._r1_color = QColor(COLOR_LENS_R1)
+        self._r2_color = QColor(COLOR_LENS_R2)
+        self._fill_color = QColor(COLOR_LENS_FILL)
+        self._fill_color.setAlpha(80)
+        self._edge_color = QColor(COLOR_LENS_RIM)
+        self._bad_color = QColor(COLOR_LENS_BAD)
         self._text_color = QColor("#e0e0e0")
         self._axis_color = QColor("#666666")
         self._handle_color = QColor(255, 255, 255, 200)  # White for interactive handles
@@ -149,14 +160,9 @@ class LensViz2DWidget(QWidget):
         if not self._lens:
             return
 
-        r1 = self._lens.radius_of_curvature_1
-        r2 = self._lens.radius_of_curvature_2
         thickness = self._lens.thickness
         diameter = self._lens.diameter
-        is_para1 = bool(getattr(self._lens, "is_parabolic_1", False))
-        para_sag1 = float(getattr(self._lens, "parabolic_sag_1", 0.0))
-        is_para2 = bool(getattr(self._lens, "is_parabolic_2", False))
-        para_sag2 = float(getattr(self._lens, "parabolic_sag_2", 0.0))
+        half_d = diameter / 2
 
         # Larger scale for bigger lens
         max_dim = max(thickness * 2, diameter, 100)
@@ -185,43 +191,17 @@ class LensViz2DWidget(QWidget):
         painter.drawLine(0, cy, w, cy)
         painter.drawLine(cx, 0, cx, h)
 
-        # Geometric calculations
-        r1_abs = abs(r1)
-        r2_abs = abs(r2)
-        half_d = diameter / 2
+        # Shared outline: front (top->bottom) and back (bottom->top) in the
+        # vertex frame (front vertex at 0). Same helper as every 2D view.
+        outline = LensGeometry.lens_outline(self._lens, num_points=50)
+        x1_vertex = cx + outline["x1_vertex"] * scale
+        x2_vertex = cx + outline["x2_vertex"] * scale
+        x1_edge = cx + outline["x1_edge"] * scale
+        x2_edge = cx + outline["x2_edge"] * scale
 
-        # Helper to get sag at y – handles parabolic (sag at D/2)
-        def get_sag(r: float, y: float, is_para: bool = False, para_sag: float = 0.0) -> float:
-            """Return the surface sag for radius ``r`` at height ``y``."""
-            if is_para:
-                if abs(half_d) < 1e-9:
-                    return 0
-                y_c = max(-half_d, min(y, half_d))
-                return para_sag * (y_c * y_c) / (half_d * half_d) if half_d else 0
-            if abs(r) < 1e-6:
-                return 0
-            r_a = abs(r)
-            y_safe = min(abs(y), r_a)
-            sag = r_a - math.sqrt(max(0, r_a**2 - y_safe**2))
-            return sag if r > 0 else -sag
-
-        # X positions – thickness is CENTER (vertex to vertex) thickness.
-        x1_vertex = cx
-        x2_vertex = x1_vertex + thickness * scale
-        sag1_edge = get_sag(r1, half_d, is_para1, para_sag1)
-        sag2_edge = get_sag(r2, half_d, is_para2, para_sag2)
-        x1_edge = x1_vertex + sag1_edge * scale
-        x2_edge = x2_vertex + sag2_edge * scale
-
-        # Safety check: if x2_vertex or x1_vertex is NaN, use defaults to prevent crash
-        if math.isnan(x1_vertex):
-            x1_vertex = cx
-        if math.isnan(x2_vertex):
-            x2_vertex = cx + thickness * scale
-        if math.isnan(x1_edge):
-            x1_edge = x1_vertex
-        if math.isnan(x2_edge):
-            x2_edge = x2_vertex
+        def _to_screen(pt) -> tuple:
+            """Map a vertex-frame (x, y) outline point to widget pixels."""
+            return (cx + pt[0] * scale, cy + pt[1] * scale)
 
         # Clear handles
         self._handles = {}
@@ -230,37 +210,32 @@ class LensViz2DWidget(QWidget):
         path_lens = QPainterPath()
 
         # 1. Front Surface (top to bottom)
-        pts = 50
-        for i in range(pts + 1):
-            y = -half_d + (diameter * i / pts)
-            x = x1_vertex + get_sag(r1, abs(y), is_para1, para_sag1) * scale
+        for i, pt in enumerate(outline["front"]):
+            x, y = _to_screen(pt)
             if i == 0:
-                path_lens.moveTo(x, cy + y * scale)
+                path_lens.moveTo(x, y)
             else:
-                path_lens.lineTo(x, cy + y * scale)
+                path_lens.lineTo(x, y)
 
         # 2. Bottom Edge
         path_lens.lineTo(x2_edge, cy + half_d * scale)
 
         # 3. Back Surface (bottom to top)
-        for i in range(pts + 1):
-            y = half_d - (diameter * i / pts)
-            x = x2_vertex + get_sag(r2, abs(y), is_para2, para_sag2) * scale
-            path_lens.lineTo(x, cy + y * scale)
+        for pt in outline["back"]:
+            path_lens.lineTo(*_to_screen(pt))
 
         # 4. Top Edge
         path_lens.closeSubpath()
 
-        # Flag unrealizable geometry: thickness is the CENTER (vertex to
-        # vertex) thickness, so edge <= 0 means the surfaces intersect
-        # within the clear aperture (bowtie outline). Tint red to say so.
-        try:
-            _edge = self._lens.calculate_edge_thickness()
-        except Exception:
-            _edge = None
-        _infeasible = _edge is None or _edge <= 0
-        _fill = QColor(200, 80, 80, 90) if _infeasible else self._fill_color
-        _edge_c = QColor(255, 110, 110, 220) if _infeasible else self._edge_color
+        # Flag unrealizable geometry (edge <= 0: bowtie outline). Tint red.
+        _infeasible = not outline["feasible"]
+        _bad = self._bad_color
+        _fill = (
+            QColor(_bad.red(), _bad.green(), _bad.blue(), 90) if _infeasible else self._fill_color
+        )
+        _edge_c = (
+            QColor(_bad.red(), _bad.green(), _bad.blue(), 220) if _infeasible else self._edge_color
+        )
 
         # Fill and stroke lens
         painter.setPen(QPen(_edge_c, 1))
@@ -268,32 +243,30 @@ class LensViz2DWidget(QWidget):
         painter.drawPath(path_lens)
 
         if _infeasible:
-            painter.setPen(QPen(QColor(255, 110, 110, 230), 1))
+            painter.setPen(QPen(QColor(_bad.red(), _bad.green(), _bad.blue(), 230), 1))
             painter.drawText(10, 20, "Unrealizable: surfaces intersect within aperture")
 
         # Highlight surfaces with colors
         # R1
         path_r1 = QPainterPath()
-        for i in range(pts + 1):
-            y = -half_d + (diameter * i / pts)
-            x = x1_vertex + get_sag(r1, abs(y), is_para1, para_sag1) * scale
+        for i, pt in enumerate(outline["front"]):
+            x, y = _to_screen(pt)
             if i == 0:
-                path_r1.moveTo(x, cy + y * scale)
+                path_r1.moveTo(x, y)
             else:
-                path_r1.lineTo(x, cy + y * scale)
-        painter.setPen(QPen(self._r1_color, 2))
+                path_r1.lineTo(x, y)
+        painter.setPen(QPen(self._r1_color if not _infeasible else _bad, 2))
         painter.drawPath(path_r1)
 
         # R2
         path_r2 = QPainterPath()
-        for i in range(pts + 1):
-            y = -half_d + (diameter * i / pts)
-            x = x2_vertex + get_sag(r2, abs(y), is_para2, para_sag2) * scale
+        for i, pt in enumerate(outline["back"]):
+            x, y = _to_screen(pt)
             if i == 0:
-                path_r2.moveTo(x, cy + y * scale)
+                path_r2.moveTo(x, y)
             else:
-                path_r2.lineTo(x, cy + y * scale)
-        painter.setPen(QPen(self._r2_color, 2))
+                path_r2.lineTo(x, y)
+        painter.setPen(QPen(self._r2_color if not _infeasible else _bad, 2))
         painter.drawPath(path_r2)
 
         # Draw handles (spaced out to avoid crowding)

@@ -119,52 +119,55 @@ class _3DVisualizationWidget(QWidget):
 
         import numpy as np
 
+        from ...constants import COLOR_LENS_BAD, COLOR_LENS_R1, COLOR_LENS_R2, COLOR_LENS_RIM
+        from ...geometry import LensGeometry
+
+        # Shared sag (same helper as every 2D view), vectorized for grids.
+        _vec_sag = np.vectorize(LensGeometry.surface_sag, otypes=[float])
+
         # Create circles at top and bottom edges
         theta = np.linspace(0, 2 * np.pi, 36)
 
-        # Helper for sag – handles parabolic (sag at D/2)
         def get_sag(r: float, y: Any, is_para: bool = False, para_sag: float = 0.0) -> Any:
             """Return the surface sag for radius ``r`` at height ``y``."""
-            if is_para:
-                if abs(max_r) < 1e-9:
-                    return 0
-                # Clamp y to aperture
-                y_c = np.clip(y, -max_r, max_r)
-                return para_sag * (y_c * y_c) / (max_r * max_r) if max_r else 0
-            if abs(r) < 1e-6:
-                return 0
-            r_a = abs(r)
-            y_safe = np.minimum(np.abs(y), r_a)
-            sag = r_a - np.sqrt(np.maximum(0, r_a**2 - y_safe**2))
-            return sag if r > 0 else -sag
+            return _vec_sag(r, y, diameter, is_para, para_sag)
 
-        # Calculate geometry (same as 2D):
+        # Calculate geometry (same outline helper as the 2D views):
         # thickness is CENTER (vertex to vertex) thickness.
-        sag1_edge = get_sag(r1, max_r, is_para1, para_sag1)
-        sag2_edge = get_sag(r2, max_r, is_para2, para_sag2)
+        sag1_edge = float(get_sag(r1, max_r, is_para1, para_sag1))
+        sag2_edge = float(get_sag(r2, max_r, is_para2, para_sag2))
         x1_vertex = 0
         x2_vertex = x1_vertex + thickness
         x1_edge = x1_vertex + sag1_edge
         x2_edge = x2_vertex + sag2_edge
 
+        try:
+            _edge_t = lens.calculate_edge_thickness()
+        except Exception:
+            _edge_t = None
+        _bad = _edge_t is None or _edge_t <= 0
+
+        _c1 = COLOR_LENS_BAD if _bad else COLOR_LENS_R1
+        _c2 = COLOR_LENS_BAD if _bad else COLOR_LENS_R2
+
         # Circle at front edge
         x_front = max_r * np.cos(theta)
         y_front = max_r * np.sin(theta)
         z_front = np.full_like(theta, x1_edge)
-        self._ax.plot(x_front, y_front, z_front, color="blue", linewidth=2)
+        self._ax.plot(x_front, y_front, z_front, color=_c1, linewidth=2)
 
         # Circle at back edge
         x_back = max_r * np.cos(theta)
         y_back = max_r * np.sin(theta)
         z_back = np.full_like(theta, x2_edge)
-        self._ax.plot(x_back, y_back, z_back, color="green", linewidth=2)
+        self._ax.plot(x_back, y_back, z_back, color=_c2, linewidth=2)
 
         # Connect edges with vertical lines (cylinder wall)
         for i in range(0, len(theta), 2):
             ex = [x_front[i], x_back[i]]
             ey = [y_front[i], y_back[i]]
             ez = [z_front[i], z_back[i]]
-            self._ax.plot(ex, ey, ez, color="gray", linewidth=0.5)
+            self._ax.plot(ex, ey, ez, color=COLOR_LENS_RIM, linewidth=0.5)
 
         # Fill surfaces
         r_vals = np.linspace(0, max_r, 15)
@@ -176,14 +179,14 @@ class _3DVisualizationWidget(QWidget):
             Z_front = x1_vertex + get_sag(r1, R, is_para1, para_sag1)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
-            self._ax.plot_surface(X, Y, Z_front, alpha=0.5, color="blue", rstride=2, cstride=2)
+            self._ax.plot_surface(X, Y, Z_front, alpha=0.5, color=_c1, rstride=2, cstride=2)
 
         # Back surface (green)
         if is_para2 or r2_abs > 0.1:
             Z_back = x2_vertex + get_sag(r2, R, is_para2, para_sag2)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
-            self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color="green", rstride=2, cstride=2)
+            self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color=_c2, rstride=2, cstride=2)
 
         # Set axis limits on lens axis only
         z_min = min(
@@ -204,12 +207,14 @@ class _3DVisualizationWidget(QWidget):
 
         # Add dimension text
         dim_text = f"D={diameter:.0f}mm  t={thickness:.1f}mm"
+        if _bad:
+            dim_text += "  (infeasible)"
         self._ax.text2D(
             0.02,
             0.98,
             dim_text,
             transform=self._ax.transAxes,
-            color="white",
+            color=COLOR_LENS_BAD if _bad else "white",
             fontsize=10,
             fontweight="bold",
         )

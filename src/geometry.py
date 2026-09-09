@@ -4,7 +4,7 @@ Used by exporters (SVG, STL, STEP) and visualization modules.
 """
 
 import math
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 
 from .constants import EPSILON
 from .lens import Lens
@@ -12,6 +12,94 @@ from .lens import Lens
 
 class LensGeometry:
     """Centralized logic for lens surface profiles and 3D meshes."""
+
+    @staticmethod
+    def surface_sag(
+        radius: float,
+        y: float,
+        diameter: float,
+        is_parabolic: bool = False,
+        parabolic_sag: float = 0.0,
+    ) -> float:
+        """Vertex-referenced sag of one surface at height ``y``.
+
+        Single shared implementation for every 2D/3D lens renderer, so the
+        same lens draws identically everywhere. Flat surfaces (zero,
+        non-finite, or huge radius) return 0. ``|y|`` is clamped to the
+        clear aperture and to ``|R|``; aperture overhang therefore draws a
+        hemisphere cap while :meth:`Lens.calculate_edge_thickness` reports
+        the geometry as undefined (renderers tint it red).
+        """
+        half_d = diameter / 2
+        ay = min(abs(y), abs(half_d))
+        if is_parabolic:
+            if abs(half_d) < EPSILON:
+                return 0.0
+            return parabolic_sag * (ay * ay) / (half_d * half_d)
+        if not math.isfinite(radius) or abs(radius) < 1e-6:
+            return 0.0
+        r_a = abs(radius)
+        ay = min(ay, r_a)
+        sag = r_a - math.sqrt(max(0.0, r_a * r_a - ay * ay))
+        return sag if radius > 0 else -sag
+
+    @staticmethod
+    def lens_outline(lens: Lens, num_points: int = 50) -> Dict[str, Any]:
+        """Closed-form 2D cross-section in the vertex frame (front vertex at 0).
+
+        Canonical convention: ``lens.thickness`` is the CENTER (vertex to
+        vertex) thickness; the rim thickness is derived. Returns front
+        (top to bottom) and back (bottom to top) ``(x, y)`` polylines plus
+        vertex/rim positions, the true edge thickness, and feasibility.
+        Every interactive 2D view and the 3D/gallery renderers build from
+        this so outlines cannot drift apart.
+        """
+        diameter = lens.diameter
+        thickness = lens.thickness
+        half_d = diameter / 2
+        is_para1 = bool(getattr(lens, "is_parabolic_1", False))
+        para_sag1 = float(getattr(lens, "parabolic_sag_1", 0.0))
+        is_para2 = bool(getattr(lens, "is_parabolic_2", False))
+        para_sag2 = float(getattr(lens, "parabolic_sag_2", 0.0))
+        r1 = lens.radius_of_curvature_1
+        r2 = lens.radius_of_curvature_2
+
+        def _sag1(y: float) -> float:
+            return LensGeometry.surface_sag(r1, y, diameter, is_para1, para_sag1)
+
+        def _sag2(y: float) -> float:
+            return LensGeometry.surface_sag(r2, y, diameter, is_para2, para_sag2)
+
+        front = [
+            (
+                _sag1(-half_d + (2 * half_d * j / num_points)),
+                -half_d + (2 * half_d * j / num_points),
+            )
+            for j in range(num_points + 1)
+        ]
+        back = [
+            (
+                thickness + _sag2(half_d - (2 * half_d * j / num_points)),
+                half_d - (2 * half_d * j / num_points),
+            )
+            for j in range(num_points + 1)
+        ]
+
+        try:
+            edge = lens.calculate_edge_thickness()
+        except Exception:
+            edge = None
+
+        return {
+            "front": front,
+            "back": back,
+            "x1_vertex": 0.0,
+            "x2_vertex": thickness,
+            "x1_edge": front[-1][0],
+            "x2_edge": back[0][0],
+            "edge_thickness": edge,
+            "feasible": edge is not None and edge > 0,
+        }
 
     @staticmethod
     def get_surface_profile(
