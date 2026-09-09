@@ -60,6 +60,49 @@ class TestSystemRayTracer(unittest.TestCase):
             final_x = ray.path[-1][0]
             self.assertGreater(final_x, 40.0)
 
+    def test_missed_ray_does_not_teleport(self):
+        """A ray missing an aperture must terminate, never jump downstream."""
+        narrow = Lens(
+            radius_of_curvature_1=100,
+            radius_of_curvature_2=-100,
+            thickness=10,
+            diameter=20,
+        )
+        wide = Lens(
+            radius_of_curvature_1=100,
+            radius_of_curvature_2=-100,
+            thickness=10,
+            diameter=50,
+        )
+        system = OpticalSystem(name="Teleport Test")
+        system.add_lens(narrow, air_gap_before=0)
+        system.add_lens(wide, air_gap_before=20)
+        tracer = SystemRayTracer(system)
+
+        # Outside lens 1 (h=10) but inside lens 2 (h=25): must still stop.
+        ray = Ray(x=-100.0, y=15.0, angle_rad=0.0)
+        tracer.trace_ray(ray)
+
+        self.assertFalse(ray.hit)
+        self.assertTrue(ray.terminated)
+        for x, _ in ray.path:
+            self.assertLess(x, 30.0)  # never reaches lens 2 at x=30
+
+    def test_tracers_sync_after_mutation(self):
+        """Hoisted tracers must pick up lens edits between trace calls."""
+        tracer = SystemRayTracer(self.system)
+        before = [t.d for t in tracer._tracers]
+        self.assertEqual(before, [10, 10])
+
+        self.lens1.thickness = 25.0
+        self.system.refresh_references({self.lens1.id: self.lens1})
+        tracer.trace_parallel_rays(num_rays=1)
+
+        after = [t.d for t in tracer._tracers]
+        self.assertEqual(after, [25.0, 10])
+        # Second element shifted by the new thickness (25 + 20 gap).
+        self.assertEqual(self.system.elements[1].position, 45.0)
+
 
 if __name__ == "__main__":
     unittest.main()

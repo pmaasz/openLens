@@ -443,6 +443,20 @@ class SystemRayTracer:
 
     def __init__(self, optical_system: "OpticalSystem") -> None:
         self.system = optical_system
+        self._tracers: List[LensRayTracer] = []
+        self._sync_tracers()
+
+    def _sync_tracers(self) -> None:
+        """Rebuild per-element tracers from current lens geometry/positions.
+
+        Refreshed once per public trace call (not per ray per element),
+        so lens-parameter or structural edits between calls are picked up
+        while the per-ray loop stays allocation-free.
+        """
+        self._tracers = [
+            LensRayTracer(element.lens, x_offset=element.position)
+            for element in self.system.elements
+        ]
 
     def trace_parallel_rays(
         self,
@@ -453,6 +467,8 @@ class SystemRayTracer:
         """Trace parallel rays through the entire optical system."""
         if not self.system.elements:
             return []
+
+        self._sync_tracers()
 
         first_lens = self.system.elements[0].lens
         max_height = first_lens.diameter / 2 * APERTURE_FILL_FACTOR
@@ -478,33 +494,26 @@ class SystemRayTracer:
 
     def trace_ray(self, ray: Ray) -> Ray:
         """Trace a single ray through all elements"""
+        self._sync_tracers()
         self._trace_ray_through_system(ray)
         return ray
 
     def _trace_ray_through_system(self, ray: Ray) -> None:
-        """Trace a single ray through all elements"""
+        """Trace a single ray through all elements.
 
-        for i, element in enumerate(self.system.elements):
-            lens_tracer = LensRayTracer(element.lens, x_offset=element.position)
-            lens_tracer.trace_ray(ray, propagate_distance=0)
+        A ray that misses an element aperture or terminates inside one
+        (TIR/side exit) stops here: it is marked terminated and never
+        propagated forward, and a terminated flag is never cleared.
+        """
 
-            if not ray.hit:
-                ray.terminated = False
-                if i < len(self.system.elements) - 1:
-                    next_pos = self.system.elements[i + 1].position
-                    if next_pos > ray.x:
-                        dist = next_pos - ray.x
-                        ray.propagate(dist)
-                else:
-                    ray.propagate(RAY_EXIT_PROPAGATION_2D_MM)
-                continue
+        for i, tracer in enumerate(self._tracers):
+            tracer.trace_ray(ray, propagate_distance=0)
 
-            if ray.terminated:
-                if math.cos(ray.angle) > 0.1:
-                    ray.propagate(RAY_EXIT_PROPAGATION_2D_MM - ray.x)
+            if not ray.hit or ray.terminated:
+                ray.terminated = True
                 break
 
-            if i < len(self.system.elements) - 1:
+            if i < len(self._tracers) - 1:
                 next_pos = self.system.elements[i + 1].position
                 if next_pos > ray.x:
                     dist = next_pos - ray.x
