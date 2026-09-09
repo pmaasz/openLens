@@ -385,6 +385,40 @@ class Lens:
         lens.modified_at = data.get("modified_at", lens.modified_at)
         return lens
 
+    def calculate_edge_thickness(self) -> Optional[float]:
+        """
+        Calculate the rim (edge) thickness at the clear aperture.
+
+        Canonical convention: ``self.thickness`` is the CENTER (vertex to
+        vertex) thickness. The edge thickness is derived as
+        ``thickness - sag1 + sag2`` evaluated at ``diameter / 2``, where
+        sag1/sag2 are the vertex-referenced surface sags (parabolic-aware).
+
+        Returns:
+            Edge thickness in mm, or None if the geometry is undefined
+            (a spherical surface with |R| < D/2 has no real sag there) or
+            non-finite. A value <= 0 means the surfaces intersect within
+            the clear aperture (unrealizable lens).
+        """
+        h = self.diameter / 2
+        if not math.isfinite(h):
+            return None
+        for surface in (1, 2):
+            if getattr(self, f"is_parabolic_{surface}", False):
+                continue
+            r = self.radius_of_curvature_1 if surface == 1 else self.radius_of_curvature_2
+            if _is_flat(r):
+                continue
+            if abs(h) > abs(r):
+                return None
+        try:
+            s1 = self.get_sag_1(h)
+            s2 = self.get_sag_2(h)
+        except (ArithmeticError, ValueError):
+            return None
+        edge = self.thickness - s1 + s2
+        return edge if math.isfinite(edge) else None
+
     def calculate_focal_length(self) -> Optional[float]:
         """
         Calculate focal length using the lensmaker's equation.

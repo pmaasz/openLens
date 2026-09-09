@@ -251,10 +251,25 @@ class LensViz2DWidget(QWidget):
         # 4. Top Edge
         path_lens.closeSubpath()
 
+        # Flag unrealizable geometry: thickness is the CENTER (vertex to
+        # vertex) thickness, so edge <= 0 means the surfaces intersect
+        # within the clear aperture (bowtie outline). Tint red to say so.
+        try:
+            _edge = self._lens.calculate_edge_thickness()
+        except Exception:
+            _edge = None
+        _infeasible = _edge is None or _edge <= 0
+        _fill = QColor(200, 80, 80, 90) if _infeasible else self._fill_color
+        _edge_c = QColor(255, 110, 110, 220) if _infeasible else self._edge_color
+
         # Fill and stroke lens
-        painter.setPen(QPen(self._edge_color, 1))
-        painter.setBrush(QBrush(self._fill_color))
+        painter.setPen(QPen(_edge_c, 1))
+        painter.setBrush(QBrush(_fill))
         painter.drawPath(path_lens)
+
+        if _infeasible:
+            painter.setPen(QPen(QColor(255, 110, 110, 230), 1))
+            painter.drawText(10, 20, "Unrealizable: surfaces intersect within aperture")
 
         # Highlight surfaces with colors
         # R1

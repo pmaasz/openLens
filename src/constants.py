@@ -48,10 +48,16 @@ DEFAULT_MATERIAL_INDICES = {
 # ==================== Default Lens Parameters ====================
 
 # Default lens geometry (in mm)
+#
+# NOTE: Lens.thickness is the CENTER (vertex to vertex) thickness, so the
+# defaults must satisfy edge = thickness - sag1 + sag2 > 0 at the clear
+# aperture. With R = +/-100 mm and t = 5 mm, D = 50 mm gives edge = -1.35 mm
+# (surfaces cross inside the aperture - unrealizable). D = 40 mm gives
+# edge = +0.96 mm, a feasible default biconvex.
 DEFAULT_RADIUS_1 = 100.0
 DEFAULT_RADIUS_2 = -100.0
 DEFAULT_THICKNESS = 5.0
-DEFAULT_DIAMETER = 50.0
+DEFAULT_DIAMETER = 40.0
 DEFAULT_PROPAGATION_DISTANCE = 100.0  # mm — free-space propagation before first surface
 DEFAULT_TEMPERATURE = 20.0  # degrees Celsius
 

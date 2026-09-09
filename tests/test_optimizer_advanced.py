@@ -90,6 +90,38 @@ class TestAdvancedOptimizer(unittest.TestCase):
         merit = optimizer.merit_function.evaluate(sys_bad)
         self.assertGreater(merit, 1000.0)
 
+    def test_vertex_collapse_penalty(self):
+        """Designs with crossed surfaces (edge <= 0) get a hard penalty."""
+        crossed_lens = Lens(
+            radius_of_curvature_1=86.63,
+            radius_of_curvature_2=-109.97,
+            thickness=5.0,
+            diameter=50.0,
+            refractive_index=1.5,
+        )
+        sys_crossed = OpticalSystem("Crossed System")
+        sys_crossed.add_lens(crossed_lens)
+
+        optimizer = LensOptimizer(sys_crossed, [], [])
+        merit = optimizer.merit_function.evaluate(sys_crossed)
+        self.assertGreaterEqual(merit, 1e8)
+
+    def test_thin_center_penalty(self):
+        """Designs with non-positive center thickness get a hard penalty."""
+        flat_lens = Lens(
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=-2.0,
+            diameter=25.0,
+            refractive_index=1.5,
+        )
+        sys_flat = OpticalSystem("Flat System")
+        sys_flat.add_lens(flat_lens)
+
+        optimizer = LensOptimizer(sys_flat, [], [])
+        merit = optimizer.merit_function.evaluate(sys_flat)
+        self.assertGreaterEqual(merit, 1e8)
+
     def test_coma_target(self):
         """Test that coma target can be evaluated"""
         targets = [

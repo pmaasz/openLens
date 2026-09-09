@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal
 
 from .lens_viz_container import LensVisualizationWidget
+from ...validation import check_physical_feasibility
 
 if TYPE_CHECKING:
     from ...lens import Lens
@@ -147,7 +148,7 @@ class LensEditorWidget(QWidget):
 
         self._diameter_input = QDoubleSpinBox()
         self._diameter_input.setRange(1, 500)
-        self._diameter_input.setValue(50)
+        self._diameter_input.setValue(40)
         self._diameter_input.setSuffix(" mm")
         self._diameter_input.valueChanged.connect(self._on_property_changed)
         dim_layout.addRow("Diameter:", self._diameter_input)
@@ -254,6 +255,15 @@ class LensEditorWidget(QWidget):
 
         self._ffl_label = QLabel("--")
         calc_layout.addRow("Front Focal Length:", self._ffl_label)
+
+        self._edge_label = QLabel("--")
+        calc_layout.addRow("Edge Thickness:", self._edge_label)
+
+        self._feas_warning_label = QLabel("")
+        self._feas_warning_label.setWordWrap(True)
+        self._feas_warning_label.setStyleSheet("color: #ff6b6b; font-weight: bold;")
+        self._feas_warning_label.hide()
+        calc_layout.addRow("Feasibility:", self._feas_warning_label)
 
         layout.addWidget(calc_group)
 
@@ -417,6 +427,59 @@ class LensEditorWidget(QWidget):
             self._power_label.setText("--")
             self._bfl_label.setText("--")
             self._ffl_label.setText("--")
+
+        self._update_feasibility()
+
+    def _update_feasibility(self) -> None:
+        """Show edge thickness and warn about unrealizable geometry.
+
+        Thickness is the CENTER (vertex to vertex) thickness; the derived
+        rim thickness must stay positive or the surfaces intersect within
+        the clear aperture (as drawn in the 2D view).
+        """
+        if not self._lens:
+            return
+
+        try:
+            edge = self._lens.calculate_edge_thickness()
+        except Exception:
+            edge = None
+
+        if edge is None:
+            self._edge_label.setText("--")
+        else:
+            self._edge_label.setText(f"{edge:.2f} mm")
+
+        message = None
+        if edge is None or edge <= 0:
+            if edge is None:
+                message = (
+                    "Geometry undefined at the rim: aperture overhangs a surface. "
+                    "Reduce diameter or flatten radii."
+                )
+            else:
+                message = (
+                    f"Surfaces intersect within the clear aperture (edge {edge:.2f} mm). "
+                    "Increase thickness, reduce diameter, or flatten radii."
+                )
+        elif not bool(
+            getattr(self._lens, "is_parabolic_1", False)
+            or getattr(self._lens, "is_parabolic_2", False)
+        ):
+            feasible, soft_msg = check_physical_feasibility(
+                self._lens.radius_of_curvature_1,
+                self._lens.radius_of_curvature_2,
+                self._lens.thickness,
+                self._lens.diameter,
+            )
+            if not feasible:
+                message = soft_msg
+
+        if message:
+            self._feas_warning_label.setText("\u26a0 " + message)
+            self._feas_warning_label.show()
+        else:
+            self._feas_warning_label.hide()
 
     def load_lens(self, lens: "Lens") -> None:
         """Load a lens into the editor

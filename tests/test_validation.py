@@ -264,6 +264,42 @@ class TestPhysicalFeasibility(unittest.TestCase):
         self.assertIsNotNone(message)
         self.assertIn("thin", message.lower())
 
+    def test_check_intersecting_surfaces_infeasible(self):
+        """Surfaces crossing inside the aperture are infeasible (edge <= 0)"""
+        feasible, message = check_physical_feasibility(
+            radius1=86.63, radius2=-109.97, thickness=5.0, diameter=50.0
+        )
+        self.assertFalse(feasible)
+        self.assertIsNotNone(message)
+        self.assertIn("intersect", message.lower())
+
+    def test_check_aperture_overhang_infeasible(self):
+        """Aperture wider than a surface radius is infeasible (no real sag)"""
+        feasible, message = check_physical_feasibility(
+            radius1=20.0, radius2=-20.0, thickness=5.0, diameter=50.0
+        )
+        self.assertFalse(feasible)
+        self.assertIsNotNone(message)
+        self.assertIn("overhang", message.lower())
+
+    def test_check_default_lens_feasible(self):
+        """Default geometry (R=+-100, t=5, D=40) has positive edge thickness"""
+        from src.constants import (
+            DEFAULT_RADIUS_1,
+            DEFAULT_RADIUS_2,
+            DEFAULT_THICKNESS,
+            DEFAULT_DIAMETER,
+        )
+
+        feasible, message = check_physical_feasibility(
+            radius1=DEFAULT_RADIUS_1,
+            radius2=DEFAULT_RADIUS_2,
+            thickness=DEFAULT_THICKNESS,
+            diameter=DEFAULT_DIAMETER,
+        )
+        self.assertTrue(feasible)
+        self.assertIsNone(message)
+
 
 class TestValidationErrors(unittest.TestCase):
     """Test ValidationError exception"""
