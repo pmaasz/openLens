@@ -110,6 +110,16 @@ COLOR_WARNING = "#ff9800"
 COLOR_ERROR = "#f44336"
 COLOR_HIGHLIGHT = COLOR_ACCENT
 
+# Lens outline palette: shared by every 2D/3D lens renderer (Qt widgets and
+# matplotlib) so the same lens looks the same everywhere. Hex strings work
+# for both QColor and matplotlib. Glass fill is drawn at alpha 80 (Qt) /
+# 0.3 (matplotlib); surface strokes fully opaque (Qt) / 0.9 (matplotlib).
+COLOR_LENS_FILL = "#96c8e6"  # glass body
+COLOR_LENS_R1 = "#0096ff"  # front surface highlight
+COLOR_LENS_R2 = "#00c864"  # back surface highlight
+COLOR_LENS_RIM = "#969696"  # rim (edge-wall) segments
+COLOR_LENS_BAD = "#ff6e6e"  # unrealizable-geometry tint/warning
+
 # Borders and light-theme surfaces
 COLOR_BORDER_DARK = "#3f3f3f"
 COLOR_BORDER_LIGHT = "#cccccc"

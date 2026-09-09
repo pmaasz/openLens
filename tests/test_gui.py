@@ -124,10 +124,157 @@ else:
             viz.run_simulation(active_system, num_rays=5)
             self.assertGreater(len(viz._rays), 0)
 
+    class TestLensEditorWidget(unittest.TestCase):
+        """Tests for the lens editor panel (edge lock, load integrity)."""
+
+        def setUp(self):
+            """Create a standalone editor widget."""
+            from src.gui.widgets.lens_editor import LensEditorWidget
+
+            self.widget = LensEditorWidget()
+
+        def _load(
+            self,
+            r1=100.0,
+            r2=-100.0,
+            thickness=5.0,
+            diameter=40.0,
+            lock=True,
+        ):
+            """Load a lens with the edge lock in a known state."""
+            self.widget._lock_edge_check.setChecked(lock)
+            self.widget.load_lens(
+                Lens(
+                    name="T",
+                    radius_of_curvature_1=r1,
+                    radius_of_curvature_2=r2,
+                    thickness=thickness,
+                    diameter=diameter,
+                )
+            )
+            return self.widget._lens
+
+        def test_load_lens_preserves_all_fields(self):
+            """Loading must not clobber fields with stale spinbox values."""
+            for lock in (False, True):
+                lens = self._load(r1=86.63, r2=-109.97, thickness=5.0, diameter=50.0, lock=lock)
+                self.assertAlmostEqual(lens.radius_of_curvature_1, 86.63)
+                self.assertAlmostEqual(lens.radius_of_curvature_2, -109.97)
+                self.assertAlmostEqual(lens.thickness, 5.0)
+                self.assertAlmostEqual(lens.diameter, 50.0)
+                self.assertAlmostEqual(self.widget._r2_input.value(), -109.97)
+                self.assertAlmostEqual(self.widget._diameter_input.value(), 50.0)
+
+        def test_edge_lock_preserves_rim(self):
+            """Steepening a radius with the lock on compensates thickness."""
+            lens = self._load(lock=True)
+            edge_before = lens.calculate_edge_thickness()
+            self.widget._r1_input.setValue(60.0)
+            self.assertAlmostEqual(lens.calculate_edge_thickness(), edge_before, places=6)
+            self.assertGreater(lens.thickness, 5.0)
+
+        def test_edge_lock_off_keeps_center(self):
+            """With the lock off, radii edits leave thickness alone."""
+            lens = self._load(lock=False)
+            self.widget._r1_input.setValue(60.0)
+            self.assertAlmostEqual(lens.thickness, 5.0)
+            self.assertLess(
+                lens.calculate_edge_thickness(),
+                0.959,
+            )
+
+        def test_infeasible_load_warns(self):
+            """An intersecting spec loads intact and shows the warning."""
+            self._load(r1=86.63, r2=-109.97, thickness=5.0, diameter=50.0, lock=False)
+            self.assertIn("-1.5", self.widget._edge_label.text())
+            self.assertFalse(self.widget._feas_warning_label.isHidden())
+
+    class TestOutlineRenderingSmoke(unittest.TestCase):
+        """Every 2D renderer draws every geometry without crashing."""
+
+        def _battery(self):
+            """Geometries incl. former NaN cases (plano/inf, overhang)."""
+            return [
+                Lens(
+                    radius_of_curvature_1=100.0,
+                    radius_of_curvature_2=-100.0,
+                    thickness=5.0,
+                    diameter=40.0,
+                ),
+                Lens(
+                    radius_of_curvature_1=100.0,
+                    radius_of_curvature_2=float("inf"),
+                    thickness=5.0,
+                    diameter=40.0,
+                ),
+                Lens(
+                    radius_of_curvature_1=86.63,
+                    radius_of_curvature_2=-109.97,
+                    thickness=5.0,
+                    diameter=50.0,
+                ),
+                Lens(
+                    radius_of_curvature_1=100.0,
+                    radius_of_curvature_2=-100.0,
+                    thickness=5.0,
+                    diameter=40.0,
+                    is_parabolic_1=True,
+                    parabolic_sag_1=2.0,
+                ),
+            ]
+
+        def _grab(self, widget):
+            """Show, paint offscreen, and assert something was drawn."""
+            widget.resize(400, 300)
+            widget.show()
+            QApplication.processEvents()
+            pixmap = widget.grab()
+            self.assertFalse(pixmap.isNull())
+            widget.close()
+
+        def test_editor_viz_renders(self):
+            """Lens editor 2D view renders the whole battery."""
+            from src.gui.widgets.lens_viz_2d import LensViz2DWidget
+
+            for lens in self._battery():
+                widget = LensViz2DWidget()
+                widget.update_lens(lens)
+                self._grab(widget)
+
+        def test_simulation_viz_renders(self):
+            """Simulation view renders single lenses and systems."""
+            from src.gui.widgets.simulation_viz import SimulationVisualizationWidget
+
+            for lens in self._battery():
+                widget = SimulationVisualizationWidget()
+                widget.run_simulation(lens, num_rays=3)
+                self._grab(widget)
+
+            system = OpticalSystem(name="Smoke System")
+            for lens in self._battery():
+                system.add_lens(lens, air_gap_before=5.0)
+            widget = SimulationVisualizationWidget()
+            widget.run_simulation(system, num_rays=3)
+            self._grab(widget)
+
+        def test_assembly_viz_renders(self):
+            """Assembly view renders a mixed system."""
+            from src.gui.widgets.assembly_viz import AssemblyVisualizationWidget
+
+            system = OpticalSystem(name="Smoke System")
+            for lens in self._battery():
+                system.add_lens(lens, air_gap_before=5.0)
+            widget = AssemblyVisualizationWidget()
+            widget.update_system(system)
+            self._grab(widget)
+
     def run_gui_tests():
         """Run all GUI tests and return results"""
         loader = unittest.TestLoader()
-        suite = loader.loadTestsFromTestCase(TestOpenLensGUI)
+        suite = unittest.TestSuite()
+        suite.addTests(loader.loadTestsFromTestCase(TestOpenLensGUI))
+        suite.addTests(loader.loadTestsFromTestCase(TestLensEditorWidget))
+        suite.addTests(loader.loadTestsFromTestCase(TestOutlineRenderingSmoke))
         runner = unittest.TextTestRunner(verbosity=2)
         return runner.run(suite)
 

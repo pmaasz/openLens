@@ -153,6 +153,18 @@ class LensEditorWidget(QWidget):
         self._diameter_input.valueChanged.connect(self._on_property_changed)
         dim_layout.addRow("Diameter:", self._diameter_input)
 
+        # Edge lock: keep the rim-wall thickness fixed when radii/diameter
+        # change by compensating the center thickness (which is what the
+        # "Thickness" spinbox stores). Unchecked = classic behavior where
+        # the center stays fixed and the rim wall absorbs the change.
+        self._lock_edge_check = QCheckBox("Lock edge thickness")
+        self._lock_edge_check.setChecked(True)
+        self._lock_edge_check.setToolTip(
+            "When locked, editing radii or diameter adjusts center thickness "
+            "so the rim (edge) thickness stays constant."
+        )
+        dim_layout.addRow(self._lock_edge_check)
+
         layout.addWidget(dim_group)
 
         # Parabolic surfaces – sag at clear aperture (vertex to rim)
@@ -299,10 +311,21 @@ class LensEditorWidget(QWidget):
     def _on_property_changed(self) -> None:
         """Handle property changes with auto-save"""
         if self._lens:
-            self._lens.radius_of_curvature_1 = self._r1_input.value()
-            self._lens.radius_of_curvature_2 = self._r2_input.value()
-            self._lens.thickness = self._thickness_input.value()
-            self._lens.diameter = self._diameter_input.value()
+            if self._lock_edge_check.isChecked() and self.sender() in (
+                self._r1_input,
+                self._r2_input,
+                self._diameter_input,
+            ):
+                self._apply_geometry_preserving_edge(
+                    self._r1_input.value(),
+                    self._r2_input.value(),
+                    self._diameter_input.value(),
+                )
+            else:
+                self._lens.radius_of_curvature_1 = self._r1_input.value()
+                self._lens.radius_of_curvature_2 = self._r2_input.value()
+                self._lens.thickness = self._thickness_input.value()
+                self._lens.diameter = self._diameter_input.value()
             self._lens.refractive_index = self._n_input.value()
             # Sync parabolic sag diameters if needed (sag stays as absolute distance)
             self._update_calculated()
@@ -312,6 +335,40 @@ class LensEditorWidget(QWidget):
 
             self.lens_modified.emit(self._lens)
             self.lens_updated.emit()
+
+    def _apply_geometry_preserving_edge(
+        self, radius_1: float, radius_2: float, diameter: float
+    ) -> None:
+        """Apply radii/diameter while preserving the current edge thickness.
+
+        Thickness stores the CENTER thickness, so steepening a surface would
+        otherwise thin the rim wall. With the edge lock on, the center
+        thickness compensates instead (edge(t) = t - sag1 + sag2, hence
+        t_new = edge_old + t_old - edge_new_at_old_t). Already-infeasible
+        or undefined geometry is applied as-is so the warning can show.
+        """
+        lens = self._lens
+        try:
+            old_edge = lens.calculate_edge_thickness()
+        except Exception:
+            old_edge = None
+        lens.radius_of_curvature_1 = radius_1
+        lens.radius_of_curvature_2 = radius_2
+        lens.diameter = diameter
+        if old_edge is None or old_edge <= 0:
+            return
+        try:
+            new_edge_at_old_t = lens.calculate_edge_thickness()
+        except Exception:
+            new_edge_at_old_t = None
+        if new_edge_at_old_t is None:
+            return
+        t_new = lens.thickness + (old_edge - new_edge_at_old_t)
+        t_new = max(0.1, min(1000.0, t_new))
+        lens.thickness = t_new
+        self._thickness_input.blockSignals(True)
+        self._thickness_input.setValue(t_new)
+        self._thickness_input.blockSignals(False)
 
     def _on_material_changed(self, material: str) -> None:
         """Handle material change"""
@@ -491,10 +548,23 @@ class LensEditorWidget(QWidget):
         self._name_input.blockSignals(True)
         self._name_input.setText(lens.name)
         self._name_input.blockSignals(False)
+        # Block dimension-spinbox signals while loading: each valueChanged
+        # slot rewrites the whole model from the spinboxes, so letting them
+        # fire here would clobber not-yet-loaded fields with stale values.
+        dim_inputs = (
+            self._r1_input,
+            self._r2_input,
+            self._thickness_input,
+            self._diameter_input,
+        )
+        for spin in dim_inputs:
+            spin.blockSignals(True)
         self._r1_input.setValue(lens.radius_of_curvature_1)
         self._r2_input.setValue(lens.radius_of_curvature_2)
         self._thickness_input.setValue(lens.thickness)
         self._diameter_input.setValue(lens.diameter)
+        for spin in dim_inputs:
+            spin.blockSignals(False)
         self._n_input.setValue(lens.refractive_index)
         # Parabolic
         is_p1 = bool(getattr(lens, "is_parabolic_1", False))
