@@ -77,6 +77,28 @@ def _get_sag(r: float, h: float) -> float:
     return c * h**2 / (1.0 + math.sqrt(disc))
 
 
+def _get_sag_for_lens(lens, surface: int, h: float) -> float:
+    """Get sag for a lens surface, handling parabolic (sag at D/2)."""
+    if surface == 1 and getattr(lens, "is_parabolic_1", False):
+        r_max = lens.diameter / 2
+        if abs(r_max) < 1e-9:
+            return 0.0
+        sag = float(getattr(lens, "parabolic_sag_1", 0.0))
+        # Clamp h to aperture
+        h_c = max(-r_max, min(h, r_max))
+        return sag * (h_c * h_c) / (r_max * r_max)
+    if surface == 2 and getattr(lens, "is_parabolic_2", False):
+        r_max = lens.diameter / 2
+        if abs(r_max) < 1e-9:
+            return 0.0
+        sag = float(getattr(lens, "parabolic_sag_2", 0.0))
+        h_c = max(-r_max, min(h, r_max))
+        return sag * (h_c * h_c) / (r_max * r_max)
+    # Spherical
+    r = lens.radius_of_curvature_1 if surface == 1 else lens.radius_of_curvature_2
+    return _get_sag(r, h)
+
+
 class MeritFunction:
     """Calculate merit function for optical system quality"""
 
@@ -231,8 +253,8 @@ class MeritFunction:
 
             try:
                 y = lens.diameter / 2.0
-                s1 = _get_sag(lens.radius_of_curvature_1, y)
-                s2 = _get_sag(lens.radius_of_curvature_2, y)
+                s1 = _get_sag_for_lens(lens, 1, y)
+                s2 = _get_sag_for_lens(lens, 2, y)
                 edge_thickness = lens.thickness - s1 + s2
                 if edge_thickness < min_et:
                     merit += 1e4 * (min_et - edge_thickness) ** 2
@@ -247,8 +269,8 @@ class MeritFunction:
                 lens1 = system.elements[i].lens
                 lens2 = system.elements[i + 1].lens
                 max_h = min(lens1.diameter, lens2.diameter) / 2.0
-                s_back_1 = _get_sag(lens1.radius_of_curvature_2, max_h)
-                s_front_2 = _get_sag(lens2.radius_of_curvature_1, max_h)
+                s_back_1 = _get_sag_for_lens(lens1, 2, max_h)
+                s_front_2 = _get_sag_for_lens(lens2, 1, max_h)
                 edge_clearance = gap.thickness + s_front_2 - s_back_1
                 if edge_clearance < min_ec:
                     merit += 1e5 * (min_ec - edge_clearance) ** 2
@@ -586,6 +608,12 @@ class LensOptimizer:
             system.elements[element_index].lens.radius_of_curvature_1 = value
         elif parameter == "radius_of_curvature_2":
             system.elements[element_index].lens.radius_of_curvature_2 = value
+        elif parameter == "parabolic_sag_1":
+            system.elements[element_index].lens.is_parabolic_1 = True
+            system.elements[element_index].lens.parabolic_sag_1 = value
+        elif parameter == "parabolic_sag_2":
+            system.elements[element_index].lens.is_parabolic_2 = True
+            system.elements[element_index].lens.parabolic_sag_2 = value
         elif parameter == "thickness":
             system.elements[element_index].lens.thickness = value
         elif parameter == "air_gap":

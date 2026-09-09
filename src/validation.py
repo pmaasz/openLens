@@ -319,6 +319,27 @@ def validate_range(
     return value
 
 
+def validate_parabolic_sag(sag: float, param_name: str = "parabolic sag") -> float:
+    """
+    Validate parabolic sag (vertex to rim distance at D/2).
+
+    Args:
+        sag: Sag value to validate (mm)
+        param_name: Parameter name for error messages
+
+    Returns:
+        float: Validated sag
+
+    Raises:
+        ValidationError: If sag is invalid
+    """
+    sag = _validate_number(sag, param_name)
+    # Sag can be negative (concave direction) or positive, but should be reasonable
+    if abs(sag) > 100:
+        raise ValidationError(f"{param_name} magnitude must be at most 100 mm")
+    return sag
+
+
 def validate_lens_name(name: str) -> str:
     """
     Validate lens name.

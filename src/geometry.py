@@ -51,6 +51,33 @@ class LensGeometry:
         return profile
 
     @staticmethod
+    def get_parabolic_profile(
+        sag: float, diameter: float, num_points: int = 50
+    ) -> List[Tuple[float, float]]:
+        """Calculate (z, r) for a parabolic surface.
+
+        Parabola is defined as z = sag * (r / r_max)² where sag is the
+        vertex-to-rim distance at r_max = D/2. Positive sag bulges to +z.
+
+        Args:
+            sag: Sagitta at clear aperture (mm).
+            diameter: Clear aperture diameter (mm).
+            num_points: Number of points to sample.
+
+        Returns:
+            List of (z, r) tuples.
+        """
+        if abs(sag) < EPSILON or abs(diameter) < EPSILON:
+            return [(0.0, -diameter / 2), (0.0, diameter / 2)]
+        r_max = diameter / 2
+        profile = []
+        for i in range(num_points + 1):
+            r = r_max - (2 * r_max * i / num_points)
+            z = sag * (r * r) / (r_max * r_max)
+            profile.append((z, r))
+        return profile
+
+    @staticmethod
     def get_lens_polyline(lens: Lens, num_points: int = 50) -> List[Tuple[float, float]]:
         """Get a closed (z, r) polyline representing the lens cross-section.
 
@@ -61,12 +88,22 @@ class LensGeometry:
         Returns:
             List of (z, r) coordinates forming a closed loop.
         """
-        front = LensGeometry.get_surface_profile(
-            lens.radius_of_curvature_1, lens.diameter, num_points
-        )
-        back = LensGeometry.get_surface_profile(
-            lens.radius_of_curvature_2, lens.diameter, num_points
-        )
+        if getattr(lens, "is_parabolic_1", False):
+            front = LensGeometry.get_parabolic_profile(
+                lens.parabolic_sag_1, lens.diameter, num_points
+            )
+        else:
+            front = LensGeometry.get_surface_profile(
+                lens.radius_of_curvature_1, lens.diameter, num_points
+            )
+        if getattr(lens, "is_parabolic_2", False):
+            back = LensGeometry.get_parabolic_profile(
+                lens.parabolic_sag_2, lens.diameter, num_points
+            )
+        else:
+            back = LensGeometry.get_surface_profile(
+                lens.radius_of_curvature_2, lens.diameter, num_points
+            )
 
         # Shift back surface by thickness and reverse to close the loop
         back_shifted = [(z + lens.thickness, r) for z, r in back]
@@ -91,12 +128,22 @@ class LensGeometry:
         faces = []
 
         # Get profiles (z, r)
-        front_prof = LensGeometry.get_surface_profile(
-            lens.radius_of_curvature_1, lens.diameter, radial_div
-        )
-        back_prof = LensGeometry.get_surface_profile(
-            lens.radius_of_curvature_2, lens.diameter, radial_div
-        )
+        if getattr(lens, "is_parabolic_1", False):
+            front_prof = LensGeometry.get_parabolic_profile(
+                lens.parabolic_sag_1, lens.diameter, radial_div
+            )
+        else:
+            front_prof = LensGeometry.get_surface_profile(
+                lens.radius_of_curvature_1, lens.diameter, radial_div
+            )
+        if getattr(lens, "is_parabolic_2", False):
+            back_prof = LensGeometry.get_parabolic_profile(
+                lens.parabolic_sag_2, lens.diameter, radial_div
+            )
+        else:
+            back_prof = LensGeometry.get_surface_profile(
+                lens.radius_of_curvature_2, lens.diameter, radial_div
+            )
 
         # Rotation steps
         d_theta = 2 * math.pi / circular_div

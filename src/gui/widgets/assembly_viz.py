@@ -109,8 +109,14 @@ class AssemblyVisualizationWidget(QWidget):
             color: Fill and outline color for the lens.
         """
 
-        def get_sag(r: float, y: float) -> float:
+        def get_sag(r: float, y: float, is_para: bool = False, para_sag: float = 0.0) -> float:
             """Return the surface sag for radius ``r`` at height ``y``."""
+            if is_para:
+                r_max = half_d
+                if abs(r_max) < 1e-9:
+                    return 0
+                y_c = max(-r_max, min(y, r_max))
+                return para_sag * (y_c * y_c) / (r_max * r_max) if r_max else 0
             if abs(r) < 1e-6:
                 return 0
             r_a = abs(r)
@@ -123,14 +129,18 @@ class AssemblyVisualizationWidget(QWidget):
         r2 = lens.radius_of_curvature_2
         thickness = lens.thickness
         diameter = lens.diameter
+        is_para1 = bool(getattr(lens, "is_parabolic_1", False))
+        para_sag1 = float(getattr(lens, "parabolic_sag_1", 0.0))
+        is_para2 = bool(getattr(lens, "is_parabolic_2", False))
+        para_sag2 = float(getattr(lens, "parabolic_sag_2", 0.0))
 
         half_d = diameter / 2
         x1_vertex = cx
-        sag1_edge = get_sag(r1, half_d)
+        sag1_edge = get_sag(r1, half_d, is_para1, para_sag1)
         x1_edge = x1_vertex + sag1_edge * scale
 
         x2_edge = x1_edge + thickness * scale
-        sag2_edge = get_sag(r2, half_d)
+        sag2_edge = get_sag(r2, half_d, is_para2, para_sag2)
         x2_vertex = x2_edge - sag2_edge * scale
 
         path = QPainterPath()
@@ -138,7 +148,7 @@ class AssemblyVisualizationWidget(QWidget):
 
         for i in range(pts + 1):
             y = -half_d + (diameter * i / pts)
-            x = x1_vertex + get_sag(r1, abs(y)) * scale
+            x = x1_vertex + get_sag(r1, abs(y), is_para1, para_sag1) * scale
             if i == 0:
                 path.moveTo(x, cy + y * scale)
             else:
@@ -148,7 +158,7 @@ class AssemblyVisualizationWidget(QWidget):
 
         for i in range(pts + 1):
             y = half_d - (diameter * i / pts)
-            x = x2_vertex + get_sag(r2, abs(y)) * scale
+            x = x2_vertex + get_sag(r2, abs(y), is_para2, para_sag2) * scale
             path.lineTo(x, cy + y * scale)
 
         path.closeSubpath()

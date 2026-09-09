@@ -302,9 +302,15 @@ class SimulationVisualizationWidget(QWidget):
         ) -> None:
             """Draw the filled cross-section of a single lens."""
 
-            # Helper to get sag at y
-            def get_sag(r: float, y: float) -> float:
+            # Helper to get sag at y – handles parabolic (sag at D/2)
+            def get_sag(r: float, y: float, is_para: bool = False, para_sag: float = 0.0) -> float:
                 """Return the surface sag for radius ``r`` at height ``y``."""
+                if is_para:
+                    r_max = half_d
+                    if abs(r_max) < 1e-9:
+                        return 0
+                    y_c = max(-r_max, min(y, r_max))
+                    return para_sag * (y_c * y_c) / (r_max * r_max) if r_max else 0
                 if abs(r) < 1e-6:
                     return 0
                 r_a = abs(r)
@@ -318,13 +324,17 @@ class SimulationVisualizationWidget(QWidget):
             t = lens.thickness
             d = lens.diameter
             half_d = d / 2
+            is_para1 = bool(getattr(lens, "is_parabolic_1", False))
+            para_sag1 = float(getattr(lens, "parabolic_sag_1", 0.0))
+            is_para2 = bool(getattr(lens, "is_parabolic_2", False))
+            para_sag2 = float(getattr(lens, "parabolic_sag_2", 0.0))
 
             x1_vertex = start_x
-            sag1_edge = get_sag(r1, half_d)
+            sag1_edge = get_sag(r1, half_d, is_para1, para_sag1)
             x1_edge = x1_vertex + sag1_edge * sc
 
             x2_edge = x1_edge + t * sc
-            sag2_edge = get_sag(r2, half_d)
+            sag2_edge = get_sag(r2, half_d, is_para2, para_sag2)
             x2_vertex = x2_edge - sag2_edge * sc
 
             path = QPainterPath()
@@ -333,7 +343,7 @@ class SimulationVisualizationWidget(QWidget):
             # 1. Front Surface (top to bottom)
             for i in range(pts + 1):
                 y = -half_d + (d * i / pts)
-                x = x1_vertex + get_sag(r1, abs(y)) * sc
+                x = x1_vertex + get_sag(r1, abs(y), is_para1, para_sag1) * sc
                 if i == 0:
                     path.moveTo(x, center_y + y * sc)
                 else:
@@ -345,7 +355,7 @@ class SimulationVisualizationWidget(QWidget):
             # 3. Back Surface (bottom to top)
             for i in range(pts + 1):
                 y = half_d - (d * i / pts)
-                x = x2_vertex + get_sag(r2, abs(y)) * sc
+                x = x2_vertex + get_sag(r2, abs(y), is_para2, para_sag2) * sc
                 path.lineTo(x, center_y + y * sc)
 
             # 4. Top Edge

@@ -72,6 +72,10 @@ class Lens:
         model_nd: float = 1.5168,
         model_vd: float = 64.17,
         use_type_defaults: bool = False,
+        is_parabolic_1: bool = False,
+        parabolic_sag_1: float = 0.0,
+        is_parabolic_2: bool = False,
+        parabolic_sag_2: float = 0.0,
     ) -> None:
 
         self.id = uuid.uuid4().hex
@@ -117,6 +121,14 @@ class Lens:
         self.groove_pitch = groove_pitch
         self.num_grooves = num_grooves
 
+        # Parabolic surface properties – sag at clear aperture (D/2), vertex to rim
+        # Positive sag = bulge to +X (right), negative = to -X. For a biconvex
+        # parabolic lens front sag >0, back sag <0.
+        self.is_parabolic_1 = bool(is_parabolic_1)
+        self.parabolic_sag_1 = float(parabolic_sag_1)
+        self.is_parabolic_2 = bool(is_parabolic_2)
+        self.parabolic_sag_2 = float(parabolic_sag_2)
+
         self.created_at = datetime.now().isoformat()
         self.modified_at = datetime.now().isoformat()
 
@@ -145,6 +157,62 @@ class Lens:
             self._radius_of_curvature_2 = float("inf")
         else:
             self._radius_of_curvature_2 = value
+
+    def get_effective_radius_1(self) -> float:
+        """Vertex radius for surface 1 (parabolic → R = r²/(2·sag))."""
+        if self.is_parabolic_1:
+            if abs(self.parabolic_sag_1) < EPSILON:
+                return float("inf")
+            r = self.diameter / 2
+            if abs(r) < EPSILON:
+                return float("inf")
+            return (r * r) / (2 * self.parabolic_sag_1)
+        return self.radius_of_curvature_1
+
+    def get_effective_radius_2(self) -> float:
+        """Vertex radius for surface 2 (parabolic → R = r²/(2·sag))."""
+        if self.is_parabolic_2:
+            if abs(self.parabolic_sag_2) < EPSILON:
+                return float("inf")
+            r = self.diameter / 2
+            if abs(r) < EPSILON:
+                return float("inf")
+            return (r * r) / (2 * self.parabolic_sag_2)
+        return self.radius_of_curvature_2
+
+    def get_sag_1(self, y: float) -> float:
+        """Sag of surface 1 at height y (parabolic uses y²·sag/r²)."""
+        if self.is_parabolic_1:
+            r = self.diameter / 2
+            if abs(r) < EPSILON:
+                return 0.0
+            # Clamp y to aperture
+            y_c = max(-r, min(y, r))
+            return self.parabolic_sag_1 * (y_c * y_c) / (r * r)
+        # spherical
+        r = self.radius_of_curvature_1
+        if _is_flat(r):
+            return 0.0
+        r_a = abs(r)
+        y_c = min(abs(y), r_a)
+        sag = r_a - math.sqrt(max(0, r_a * r_a - y_c * y_c))
+        return sag if r > 0 else -sag
+
+    def get_sag_2(self, y: float) -> float:
+        """Sag of surface 2 at height y."""
+        if self.is_parabolic_2:
+            r = self.diameter / 2
+            if abs(r) < EPSILON:
+                return 0.0
+            y_c = max(-r, min(y, r))
+            return self.parabolic_sag_2 * (y_c * y_c) / (r * r)
+        r = self.radius_of_curvature_2
+        if _is_flat(r):
+            return 0.0
+        r_a = abs(r)
+        y_c = min(abs(y), r_a)
+        sag = r_a - math.sqrt(max(0, r_a * r_a - y_c * y_c))
+        return sag if r > 0 else -sag
 
     def update_refractive_index(
         self, wavelength_nm: Optional[float] = None, temperature: Optional[float] = None
@@ -273,6 +341,10 @@ class Lens:
             "model_glass_mode": self.model_glass_mode,
             "model_nd": self.model_nd,
             "model_vd": self.model_vd,
+            "is_parabolic_1": self.is_parabolic_1,
+            "parabolic_sag_1": self.parabolic_sag_1,
+            "is_parabolic_2": self.is_parabolic_2,
+            "parabolic_sag_2": self.parabolic_sag_2,
             "created_at": self.created_at,
             "modified_at": self.modified_at,
         }
@@ -302,6 +374,10 @@ class Lens:
             model_nd=data.get("model_nd", 1.5168),
             model_vd=data.get("model_vd", 64.17),
             use_type_defaults=data.get("use_type_defaults", False),
+            is_parabolic_1=data.get("is_parabolic_1", False),
+            parabolic_sag_1=data.get("parabolic_sag_1", 0.0),
+            is_parabolic_2=data.get("is_parabolic_2", False),
+            parabolic_sag_2=data.get("parabolic_sag_2", 0.0),
         )
 
         lens.id = data.get("id", lens.id)
@@ -315,10 +391,11 @@ class Lens:
 
         Flat surfaces (radius = inf, as produced by the property setters
         for a 0 radius) contribute 1/R = 0 to the power.
+        Parabolic surfaces use their vertex radius (R = r²/(2·sag)).
         """
         n = self.refractive_index
-        R1 = self.radius_of_curvature_1
-        R2 = self.radius_of_curvature_2
+        R1 = self.get_effective_radius_1()
+        R2 = self.get_effective_radius_2()
         d = self.thickness
 
         # Lensmaker's equation: 1/f = (n-1)[1/R1 - 1/R2 + (n-1)d/(nR1R2)]
@@ -456,7 +533,7 @@ class Lens:
             return float("inf")
 
         n = self.refractive_index
-        r1 = self.radius_of_curvature_1
+        r1 = self.get_effective_radius_1()
         t = self.thickness
 
         try:
@@ -487,7 +564,7 @@ class Lens:
             return float("inf")
 
         n = self.refractive_index
-        r2 = self.radius_of_curvature_2
+        r2 = self.get_effective_radius_2()
         t = self.thickness
 
         try:

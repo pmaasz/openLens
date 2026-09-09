@@ -35,11 +35,24 @@ class LensRayTracer3D:
         self, lens: "Lens", transform: Optional[Matrix4x4] = None, x_offset: float = 0.0
     ) -> None:
         self.lens = lens
-        self.R1 = lens.radius_of_curvature_1
-        self.R2 = lens.radius_of_curvature_2
+        # Use effective radius for parabolic surfaces
+        self.R1 = (
+            lens.get_effective_radius_1()
+            if hasattr(lens, "get_effective_radius_1")
+            else lens.radius_of_curvature_1
+        )
+        self.R2 = (
+            lens.get_effective_radius_2()
+            if hasattr(lens, "get_effective_radius_2")
+            else lens.radius_of_curvature_2
+        )
         self.d = lens.thickness
         self.D = lens.diameter
         self.n = lens.refractive_index
+        self.is_parabolic_1 = bool(getattr(lens, "is_parabolic_1", False))
+        self.is_parabolic_2 = bool(getattr(lens, "is_parabolic_2", False))
+        self.parabolic_sag_1 = float(getattr(lens, "parabolic_sag_1", 0.0))
+        self.parabolic_sag_2 = float(getattr(lens, "parabolic_sag_2", 0.0))
 
         if transform:
             self.transform = transform
@@ -56,19 +69,31 @@ class LensRayTracer3D:
         self.front_vertex = self.transform.multiply_point(v0)
         self.back_vertex = self.transform.multiply_point(v1)
 
-        if _is_flat(self.R1):
+        if self.is_parabolic_1 and abs(self.parabolic_sag_1) > EPSILON:
+            self.front_center = self.front_vertex
+            self.front_is_flat = False
+            self.front_is_parabolic = True
+        elif _is_flat(self.R1):
             self.front_center = self.front_vertex
             self.front_is_flat = True
+            self.front_is_parabolic = False
         else:
             self.front_center = self.transform.multiply_point(vec3(self.R1, 0, 0))
             self.front_is_flat = False
+            self.front_is_parabolic = False
 
-        if _is_flat(self.R2):
+        if self.is_parabolic_2 and abs(self.parabolic_sag_2) > EPSILON:
+            self.back_center = self.back_vertex
+            self.back_is_flat = False
+            self.back_is_parabolic = True
+        elif _is_flat(self.R2):
             self.back_center = self.back_vertex
             self.back_is_flat = True
+            self.back_is_parabolic = False
         else:
             self.back_center = self.transform.multiply_point(vec3(self.d + self.R2, 0, 0))
             self.back_is_flat = False
+            self.back_is_parabolic = False
 
         self.optical_axis = self.transform.multiply_vector(vec3(1, 0, 0)).normalize()
 
@@ -121,6 +146,75 @@ class LensRayTracer3D:
 
         return ray.origin + ray.direction * t
 
+    def _intersect_paraboloid(self, ray: Ray3D, vertex: Vector3, R: float) -> Optional[Vector3]:
+        """Intersect ray with a paraboloid x = (y²+z²)/(2R) + vertex.x.
+
+        R is the vertex radius (positive opens +x, negative -x). Vertex is in
+        world coords, axis is along optical_axis (+x for identity transform).
+        For simplicity we assume the paraboloid is axis-aligned with the
+        transform's x-axis (true for our translators). We work in local
+        coordinates where vertex is at origin and axis is x.
+        """
+        if abs(R) < EPSILON or abs(R) > 1e10:
+            return self._intersect_plane(ray, vertex, self.optical_axis)
+        # Transform ray to local coords where vertex is origin and axis is x
+        # For identity transform this is just subtract vertex
+        # For general transform, we use the inverse transform
+        try:
+            inv = self.transform.inverse()
+        except Exception:
+            inv = Matrix4x4.from_translation(-vertex.x, -vertex.y, -vertex.z)
+        local_origin = inv.multiply_point(ray.origin)
+        local_dir = inv.multiply_vector(ray.direction)
+        # Paraboloid: x = (y²+z²)/(2R)
+        # Ray: x = ox + t*dx, y = oy + t*dy, z = oz + t*dz
+        ox, oy, oz = local_origin.x, local_origin.y, local_origin.z
+        dx, dy, dz = local_dir.x, local_dir.y, local_dir.z
+        # Equation: ox + t*dx = ( (oy+t*dy)² + (oz+t*dz)² ) / (2R)
+        # => (dy²+dz²)/(2R) * t² + (2*oy*dy+2*oz*dz)/(2R) - dx) * t + (oy²+oz²)/(2R) - ox =0
+        # Multiply by 2R: (dy²+dz²) t² + (2*oy*dy+2*oz*dz -2R*dx) t + (oy²+oz² -2R*ox)=0
+        a = dy * dy + dz * dz
+        b = 2 * (oy * dy + oz * dz - R * dx)
+        c = oy * oy + oz * oz - 2 * R * ox
+        if abs(a) < EPSILON:
+            # Linear
+            if abs(b) < EPSILON:
+                return None
+            t = -c / b
+            if t < EPSILON:
+                return None
+            local_hit = local_origin + local_dir * t
+            # Check aperture in local
+            if local_hit.y * local_hit.y + local_hit.z * local_hit.z > (self.D / 2) ** 2 + 1e-6:
+                return None
+            return self.transform.multiply_point(local_hit)
+        disc = b * b - 4 * a * c
+        if disc < -EPSILON:
+            return None
+        disc = max(0.0, disc)
+        sqrt_disc = math.sqrt(disc)
+        t1 = (-b - sqrt_disc) / (2 * a)
+        t2 = (-b + sqrt_disc) / (2 * a)
+        # Choose smallest positive
+        valid = [t for t in (t1, t2) if t > EPSILON]
+        if not valid:
+            return None
+        # For paraboloid, the smaller t is the first hit when outside
+        t = min(valid)
+        local_hit = local_origin + local_dir * t
+        if local_hit.y * local_hit.y + local_hit.z * local_hit.z > (self.D / 2) ** 2 + 1e-6:
+            # Try other if first outside aperture but second inside
+            if len(valid) > 1:
+                t_other = max(valid)
+                local_hit_other = local_origin + local_dir * t_other
+                if (
+                    local_hit_other.y * local_hit_other.y + local_hit_other.z * local_hit_other.z
+                    <= (self.D / 2) ** 2 + 1e-6
+                ):
+                    return self.transform.multiply_point(local_hit_other)
+            return None
+        return self.transform.multiply_point(local_hit)
+
     def trace_surface(
         self, ray: Ray3D, surface_type: str, interaction: str = "refract"
     ) -> RefractionResult:
@@ -128,6 +222,7 @@ class LensRayTracer3D:
         if surface_type == "front":
             center = self.front_center
             is_flat = self.front_is_flat
+            is_parabolic = getattr(self, "front_is_parabolic", False)
             vertex = self.front_vertex
             R = self.R1
             default_n1 = REFRACTIVE_INDEX_AIR
@@ -135,6 +230,7 @@ class LensRayTracer3D:
         elif surface_type == "back":
             center = self.back_center
             is_flat = self.back_is_flat
+            is_parabolic = getattr(self, "back_is_parabolic", False)
             vertex = self.back_vertex
             R = self.R2
             default_n1 = self.n
@@ -142,7 +238,17 @@ class LensRayTracer3D:
         else:
             return RefractionResult.MISSED
 
-        if is_flat:
+        if is_parabolic:
+            # Use vertex radius derived from parabolic sag
+            # R already is effective radius, but for aperture check we use sag
+            # Compute R from sag if needed, but self.R is already effective
+            # For paraboloid, R may be large, use it
+            if abs(R) < EPSILON or abs(R) > 1e10:
+                normal = self.optical_axis
+                intersection = self._intersect_plane(ray, vertex, normal)
+            else:
+                intersection = self._intersect_paraboloid(ray, vertex, R)
+        elif is_flat:
             normal = self.optical_axis
             intersection = self._intersect_plane(ray, vertex, normal)
         else:
@@ -175,7 +281,31 @@ class LensRayTracer3D:
         ray.origin = intersection
         ray.path.append(intersection)
 
-        if is_flat:
+        if is_parabolic:
+            # Paraboloid normal: gradient of F = x - (y²+z²)/(2R) - vx =0 => (1, -y/R, -z/R)
+            # Transform to world: for axis-aligned case
+            # Compute local point
+            try:
+                inv = self.transform.inverse()
+                local_hit = inv.multiply_point(intersection)
+                # local y,z
+                ly, lz = local_hit.y, local_hit.z
+                # R is already effective, may be negative
+                if abs(R) < EPSILON:
+                    normal_local = vec3(1, 0, 0)
+                else:
+                    normal_local = vec3(1, -ly / R, -lz / R).normalize()
+                normal = self.transform.multiply_vector(normal_local).normalize()
+                # Ensure normal points against incident for front/back consistency
+                # For front, normal should point somewhat -x, for back +x, but our
+                # gradient gives +x for R>0. Adjust like spherical:
+                if R < 0:
+                    normal = -normal
+                if surface_type == "back" and R > 0:
+                    normal = -normal
+            except Exception:
+                normal = self.optical_axis if surface_type == "back" else -self.optical_axis
+        elif is_flat:
             if surface_type == "front":
                 normal = -self.optical_axis
             else:

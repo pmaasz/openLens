@@ -112,29 +112,39 @@ class _3DVisualizationWidget(QWidget):
         r1_abs, r2_abs = abs(r1), abs(r2)
         thickness, diameter = lens.thickness, lens.diameter
         max_r = diameter / 2.0
+        is_para1 = bool(getattr(lens, "is_parabolic_1", False))
+        para_sag1 = float(getattr(lens, "parabolic_sag_1", 0.0))
+        is_para2 = bool(getattr(lens, "is_parabolic_2", False))
+        para_sag2 = float(getattr(lens, "parabolic_sag_2", 0.0))
 
         import numpy as np
 
         # Create circles at top and bottom edges
         theta = np.linspace(0, 2 * np.pi, 36)
 
-        # Helper for sag
-        def get_sag(r: float, y: Any) -> Any:
+        # Helper for sag – handles parabolic (sag at D/2)
+        def get_sag(r: float, y: Any, is_para: bool = False, para_sag: float = 0.0) -> Any:
             """Return the surface sag for radius ``r`` at height ``y``."""
+            if is_para:
+                if abs(max_r) < 1e-9:
+                    return 0
+                # Clamp y to aperture
+                y_c = np.clip(y, -max_r, max_r)
+                return para_sag * (y_c * y_c) / (max_r * max_r) if max_r else 0
             if abs(r) < 1e-6:
                 return 0
             r_a = abs(r)
-            y_safe = np.minimum(y, r_a)
+            y_safe = np.minimum(np.abs(y), r_a)
             sag = r_a - np.sqrt(np.maximum(0, r_a**2 - y_safe**2))
             return sag if r > 0 else -sag
 
         # Calculate geometry (same as 2D)
-        sag1_edge = get_sag(r1, max_r)
+        sag1_edge = get_sag(r1, max_r, is_para1, para_sag1)
         x1_vertex = 0
         x1_edge = x1_vertex + sag1_edge
 
         x2_edge = x1_edge + thickness
-        sag2_edge = get_sag(r2, max_r)
+        sag2_edge = get_sag(r2, max_r, is_para2, para_sag2)
         x2_vertex = x2_edge - sag2_edge
 
         # Circle at front edge
@@ -162,15 +172,15 @@ class _3DVisualizationWidget(QWidget):
         R, THETA = np.meshgrid(r_vals, theta_vals)
 
         # Front surface (blue)
-        if r1_abs > 0.1:
-            Z_front = x1_vertex + get_sag(r1, R)
+        if is_para1 or r1_abs > 0.1:
+            Z_front = x1_vertex + get_sag(r1, R, is_para1, para_sag1)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_front, alpha=0.5, color="blue", rstride=2, cstride=2)
 
         # Back surface (green)
-        if r2_abs > 0.1:
-            Z_back = x2_vertex + get_sag(r2, R)
+        if is_para2 or r2_abs > 0.1:
+            Z_back = x2_vertex + get_sag(r2, R, is_para2, para_sag2)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color="green", rstride=2, cstride=2)

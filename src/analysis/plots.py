@@ -24,6 +24,14 @@ def _sag(radius: float, y: float) -> float:
     return sag if radius > 0 else -sag
 
 
+def _parabolic_sag(sag_at_edge: float, y: float, half_d: float) -> float:
+    """Parabolic sag at height y given sag at rim (half_d)."""
+    if abs(half_d) < 1e-9:
+        return 0
+    y_c = max(-half_d, min(y, half_d))
+    return sag_at_edge * (y_c * y_c) / (half_d * half_d)
+
+
 def draw_system_outline(ax, system: OpticalSystem) -> None:
     """Draw the lens element outlines of ``system`` onto ``ax`` (Z vs Y).
 
@@ -42,22 +50,32 @@ def draw_system_outline(ax, system: OpticalSystem) -> None:
         r1 = lens.radius_of_curvature_1
         r2 = lens.radius_of_curvature_2
         thickness = lens.thickness
+        is_para1 = bool(getattr(lens, "is_parabolic_1", False))
+        para_sag1 = float(getattr(lens, "parabolic_sag_1", 0.0))
+        is_para2 = bool(getattr(lens, "is_parabolic_2", False))
+        para_sag2 = float(getattr(lens, "parabolic_sag_2", 0.0))
+
+        def _sag1(y: float) -> float:
+            return _parabolic_sag(para_sag1, y, half_d) if is_para1 else _sag(r1, y)
+
+        def _sag2(y: float) -> float:
+            return _parabolic_sag(para_sag2, y, half_d) if is_para2 else _sag(r2, y)
 
         # Editor convention: front vertex at current_z, rim distance = thickness
         # Matches src/gui/widgets/lens_viz_2d.py:147 / simulation_viz:295
-        sag1_edge = _sag(r1, half_d)
+        sag1_edge = _sag1(half_d)
         x1_vertex = current_z
         x1_edge = x1_vertex + sag1_edge
         x2_edge = x1_edge + thickness
-        sag2_edge = _sag(r2, half_d)
+        sag2_edge = _sag2(half_d)
         x2_vertex = x2_edge - sag2_edge
 
         # Use same 50-point sampling as the editor widgets for pixel-perfect match
         pts = 50
         y_front = [-half_d + (2 * half_d * j / pts) for j in range(pts + 1)]
-        z1 = [x1_vertex + _sag(r1, abs(yv)) for yv in y_front]
+        z1 = [x1_vertex + _sag1(abs(yv)) for yv in y_front]
         y_back = [half_d - (2 * half_d * j / pts) for j in range(pts + 1)]
-        z2 = [x2_vertex + _sag(r2, abs(yv)) for yv in y_back]
+        z2 = [x2_vertex + _sag2(abs(yv)) for yv in y_back]
 
         # Filled lens (matches editor's translucent fill) + colored outlines
         # Build closed polygon: front (top->bottom) -> bottom edge -> back (bottom->top) -> top edge
