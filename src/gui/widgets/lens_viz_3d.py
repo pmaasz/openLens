@@ -123,7 +123,9 @@ class _3DVisualizationWidget(QWidget):
         theta = np.linspace(0, 2 * np.pi, 36)
 
         # Helper for sag – handles parabolic (sag at D/2)
-        def get_sag(r: float, y: Any, is_para: bool = False, para_sag: float = 0.0) -> Any:
+        def get_sag(
+            r: float, y: Any, is_para: bool = False, para_sag: float = 0.0
+        ) -> Any:
             """Return the surface sag for radius ``r`` at height ``y``."""
             if is_para:
                 if abs(max_r) < 1e-9:
@@ -138,14 +140,14 @@ class _3DVisualizationWidget(QWidget):
             sag = r_a - np.sqrt(np.maximum(0, r_a**2 - y_safe**2))
             return sag if r > 0 else -sag
 
-        # Calculate geometry (same as 2D)
+        # Calculate geometry (same as 2D):
+        # thickness is CENTER (vertex to vertex) thickness.
         sag1_edge = get_sag(r1, max_r, is_para1, para_sag1)
-        x1_vertex = 0
-        x1_edge = x1_vertex + sag1_edge
-
-        x2_edge = x1_edge + thickness
         sag2_edge = get_sag(r2, max_r, is_para2, para_sag2)
-        x2_vertex = x2_edge - sag2_edge
+        x1_vertex = 0
+        x2_vertex = x1_vertex + thickness
+        x1_edge = x1_vertex + sag1_edge
+        x2_edge = x2_vertex + sag2_edge
 
         # Circle at front edge
         x_front = max_r * np.cos(theta)
@@ -176,14 +178,18 @@ class _3DVisualizationWidget(QWidget):
             Z_front = x1_vertex + get_sag(r1, R, is_para1, para_sag1)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
-            self._ax.plot_surface(X, Y, Z_front, alpha=0.5, color="blue", rstride=2, cstride=2)
+            self._ax.plot_surface(
+                X, Y, Z_front, alpha=0.5, color="blue", rstride=2, cstride=2
+            )
 
         # Back surface (green)
         if is_para2 or r2_abs > 0.1:
             Z_back = x2_vertex + get_sag(r2, R, is_para2, para_sag2)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
-            self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color="green", rstride=2, cstride=2)
+            self._ax.plot_surface(
+                X, Y, Z_back, alpha=0.5, color="green", rstride=2, cstride=2
+            )
 
         # Set axis limits on lens axis only
         z_min = min(

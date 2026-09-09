@@ -35,13 +35,10 @@ def _parabolic_sag(sag_at_edge: float, y: float, half_d: float) -> float:
 def draw_system_outline(ax, system: OpticalSystem) -> None:
     """Draw the lens element outlines of ``system`` onto ``ax`` (Z vs Y).
 
-    Uses the same edge-thickness convention as the 2D editor widgets
-    (lens_viz_2d, simulation_viz, assembly_viz) so the ghost dialog
-    matches the Editor tab: the rim-to-rim distance is ``lens.thickness``
-    and the vertex separation is ``thickness + sag1 - sag2``. The
-    previous center-thickness placement (``current_z + thickness + sag2``)
-    produced a pointy/spindle outline for large apertures that did not
-    match the editor.
+    Canonical convention: ``lens.thickness`` is the CENTER (vertex to
+    vertex) thickness, matching the ray tracers, the ABCD matrix, the
+    lensmaker equation, and ``LensGeometry``. The rim (edge) thickness is
+    derived as ``thickness - sag1 + sag2`` at the clear aperture.
     """
     current_z = 0.0
     for i, element in enumerate(system.elements):
@@ -61,14 +58,14 @@ def draw_system_outline(ax, system: OpticalSystem) -> None:
         def _sag2(y: float) -> float:
             return _parabolic_sag(para_sag2, y, half_d) if is_para2 else _sag(r2, y)
 
-        # Editor convention: front vertex at current_z, rim distance = thickness
-        # Matches src/gui/widgets/lens_viz_2d.py:147 / simulation_viz:295
+        # Vertex convention: front vertex at current_z, back vertex at +thickness
+        # (matches tracer_2d/3d, optical_system ABCD, LensGeometry).
         sag1_edge = _sag1(half_d)
-        x1_vertex = current_z
-        x1_edge = x1_vertex + sag1_edge
-        x2_edge = x1_edge + thickness
         sag2_edge = _sag2(half_d)
-        x2_vertex = x2_edge - sag2_edge
+        x1_vertex = current_z
+        x2_vertex = x1_vertex + thickness
+        x1_edge = x1_vertex + sag1_edge
+        x2_edge = x2_vertex + sag2_edge
 
         # Use same 50-point sampling as the editor widgets for pixel-perfect match
         pts = 50
