@@ -191,9 +191,7 @@ class LensViz2DWidget(QWidget):
         half_d = diameter / 2
 
         # Helper to get sag at y – handles parabolic (sag at D/2)
-        def get_sag(
-            r: float, y: float, is_para: bool = False, para_sag: float = 0.0
-        ) -> float:
+        def get_sag(r: float, y: float, is_para: bool = False, para_sag: float = 0.0) -> float:
             """Return the surface sag for radius ``r`` at height ``y``."""
             if is_para:
                 if abs(half_d) < 1e-9:

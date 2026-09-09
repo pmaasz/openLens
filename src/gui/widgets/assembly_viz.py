@@ -85,9 +85,7 @@ class AssemblyVisualizationWidget(QWidget):
             self._draw_lens(painter, lens, cx, cy, scale, color)
 
             if i < len(self._system.air_gaps):
-                cx += (
-                    lens.thickness * scale + self._system.air_gaps[i].thickness * scale
-                )
+                cx += lens.thickness * scale + self._system.air_gaps[i].thickness * scale
             else:
                 cx += lens.thickness * scale
 
@@ -111,9 +109,7 @@ class AssemblyVisualizationWidget(QWidget):
             color: Fill and outline color for the lens.
         """
 
-        def get_sag(
-            r: float, y: float, is_para: bool = False, para_sag: float = 0.0
-        ) -> float:
+        def get_sag(r: float, y: float, is_para: bool = False, para_sag: float = 0.0) -> float:
             """Return the surface sag for radius ``r`` at height ``y``."""
             if is_para:
                 r_max = half_d
