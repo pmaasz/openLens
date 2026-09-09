@@ -125,7 +125,7 @@ class Lens:
 | `radius_of_curvature_1` | float | 100.0 | Front surface radius (mm), positive=convex |
 | `radius_of_curvature_2` | float | -100.0 | Back surface radius (mm), negative=convex |
 | `thickness` | float | 5.0 | Center thickness (mm) |
-| `diameter` | float | 50.0 | Physical diameter (mm) |
+| `diameter` | float | 40.0 | Physical diameter (mm) |
 | `refractive_index` | float | 1.5168 | Refractive index at design wavelength |
 | `lens_type` | str | "Biconvex" | Lens type classification |
 | `material` | str | "BK7" | Optical material name |

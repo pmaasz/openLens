@@ -9,7 +9,11 @@ serialization, independent of the CLI manager in lens_editor.
 import unittest
 
 from src.lens import Lens
-from src.validation import ValidationError, validate_radius
+from src.validation import (
+    ValidationError,
+    validate_radius,
+    check_physical_feasibility,
+)
 
 
 class TestLensConstruction(unittest.TestCase):
@@ -32,6 +36,43 @@ class TestLensConstruction(unittest.TestCase):
     def test_ids_are_unique_per_instance(self):
         """Two lenses never share an id (uuid4)"""
         self.assertNotEqual(Lens().id, Lens().id)
+
+    def test_default_lens_is_feasible(self):
+        """Default geometry has positive edge thickness (surfaces do not cross)"""
+        lens = Lens()
+        edge = lens.calculate_edge_thickness()
+        self.assertIsNotNone(edge)
+        self.assertGreater(edge, 0)
+        feasible, message = check_physical_feasibility(
+            lens.radius_of_curvature_1,
+            lens.radius_of_curvature_2,
+            lens.thickness,
+            lens.diameter,
+        )
+        self.assertTrue(feasible)
+        self.assertIsNone(message)
+
+    def test_edge_thickness_none_when_aperture_overhangs(self):
+        """|R| < D/2 gives undefined sag, so edge thickness is None"""
+        lens = Lens(
+            radius_of_curvature_1=20.0,
+            radius_of_curvature_2=-20.0,
+            thickness=5.0,
+            diameter=50.0,
+        )
+        self.assertIsNone(lens.calculate_edge_thickness())
+
+    def test_edge_thickness_negative_when_surfaces_cross(self):
+        """R=86.63/-109.97, t=5, D=50 crosses inside the aperture"""
+        lens = Lens(
+            radius_of_curvature_1=86.63,
+            radius_of_curvature_2=-109.97,
+            thickness=5.0,
+            diameter=50.0,
+        )
+        edge = lens.calculate_edge_thickness()
+        self.assertIsNotNone(edge)
+        self.assertLess(edge, 0)
 
 
 class TestLensOptics(unittest.TestCase):

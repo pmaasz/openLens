@@ -452,6 +452,35 @@ def check_physical_feasibility(
     """
     warnings = []
 
+    # Hard geometric check: thickness is the CENTER (vertex to vertex)
+    # thickness, so the rim thickness (thickness - sag1 + sag2) must be
+    # positive or the surfaces intersect within the clear aperture.
+    hard_error = None
+    h = diameter / 2
+    sags = []
+    for r in (radius1, radius2):
+        if r is None or not math.isfinite(r) or abs(r) < EPSILON:
+            sags.append(0.0)  # Flat surface
+            continue
+        if abs(h) > abs(r):
+            hard_error = (
+                f"Aperture overhangs a surface (|R| = {abs(r):.1f}mm < "
+                f"D/2 = {h:.1f}mm) - no real surface exists at the rim. "
+                "Reduce the diameter or flatten the radii."
+            )
+            break
+        r_a = abs(r)
+        sag = r_a - math.sqrt(max(0.0, r_a * r_a - h * h))
+        sags.append(sag if r > 0 else -sag)
+    if hard_error is None:
+        edge = thickness - sags[0] + sags[1]
+        if edge <= 0:
+            hard_error = (
+                f"Surfaces intersect within the clear aperture (edge thickness "
+                f"{edge:.2f}mm <= 0). Increase center thickness, reduce diameter, "
+                "or flatten the radii."
+            )
+
     min_radius = min(abs(radius1), abs(radius2))
 
     # Check if thickness is reasonable compared to radii
@@ -474,6 +503,11 @@ def check_physical_feasibility(
             f"Lens is very thin ({thickness:.1f}mm) relative to "
             f"diameter ({diameter:.1f}mm). May be fragile."
         )
+
+    if hard_error is not None:
+        if warnings:
+            return False, hard_error + " " + " ".join(warnings)
+        return False, hard_error
 
     if warnings:
         return False, " ".join(warnings)

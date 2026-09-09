@@ -138,14 +138,14 @@ class _3DVisualizationWidget(QWidget):
             sag = r_a - np.sqrt(np.maximum(0, r_a**2 - y_safe**2))
             return sag if r > 0 else -sag
 
-        # Calculate geometry (same as 2D)
+        # Calculate geometry (same as 2D):
+        # thickness is CENTER (vertex to vertex) thickness.
         sag1_edge = get_sag(r1, max_r, is_para1, para_sag1)
-        x1_vertex = 0
-        x1_edge = x1_vertex + sag1_edge
-
-        x2_edge = x1_edge + thickness
         sag2_edge = get_sag(r2, max_r, is_para2, para_sag2)
-        x2_vertex = x2_edge - sag2_edge
+        x1_vertex = 0
+        x2_vertex = x1_vertex + thickness
+        x1_edge = x1_vertex + sag1_edge
+        x2_edge = x2_vertex + sag2_edge
 
         # Circle at front edge
         x_front = max_r * np.cos(theta)

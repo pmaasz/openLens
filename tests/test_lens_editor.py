@@ -11,6 +11,7 @@ import tempfile
 from datetime import datetime
 import sys
 
+from src.constants import DEFAULT_DIAMETER
 from src.lens import Lens
 from src.lens_editor import LensManager
 
@@ -25,7 +26,7 @@ class TestLens(unittest.TestCase):
         self.assertEqual(lens.radius_of_curvature_1, 100.0)
         self.assertEqual(lens.radius_of_curvature_2, -100.0)
         self.assertEqual(lens.thickness, 5.0)
-        self.assertEqual(lens.diameter, 50.0)
+        self.assertEqual(lens.diameter, DEFAULT_DIAMETER)
         self.assertAlmostEqual(lens.refractive_index, 1.5168, places=4)
         self.assertEqual(lens.lens_type, "Biconvex")
         self.assertEqual(lens.material, "BK7")

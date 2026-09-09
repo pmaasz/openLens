@@ -235,8 +235,49 @@ class MeritFunction:
     # Physical constraint helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _sags_valid(lens, h: float) -> bool:
+        """True if spherical sags at height *h* are geometrically defined.
+
+        A spherical surface with |R| < h has no real sag (the aperture
+        overhangs the sphere); ``_get_sag`` returns a sentinel in that case.
+        Parabolic surfaces are defined for all h within the aperture.
+        """
+        import math as _math
+
+        for surface in (1, 2):
+            is_para = bool(getattr(lens, f"is_parabolic_{surface}", False))
+            if is_para:
+                continue
+            r = lens.radius_of_curvature_1 if surface == 1 else lens.radius_of_curvature_2
+            try:
+                rf = float(r)
+            except (TypeError, ValueError):
+                return False
+            if not _math.isfinite(rf):
+                continue
+            if abs(rf) < 1e-6:
+                continue
+            if abs(h) > abs(rf):
+                return False
+        try:
+            for surface in (1, 2):
+                s = _get_sag_for_lens(lens, surface, h)
+                if not _math.isfinite(float(s)):
+                    return False
+        except Exception:
+            return False
+        return True
+
     def _penalty_physical(self, system: OpticalSystem) -> float:
-        """Penalties for invalid geometries (thickness, air gaps, edge clearance)."""
+        """Penalties for invalid geometries (thickness, air gaps, edge clearance).
+
+        Canonical convention: ``Lens.thickness`` is the CENTER (vertex to
+        vertex) thickness, matching the ray tracers (tracer_2d/3d), the ABCD
+        matrix, the lensmaker equation, and ``LensGeometry``. The rim (edge)
+        thickness is derived as ``thickness - sag1 + sag2`` evaluated at the
+        clear aperture.
+        """
         merit = 0.0
         min_ct = self.constraints.get("min_center_thickness", 1.0)
         max_ct = self.constraints.get("max_center_thickness", 100.0)
@@ -246,18 +287,43 @@ class MeritFunction:
 
         for element in system.elements:
             lens = element.lens
-            if lens.thickness < min_ct:
-                merit += 1e5 * (min_ct - lens.thickness) ** 2
-            if lens.thickness > max_ct:
-                merit += 1e3 * (lens.thickness - max_ct) ** 2
+            # Center (vertex separation) thickness IS lens.thickness.
+            center_thickness = lens.thickness
+            if center_thickness <= 0:
+                # Hard infeasible: vertices crossed/coincident (inside-out lens).
+                merit += 1e8
+            if center_thickness < min_ct:
+                merit += 1e5 * (min_ct - center_thickness) ** 2
+            if center_thickness > max_ct:
+                merit += 1e3 * (center_thickness - max_ct) ** 2
 
             try:
                 y = lens.diameter / 2.0
+                if not self._sags_valid(lens, y):
+                    # Aperture overhangs a spherical surface (|R| < h):
+                    # sag formula is undefined there (sentinel value).
+                    merit += 1e8
+                    continue
                 s1 = _get_sag_for_lens(lens, 1, y)
                 s2 = _get_sag_for_lens(lens, 2, y)
-                edge_thickness = lens.thickness - s1 + s2
+                edge_thickness = center_thickness - s1 + s2
+                if edge_thickness <= 0:
+                    # Hard infeasible: rim collapse / surfaces crossed at edge.
+                    merit += 1e8
                 if edge_thickness < min_et:
                     merit += 1e4 * (min_et - edge_thickness) ** 2
+                # Interior check: meniscus shapes can self-intersect inside
+                # the aperture even when center and rim are both positive.
+                for frac in (0.5, 0.7071):
+                    yi = y * frac
+                    si1 = _get_sag_for_lens(lens, 1, yi)
+                    si2 = _get_sag_for_lens(lens, 2, yi)
+                    ti = center_thickness - si1 + si2
+                    if ti <= 0:
+                        merit += 1e8
+                        break
+                    if ti < min_et:
+                        merit += 1e4 * (min_et - ti) ** 2
             except Exception:
                 merit += 1e5
 
@@ -269,9 +335,14 @@ class MeritFunction:
                 lens1 = system.elements[i].lens
                 lens2 = system.elements[i + 1].lens
                 max_h = min(lens1.diameter, lens2.diameter) / 2.0
+                if not self._sags_valid(lens1, max_h) or not self._sags_valid(lens2, max_h):
+                    merit += 1e8
+                    continue
                 s_back_1 = _get_sag_for_lens(lens1, 2, max_h)
                 s_front_2 = _get_sag_for_lens(lens2, 1, max_h)
                 edge_clearance = gap.thickness + s_front_2 - s_back_1
+                if edge_clearance <= 0:
+                    merit += 1e8
                 if edge_clearance < min_ec:
                     merit += 1e5 * (min_ec - edge_clearance) ** 2
 

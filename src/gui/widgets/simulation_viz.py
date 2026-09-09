@@ -329,13 +329,13 @@ class SimulationVisualizationWidget(QWidget):
             is_para2 = bool(getattr(lens, "is_parabolic_2", False))
             para_sag2 = float(getattr(lens, "parabolic_sag_2", 0.0))
 
+            # thickness is CENTER (vertex to vertex) thickness.
             x1_vertex = start_x
+            x2_vertex = x1_vertex + t * sc
             sag1_edge = get_sag(r1, half_d, is_para1, para_sag1)
-            x1_edge = x1_vertex + sag1_edge * sc
-
-            x2_edge = x1_edge + t * sc
             sag2_edge = get_sag(r2, half_d, is_para2, para_sag2)
-            x2_vertex = x2_edge - sag2_edge * sc
+            x1_edge = x1_vertex + sag1_edge * sc
+            x2_edge = x2_vertex + sag2_edge * sc
 
             path = QPainterPath()
             pts = 50
