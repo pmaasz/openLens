@@ -268,6 +268,91 @@ else:
             widget.update_system(system)
             self._grab(widget)
 
+    class TestDatabaseRoundTrip(unittest.TestCase):
+        """Spinbox edits must reach the SQLite database."""
+
+        def setUp(self):
+            """Window wired to a hermetic temp database.
+
+            Startup already creates the default lens synchronously; the
+            deferred library load is left to fire (or not) on its own so
+            the adoption guard is exercised the way production hits it.
+            """
+            from src.gui.storage import LensStorage
+
+            self.temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
+            self.window = OpenLensWindow()
+            self.window._storage = LensStorage(self.temp_db)
+            self.window._db_path = self.temp_db
+
+        def tearDown(self):
+            """Close the window and remove the temp database."""
+            self.window.close()
+            if os.path.exists(self.temp_db):
+                os.remove(self.temp_db)
+            for ext in ["-shm", "-wal"]:
+                if os.path.exists(self.temp_db + ext):
+                    os.remove(self.temp_db + ext)
+
+        def _rows_for(self, lens_id):
+            """Fresh-read rows for one lens id from the temp database."""
+            from src.gui.storage import LensStorage
+
+            return [x for x in LensStorage(self.temp_db).load_lenses() if x.id == lens_id]
+
+        def test_deferred_load_adopts_working_lens(self):
+            """Firing the deferred library load must not orphan the editor.
+
+            Regression: the startup default was wiped from the library list
+            while the editor still showed it, so edits never reached the DB.
+            """
+            QApplication.processEvents()  # fires singleShot _load_from_database
+            lens = self.window._current_lens
+            self.assertIsNotNone(lens)
+            self.assertIn(lens.id, [x.id for x in self.window._lenses])
+            self.window._lens_editor._r1_input.setValue(60.0)
+            rows = self._rows_for(lens.id)
+            self.assertEqual(len(rows), 1)
+            self.assertAlmostEqual(rows[0].radius_of_curvature_1, 60.0)
+
+        def test_spinbox_edit_persists(self):
+            """Editing radius/diameter writes through to the database row."""
+            lens = self.window._current_lens
+            self.window._lens_editor._r1_input.setValue(60.0)
+            self.window._lens_editor._diameter_input.setValue(30.0)
+
+            rows = self._rows_for(lens.id)
+            self.assertEqual(len(rows), 1)
+            self.assertAlmostEqual(rows[0].radius_of_curvature_1, 60.0)
+            self.assertAlmostEqual(rows[0].diameter, 30.0)
+            # Edge-lock compensation in the model reaches the row too.
+            self.assertAlmostEqual(rows[0].thickness, lens.thickness)
+
+        def test_repeated_edits_upsert_same_row(self):
+            """Two edits update one row instead of inserting duplicates."""
+            lens = self.window._current_lens
+            self.window._lens_editor._r1_input.setValue(60.0)
+            self.window._lens_editor._r1_input.setValue(80.0)
+            QApplication.processEvents()
+
+            rows = self._rows_for(lens.id)
+            self.assertEqual(len(rows), 1)
+            self.assertAlmostEqual(rows[0].radius_of_curvature_1, 80.0)
+
+        def test_modified_at_bumps_on_edit(self):
+            """The persisted modified stamp advances past construction time."""
+            import datetime
+
+            lens = self.window._current_lens
+            before = lens.modified_at
+            self.window._lens_editor._thickness_input.setValue(6.0)
+            QApplication.processEvents()
+
+            self.assertNotEqual(lens.modified_at, before)
+            datetime.datetime.fromisoformat(lens.modified_at)
+            rows = self._rows_for(lens.id)
+            self.assertEqual(rows[0].modified_at, lens.modified_at)
+
     def run_gui_tests():
         """Run all GUI tests and return results"""
         loader = unittest.TestLoader()
@@ -275,6 +360,7 @@ else:
         suite.addTests(loader.loadTestsFromTestCase(TestOpenLensGUI))
         suite.addTests(loader.loadTestsFromTestCase(TestLensEditorWidget))
         suite.addTests(loader.loadTestsFromTestCase(TestOutlineRenderingSmoke))
+        suite.addTests(loader.loadTestsFromTestCase(TestDatabaseRoundTrip))
         runner = unittest.TextTestRunner(verbosity=2)
         return runner.run(suite)
 

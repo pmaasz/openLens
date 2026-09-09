@@ -3,6 +3,7 @@ OpenLens PySide6 Lens Editor Widget
 Main editor widget for lens properties with visualization
 """
 
+from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
 from PySide6.QtWidgets import (
@@ -283,10 +284,16 @@ class LensEditorWidget(QWidget):
 
         return frame
 
+    def _touch_lens(self) -> None:
+        """Stamp the model modified time (shown in the UI and persisted)."""
+        if self._lens is not None:
+            self._lens.modified_at = datetime.now().isoformat()
+
     def _on_name_changed(self, name: str) -> None:
         """Handle name change"""
         if self._lens:
             self._lens.name = name
+            self._touch_lens()
             self.lens_modified.emit(self._lens)
 
     def _on_parabolic_changed(self) -> None:
@@ -303,6 +310,7 @@ class LensEditorWidget(QWidget):
             self._lens.parabolic_sag_1 = self._para1_sag_input.value()
             self._lens.is_parabolic_2 = is_p2
             self._lens.parabolic_sag_2 = self._para2_sag_input.value()
+            self._touch_lens()
             self._update_calculated()
             self._viz_widget.update_lens(self._lens)
             self.lens_modified.emit(self._lens)
@@ -327,6 +335,7 @@ class LensEditorWidget(QWidget):
                 self._lens.thickness = self._thickness_input.value()
                 self._lens.diameter = self._diameter_input.value()
             self._lens.refractive_index = self._n_input.value()
+            self._touch_lens()
             # Sync parabolic sag diameters if needed (sag stays as absolute distance)
             self._update_calculated()
             self._viz_widget.update_lens(self._lens)
@@ -384,6 +393,7 @@ class LensEditorWidget(QWidget):
         if self._lens:
             self._lens.refractive_index = self._n_input.value()
             self._lens.material = material
+            self._touch_lens()
             self._update_calculated()
             if self._viz_widget:
                 self._viz_widget.update_lens(self._lens)
@@ -408,6 +418,7 @@ class LensEditorWidget(QWidget):
         if enabled and self._lens:
             self._lens.is_fresnel = True
             self._lens.groove_pitch = self._groove_pitch_input.value()
+            self._touch_lens()
             self._update_groove_count()
             self.lens_modified.emit(self._lens)
             self.lens_updated.emit()
@@ -421,6 +432,7 @@ class LensEditorWidget(QWidget):
         """Handle groove pitch change"""
         if self._lens and getattr(self._lens, "is_fresnel", False):
             self._lens.groove_pitch = value
+            self._touch_lens()
             self._update_groove_count()
             self.lens_modified.emit(self._lens)
             self.lens_updated.emit()

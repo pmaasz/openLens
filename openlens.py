@@ -110,7 +110,24 @@ class OpenLensWindow(QMainWindow):
             logger.info("Loaded %d lenses and %d assemblies from database",
                         len(self._lenses), len(self._assemblies))
             self._update_status(f"Loaded library: {len(self._lenses)} lenses, {len(self._assemblies)} assemblies")
-            
+
+            # Never orphan working state: this load runs deferred after startup
+            # created an (unsaved) default, and open_* actions append unsaved
+            # items too. Anything current but missing from the loaded rows is
+            # adopted into the in-memory library, so the editor always shows
+            # a member whose edits reach the database on the next save.
+            # Adoption is in-memory only (nothing is written here), so no
+            # duplicate rows can accumulate across restarts.
+            loaded_ids = {getattr(x, "id", None) for x in self._lenses + self._assemblies}
+            for attr, bucket in (
+                ("_current_lens", self._lenses),
+                ("_current_assembly", self._assemblies),
+            ):
+                current = getattr(self, attr, None)
+                if current is not None and getattr(current, "id", None) not in loaded_ids:
+                    bucket.append(current)
+                    loaded_ids.add(current.id)
+
             # Update tabs that depend on the loaded library
             self._update_all_tabs()
             
