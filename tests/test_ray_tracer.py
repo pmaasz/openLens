@@ -294,6 +294,32 @@ class TestLensRayTracer(unittest.TestCase):
         # Ray should be marked as terminated
         self.assertTrue(ray.terminated)
 
+    def test_back_surface_miss_returns_none(self):
+        """No forward back-sphere hit must MISS, not fabricate a zero-length hit."""
+        steep = Lens(
+            radius_of_curvature_1=30.0,
+            radius_of_curvature_2=-30.0,
+            thickness=5.0,
+            diameter=50.0,
+            refractive_index=1.5,
+        )
+        tracer = LensRayTracer(steep)
+        # Ray inside the glass, aimed so it misses the back sphere forward.
+        ray = Ray(x=2.0, y=20.0, angle_rad=math.radians(30))
+        hit = tracer._intersect_sphere_surface(
+            ray, tracer.back_center_x, abs(tracer.R2), is_front=False
+        )
+        self.assertIsNone(hit)
+
+    def test_back_surface_hit_still_found(self):
+        """Ordinary on-axis rays must still intersect the back surface."""
+        tracer = LensRayTracer(self.biconvex)
+        ray = Ray(x=-50.0, y=0.0, angle_rad=0.0)
+        hit = tracer._intersect_sphere_surface(
+            ray, tracer.back_center_x, abs(tracer.R2), is_front=False
+        )
+        self.assertIsNotNone(hit)
+
     def test_chromatic_dispersion(self):
         """Test that different wavelengths can be traced"""
         tracer = LensRayTracer(self.biconvex)
