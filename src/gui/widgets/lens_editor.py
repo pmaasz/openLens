@@ -79,9 +79,16 @@ class LensEditorWidget(QWidget):
                 'diameter').
             value: New numeric value for the property.
         """
+        # Radius drags on a parabolic surface would mutate hidden state the
+        # tracer ignores (it uses the sag), so they are dropped. The viz no
+        # longer offers those handles; this guards programmatic emits too.
         if prop == "r1":
+            if self._lens is not None and bool(getattr(self._lens, "is_parabolic_1", False)):
+                return
             self._r1_input.setValue(value)
         elif prop == "r2":
+            if self._lens is not None and bool(getattr(self._lens, "is_parabolic_2", False)):
+                return
             self._r2_input.setValue(value)
         elif prop == "thickness":
             self._thickness_input.setValue(value)
@@ -307,9 +314,20 @@ class LensEditorWidget(QWidget):
         self._r2_input.setEnabled(not is_p2)
         if self._lens:
             self._lens.is_parabolic_1 = is_p1
-            self._lens.parabolic_sag_1 = self._para1_sag_input.value()
             self._lens.is_parabolic_2 = is_p2
-            self._lens.parabolic_sag_2 = self._para2_sag_input.value()
+            # Unchecking is a true reset to spherical: zero the sag so stale
+            # values cannot resurrect on the next check.
+            for enabled, attr, spin in (
+                (is_p1, "parabolic_sag_1", self._para1_sag_input),
+                (is_p2, "parabolic_sag_2", self._para2_sag_input),
+            ):
+                if enabled:
+                    setattr(self._lens, attr, spin.value())
+                else:
+                    setattr(self._lens, attr, 0.0)
+                    spin.blockSignals(True)
+                    spin.setValue(0.0)
+                    spin.blockSignals(False)
             self._touch_lens()
             self._update_calculated()
             self._viz_widget.update_lens(self._lens)
@@ -330,8 +348,12 @@ class LensEditorWidget(QWidget):
                     self._diameter_input.value(),
                 )
             else:
-                self._lens.radius_of_curvature_1 = self._r1_input.value()
-                self._lens.radius_of_curvature_2 = self._r2_input.value()
+                # Radius boxes are disabled while parabolic; writing them
+                # would only churn hidden state the tracer ignores.
+                if not bool(getattr(self._lens, "is_parabolic_1", False)):
+                    self._lens.radius_of_curvature_1 = self._r1_input.value()
+                if not bool(getattr(self._lens, "is_parabolic_2", False)):
+                    self._lens.radius_of_curvature_2 = self._r2_input.value()
                 self._lens.thickness = self._thickness_input.value()
                 self._lens.diameter = self._diameter_input.value()
             self._lens.refractive_index = self._n_input.value()
@@ -361,8 +383,10 @@ class LensEditorWidget(QWidget):
             old_edge = lens.calculate_edge_thickness()
         except Exception:
             old_edge = None
-        lens.radius_of_curvature_1 = radius_1
-        lens.radius_of_curvature_2 = radius_2
+        if not bool(getattr(lens, "is_parabolic_1", False)):
+            lens.radius_of_curvature_1 = radius_1
+        if not bool(getattr(lens, "is_parabolic_2", False)):
+            lens.radius_of_curvature_2 = radius_2
         lens.diameter = diameter
         if old_edge is None or old_edge <= 0:
             return

@@ -122,6 +122,38 @@ class TestAdvancedOptimizer(unittest.TestCase):
         merit = optimizer.merit_function.evaluate(sys_flat)
         self.assertGreaterEqual(merit, 1e8)
 
+    def test_radius_variable_clears_parabolic_flag(self):
+        """Radius variables take effect on parabolic surfaces (no silent no-op)."""
+        lens = Lens(
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=25.0,
+            refractive_index=1.5,
+            is_parabolic_1=True,
+            parabolic_sag_1=3.0,
+        )
+        system = OpticalSystem("Parabolic System")
+        system.add_lens(lens)
+        optimizer = LensOptimizer(system, [], [])
+        f_before = system.elements[0].lens.calculate_focal_length()
+
+        optimizer._apply_single_variable(system, 0, "radius_of_curvature_1", 60.0)
+
+        applied = system.elements[0].lens
+        self.assertFalse(applied.is_parabolic_1)
+        self.assertEqual(applied.radius_of_curvature_1, 60.0)
+        self.assertNotAlmostEqual(applied.calculate_focal_length(), f_before)
+
+    def test_sag_variable_latches_parabolic_flag(self):
+        """Sag variables switch the surface to parabolic."""
+        optimizer = LensOptimizer(self.system, [], [])
+        optimizer._apply_single_variable(self.system, 0, "parabolic_sag_1", 2.5)
+
+        applied = self.system.elements[0].lens
+        self.assertTrue(applied.is_parabolic_1)
+        self.assertEqual(applied.parabolic_sag_1, 2.5)
+
     def test_coma_target(self):
         """Test that coma target can be evaluated"""
         targets = [

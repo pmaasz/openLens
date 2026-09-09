@@ -146,6 +146,25 @@ class TestLensTypePresets(unittest.TestCase):
         self.assertEqual(lens.radius_of_curvature_1, -100.0)
         self.assertEqual(lens.radius_of_curvature_2, 100.0)
 
+    def test_set_lens_type_clears_parabolic(self):
+        """Spherical type presets reset parabolic surfaces (exclusive)."""
+        lens = Lens(is_parabolic_1=True, parabolic_sag_1=3.0)
+        lens.set_lens_type("Biconvex")
+        self.assertFalse(lens.is_parabolic_1)
+        self.assertFalse(lens.is_parabolic_2)
+        self.assertEqual(lens.parabolic_sag_1, 0.0)
+        self.assertEqual(lens.parabolic_sag_2, 0.0)
+
+    def test_classify_uses_effective_radii(self):
+        """Parabolic shape classifies by sag, not stale spherical radii."""
+        lens = Lens(
+            radius_of_curvature_1=-100.0,  # stale concave value
+            radius_of_curvature_2=-100.0,
+            is_parabolic_1=True,
+            parabolic_sag_1=2.0,  # convex parabola (R_eff = +100)
+        )
+        self.assertEqual(lens.classify_lens_type(), "Biconvex")
+
 
 class TestLensSerialization(unittest.TestCase):
     """to_dict / from_dict round-trips"""

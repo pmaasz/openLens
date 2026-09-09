@@ -446,12 +446,18 @@ class Lens:
     def _update_radii_for_type(self) -> None:
         """Apply the standard radius preset for the current lens_type.
 
-        Unknown types leave the radii untouched.
+        Type presets are spherical, so applying one clears any parabolic
+        surface flags (setters exclusive). Unknown types leave the radii
+        untouched.
         """
         preset = LENS_TYPE_PRESET_RADII.get(self.lens_type)
         if preset is None:
             return
         self.radius_of_curvature_1, self.radius_of_curvature_2 = preset
+        self.is_parabolic_1 = False
+        self.is_parabolic_2 = False
+        self.parabolic_sag_1 = 0.0
+        self.parabolic_sag_2 = 0.0
 
     def set_lens_type(self, lens_type: str) -> None:
         """Set lens type and update radii accordingly."""
@@ -460,9 +466,13 @@ class Lens:
         self.modified_at = datetime.now().isoformat()
 
     def classify_lens_type(self) -> str:
-        """Classify lens type based on current radii values."""
-        r1 = self.radius_of_curvature_1
-        r2 = self.radius_of_curvature_2
+        """Classify lens type based on current radii values.
+
+        Uses effective (vertex) radii so parabolic surfaces classify by the
+        shape the tracer actually sees rather than stale spherical radii.
+        """
+        r1 = self.get_effective_radius_1()
+        r2 = self.get_effective_radius_2()
 
         r1_flat = _is_flat(r1)
         r2_flat = _is_flat(r2)
