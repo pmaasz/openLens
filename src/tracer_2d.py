@@ -174,41 +174,20 @@ class LensRayTracer:
 
         valid_ts = [t for t in [t1, t2] if t > EPSILON]
         if not valid_ts:
-            if not is_front:
-                dist_sq = (ray.x - center_x) ** 2 + ray.y**2
-                R_sq = R**2
-                R_signed = self.R2 if not is_front else self.R1
-                already_exited = False
-                if R_signed < 0 and dist_sq > R_sq:
-                    already_exited = True
-                elif R_signed > 0 and dist_sq < R_sq:
-                    already_exited = True
-                if already_exited:
-                    return (ray.x, ray.y)
             return None
 
-        R_signed = self.R1 if is_front else self.R2
-        if is_front:
-            t = min(valid_ts) if R_signed > 0 else max(valid_ts)
-        else:
-            t = max(valid_ts) if R_signed < 0 else min(valid_ts)
-
-        x = ray.x + t * dx
-        y = ray.y + t * dy
-
-        if abs(y) > self.D / 2:
-            if len(valid_ts) > 1:
-                if is_front:
-                    t_other = max(valid_ts) if R_signed > 0 else min(valid_ts)
-                else:
-                    t_other = min(valid_ts) if R_signed < 0 else max(valid_ts)
-                x_other = ray.x + t_other * dx
-                y_other = ray.y + t_other * dy
-                if abs(y_other) <= self.D / 2:
-                    return (x_other, y_other)
-            return None
-
-        return (x, y)
+        # Mirror tracer_3d: a ray inside the sphere exits (max t), a ray
+        # outside enters (min t). A zero-length "hit" at the current
+        # position is never valid - it fabricates a refraction point and
+        # lets missed rays continue through the system.
+        dist_sq = (ray.x - center_x) ** 2 + ray.y**2
+        inside = dist_sq < R * R - EPSILON
+        for t in sorted(valid_ts, reverse=inside):
+            x = ray.x + t * dx
+            y = ray.y + t * dy
+            if abs(y) <= self.D / 2:
+                return (x, y)
+        return None
 
     def _intersect_parabolic_surface(
         self, ray: Ray, vertex_x: float, sag: float
