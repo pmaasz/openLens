@@ -256,7 +256,7 @@ class LensRayTracer3D:
         if surface_type == "front":
             center = self.front_center
             is_flat = self.front_is_flat
-            is_parabolic = getattr(self, "front_is_parabolic", False)
+            is_parabolic = self.front_is_parabolic
             vertex = self.front_vertex
             R = self.R1
             default_n1 = REFRACTIVE_INDEX_AIR
@@ -264,7 +264,7 @@ class LensRayTracer3D:
         elif surface_type == "back":
             center = self.back_center
             is_flat = self.back_is_flat
-            is_parabolic = getattr(self, "back_is_parabolic", False)
+            is_parabolic = self.back_is_parabolic
             vertex = self.back_vertex
             R = self.R2
             default_n1 = self.n

@@ -283,6 +283,24 @@ class TestLensRayTracer(unittest.TestCase):
         for ray in rays:
             self.assertGreater(len(ray.path), 1)
 
+    def test_parallel_fan_defaults_to_full_aperture(self):
+        """Default fan spans the full semi-aperture (rim SA traced)."""
+        tracer = LensRayTracer(self.biconvex)
+        rays = tracer.trace_parallel_rays(num_rays=5)
+        heights = sorted(abs(ray.path[0][1]) for ray in rays)
+        self.assertAlmostEqual(heights[-1], self.biconvex.diameter / 2, places=9)
+
+    def test_parallel_fan_explicit_fill(self):
+        """Legacy viz-style fill narrows the fan explicitly."""
+        from src.constants import APERTURE_FILL_FACTOR
+
+        tracer = LensRayTracer(self.biconvex)
+        rays = tracer.trace_parallel_rays(num_rays=5, fill=APERTURE_FILL_FACTOR)
+        heights = sorted(abs(ray.path[0][1]) for ray in rays)
+        self.assertAlmostEqual(
+            heights[-1], self.biconvex.diameter / 2 * APERTURE_FILL_FACTOR, places=9
+        )
+
     def test_ray_misses_lens(self):
         """Test behavior when ray misses the lens"""
         tracer = LensRayTracer(self.biconvex)

@@ -145,6 +145,58 @@ class TestAdvancedOptimizer(unittest.TestCase):
         self.assertEqual(applied.radius_of_curvature_1, 60.0)
         self.assertNotAlmostEqual(applied.calculate_focal_length(), f_before)
 
+    def test_empty_system_scores_infeasible(self):
+        """Unevaluatable targets share one INFEASIBLE scale (not 0.0)."""
+        from src.optimizer import INFEASIBLE_MERIT
+
+        system = OpticalSystem("Empty System")
+        optimizer = LensOptimizer(system, [], [])
+        merit = optimizer.merit_function.evaluate(system)
+        self.assertEqual(merit, 0.0)  # no targets, no elements: nothing to score
+        for target_name in ("coma", "astigmatism"):
+            target = OptimizationTarget(target_name, 0.0, weight=1.0, target_type="minimize")
+            value = optimizer.merit_function._TARGET_DISPATCH[target_name](
+                optimizer.merit_function, system, target
+            )
+            self.assertEqual(value, INFEASIBLE_MERIT)
+
+    def test_afocal_focal_length_scores_infeasible(self):
+        """Undefined focus scores INFEASIBLE, not a magic 1e6."""
+        from src.optimizer import INFEASIBLE_MERIT
+
+        afocal = Lens(
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=100.0,
+            thickness=0.0,
+            diameter=25.0,
+            refractive_index=1.0,  # n = 1 -> zero power -> None focal length
+        )
+        system = OpticalSystem("Afocal System")
+        system.add_lens(afocal)
+        optimizer = LensOptimizer(system, [], [])
+        target = OptimizationTarget("focal_length", 100.0, weight=1.0, target_type="target")
+        value = optimizer.merit_function._eval_focal_length(system, target)
+        self.assertEqual(value, INFEASIBLE_MERIT)
+
+    def test_chromatic_uses_magnitude(self):
+        """Signed LCA must not reward large negative aberration."""
+        system = OpticalSystem("Chromatic System")
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=100.0,
+                radius_of_curvature_2=-100.0,
+                thickness=5.0,
+                diameter=25.0,
+                refractive_index=1.5168,
+            )
+        )
+        optimizer = LensOptimizer(system, [], [])
+        target = OptimizationTarget("chromatic_aberration", 0.0, weight=2.0, target_type="minimize")
+        value = optimizer.merit_function._eval_chromatic(system, target)
+        expected = 2.0 * abs(system.calculate_chromatic_aberration()["longitudinal"])
+        self.assertAlmostEqual(value, expected, places=12)
+        self.assertGreaterEqual(value, 0.0)
+
     def test_diameter_variable_applies(self):
         """Diameter variables take effect (previously a silent no-op)."""
         optimizer = LensOptimizer(self.system, [], [])

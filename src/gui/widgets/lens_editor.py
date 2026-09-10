@@ -539,52 +539,28 @@ class LensEditorWidget(QWidget):
             self._num_grooves_value.setText(str(grooves))
 
     def _update_calculated(self) -> None:
-        """Update calculated properties"""
+        """Update calculated properties (delegates to the Lens model)."""
         if not self._lens:
             return
 
-        n = self._lens.refractive_index
-        # Use effective radius for parabolic surfaces
-        if hasattr(self._lens, "get_effective_radius_1"):
-            r1 = self._lens.get_effective_radius_1()
-            r2 = self._lens.get_effective_radius_2()
-        else:
-            r1 = self._lens.radius_of_curvature_1
-            r2 = self._lens.radius_of_curvature_2
-        t = self._lens.thickness
-
-        if r1 == 0:
-            r1 = float("inf")
-        if r2 == 0:
-            r2 = float("inf")
-
-        power1 = (n - 1) / r1 if r1 != float("inf") else 0
-        power2 = -(n - 1) / r2 if r2 != float("inf") else 0
-
-        if r1 != float("inf") and r2 != float("inf") and r1 * r2 != 0:
-            power_spacing = (n - 1) ** 2 * t / (n * r1 * r2)
-        else:
-            power_spacing = 0
-
-        total_power = power1 + power2 + power_spacing
-
-        if abs(total_power) > 1e-10:
-            f = 1.0 / total_power
-            self._focal_label.setText(f"{f:.2f} mm")
-            self._power_label.setText(f"{1000/f:.2f} D")
-
-            # BFL and FFL – use effective radii
-            try:
-                bfl = self._lens.calculate_back_focal_length()
-                ffl = self._lens.calculate_front_focal_length()
-                self._bfl_label.setText(f"{bfl:.2f} mm" if abs(bfl) != float("inf") else "--")
-                self._ffl_label.setText(f"{ffl:.2f} mm" if abs(ffl) != float("inf") else "--")
-            except Exception:
-                self._bfl_label.setText("--")
-                self._ffl_label.setText("--")
-        else:
+        focal = self._lens.calculate_focal_length()
+        if focal is None:
             self._focal_label.setText("--")
             self._power_label.setText("--")
+            self._bfl_label.setText("--")
+            self._ffl_label.setText("--")
+            return
+
+        self._focal_label.setText(f"{focal:.2f} mm")
+        power = self._lens.calculate_optical_power()
+        self._power_label.setText(f"{power:.2f} D" if power is not None else "--")
+
+        try:
+            bfl = self._lens.calculate_back_focal_length()
+            ffl = self._lens.calculate_front_focal_length()
+            self._bfl_label.setText(f"{bfl:.2f} mm" if abs(bfl) != float("inf") else "--")
+            self._ffl_label.setText(f"{ffl:.2f} mm" if abs(ffl) != float("inf") else "--")
+        except Exception:
             self._bfl_label.setText("--")
             self._ffl_label.setText("--")
 
