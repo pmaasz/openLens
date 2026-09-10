@@ -457,6 +457,111 @@ else:
             rows = self._rows_for(lens.id)
             self.assertEqual(rows[0].modified_at, lens.modified_at)
 
+    class TestOptimizationCollection(unittest.TestCase):
+        """Variable collection is crash-free and flag-aware."""
+
+        def setUp(self):
+            """Standalone optimization tab (no parent refresh needed)."""
+            from src.gui.tabs.optimization_tab import OptimizationTab
+
+            self.tab = OptimizationTab()
+
+        def _box(self, checked=True):
+            """Real checkbox mimicking a refresh-built entry."""
+            from PySide6.QtWidgets import QCheckBox
+
+            box = QCheckBox()
+            box.setChecked(checked)
+            return box
+
+        def _lens(self, **kwargs):
+            """Spherical singlet with sane defaults."""
+            params = {
+                "radius_of_curvature_1": 100.0,
+                "radius_of_curvature_2": -100.0,
+                "thickness": 5.0,
+                "diameter": 40.0,
+                "refractive_index": 1.5168,
+            }
+            params.update(kwargs)
+            return Lens(**params)
+
+        def test_refresh_builds_exclusive_keys(self):
+            """Refresh emits exactly one of ps/r per surface, matching flags."""
+            import types
+
+            lens = self._lens(is_parabolic_1=True, parabolic_sag_1=2.0)
+            self.tab._parent = types.SimpleNamespace(_current_lens=lens, _current_assembly=None)
+            self.tab.refresh()
+            keys = set(self.tab._opt_check_vars)
+            self.assertIn("ps1_0", keys)
+            self.assertNotIn("r1_0", keys)
+            self.assertIn("r2_0", keys)
+            self.assertNotIn("ps2_0", keys)
+
+        def test_key_builder(self):
+            """Single format site produces the legacy key strings."""
+            from src.gui.tabs.optimization_tab import OptVarKey
+
+            self.assertEqual(OptVarKey.SAG1.at(2), "ps1_2")
+            self.assertEqual(OptVarKey.R1.at(0), "r1_0")
+            self.assertEqual(OptVarKey.THICKNESS.at(1), "th_1")
+            self.assertEqual(OptVarKey.GAP.at(0), "gap_0")
+            self.assertEqual(OptVarKey.DIAMETER.at(0), "d_0")
+
+        def test_collect_before_refresh_returns_empty(self):
+            """Run-before-refresh yields no variables, not a crash."""
+            lens = self._lens()
+            self.assertEqual(self.tab._collect_variables(lens), [])
+            system = OpticalSystem(name="Empty System")
+            system.add_lens(lens)
+            self.assertEqual(self.tab._collect_variables(system), [])
+
+        def test_stale_radius_key_skipped_when_parabolic(self):
+            """Checked r1 box + parabolic flag must not make a radius var."""
+            lens = self._lens(is_parabolic_1=True, parabolic_sag_1=2.0)
+            self.tab._opt_check_vars = {
+                "r1_0": self._box(True),
+                "th_0": self._box(False),
+            }
+            params = [v.parameter for v in self.tab._collect_variables(lens)]
+            self.assertNotIn("radius_of_curvature_1", params)
+            self.assertNotIn("parabolic_sag_1", params)
+
+        def test_stale_sag_key_skipped_when_spherical(self):
+            """Checked ps1 box + spherical flag must not latch parabolic."""
+            lens = self._lens()
+            self.tab._opt_check_vars = {
+                "ps1_0": self._box(True),
+                "r1_0": self._box(False),
+            }
+            params = [v.parameter for v in self.tab._collect_variables(lens)]
+            self.assertNotIn("parabolic_sag_1", params)
+            self.assertNotIn("radius_of_curvature_1", params)
+
+        def test_fresh_keys_collected_with_live_values(self):
+            """Fresh panel collects radius/thickness with current values."""
+            lens = self._lens()
+            self.tab._opt_check_vars = {
+                "r1_0": self._box(True),
+                "th_0": self._box(True),
+            }
+            by_param = {v.parameter: v for v in self.tab._collect_variables(lens)}
+            self.assertEqual(by_param["radius_of_curvature_1"].current_value, 100.0)
+            self.assertEqual(by_param["thickness"].current_value, 5.0)
+
+        def test_system_sag_bounds_scaled(self):
+            """System sag variables use diameter-scaled bounds."""
+            lens = self._lens(diameter=200.0, is_parabolic_1=True, parabolic_sag_1=2.0)
+            system = OpticalSystem(name="Wide System")
+            system.add_lens(lens)
+            self.tab._opt_check_vars = {"ps1_0": self._box(True)}
+            variables = self.tab._collect_variables(system)
+            self.assertEqual(len(variables), 1)
+            self.assertEqual(variables[0].parameter, "parabolic_sag_1")
+            self.assertEqual(variables[0].min_value, -100.0)
+            self.assertEqual(variables[0].max_value, 100.0)
+
     def run_gui_tests():
         """Run all GUI tests and return results"""
         loader = unittest.TestLoader()
@@ -465,6 +570,7 @@ else:
         suite.addTests(loader.loadTestsFromTestCase(TestLensEditorWidget))
         suite.addTests(loader.loadTestsFromTestCase(TestOutlineRenderingSmoke))
         suite.addTests(loader.loadTestsFromTestCase(TestDatabaseRoundTrip))
+        suite.addTests(loader.loadTestsFromTestCase(TestOptimizationCollection))
         runner = unittest.TextTestRunner(verbosity=2)
         return runner.run(suite)
 
