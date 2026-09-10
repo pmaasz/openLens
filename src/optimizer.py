@@ -692,6 +692,8 @@ class LensOptimizer:
             system.elements[element_index].lens.parabolic_sag_2 = value
         elif parameter == "thickness":
             system.elements[element_index].lens.thickness = value
+        elif parameter == "diameter":
+            system.elements[element_index].lens.diameter = value
         elif parameter == "air_gap":
             if element_index < len(system.air_gaps):
                 system.air_gaps[element_index].thickness = value

@@ -145,6 +145,12 @@ class TestAdvancedOptimizer(unittest.TestCase):
         self.assertEqual(applied.radius_of_curvature_1, 60.0)
         self.assertNotAlmostEqual(applied.calculate_focal_length(), f_before)
 
+    def test_diameter_variable_applies(self):
+        """Diameter variables take effect (previously a silent no-op)."""
+        optimizer = LensOptimizer(self.system, [], [])
+        optimizer._apply_single_variable(self.system, 0, "diameter", 30.0)
+        self.assertEqual(self.system.elements[0].lens.diameter, 30.0)
+
     def test_sag_variable_latches_parabolic_flag(self):
         """Sag variables switch the surface to parabolic."""
         optimizer = LensOptimizer(self.system, [], [])

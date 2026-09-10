@@ -5,6 +5,7 @@ Tab for lens and system optimization
 
 import logging
 import copy
+from enum import Enum
 from typing import Dict, List
 
 from PySide6.QtWidgets import (
@@ -28,6 +29,23 @@ from ..widgets.lens_viz_2d import LensViz2DWidget
 from ..widgets.assembly_viz import AssemblyVisualizationWidget
 from ...optimizer import OptimizationVariable, OptimizationTarget
 from ...validation import parabolic_sag_limit
+
+
+class OptVarKey(Enum):
+    """Variable checkbox key kinds (single builder below owns the format)."""
+
+    R1 = "r1"
+    R2 = "r2"
+    THICKNESS = "th"
+    INDEX = "n"
+    SAG1 = "ps1"
+    SAG2 = "ps2"
+    GAP = "gap"
+    DIAMETER = "d"
+
+    def at(self, index: int) -> str:
+        """Checkbox dict key for element ``index``, e.g. ``ps1_0``."""
+        return f"{self.value}_{index}"
 
 
 def _sag_bounds(lens) -> tuple:
@@ -274,11 +292,18 @@ class OptimizationTab(BaseTab):
         #     self._parent.opt_finished.connect(self._on_optimization_finished)
         #     self._parent.opt_failed.connect(self._on_optimization_failed)
 
+    def _is_checked(self, key: str) -> bool:
+        """None-safe checkbox state (False before the first refresh)."""
+        cb = self._opt_check_vars.get(key)
+        return bool(cb is not None and cb.isChecked())
+
     def refresh(self) -> None:
         """Update the variables list based on current selection (Lens or Assembly).
 
         Rebuilds the variable checkboxes and preview visualizations from the
-        parent window's current lens/system state.
+        parent window's current lens/system state. Runs on every lens edit
+        (via the main window update hook), so keys always match the live
+        parabolic flags; collection still re-checks the flags defensively.
         """
         # Clear existing
         while self._opt_vars_layout.count():
@@ -313,17 +338,18 @@ class OptimizationTab(BaseTab):
 
                 is_p1 = bool(getattr(element.lens, "is_parabolic_1", False))
                 is_p2 = bool(getattr(element.lens, "is_parabolic_2", False))
-                for label, param, key in [
-                    ("Radius 1", "radius_of_curvature_1", f"r1_{i}"),
-                    ("Radius 2", "radius_of_curvature_2", f"r2_{i}"),
-                    ("Thickness", "thickness", f"th_{i}"),
-                    ("Refractive Index", "refractive_index", f"n_{i}"),
+                for label, param, kind in [
+                    ("Radius 1", "radius_of_curvature_1", OptVarKey.R1),
+                    ("Radius 2", "radius_of_curvature_2", OptVarKey.R2),
+                    ("Thickness", "thickness", OptVarKey.THICKNESS),
+                    ("Refractive Index", "refractive_index", OptVarKey.INDEX),
                 ]:
                     # For parabolic surfaces show sag variable instead of radius
                     if param == "radius_of_curvature_1" and is_p1:
-                        label, param, key = ("Parabolic Sag 1", "parabolic_sag_1", f"ps1_{i}")
+                        label, param, kind = ("Parabolic Sag 1", "parabolic_sag_1", OptVarKey.SAG1)
                     if param == "radius_of_curvature_2" and is_p2:
-                        label, param, key = ("Parabolic Sag 2", "parabolic_sag_2", f"ps2_{i}")
+                        label, param, kind = ("Parabolic Sag 2", "parabolic_sag_2", OptVarKey.SAG2)
+                    key = kind.at(i)
                     val = getattr(element.lens, param)
                     cb = QCheckBox(f"{label} ({val:.2f})")
                     cb.setChecked(
@@ -336,7 +362,7 @@ class OptimizationTab(BaseTab):
                 if i < len(active_target.air_gaps):
                     gap_val = active_target.air_gaps[i].thickness
                     cb = QCheckBox(f"Air Gap to Next ({gap_val:.2f})")
-                    self._opt_check_vars[f"gap_{i}"] = cb
+                    self._opt_check_vars[OptVarKey.GAP.at(i)] = cb
                     vbox.addWidget(cb)
 
                 self._opt_vars_layout.addWidget(group)
@@ -351,18 +377,18 @@ class OptimizationTab(BaseTab):
             is_p2 = bool(getattr(active_target, "is_parabolic_2", False))
             items = []
             if is_p1:
-                items.append(("Parabolic Sag 1", "parabolic_sag_1", "ps1_0"))
+                items.append(("Parabolic Sag 1", "parabolic_sag_1", OptVarKey.SAG1.at(0)))
             else:
-                items.append(("Radius 1", "radius_of_curvature_1", "r1_0"))
+                items.append(("Radius 1", "radius_of_curvature_1", OptVarKey.R1.at(0)))
             if is_p2:
-                items.append(("Parabolic Sag 2", "parabolic_sag_2", "ps2_0"))
+                items.append(("Parabolic Sag 2", "parabolic_sag_2", OptVarKey.SAG2.at(0)))
             else:
-                items.append(("Radius 2", "radius_of_curvature_2", "r2_0"))
+                items.append(("Radius 2", "radius_of_curvature_2", OptVarKey.R2.at(0)))
             items.extend(
                 [
-                    ("Thickness", "thickness", "th_0"),
-                    ("Refractive Index", "refractive_index", "n_0"),
-                    ("Diameter", "diameter", "d_0"),
+                    ("Thickness", "thickness", OptVarKey.THICKNESS.at(0)),
+                    ("Refractive Index", "refractive_index", OptVarKey.INDEX.at(0)),
+                    ("Diameter", "diameter", OptVarKey.DIAMETER.at(0)),
                 ]
             )
             for label, param, key in items:
@@ -386,6 +412,170 @@ class OptimizationTab(BaseTab):
             if self._parent:
                 self._parent._update_status("Optimization stopped.")
             self._opt_apply_btn.setEnabled(False)
+
+    def _collect_variables(self, active_target) -> List[OptimizationVariable]:
+        """Build optimization variables from checkbox state and live flags.
+
+        Checkbox presence alone never decides spherical-vs-parabolic: the
+        live model flags do, so a stale panel (flags flipped without a
+        refresh) yields no variable instead of the wrong parameter. Missing
+        boxes (never refreshed) read as unchecked instead of crashing.
+        """
+        from ...optical_system import OpticalSystem
+
+        variables = []
+        if isinstance(active_target, OpticalSystem):
+            for i, element in enumerate(active_target.elements):
+                lens = element.lens
+                is_p1 = bool(getattr(lens, "is_parabolic_1", False))
+                is_p2 = bool(getattr(lens, "is_parabolic_2", False))
+                if is_p1 and self._is_checked(OptVarKey.SAG1.at(i)):
+                    variables.append(
+                        OptimizationVariable(
+                            f"ParaSag1_L{i+1}",
+                            i,
+                            "parabolic_sag_1",
+                            float(getattr(lens, "parabolic_sag_1", 0.0)),
+                            *_sag_bounds(lens),
+                        )
+                    )
+                elif not is_p1 and self._is_checked(OptVarKey.R1.at(i)):
+                    variables.append(
+                        OptimizationVariable(
+                            f"R1_L{i+1}",
+                            i,
+                            "radius_of_curvature_1",
+                            lens.radius_of_curvature_1,
+                            -10000,
+                            10000,
+                        )
+                    )
+                if is_p2 and self._is_checked(OptVarKey.SAG2.at(i)):
+                    variables.append(
+                        OptimizationVariable(
+                            f"ParaSag2_L{i+1}",
+                            i,
+                            "parabolic_sag_2",
+                            float(getattr(lens, "parabolic_sag_2", 0.0)),
+                            *_sag_bounds(lens),
+                        )
+                    )
+                elif not is_p2 and self._is_checked(OptVarKey.R2.at(i)):
+                    variables.append(
+                        OptimizationVariable(
+                            f"R2_L{i+1}",
+                            i,
+                            "radius_of_curvature_2",
+                            lens.radius_of_curvature_2,
+                            -10000,
+                            10000,
+                        )
+                    )
+                if self._is_checked(OptVarKey.THICKNESS.at(i)):
+                    variables.append(
+                        OptimizationVariable(
+                            f"Th_L{i+1}",
+                            i,
+                            "thickness",
+                            lens.thickness,
+                            self._opt_min_thickness.value(),
+                            self._opt_max_thickness.value(),
+                        )
+                    )
+                if self._is_checked(OptVarKey.INDEX.at(i)):
+                    variables.append(
+                        OptimizationVariable(
+                            f"N_L{i+1}",
+                            i,
+                            "refractive_index",
+                            lens.refractive_index,
+                            1.3,
+                            2.4,
+                        )
+                    )
+                if self._is_checked(OptVarKey.GAP.at(i)):
+                    variables.append(
+                        OptimizationVariable(
+                            f"Gap_{i+1}_{i+2}",
+                            i,
+                            "air_gap",
+                            active_target.air_gaps[i].thickness,
+                            self._opt_min_gap.value(),
+                            500,
+                        )
+                    )
+        else:
+            is_p1 = bool(getattr(active_target, "is_parabolic_1", False))
+            is_p2 = bool(getattr(active_target, "is_parabolic_2", False))
+            if is_p1 and self._is_checked(OptVarKey.SAG1.at(0)):
+                variables.append(
+                    OptimizationVariable(
+                        "Parabolic Sag 1",
+                        0,
+                        "parabolic_sag_1",
+                        float(getattr(active_target, "parabolic_sag_1", 0.0)),
+                        *_sag_bounds(active_target),
+                    )
+                )
+            elif not is_p1 and self._is_checked(OptVarKey.R1.at(0)):
+                variables.append(
+                    OptimizationVariable(
+                        "Radius 1",
+                        0,
+                        "radius_of_curvature_1",
+                        active_target.radius_of_curvature_1,
+                        -10000,
+                        10000,
+                    )
+                )
+            if is_p2 and self._is_checked(OptVarKey.SAG2.at(0)):
+                variables.append(
+                    OptimizationVariable(
+                        "Parabolic Sag 2",
+                        0,
+                        "parabolic_sag_2",
+                        float(getattr(active_target, "parabolic_sag_2", 0.0)),
+                        *_sag_bounds(active_target),
+                    )
+                )
+            elif not is_p2 and self._is_checked(OptVarKey.R2.at(0)):
+                variables.append(
+                    OptimizationVariable(
+                        "Radius 2",
+                        0,
+                        "radius_of_curvature_2",
+                        active_target.radius_of_curvature_2,
+                        -10000,
+                        10000,
+                    )
+                )
+            if self._is_checked(OptVarKey.THICKNESS.at(0)):
+                variables.append(
+                    OptimizationVariable(
+                        "Thickness",
+                        0,
+                        "thickness",
+                        active_target.thickness,
+                        self._opt_min_thickness.value(),
+                        self._opt_max_thickness.value(),
+                    )
+                )
+            if self._is_checked(OptVarKey.INDEX.at(0)):
+                variables.append(
+                    OptimizationVariable(
+                        "Index",
+                        0,
+                        "refractive_index",
+                        active_target.refractive_index,
+                        1.3,
+                        2.4,
+                    )
+                )
+            if self._is_checked(OptVarKey.DIAMETER.at(0)):
+                variables.append(
+                    OptimizationVariable("Diameter", 0, "diameter", active_target.diameter, 1, 500)
+                )
+        return variables
 
     def _on_run_optimization(self) -> None:
         """Run system optimization.
@@ -416,172 +606,10 @@ class OptimizationTab(BaseTab):
         self._opt_pending_target = None
         self._opt_apply_btn.setEnabled(False)
 
-        # Collect variables from dynamic checkboxes
-        variables = []
-        from ...optical_system import OpticalSystem
-
-        if isinstance(active_target, OpticalSystem):
-            for i, element in enumerate(active_target.elements):
-                # Parabolic takes precedence over spherical
-                if (
-                    self._opt_check_vars.get(f"ps1_{i}")
-                    and self._opt_check_vars.get(f"ps1_{i}").isChecked()
-                ):
-                    variables.append(
-                        OptimizationVariable(
-                            f"ParaSag1_L{i+1}",
-                            i,
-                            "parabolic_sag_1",
-                            float(getattr(element.lens, "parabolic_sag_1", 0.0)),
-                            *_sag_bounds(element.lens),
-                        )
-                    )
-                elif (
-                    self._opt_check_vars.get(f"r1_{i}")
-                    and self._opt_check_vars.get(f"r1_{i}").isChecked()
-                ):
-                    variables.append(
-                        OptimizationVariable(
-                            f"R1_L{i+1}",
-                            i,
-                            "radius_of_curvature_1",
-                            element.lens.radius_of_curvature_1,
-                            -10000,
-                            10000,
-                        )
-                    )
-                if (
-                    self._opt_check_vars.get(f"ps2_{i}")
-                    and self._opt_check_vars.get(f"ps2_{i}").isChecked()
-                ):
-                    variables.append(
-                        OptimizationVariable(
-                            f"ParaSag2_L{i+1}",
-                            i,
-                            "parabolic_sag_2",
-                            float(getattr(element.lens, "parabolic_sag_2", 0.0)),
-                            *_sag_bounds(element.lens),
-                        )
-                    )
-                elif (
-                    self._opt_check_vars.get(f"r2_{i}")
-                    and self._opt_check_vars.get(f"r2_{i}").isChecked()
-                ):
-                    variables.append(
-                        OptimizationVariable(
-                            f"R2_L{i+1}",
-                            i,
-                            "radius_of_curvature_2",
-                            element.lens.radius_of_curvature_2,
-                            -10000,
-                            10000,
-                        )
-                    )
-                if self._opt_check_vars.get(f"th_{i}").isChecked():
-                    variables.append(
-                        OptimizationVariable(
-                            f"Th_L{i+1}",
-                            i,
-                            "thickness",
-                            element.lens.thickness,
-                            self._opt_min_thickness.value(),
-                            self._opt_max_thickness.value(),
-                        )
-                    )
-                if self._opt_check_vars.get(f"n_{i}").isChecked():
-                    variables.append(
-                        OptimizationVariable(
-                            f"N_L{i+1}",
-                            i,
-                            "refractive_index",
-                            element.lens.refractive_index,
-                            1.3,
-                            2.4,
-                        )
-                    )
-                if (
-                    self._opt_check_vars.get(f"gap_{i}")
-                    and self._opt_check_vars.get(f"gap_{i}").isChecked()
-                ):
-                    variables.append(
-                        OptimizationVariable(
-                            f"Gap_{i+1}_{i+2}",
-                            i,
-                            "air_gap",
-                            active_target.air_gaps[i].thickness,
-                            self._opt_min_gap.value(),
-                            500,
-                        )
-                    )
-        else:
-            if self._opt_check_vars.get("ps1_0") and self._opt_check_vars.get("ps1_0").isChecked():
-                variables.append(
-                    OptimizationVariable(
-                        "Parabolic Sag 1",
-                        0,
-                        "parabolic_sag_1",
-                        float(getattr(active_target, "parabolic_sag_1", 0.0)),
-                        *_sag_bounds(active_target),
-                    )
-                )
-            elif self._opt_check_vars.get("r1_0") and self._opt_check_vars.get("r1_0").isChecked():
-                variables.append(
-                    OptimizationVariable(
-                        "Radius 1",
-                        0,
-                        "radius_of_curvature_1",
-                        active_target.radius_of_curvature_1,
-                        -10000,
-                        10000,
-                    )
-                )
-            if self._opt_check_vars.get("ps2_0") and self._opt_check_vars.get("ps2_0").isChecked():
-                variables.append(
-                    OptimizationVariable(
-                        "Parabolic Sag 2",
-                        0,
-                        "parabolic_sag_2",
-                        float(getattr(active_target, "parabolic_sag_2", 0.0)),
-                        *_sag_bounds(active_target),
-                    )
-                )
-            elif self._opt_check_vars.get("r2_0") and self._opt_check_vars.get("r2_0").isChecked():
-                variables.append(
-                    OptimizationVariable(
-                        "Radius 2",
-                        0,
-                        "radius_of_curvature_2",
-                        active_target.radius_of_curvature_2,
-                        -10000,
-                        10000,
-                    )
-                )
-            if self._opt_check_vars.get("th_0").isChecked():
-                variables.append(
-                    OptimizationVariable(
-                        "Thickness",
-                        0,
-                        "thickness",
-                        active_target.thickness,
-                        self._opt_min_thickness.value(),
-                        self._opt_max_thickness.value(),
-                    )
-                )
-            if self._opt_check_vars.get("n_0").isChecked():
-                variables.append(
-                    OptimizationVariable(
-                        "Index",
-                        0,
-                        "refractive_index",
-                        active_target.refractive_index,
-                        1.3,
-                        2.4,
-                    )
-                )
-            if self._opt_check_vars.get("d_0") and self._opt_check_vars.get("d_0").isChecked():
-                variables.append(
-                    OptimizationVariable("Diameter", 0, "diameter", active_target.diameter, 1, 500)
-                )
+        # Collect variables from dynamic checkboxes (None-safe helper:
+        # missing boxes read as unchecked, and the live model flags - not
+        # checkbox presence - decide spherical-vs-parabolic).
+        variables = self._collect_variables(active_target)
 
         if not variables:
             self._opt_results_text.setPlainText("Select at least one variable.")
