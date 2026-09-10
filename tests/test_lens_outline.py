@@ -2,10 +2,10 @@
 """
 Tests for the shared lens outline (src/geometry.py).
 
-LensGeometry.surface_sag / lens_outline is the single source of truth for
-every 2D/3D lens renderer (editor, simulation, assembly, 3D, ghost plots,
-STEP/SVG export). These tests pin the math and the agreement between the
-render path (lens_outline) and the export path (get_lens_polyline).
+Lens.get_sag_1/2 is the single source of truth for every sag evaluation
+(optimizer, validation, renderers, exporters); LensGeometry.lens_outline
+assembles the shared 2D cross-section from those methods. These tests pin
+the math and the render/export agreement.
 """
 
 import math
@@ -49,47 +49,42 @@ def make_lens(**kwargs):
 
 
 class TestSurfaceSag(unittest.TestCase):
-    """Unit tests for the shared sag implementation."""
+    """Unit tests for the single source of truth (Lens.get_sag_1/2)."""
 
     def test_convex_sag_positive(self):
         """Convex radius gives positive (into-glass) sag."""
-        sag = LensGeometry.surface_sag(60.0, 20.0, 40.0)
-        self.assertAlmostEqual(sag, 60.0 - math.sqrt(3600.0 - 400.0), places=9)
+        lens = make_lens(radius_of_curvature_1=60.0)
+        self.assertAlmostEqual(lens.get_sag_1(20.0), 60.0 - math.sqrt(3600.0 - 400.0), places=9)
 
     def test_concave_sag_negative(self):
-        """Concave radius gives mirrored negative sag."""
-        self.assertAlmostEqual(
-            LensGeometry.surface_sag(-60.0, 20.0, 40.0),
-            -LensGeometry.surface_sag(60.0, 20.0, 40.0),
-            places=12,
-        )
+        """Flipping a radius sign mirrors the sag on the same surface."""
+        convex = make_lens(radius_of_curvature_1=60.0)
+        concave = make_lens(radius_of_curvature_1=-60.0)
+        self.assertAlmostEqual(concave.get_sag_1(20.0), -convex.get_sag_1(20.0), places=12)
+        # Both surfaces share the sign rule (bulge toward +x is positive).
+        back = make_lens(radius_of_curvature_2=60.0)
+        self.assertAlmostEqual(back.get_sag_2(20.0), convex.get_sag_1(20.0), places=12)
 
     def test_flat_sag_zero(self):
         """Zero and infinite radii are flat (sag 0, never NaN)."""
         for flat in (0.0, float("inf"), float("-inf")):
-            self.assertEqual(LensGeometry.surface_sag(flat, 20.0, 40.0), 0.0)
+            lens = make_lens(radius_of_curvature_1=flat)
+            self.assertEqual(lens.get_sag_1(20.0), 0.0)
 
     def test_parabolic_sag_quadratic(self):
         """Parabolic sag scales with (y / half_d)^2."""
-        self.assertAlmostEqual(LensGeometry.surface_sag(0.0, 20.0, 40.0, True, 2.0), 2.0)
-        self.assertAlmostEqual(LensGeometry.surface_sag(0.0, 10.0, 40.0, True, 2.0), 0.5)
+        lens = make_lens(is_parabolic_1=True, parabolic_sag_1=2.0)
+        self.assertAlmostEqual(lens.get_sag_1(20.0), 2.0)
+        self.assertAlmostEqual(lens.get_sag_1(10.0), 0.5)
 
     def test_overhang_clamps_to_hemisphere(self):
         """Aperture beyond |R| clamps instead of producing NaN/sentinel."""
-        sag = LensGeometry.surface_sag(20.0, 25.0, 50.0)
+        lens = make_lens(radius_of_curvature_1=20.0, radius_of_curvature_2=-20.0, diameter=50.0)
+        sag = lens.get_sag_1(25.0)
         self.assertTrue(math.isfinite(sag))
         self.assertAlmostEqual(sag, 20.0, places=9)
-
-    def test_matches_model_sags(self):
-        """Shared sag agrees with Lens.get_sag_1/2 inside the aperture."""
-        lens = make_lens()
-        for y in (0.0, 5.0, 10.0, 15.0, 20.0):
-            self.assertAlmostEqual(
-                LensGeometry.surface_sag(100.0, y, 40.0), lens.get_sag_1(y), places=9
-            )
-            self.assertAlmostEqual(
-                LensGeometry.surface_sag(-100.0, y, 40.0), lens.get_sag_2(y), places=9
-            )
+        # ...while the edge is still reported as undefined.
+        self.assertIsNone(lens.calculate_edge_thickness())
 
 
 class TestLensOutline(unittest.TestCase):
@@ -111,8 +106,8 @@ class TestLensOutline(unittest.TestCase):
         self.assertAlmostEqual(outline["x1_edge"], lens.get_sag_1(h), places=9)
         self.assertAlmostEqual(outline["x2_edge"], lens.thickness + lens.get_sag_2(h), places=9)
 
-    def test_agrees_with_export_polyline(self):
-        """Render path matches the STEP/SVG export path (tolerates form)."""
+    def test_polyline_is_shared_outline(self):
+        """Export polyline is the render outline (single source, exact)."""
         battery = [
             {},
             {"radius_of_curvature_1": -100.0, "radius_of_curvature_2": 100.0},
@@ -124,10 +119,17 @@ class TestLensOutline(unittest.TestCase):
                 lens = make_lens(**kwargs)
                 outline = LensGeometry.lens_outline(lens)
                 poly = LensGeometry.get_lens_polyline(lens)
-                n = len(outline["front"])
-                for (x1, y1), (x2, y2) in zip(reversed(outline["front"]), poly[:n]):
-                    self.assertAlmostEqual(x1, x2, places=9)
-                    self.assertAlmostEqual(y1, y2, places=9)
+                self.assertEqual(poly, outline["front"] + outline["back"])
+
+    def test_polyline_rim_gap_equals_edge(self):
+        """Closed loop seals at the rim with exactly the edge thickness."""
+        lens = make_lens()
+        poly = LensGeometry.get_lens_polyline(lens)
+        self.assertEqual(len(poly), 2 * 51)
+        # First point (front top rim) and last point (back top rim).
+        (x_front, y_front), (x_back, y_back) = poly[0], poly[-1]
+        self.assertAlmostEqual(y_front, y_back, places=12)
+        self.assertAlmostEqual(x_back - x_front, lens.calculate_edge_thickness(), places=9)
 
     def test_flat_back_is_straight_wall(self):
         """Plano back surface draws every point at x = thickness."""

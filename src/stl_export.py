@@ -9,7 +9,6 @@ import math
 from typing import List, Tuple, Optional, Any
 
 from .vector3 import Vector3
-from .geometry import LensGeometry
 
 
 class STLExporter:
@@ -32,24 +31,13 @@ class STLExporter:
         resolution: int = 50,
     ) -> Optional[List[Tuple[float, float]]]:
         """Calculate points on a spherical surface"""
-        # Use centralized geometry logic
-        profile = LensGeometry.get_surface_profile(radius, diameter, resolution)
-
-        # Original STL exporter used (y, z) format where y is radial and z is axial.
-        # LensGeometry returns (z, r) where r is radial.
-        # We need to adapt it.
-        # Note: LensGeometry returns full profile (top to bottom).
         # STL exporter wants half-profile (0 to h).
 
         half_profile = []
-        # Profiles are returned top to bottom. Middle point (r=0) is at index resolution/2 if resolution is even.
-        # Let's just recalculate the half for clarity if needed, or filter.
-        # Actually, let's just use the logic from LensGeometry to get the half-profile.
 
         h = diameter / 2.0
         for i in range(resolution + 1):
             y = (i / resolution) * h  # 0 to h
-            # Re-use LensGeometry's stable sag calculation
             if abs(radius) < 1e-10 or abs(radius) > 1e10:
                 z_sag = 0.0
             else:

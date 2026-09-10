@@ -11,8 +11,6 @@ Supports AP203/AP214 geometry (Manifold Solid B-Rep).
 from datetime import datetime
 from typing import List, Any
 
-from ..geometry import LensGeometry
-
 
 class StepWriter:
     """Helper to generate STEP file content."""
@@ -183,21 +181,13 @@ class StepExporter:
         diam = lens.diameter
         h = diam / 2.0
 
-        # Calculate Edge Z-coordinates using centralized geometry logic
+        # Rim sag from the single source of truth (Lens.get_sag_1/2).
+        # Near-flat surfaces stay exactly planar for CAD topology.
         is_flat1 = abs(r1) < 1e-10 or abs(r1) > 1e10 or abs(r1) > 10000
         is_flat2 = abs(r2) < 1e-10 or abs(r2) > 1e10 or abs(r2) > 10000
 
-        # Use get_surface_profile to get the rim points (index 0 of the profile is r=h)
-        # We only need the z-coordinate at r=h
-        profile1 = LensGeometry.get_surface_profile(0 if is_flat1 else r1, diam, num_points=2)
-        z_edge1 = z_offset + profile1[0][0]  # z of top rim
-
-        profile2 = LensGeometry.get_surface_profile(0 if is_flat2 else r2, diam, num_points=2)
-        z_edge2 = z_offset + thick + profile2[0][0]  # z of top rim relative to vertex 2
-
-        # Original logic for sag calculation if needed elsewhere (kept for consistency)
-        sag1 = profile1[0][0]
-        sag2 = profile2[0][0]
+        z_edge1 = z_offset + (0.0 if is_flat1 else lens.get_sag_1(h))  # z of top rim
+        z_edge2 = z_offset + thick + (0.0 if is_flat2 else lens.get_sag_2(h))
 
         # --- Points ---
         # Vertex 1 (on axis)
