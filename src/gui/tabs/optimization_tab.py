@@ -27,6 +27,20 @@ from .base_tab import BaseTab
 from ..widgets.lens_viz_2d import LensViz2DWidget
 from ..widgets.assembly_viz import AssemblyVisualizationWidget
 from ...optimizer import OptimizationVariable, OptimizationTarget
+from ...validation import parabolic_sag_limit
+
+
+def _sag_bounds(lens) -> tuple:
+    """Diameter-scaled (min, max) bounds for a parabolic-sag variable.
+
+    Falls back to the legacy ±20 on invalid geometry (never blocks the UI).
+    """
+    try:
+        limit = parabolic_sag_limit(lens.diameter, lens.thickness)
+    except Exception:
+        limit = 20.0
+    return (-limit, limit)
+
 
 logger = logging.getLogger(__name__)
 
@@ -419,8 +433,7 @@ class OptimizationTab(BaseTab):
                             i,
                             "parabolic_sag_1",
                             float(getattr(element.lens, "parabolic_sag_1", 0.0)),
-                            -20,
-                            20,
+                            *_sag_bounds(element.lens),
                         )
                     )
                 elif (
@@ -447,8 +460,7 @@ class OptimizationTab(BaseTab):
                             i,
                             "parabolic_sag_2",
                             float(getattr(element.lens, "parabolic_sag_2", 0.0)),
-                            -20,
-                            20,
+                            *_sag_bounds(element.lens),
                         )
                     )
                 elif (
@@ -509,8 +521,7 @@ class OptimizationTab(BaseTab):
                         0,
                         "parabolic_sag_1",
                         float(getattr(active_target, "parabolic_sag_1", 0.0)),
-                        -20,
-                        20,
+                        *_sag_bounds(active_target),
                     )
                 )
             elif self._opt_check_vars.get("r1_0") and self._opt_check_vars.get("r1_0").isChecked():
@@ -531,8 +542,7 @@ class OptimizationTab(BaseTab):
                         0,
                         "parabolic_sag_2",
                         float(getattr(active_target, "parabolic_sag_2", 0.0)),
-                        -20,
-                        20,
+                        *_sag_bounds(active_target),
                     )
                 )
             elif self._opt_check_vars.get("r2_0") and self._opt_check_vars.get("r2_0").isChecked():

@@ -22,7 +22,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal
 
 from .lens_viz_container import LensVisualizationWidget
-from ...validation import check_physical_feasibility
+from ...validation import (
+    ValidationError,
+    check_physical_feasibility,
+    parabolic_sag_limit,
+)
 
 if TYPE_CHECKING:
     from ...lens import Lens
@@ -358,6 +362,8 @@ class LensEditorWidget(QWidget):
                 self._lens.diameter = self._diameter_input.value()
             self._lens.refractive_index = self._n_input.value()
             self._touch_lens()
+            self._refresh_parabolic_ui()
+            self._update_sag_ranges()
             # Sync parabolic sag diameters if needed (sag stays as absolute distance)
             self._update_calculated()
             self._viz_widget.update_lens(self._lens)
@@ -402,6 +408,67 @@ class LensEditorWidget(QWidget):
         self._thickness_input.blockSignals(True)
         self._thickness_input.setValue(t_new)
         self._thickness_input.blockSignals(False)
+
+    def _refresh_parabolic_ui(self) -> None:
+        """Snap parabolic checkboxes, enables, and sag boxes to the model.
+
+        External mutations (optimizer latch/clear, file loads) bypass the
+        panel and would otherwise leave it lying about which definition is
+        live. Display-only sync (blocked signals, model never touched), so
+        it is safe on every edit and load.
+        """
+        if self._lens is None:
+            return
+        for check, r_spin, sag_spin, flag_attr, sag_attr in (
+            (
+                self._para1_check,
+                self._r1_input,
+                self._para1_sag_input,
+                "is_parabolic_1",
+                "parabolic_sag_1",
+            ),
+            (
+                self._para2_check,
+                self._r2_input,
+                self._para2_sag_input,
+                "is_parabolic_2",
+                "parabolic_sag_2",
+            ),
+        ):
+            flag = bool(getattr(self._lens, flag_attr, False))
+            check.blockSignals(True)
+            check.setChecked(flag)
+            check.blockSignals(False)
+            r_spin.setEnabled(not flag)
+            sag_spin.setEnabled(flag)
+            sag_spin.blockSignals(True)
+            sag_spin.setValue(float(getattr(self._lens, sag_attr, 0.0)))
+            sag_spin.blockSignals(False)
+
+    def _update_sag_ranges(self, sync_model: bool = True) -> None:
+        """Clamp parabolic sag spinboxes to the diameter-scaled limit.
+
+        Sag without diameter is meaningless (R_vertex = r²/2·sag), so the
+        boxes track the current aperture/thickness instead of a fixed ±100.
+        With sync_model (user edits), clamped values sync back into the
+        model for enabled surfaces so the display never lies; loads pass
+        False to preserve file values until the user acts.
+        """
+        if self._lens is None:
+            return
+        try:
+            limit = parabolic_sag_limit(self._lens.diameter, self._lens.thickness)
+        except ValidationError:
+            limit = 100.0
+        for spin, attr, enabled in (
+            (self._para1_sag_input, "parabolic_sag_1", self._para1_check.isChecked()),
+            (self._para2_sag_input, "parabolic_sag_2", self._para2_check.isChecked()),
+        ):
+            spin.blockSignals(True)
+            spin.setRange(-limit, limit)
+            spin.blockSignals(False)
+            if sync_model and enabled:
+                setattr(self._lens, attr, spin.value())
 
     def _on_material_changed(self, material: str) -> None:
         """Handle material change"""
@@ -603,24 +670,11 @@ class LensEditorWidget(QWidget):
             spin.blockSignals(False)
         self._n_input.setValue(lens.refractive_index)
         # Parabolic
-        is_p1 = bool(getattr(lens, "is_parabolic_1", False))
-        is_p2 = bool(getattr(lens, "is_parabolic_2", False))
-        self._para1_check.blockSignals(True)
-        self._para1_check.setChecked(is_p1)
-        self._para1_check.blockSignals(False)
-        self._para1_sag_input.blockSignals(True)
-        self._para1_sag_input.setValue(float(getattr(lens, "parabolic_sag_1", 0.0)))
-        self._para1_sag_input.blockSignals(False)
-        self._para2_check.blockSignals(True)
-        self._para2_check.setChecked(is_p2)
-        self._para2_check.blockSignals(False)
-        self._para2_sag_input.blockSignals(True)
-        self._para2_sag_input.setValue(float(getattr(lens, "parabolic_sag_2", 0.0)))
-        self._para2_sag_input.blockSignals(False)
-        self._para1_sag_input.setEnabled(is_p1)
-        self._para2_sag_input.setEnabled(is_p2)
-        self._r1_input.setEnabled(not is_p1)
-        self._r2_input.setEnabled(not is_p2)
+        # Ranges first (from model D/t), then values: a stale narrow range
+        # must never clamp the incoming values, and the model keeps file
+        # values until the user acts (sync_model=False).
+        self._update_sag_ranges(sync_model=False)
+        self._refresh_parabolic_ui()
         self._update_calculated()
         self._viz_widget.update_lens(lens)
         self._class_type_label.setText(lens.classify_lens_type())

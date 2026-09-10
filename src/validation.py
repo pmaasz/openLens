@@ -320,12 +320,50 @@ def validate_range(
     return value
 
 
-def validate_parabolic_sag(sag: float, param_name: str = "parabolic sag") -> float:
+def parabolic_sag_limit(diameter: float, thickness: float = 0.0) -> float:
+    """
+    Maximum meaningful |sag| for a parabolic surface of given aperture.
+
+    Sag without diameter is meaningless (vertex radius R = r²/(2·sag)):
+    the bound keeps the implied vertex radius above MIN_RADIUS_OF_CURVATURE
+    while also capping the rim slope via half the diameter.
+
+    Args:
+        diameter: Clear aperture diameter (mm, must be positive).
+        thickness: Center thickness (mm), loosens the bound slightly for
+            deeper sags the edge can still accommodate.
+
+    Returns:
+        float: The symmetric bound; valid sags lie in [-limit, +limit].
+
+    Raises:
+        ValidationError: If diameter/thickness are not valid numbers.
+    """
+    diameter = _validate_number(diameter, "diameter")
+    thickness = _validate_number(thickness, "thickness")
+    if diameter <= 0:
+        raise ValidationError(f"diameter must be positive, got {diameter}")
+    if thickness < 0:
+        raise ValidationError(f"thickness cannot be negative, got {thickness}")
+    r = diameter / 2
+    return min(0.5 * diameter, 0.5 * thickness + r * r / (2 * MIN_RADIUS_OF_CURVATURE))
+
+
+def validate_parabolic_sag(
+    sag: float,
+    diameter: Optional[float] = None,
+    thickness: float = 0.0,
+    param_name: str = "parabolic sag",
+) -> float:
     """
     Validate parabolic sag (vertex to rim distance at D/2).
 
     Args:
         sag: Sag value to validate (mm)
+        diameter: Clear aperture diameter (mm). When given, the bound is
+            diameter-scaled via parabolic_sag_limit(); otherwise a legacy
+            absolute cap of 100 mm applies.
+        thickness: Center thickness (mm), only used with diameter.
         param_name: Parameter name for error messages
 
     Returns:
@@ -335,9 +373,18 @@ def validate_parabolic_sag(sag: float, param_name: str = "parabolic sag") -> flo
         ValidationError: If sag is invalid
     """
     sag = _validate_number(sag, param_name)
-    # Sag can be negative (concave direction) or positive, but should be reasonable
-    if abs(sag) > 100:
-        raise ValidationError(f"{param_name} magnitude must be at most 100 mm")
+    if diameter is None:
+        # Legacy absolute cap (no aperture context to scale by).
+        if abs(sag) > 100:
+            raise ValidationError(f"{param_name} magnitude must be at most 100 mm")
+        return sag
+    limit = parabolic_sag_limit(diameter, thickness)
+    if abs(sag) > limit:
+        detail = f"{param_name} magnitude {abs(sag):.3f}mm exceeds the {limit:.3f}mm limit"
+        if abs(sag) > 0:
+            r = diameter / 2
+            detail += f" (implies vertex radius {abs(r * r / (2 * sag)):.3f}mm)"
+        raise ValidationError(detail + f" for D={diameter}mm")
     return sag
 
 
