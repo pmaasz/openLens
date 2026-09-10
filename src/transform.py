@@ -31,6 +31,27 @@ class Matrix4x4:
                     result[i][j] += self.m[i][k] * other.m[k][j]
         return Matrix4x4(result)
 
+    def inverse(self) -> "Matrix4x4":
+        """Return the inverse matrix (Gauss-Jordan with partial pivoting).
+
+        Raises:
+            ValueError: If the matrix is singular.
+        """
+        n = 4
+        aug = [row[:] + [1.0 if i == j else 0.0 for j in range(n)] for i, row in enumerate(self.m)]
+        for col in range(n):
+            pivot = max(range(col, n), key=lambda r: abs(aug[r][col]))
+            if abs(aug[pivot][col]) < 1e-12:
+                raise ValueError("Matrix4x4 is singular and cannot be inverted")
+            aug[col], aug[pivot] = aug[pivot], aug[col]
+            inv_pivot = 1.0 / aug[col][col]
+            aug[col] = [v * inv_pivot for v in aug[col]]
+            for r in range(n):
+                if r != col and aug[r][col] != 0.0:
+                    factor = aug[r][col]
+                    aug[r] = [rv - factor * cv for rv, cv in zip(aug[r], aug[col])]
+        return Matrix4x4([row[n:] for row in aug])
+
     def multiply_point(self, point: Vector3) -> Vector3:
         """Transforms a point (w=1)."""
         x = self.m[0][0] * point.x + self.m[0][1] * point.y + self.m[0][2] * point.z + self.m[0][3]

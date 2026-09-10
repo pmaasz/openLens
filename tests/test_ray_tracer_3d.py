@@ -50,6 +50,97 @@ class TestRayTracer3D(unittest.TestCase):
         self.assertAlmostEqual(math.cos(ray2d.angle), ray3d.direction.x, places=4)
         self.assertAlmostEqual(math.sin(ray2d.angle), ray3d.direction.y, places=4)
 
+    def test_outward_normals_all_quadrants(self):
+        """Front normals face -axis, back normals +axis, for every curvature."""
+        from src.transform import Matrix4x4
+
+        for r1, r2 in [(60.0, -60.0), (-60.0, 60.0)]:
+            lens = Lens(
+                radius_of_curvature_1=r1,
+                radius_of_curvature_2=r2,
+                thickness=5.0,
+                diameter=30.0,
+                refractive_index=1.5,
+            )
+            for transform in [None, Matrix4x4.from_euler(0, 0, 10)]:
+                tracer = (
+                    LensRayTracer3D(lens)
+                    if transform is None
+                    else LensRayTracer3D(lens, transform=transform)
+                )
+                axis = tracer.optical_axis
+                # On-axis geometric inputs: sphere hit-center, paraboloid gradient.
+                cases = [
+                    ("front", tracer.front_vertex - tracer.front_center),
+                    ("back", tracer.back_vertex - tracer.back_center),
+                    ("front", axis),
+                    ("back", axis),
+                ]
+                for surface, geometric in cases:
+                    normal = tracer._outward_normal(geometric, surface)
+                    dot = normal.dot(axis)
+                    if surface == "front":
+                        self.assertLess(
+                            dot, 0.0, f"{surface} R=({r1},{r2}) tilted={transform is not None}"
+                        )
+                    else:
+                        self.assertGreater(
+                            dot, 0.0, f"{surface} R=({r1},{r2}) tilted={transform is not None}"
+                        )
+
+    def test_parabolic_normals_outward(self):
+        """Parabolic gradients orient outward for either sag sign."""
+        for sag in (2.0, -2.0):
+            lens = Lens(
+                radius_of_curvature_1=100.0,
+                radius_of_curvature_2=-100.0,
+                thickness=5.0,
+                diameter=30.0,
+                refractive_index=1.5,
+                is_parabolic_1=True,
+                parabolic_sag_1=sag,
+                is_parabolic_2=True,
+                parabolic_sag_2=-sag,
+            )
+            tracer = LensRayTracer3D(lens)
+            axis = tracer.optical_axis
+            front = tracer._outward_normal(vec3(1, 0, 0), "front")
+            back = tracer._outward_normal(vec3(1, 0, 0), "back")
+            self.assertLess(front.dot(axis), 0.0)
+            self.assertGreater(back.dot(axis), 0.0)
+
+    def test_aperture_vignettes_beyond_rim(self):
+        """Rays outside D/2 miss; rim rays pass (unified tolerance)."""
+        from src.ray_tracer import RefractionResult
+
+        lens = Lens(
+            radius_of_curvature_1=60.0,
+            radius_of_curvature_2=-60.0,
+            thickness=5.0,
+            diameter=30.0,
+            refractive_index=1.5,
+            is_parabolic_1=True,
+            parabolic_sag_1=2.0,
+        )
+        tracer = LensRayTracer3D(lens)
+        # Rim ray along +x at exactly h: must intersect.
+        rim = tracer._intersect_paraboloid(
+            Ray3D(origin=vec3(-50, 15.0, 0), direction=vec3(1, 0, 0)),
+            tracer.front_vertex,
+            tracer.R1,
+        )
+        self.assertIsNotNone(rim)
+        # Just outside: must miss (no folding back into the aperture).
+        outside = tracer._intersect_paraboloid(
+            Ray3D(origin=vec3(-50, 15.01, 0), direction=vec3(1, 0, 0)),
+            tracer.front_vertex,
+            tracer.R1,
+        )
+        self.assertIsNone(outside)
+        # Spherical back surface: same rule through trace_surface.
+        high = Ray3D(origin=vec3(-50, 15.001, 0), direction=vec3(1, 0, 0))
+        self.assertIs(tracer.trace_surface(high, "front", "refract"), RefractionResult.MISSED)
+
     def test_off_axis_meridional_ray(self):
         # Ray at height 10mm
         h = 10.0
