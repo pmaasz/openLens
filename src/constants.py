@@ -163,6 +163,7 @@ MIN_DIAMETER = 1.0  # mm
 MAX_DIAMETER = 500.0  # mm
 MIN_REFRACTIVE_INDEX = 1.0
 MAX_REFRACTIVE_INDEX = 3.0
+MIN_EDGE_THICKNESS = 0.5  # mm - manufacturable rim (edge thickness) floor
 
 # ==================== Calculation Constants ====================
 

@@ -231,6 +231,19 @@ else:
             self.assertEqual(self.widget._para1_sag_input.value(), 5.0)
             self.assertFalse(self.widget._feas_warning_label.isHidden())
 
+        def test_parabolic_infeasible_warns(self):
+            """Feasibility covers parabolic surfaces, not just radii."""
+            widget_lens = Lens(
+                name="T",
+                thickness=5.0,
+                diameter=40.0,
+                is_parabolic_1=True,
+                parabolic_sag_1=30.0,
+            )
+            self.widget._lock_edge_check.setChecked(False)
+            self.widget.load_lens(widget_lens)
+            self.assertFalse(self.widget._feas_warning_label.isHidden())
+
         def test_external_latch_heals_panel(self):
             """Optimizer-style flag mutation snaps the panel on next edit."""
             self._load(lock=True)

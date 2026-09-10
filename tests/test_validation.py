@@ -319,6 +319,72 @@ class TestPhysicalFeasibility(unittest.TestCase):
         with self.assertRaises(ValidationError):
             validate_parabolic_sag(101.0)
 
+    def test_check_parabolic_impossible_sails_no_more(self):
+        """Benign radii must not hide an insane parabolic sag."""
+        feasible, message = check_physical_feasibility(
+            radius1=100.0,
+            radius2=-100.0,
+            thickness=0.1,
+            diameter=2.0,
+            is_parabolic_1=True,
+            parabolic_sag_1=100.0,
+        )
+        self.assertFalse(feasible)
+        self.assertIsNotNone(message)
+        self.assertIn("intersect", message.lower())
+
+    def test_check_parabolic_feasible(self):
+        """A sane parabolic spec passes cleanly."""
+        feasible, message = check_physical_feasibility(
+            radius1=100.0,
+            radius2=-100.0,
+            thickness=5.0,
+            diameter=40.0,
+            is_parabolic_1=True,
+            parabolic_sag_1=2.0,
+        )
+        self.assertTrue(feasible)
+        self.assertIsNone(message)
+
+    def test_check_parabolic_thin_edge_warns(self):
+        """Positive but fragile parabolic edge yields a soft warning."""
+        feasible, message = check_physical_feasibility(
+            radius1=100.0,
+            radius2=-100.0,
+            thickness=5.0,
+            diameter=40.0,
+            is_parabolic_1=True,
+            parabolic_sag_1=2.5,
+        )
+        self.assertFalse(feasible)
+        self.assertIsNotNone(message)
+        self.assertIn("fragile", message.lower())
+
+    def test_validate_lens_parameters_parabolic(self):
+        """Parameter validation accepts and returns parabolic fields."""
+        result = validate_lens_parameters(
+            radius1=100.0,
+            radius2=-100.0,
+            thickness=5.0,
+            diameter=40.0,
+            refractive_index=1.5168,
+            is_parabolic_1=True,
+            parabolic_sag_1=2.0,
+        )
+        self.assertTrue(result["is_parabolic_1"])
+        self.assertEqual(result["parabolic_sag_1"], 2.0)
+        self.assertFalse(result["is_parabolic_2"])
+        with self.assertRaises(ValidationError):
+            validate_lens_parameters(
+                radius1=100.0,
+                radius2=-100.0,
+                thickness=5.0,
+                diameter=40.0,
+                refractive_index=1.5168,
+                is_parabolic_1=True,
+                parabolic_sag_1=100.0,  # over the D=40 limit of 20
+            )
+
     def test_check_default_lens_feasible(self):
         """Default geometry (R=+-100, t=5, D=40) has positive edge thickness"""
         from src.constants import (

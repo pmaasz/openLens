@@ -622,15 +622,18 @@ class LensEditorWidget(QWidget):
                     f"Surfaces intersect within the clear aperture (edge {edge:.2f} mm). "
                     "Increase thickness, reduce diameter, or flatten radii."
                 )
-        elif not bool(
-            getattr(self._lens, "is_parabolic_1", False)
-            or getattr(self._lens, "is_parabolic_2", False)
-        ):
+        else:
+            # Full cross-parameter check, parabolic-aware (radii alone say
+            # nothing once a surface is defined by its sag).
             feasible, soft_msg = check_physical_feasibility(
                 self._lens.radius_of_curvature_1,
                 self._lens.radius_of_curvature_2,
                 self._lens.thickness,
                 self._lens.diameter,
+                bool(getattr(self._lens, "is_parabolic_1", False)),
+                float(getattr(self._lens, "parabolic_sag_1", 0.0)),
+                bool(getattr(self._lens, "is_parabolic_2", False)),
+                float(getattr(self._lens, "parabolic_sag_2", 0.0)),
             )
             if not feasible:
                 message = soft_msg
