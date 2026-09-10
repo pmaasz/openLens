@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 import copy
 from concurrent.futures import ProcessPoolExecutor
 
+from .constants import MIN_EDGE_THICKNESS
 from .lens import Lens
 from .optical_system import OpticalSystem
 from .aberrations import AberrationsCalculator
@@ -79,7 +80,7 @@ class MeritFunction:
         self.constraints = constraints or {
             "min_center_thickness": 1.0,
             "max_center_thickness": 100.0,
-            "min_edge_thickness": 0.5,
+            "min_edge_thickness": MIN_EDGE_THICKNESS,
             "min_air_gap": 0.1,
             "min_edge_clearance": 0.1,
         }
@@ -214,7 +215,7 @@ class MeritFunction:
         merit = 0.0
         min_ct = self.constraints.get("min_center_thickness", 1.0)
         max_ct = self.constraints.get("max_center_thickness", 100.0)
-        min_et = self.constraints.get("min_edge_thickness", 0.5)
+        min_et = self.constraints.get("min_edge_thickness", MIN_EDGE_THICKNESS)
         min_ag = self.constraints.get("min_air_gap", 0.1)
         min_ec = self.constraints.get("min_edge_clearance", 0.1)
 
