@@ -90,6 +90,29 @@ class TestOpticalSystem(unittest.TestCase):
         self.assertIsNotNone(calculated_f)
         self.assertAlmostEqual(calculated_f, expected_f, places=1)
 
+    def test_system_matrix_uses_effective_radii(self):
+        """System matrix must honor parabolic sags, not stale raw radii."""
+        lens = Lens(
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=25.0,
+            refractive_index=1.5,
+            is_parabolic_1=True,
+            parabolic_sag_1=3.0,
+        )
+        system = OpticalSystem()
+        system.add_lens(lens)
+
+        A, B, C, D = system._calculate_system_matrix()
+        # Effective front radius is 26.04, not the stale 100.0.
+        self.assertAlmostEqual(-1.0 / C, lens.calculate_focal_length(), places=3)
+        self.assertAlmostEqual(
+            system.calculate_back_focal_length(),
+            lens.calculate_back_focal_length(),
+            places=3,
+        )
+
     def test_system_f_number(self):
         """Test system f-number calculation"""
         system = OpticalSystem()

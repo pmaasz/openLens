@@ -408,6 +408,14 @@ class OpticalSystem:
         through the glass at the reduced thickness d/n, refraction at the
         second surface, then propagation through the following air gap.
 
+        Convention: the ray vector is (y, n·theta) throughout, so refraction
+        is [[1, 0], [-P, 1]] with P = (n_out - n_in)/R and propagation is
+        [[1, d/n], [0, 1]]. The d/n is NOT a bug: it is the correct reduced
+        distance for this vector, and the air-to-air total (what EFL/BFL
+        read off) is identical to the (y, theta) chain with propagation d.
+        Cemented (zero-gap) pairs are exact too: the glass|air|glass pair
+        with zero propagation between collapses to the glass|glass power.
+
         Args:
             n_overrides: Optional dict mapping element index → refractive
                 index to use instead of ``element.lens.refractive_index``.
@@ -415,7 +423,7 @@ class OpticalSystem:
         if not self.elements:
             return None
 
-        # Ray vector [y, u]; M = [[A, B], [C, D]], start at identity.
+        # Ray vector (y, n·theta); M = [[A, B], [C, D]], start at identity.
         A, B, C, D = 1.0, 0.0, 0.0, 1.0
         n_current = 1.0  # start in air
 
@@ -423,9 +431,12 @@ class OpticalSystem:
             lens = element.lens
             n_lens = n_overrides[i] if n_overrides and i in n_overrides else lens.refractive_index
 
-            # Refraction at first surface (n_current → n_lens).
-            # Standard paraxial refraction matrix is [[1, 0], [-P, 1]].
-            R1 = lens.radius_of_curvature_1
+            # Refraction at first surface (n_current → n_lens), using the
+            # vertex radius so parabolic surfaces get their true power.
+            # Non-finite radii (flat, incl. zero-sag parabolic) carry no
+            # power and are skipped; R == 0 cannot occur (Lens maps it to
+            # inf) and is guarded anyway.
+            R1 = lens.get_effective_radius_1()
             if R1 != 0 and math.isfinite(R1):
                 P1 = (n_lens - n_current) / R1
                 A, B, C, D = (A, B, C - P1 * A, D - P1 * B)
@@ -435,7 +446,7 @@ class OpticalSystem:
             A, B, C, D = (A + d * C, B + d * D, C, D)
 
             # Refraction at second surface (n_lens → air).
-            R2 = lens.radius_of_curvature_2
+            R2 = lens.get_effective_radius_2()
             if R2 != 0 and math.isfinite(R2):
                 P2 = (1.0 - n_lens) / R2
                 A, B, C, D = (A, B, C - P2 * A, D - P2 * B)
