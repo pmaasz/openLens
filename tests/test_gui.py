@@ -231,6 +231,12 @@ else:
             self.assertEqual(self.widget._para1_sag_input.value(), 5.0)
             self.assertFalse(self.widget._feas_warning_label.isHidden())
 
+        def test_calculated_labels_match_lens_model(self):
+            """Focal/power labels delegate to Lens (no widget-side lensmaker)."""
+            self._load(lock=True)
+            self.assertEqual(self.widget._focal_label.text(), "97.58 mm")
+            self.assertEqual(self.widget._power_label.text(), "10.25 D")
+
         def test_parabolic_infeasible_warns(self):
             """Feasibility covers parabolic surfaces, not just radii."""
             widget_lens = Lens(

@@ -62,6 +62,28 @@ def _load_lenses(db):
 
 class TestDatabaseManagerInit(unittest.TestCase):
 
+    def test_fresh_db_is_v2_with_parabolic_columns(self):
+        """New databases are created at user_version=2 directly."""
+        import sqlite3
+
+        db, path = _make_db()
+        try:
+            conn = sqlite3.connect(path)
+            try:
+                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 2)
+                columns = {r[1] for r in conn.execute("PRAGMA table_info(lenses)").fetchall()}
+                for col in (
+                    "is_parabolic_1",
+                    "parabolic_sag_1",
+                    "is_parabolic_2",
+                    "parabolic_sag_2",
+                ):
+                    self.assertIn(col, columns)
+            finally:
+                conn.close()
+        finally:
+            os.unlink(path)
+
     def test_creates_file(self):
         db, path = _make_db()
         try:
@@ -254,6 +276,176 @@ class TestGetReferencingAssemblies(unittest.TestCase):
         self.db.save_lens(_make_lens_dict(lens_id="L1"))
         refs = self.db.get_referencing_assemblies("L1")
         self.assertEqual(refs, [])
+
+
+def _make_v1_db(path):
+    """Hand-craft a pre-migration (user_version=1) database on disk."""
+    import json
+    import sqlite3
+
+    conn = sqlite3.connect(path)
+    conn.execute("""
+        CREATE TABLE lenses (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            radius1 REAL NOT NULL,
+            radius2 REAL NOT NULL,
+            thickness REAL NOT NULL,
+            material TEXT NOT NULL,
+            refractive_index REAL,
+            diameter REAL,
+            created_at TEXT,
+            modified_at TEXT,
+            metadata TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE assemblies (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            created_at TEXT,
+            modified_at TEXT,
+            metadata TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE assembly_elements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            assembly_id TEXT NOT NULL,
+            lens_id TEXT NOT NULL,
+            position REAL NOT NULL,
+            order_index INTEGER NOT NULL,
+            FOREIGN KEY (assembly_id) REFERENCES assemblies (id) ON DELETE CASCADE,
+            FOREIGN KEY (lens_id) REFERENCES lenses (id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE assembly_air_gaps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            assembly_id TEXT NOT NULL,
+            thickness REAL NOT NULL,
+            position REAL NOT NULL,
+            order_index INTEGER NOT NULL,
+            FOREIGN KEY (assembly_id) REFERENCES assemblies (id) ON DELETE CASCADE
+        )
+    """)
+    # Pre-parabolic-era row: metadata carries no parabolic keys.
+    conn.execute(
+        "INSERT INTO lenses (id, name, radius1, radius2, thickness, material,"
+        " refractive_index, diameter, created_at, modified_at, metadata)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "old-spherical",
+            "Old Spherical",
+            100.0,
+            -100.0,
+            5.0,
+            "BK7",
+            1.5168,
+            40.0,
+            "2024-01-01T00:00:00",
+            "2024-01-01T00:00:00",
+            json.dumps({"lens_type": "Biconvex"}),
+        ),
+    )
+    # Parabolic-era v1 row: parabolic fields live only in the metadata blob.
+    conn.execute(
+        "INSERT INTO lenses (id, name, radius1, radius2, thickness, material,"
+        " refractive_index, diameter, created_at, modified_at, metadata)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "old-parabolic",
+            "Old Parabolic",
+            100.0,
+            -100.0,
+            5.0,
+            "BK7",
+            1.5168,
+            40.0,
+            "2024-01-01T00:00:00",
+            "2024-01-01T00:00:00",
+            json.dumps({"is_parabolic_1": True, "parabolic_sag_1": 2.0}),
+        ),
+    )
+    conn.execute("PRAGMA user_version = 1")
+    conn.commit()
+    conn.close()
+
+
+class TestMigrationV1ToV2(unittest.TestCase):
+    """Pre-parabolic databases migrate and hydrate correctly."""
+
+    def setUp(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        self._path = tmp.name
+        _make_v1_db(self._path)
+        self.db = DatabaseManager(self._path)
+
+    def tearDown(self):
+        os.unlink(self._path)
+
+    def test_migration_stamps_v2_with_columns(self):
+        """Opening a v1 DB migrates schema and version."""
+        import sqlite3
+
+        conn = sqlite3.connect(self._path)
+        try:
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+            self.assertEqual(version, 2)
+            columns = {r[1] for r in conn.execute("PRAGMA table_info(lenses)").fetchall()}
+            for col in (
+                "is_parabolic_1",
+                "parabolic_sag_1",
+                "is_parabolic_2",
+                "parabolic_sag_2",
+            ):
+                self.assertIn(col, columns)
+        finally:
+            conn.close()
+
+    def test_pre_parabolic_row_hydrates_spherical(self):
+        """A row from before parabolic existed loads as plain spherical."""
+        from src.lens import Lens
+
+        rows = {r["id"]: r for r in _load_lenses(self.db)}
+        lens = Lens.from_dict(rows["old-spherical"])
+        self.assertFalse(lens.is_parabolic_1)
+        self.assertFalse(lens.is_parabolic_2)
+        self.assertEqual(lens.parabolic_sag_1, 0.0)
+        self.assertEqual(lens.calculate_edge_thickness() is not None, True)
+
+    def test_metadata_blob_still_wins_after_migration(self):
+        """Migrated columns default 0; the metadata blob keeps the truth."""
+        from src.lens import Lens
+
+        rows = {r["id"]: r for r in _load_lenses(self.db)}
+        lens = Lens.from_dict(rows["old-parabolic"])
+        self.assertTrue(lens.is_parabolic_1)
+        self.assertAlmostEqual(lens.parabolic_sag_1, 2.0)
+
+    def test_resave_promotes_to_columns(self):
+        """Re-saving a migrated lens writes explicit columns, not the blob."""
+        import json
+        import sqlite3
+
+        from src.lens import Lens
+
+        rows = {r["id"]: r for r in _load_lenses(self.db)}
+        lens = Lens.from_dict(rows["old-parabolic"])
+        self.db.save_lens(lens.to_dict())
+
+        conn = sqlite3.connect(self._path)
+        try:
+            row = conn.execute(
+                "SELECT is_parabolic_1, parabolic_sag_1, metadata FROM lenses WHERE id = ?",
+                ("old-parabolic",),
+            ).fetchone()
+            self.assertEqual(row[0], 1)
+            self.assertAlmostEqual(row[1], 2.0)
+            self.assertNotIn("parabolic_sag_1", json.loads(row[2]))
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":

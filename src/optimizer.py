@@ -20,6 +20,11 @@ from .analysis.beam_synthesis import PSFCalculator, WavefrontSensor, NUMPY_AVAIL
 
 logger = logging.getLogger(__name__)
 
+#: Merit for unevaluatable targets (empty system, undefined focus, failed
+#: trace). Single scale above the hard-geometry penalties (1e8) so "cannot
+#: score" always ranks worse than "scores badly".
+INFEASIBLE_MERIT = 1e9
+
 
 @dataclass
 class OptimizationVariable:
@@ -108,44 +113,46 @@ class MeritFunction:
 
     def _eval_spherical(self, system: OpticalSystem, target: OptimizationTarget) -> float:
         if not system.elements:
-            return 1e6
+            return INFEASIBLE_MERIT
         calc = AberrationsCalculator(system)
         results = calc.calculate_all_aberrations()
         value = results.get("spherical_aberration")
         if value is None:
-            return 1e6
+            return INFEASIBLE_MERIT
         return self._apply_target(target, abs(value))
 
     def _eval_coma(self, system: OpticalSystem, target: OptimizationTarget) -> float:
         if not system.elements:
-            return 0.0
+            return INFEASIBLE_MERIT
         calc = AberrationsCalculator(system)
         results = calc.calculate_all_aberrations(field_angle_deg=5.0)
         value = results.get("coma")
         if value is None:
-            return 0.0
+            return INFEASIBLE_MERIT
         return self._apply_target(target, abs(value))
 
     def _eval_astigmatism(self, system: OpticalSystem, target: OptimizationTarget) -> float:
         if not system.elements:
-            return 0.0
+            return INFEASIBLE_MERIT
         calc = AberrationsCalculator(system)
         results = calc.calculate_all_aberrations(field_angle_deg=5.0)
         value = results.get("astigmatism")
         if value is None:
-            return 0.0
+            return INFEASIBLE_MERIT
         return self._apply_target(target, abs(value))
 
     @staticmethod
     def _eval_chromatic(system: OpticalSystem, target: OptimizationTarget) -> float:
         chrom = system.calculate_chromatic_aberration()
-        return MeritFunction._apply_target(target, chrom["longitudinal"])
+        # Longitudinal chromatic aberration is signed; minimizing the raw
+        # value would reward large negative LCA, so score its magnitude.
+        return MeritFunction._apply_target(target, abs(chrom["longitudinal"]))
 
     @staticmethod
     def _eval_focal_length(system: OpticalSystem, target: OptimizationTarget) -> float:
         f = system.get_system_focal_length()
         if not f:
-            return 1e6
+            return INFEASIBLE_MERIT
         return MeritFunction._apply_target(target, f)
 
     @staticmethod
@@ -162,7 +169,7 @@ class MeritFunction:
                 return MeritFunction._apply_target(target, value)
         except Exception:
             pass
-        return 1e3
+        return INFEASIBLE_MERIT
 
     @staticmethod
     def _eval_mtf(system: OpticalSystem, target: OptimizationTarget) -> float:
@@ -174,7 +181,7 @@ class MeritFunction:
                 and globals()["NUMPY_AVAILABLE"]
             )
             if not has_deps:
-                return 0.0
+                return INFEASIBLE_MERIT
 
             import numpy as np
 
@@ -182,14 +189,14 @@ class MeritFunction:
             Y, Z, W = sensor.get_pupil_wavefront()
 
             if W.size == 0 or np.all(np.isnan(W)):
-                return target.weight * 1e3
+                return INFEASIBLE_MERIT
 
             psf = globals()["PSFCalculator"].calculate_psf(Y, Z, W)
             mtf = globals()["PSFCalculator"].calculate_mtf(psf)
             value = float(np.sum(mtf))
             return MeritFunction._apply_target(target, value)
         except Exception:
-            return target.weight * 1e3
+            return INFEASIBLE_MERIT
 
     _TARGET_DISPATCH = {
         "spherical_aberration": _eval_spherical,

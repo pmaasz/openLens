@@ -69,7 +69,7 @@ DEFAULT_RAY_HEIGHT_RANGE = (-20.0, 20.0)  # mm
 DEFAULT_ANGLE_RANGE = (-30.0, 30.0)  # degrees
 
 # Geometry of ray bundles (mm)
-APERTURE_FILL_FACTOR = 0.95  # rays span 95% of the lens aperture
+APERTURE_FILL_FACTOR = 0.95  # legacy viz-style fan: pass as fill= explicitly; traces default to 1.0
 RAY_START_OFFSET_MM = 100.0  # 2D collimated beams start this far before the first surface
 RAY_START_OFFSET_3D_MM = 50.0  # same, for 3D/system traces
 RAY_EXIT_PROPAGATION_2D_MM = 150.0  # draw length after the last element (2D)

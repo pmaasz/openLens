@@ -15,7 +15,6 @@ from .constants import (
     DEFAULT_ANGLE_RANGE,
     DEFAULT_PROPAGATION_DISTANCE,
     MESH_RESOLUTION_HIGH,
-    APERTURE_FILL_FACTOR,
     RAY_START_OFFSET_MM,
     RAY_EXIT_PROPAGATION_2D_MM,
 )
@@ -42,25 +41,19 @@ class LensRayTracer:
             x_offset: X position of the front vertex (mm)
         """
         self.lens = lens
-        self.R1 = (
-            lens.get_effective_radius_1()
-            if hasattr(lens, "get_effective_radius_1")
-            else lens.radius_of_curvature_1
-        )
-        self.R2 = (
-            lens.get_effective_radius_2()
-            if hasattr(lens, "get_effective_radius_2")
-            else lens.radius_of_curvature_2
-        )
+        # Direct attributes: Lens always defines these (constructor sets them
+        # before anything reads them; from_dict hydrates them with defaults).
+        self.R1 = lens.get_effective_radius_1()
+        self.R2 = lens.get_effective_radius_2()
         self.d = lens.thickness
         self.D = lens.diameter
         self.n = lens.refractive_index
         self.x_offset = x_offset
         # Parabolic flags
-        self.is_parabolic_1 = bool(getattr(lens, "is_parabolic_1", False))
-        self.is_parabolic_2 = bool(getattr(lens, "is_parabolic_2", False))
-        self.parabolic_sag_1 = float(getattr(lens, "parabolic_sag_1", 0.0))
-        self.parabolic_sag_2 = float(getattr(lens, "parabolic_sag_2", 0.0))
+        self.is_parabolic_1 = bool(lens.is_parabolic_1)
+        self.is_parabolic_2 = bool(lens.is_parabolic_2)
+        self.parabolic_sag_1 = float(lens.parabolic_sag_1)
+        self.parabolic_sag_2 = float(lens.parabolic_sag_2)
 
         self._calculate_geometry()
 
@@ -102,7 +95,7 @@ class LensRayTracer:
         if surface_type == "front":
             if self.front_is_flat:
                 return 0
-            if getattr(self, "front_is_parabolic", False):
+            if self.front_is_parabolic:
                 r_max = self.D / 2
                 if abs(r_max) < EPSILON:
                     return 0
@@ -117,7 +110,7 @@ class LensRayTracer:
         else:
             if self.back_is_flat:
                 return 0
-            if getattr(self, "back_is_parabolic", False):
+            if self.back_is_parabolic:
                 r_max = self.D / 2
                 if abs(r_max) < EPSILON:
                     return 0
@@ -130,10 +123,11 @@ class LensRayTracer:
 
     def _intersect_flat_surface(self, ray: Ray, vertex_x: float) -> Optional[Tuple[float, float]]:
         """Find intersection of ray with a flat surface at vertex_x."""
-        if abs(math.cos(ray.angle)) < EPSILON:
+        cos_a = math.cos(ray.angle)
+        if abs(cos_a) < EPSILON:
             return None
 
-        t = (vertex_x - ray.x) / math.cos(ray.angle)
+        t = (vertex_x - ray.x) / cos_a
         if t < 0:
             return None
 
@@ -241,7 +235,7 @@ class LensRayTracer:
 
     def _intersect_front_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
         """Find intersection point of ray with front surface."""
-        if getattr(self, "front_is_parabolic", False):
+        if self.front_is_parabolic:
             return self._intersect_parabolic_surface(ray, self.front_vertex_x, self.parabolic_sag_1)
         if self.front_is_flat:
             return self._intersect_flat_surface(ray, self.front_vertex_x)
@@ -249,7 +243,7 @@ class LensRayTracer:
 
     def _intersect_back_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
         """Find intersection point of ray with back surface."""
-        if getattr(self, "back_is_parabolic", False):
+        if self.back_is_parabolic:
             return self._intersect_parabolic_surface(ray, self.back_vertex_x, self.parabolic_sag_2)
         if self.back_is_flat:
             return self._intersect_flat_surface(ray, self.back_vertex_x)
@@ -319,10 +313,19 @@ class LensRayTracer:
         ray_height_range: Optional[Tuple[float, float]] = None,
         wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM,
         angle_deg: float = 0.0,
+        fill: float = 1.0,
     ) -> List[Ray]:
-        """Trace parallel rays (collimated beam) through the lens."""
+        """Trace parallel rays (collimated beam) through the lens.
+
+        Args:
+            fill: Fraction of the semi-aperture spanned by the fan when
+                ``ray_height_range`` is omitted. Defaults to the full
+                aperture so rim spherical aberration is traced; pass the
+                legacy viz-style ``APERTURE_FILL_FACTOR`` (0.95) explicitly
+                for display fans.
+        """
         if ray_height_range is None:
-            max_height = self.D / 2 * APERTURE_FILL_FACTOR
+            max_height = self.D / 2 * fill
             ray_height_range = (-max_height, max_height)
 
         rays = []
@@ -402,7 +405,7 @@ class LensRayTracer:
         y_values = [y_max - 2 * y_max * i / (num_points - 1) for i in range(num_points)]
 
         for y in y_values:
-            if getattr(self, "front_is_parabolic", False):
+            if self.front_is_parabolic:
                 a = self.parabolic_sag_1 / (y_max * y_max) if abs(y_max) > EPSILON else 0
                 x = self.lens_offset + a * y * y
             elif self.front_is_flat:
@@ -419,7 +422,7 @@ class LensRayTracer:
             points.append((x, y))
 
         for y in reversed(y_values):
-            if getattr(self, "back_is_parabolic", False):
+            if self.back_is_parabolic:
                 a = self.parabolic_sag_2 / (y_max * y_max) if abs(y_max) > EPSILON else 0
                 x = self.lens_offset + self.d + a * y * y
             elif self.back_is_flat:
@@ -463,15 +466,23 @@ class SystemRayTracer:
         num_rays: int = DEFAULT_NUM_RAYS,
         angle_deg: float = 0.0,
         wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM,
+        fill: float = 1.0,
     ) -> List[Ray]:
-        """Trace parallel rays through the entire optical system."""
+        """Trace parallel rays through the entire optical system.
+
+        Args:
+            fill: Fraction of the entrance-pupil semi-aperture spanned by
+                the fan. Defaults to the full aperture; pass the legacy
+                viz-style ``APERTURE_FILL_FACTOR`` (0.95) explicitly for
+                display fans.
+        """
         if not self.system.elements:
             return []
 
         self._sync_tracers()
 
         first_lens = self.system.elements[0].lens
-        max_height = first_lens.diameter / 2 * APERTURE_FILL_FACTOR
+        max_height = first_lens.diameter / 2 * fill
         min_h, max_h = -max_height, max_height
 
         rays = []
