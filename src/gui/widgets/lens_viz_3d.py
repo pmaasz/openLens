@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout
 import numpy as np
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ...lens import Lens
@@ -120,22 +120,18 @@ class _3DVisualizationWidget(QWidget):
         import numpy as np
 
         from ...constants import COLOR_LENS_BAD, COLOR_LENS_R1, COLOR_LENS_R2, COLOR_LENS_RIM
-        from ...geometry import LensGeometry
 
-        # Shared sag (same helper as every 2D view), vectorized for grids.
-        _vec_sag = np.vectorize(LensGeometry.surface_sag, otypes=[float])
+        # Single source of truth (Lens.get_sag_1/2), vectorized for grids.
+        _vec_sag1 = np.vectorize(lens.get_sag_1, otypes=[float])
+        _vec_sag2 = np.vectorize(lens.get_sag_2, otypes=[float])
 
         # Create circles at top and bottom edges
         theta = np.linspace(0, 2 * np.pi, 36)
 
-        def get_sag(r: float, y: Any, is_para: bool = False, para_sag: float = 0.0) -> Any:
-            """Return the surface sag for radius ``r`` at height ``y``."""
-            return _vec_sag(r, y, diameter, is_para, para_sag)
-
         # Calculate geometry (same outline helper as the 2D views):
         # thickness is CENTER (vertex to vertex) thickness.
-        sag1_edge = float(get_sag(r1, max_r, is_para1, para_sag1))
-        sag2_edge = float(get_sag(r2, max_r, is_para2, para_sag2))
+        sag1_edge = float(_vec_sag1(max_r))
+        sag2_edge = float(_vec_sag2(max_r))
         x1_vertex = 0
         x2_vertex = x1_vertex + thickness
         x1_edge = x1_vertex + sag1_edge
@@ -176,14 +172,14 @@ class _3DVisualizationWidget(QWidget):
 
         # Front surface (blue)
         if is_para1 or r1_abs > 0.1:
-            Z_front = x1_vertex + get_sag(r1, R, is_para1, para_sag1)
+            Z_front = x1_vertex + _vec_sag1(R)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_front, alpha=0.5, color=_c1, rstride=2, cstride=2)
 
         # Back surface (green)
         if is_para2 or r2_abs > 0.1:
-            Z_back = x2_vertex + get_sag(r2, R, is_para2, para_sag2)
+            Z_back = x2_vertex + _vec_sag2(R)
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
             self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color=_c2, rstride=2, cstride=2)

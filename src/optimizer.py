@@ -4,7 +4,6 @@ Optical System Optimization Engine
 Automatically optimize lens parameters to minimize aberrations and improve performance
 """
 
-import math
 from typing import List, Dict, Tuple, Callable, Optional
 from dataclasses import dataclass, field
 import copy
@@ -64,39 +63,6 @@ class OptimizationResult:
     variable_history: List[Dict[str, float]] = field(default_factory=list)
     merit_history: List[float] = field(default_factory=list)
     message: str = ""
-
-
-def _get_sag(r: float, h: float) -> float:
-    """Calculate surface sag (z-displacement) at height *h* for radius *r*."""
-    if abs(r) < 1e-6:
-        return 0.0
-    c = 1.0 / r
-    disc = 1.0 - (c * h) ** 2
-    if disc < 0:
-        return r  # invalid geometry sentinel
-    return c * h**2 / (1.0 + math.sqrt(disc))
-
-
-def _get_sag_for_lens(lens, surface: int, h: float) -> float:
-    """Get sag for a lens surface, handling parabolic (sag at D/2)."""
-    if surface == 1 and getattr(lens, "is_parabolic_1", False):
-        r_max = lens.diameter / 2
-        if abs(r_max) < 1e-9:
-            return 0.0
-        sag = float(getattr(lens, "parabolic_sag_1", 0.0))
-        # Clamp h to aperture
-        h_c = max(-r_max, min(h, r_max))
-        return sag * (h_c * h_c) / (r_max * r_max)
-    if surface == 2 and getattr(lens, "is_parabolic_2", False):
-        r_max = lens.diameter / 2
-        if abs(r_max) < 1e-9:
-            return 0.0
-        sag = float(getattr(lens, "parabolic_sag_2", 0.0))
-        h_c = max(-r_max, min(h, r_max))
-        return sag * (h_c * h_c) / (r_max * r_max)
-    # Spherical
-    r = lens.radius_of_curvature_1 if surface == 1 else lens.radius_of_curvature_2
-    return _get_sag(r, h)
 
 
 class MeritFunction:
@@ -235,48 +201,15 @@ class MeritFunction:
     # Physical constraint helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _sags_valid(lens, h: float) -> bool:
-        """True if spherical sags at height *h* are geometrically defined.
-
-        A spherical surface with |R| < h has no real sag (the aperture
-        overhangs the sphere); ``_get_sag`` returns a sentinel in that case.
-        Parabolic surfaces are defined for all h within the aperture.
-        """
-        import math as _math
-
-        for surface in (1, 2):
-            is_para = bool(getattr(lens, f"is_parabolic_{surface}", False))
-            if is_para:
-                continue
-            r = lens.radius_of_curvature_1 if surface == 1 else lens.radius_of_curvature_2
-            try:
-                rf = float(r)
-            except (TypeError, ValueError):
-                return False
-            if not _math.isfinite(rf):
-                continue
-            if abs(rf) < 1e-6:
-                continue
-            if abs(h) > abs(rf):
-                return False
-        try:
-            for surface in (1, 2):
-                s = _get_sag_for_lens(lens, surface, h)
-                if not _math.isfinite(float(s)):
-                    return False
-        except Exception:
-            return False
-        return True
-
     def _penalty_physical(self, system: OpticalSystem) -> float:
         """Penalties for invalid geometries (thickness, air gaps, edge clearance).
 
         Canonical convention: ``Lens.thickness`` is the CENTER (vertex to
         vertex) thickness, matching the ray tracers (tracer_2d/3d), the ABCD
-        matrix, the lensmaker equation, and ``LensGeometry``. The rim (edge)
-        thickness is derived as ``thickness - sag1 + sag2`` evaluated at the
-        clear aperture.
+        matrix, the lensmaker equation, and ``LensGeometry``. All sags come
+        from the single source of truth (``Lens.get_sag_1/2``); undefined
+        geometry (aperture overhanging a sphere) surfaces as
+        ``calculate_edge_thickness() is None``.
         """
         merit = 0.0
         min_ct = self.constraints.get("min_center_thickness", 1.0)
@@ -299,14 +232,12 @@ class MeritFunction:
 
             try:
                 y = lens.diameter / 2.0
-                if not self._sags_valid(lens, y):
+                edge_thickness = lens.calculate_edge_thickness()
+                if edge_thickness is None:
                     # Aperture overhangs a spherical surface (|R| < h):
-                    # sag formula is undefined there (sentinel value).
+                    # sag is undefined there.
                     merit += 1e8
                     continue
-                s1 = _get_sag_for_lens(lens, 1, y)
-                s2 = _get_sag_for_lens(lens, 2, y)
-                edge_thickness = center_thickness - s1 + s2
                 if edge_thickness <= 0:
                     # Hard infeasible: rim collapse / surfaces crossed at edge.
                     merit += 1e8
@@ -314,11 +245,10 @@ class MeritFunction:
                     merit += 1e4 * (min_et - edge_thickness) ** 2
                 # Interior check: meniscus shapes can self-intersect inside
                 # the aperture even when center and rim are both positive.
+                # (Rim defined implies interior sags are defined too.)
                 for frac in (0.5, 0.7071):
                     yi = y * frac
-                    si1 = _get_sag_for_lens(lens, 1, yi)
-                    si2 = _get_sag_for_lens(lens, 2, yi)
-                    ti = center_thickness - si1 + si2
+                    ti = center_thickness - lens.get_sag_1(yi) + lens.get_sag_2(yi)
                     if ti <= 0:
                         merit += 1e8
                         break
@@ -335,11 +265,14 @@ class MeritFunction:
                 lens1 = system.elements[i].lens
                 lens2 = system.elements[i + 1].lens
                 max_h = min(lens1.diameter, lens2.diameter) / 2.0
-                if not self._sags_valid(lens1, max_h) or not self._sags_valid(lens2, max_h):
+                if (
+                    lens1.calculate_edge_thickness() is None
+                    or lens2.calculate_edge_thickness() is None
+                ):
                     merit += 1e8
                     continue
-                s_back_1 = _get_sag_for_lens(lens1, 2, max_h)
-                s_front_2 = _get_sag_for_lens(lens2, 1, max_h)
+                s_back_1 = lens1.get_sag_2(max_h)
+                s_front_2 = lens2.get_sag_1(max_h)
                 edge_clearance = gap.thickness + s_front_2 - s_back_1
                 if edge_clearance <= 0:
                     merit += 1e8
