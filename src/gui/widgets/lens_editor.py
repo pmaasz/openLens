@@ -22,7 +22,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal
 
 from .lens_viz_container import LensVisualizationWidget
-from ...validation import check_physical_feasibility
+from ...validation import (
+    ValidationError,
+    check_physical_feasibility,
+    parabolic_sag_limit,
+)
 
 if TYPE_CHECKING:
     from ...lens import Lens
@@ -358,6 +362,7 @@ class LensEditorWidget(QWidget):
                 self._lens.diameter = self._diameter_input.value()
             self._lens.refractive_index = self._n_input.value()
             self._touch_lens()
+            self._update_sag_ranges()
             # Sync parabolic sag diameters if needed (sag stays as absolute distance)
             self._update_calculated()
             self._viz_widget.update_lens(self._lens)
@@ -402,6 +407,30 @@ class LensEditorWidget(QWidget):
         self._thickness_input.blockSignals(True)
         self._thickness_input.setValue(t_new)
         self._thickness_input.blockSignals(False)
+
+    def _update_sag_ranges(self) -> None:
+        """Clamp parabolic sag spinboxes to the diameter-scaled limit.
+
+        Sag without diameter is meaningless (R_vertex = r²/2·sag), so the
+        boxes track the current aperture/thickness instead of a fixed ±100.
+        Clamped values sync back into the model for enabled surfaces; the
+        caller refreshes calculated values and the viz afterwards.
+        """
+        if self._lens is None:
+            return
+        try:
+            limit = parabolic_sag_limit(self._lens.diameter, self._lens.thickness)
+        except ValidationError:
+            limit = 100.0
+        for spin, attr, enabled in (
+            (self._para1_sag_input, "parabolic_sag_1", self._para1_check.isChecked()),
+            (self._para2_sag_input, "parabolic_sag_2", self._para2_check.isChecked()),
+        ):
+            spin.blockSignals(True)
+            spin.setRange(-limit, limit)
+            spin.blockSignals(False)
+            if enabled:
+                setattr(self._lens, attr, spin.value())
 
     def _on_material_changed(self, material: str) -> None:
         """Handle material change"""
@@ -621,6 +650,7 @@ class LensEditorWidget(QWidget):
         self._para2_sag_input.setEnabled(is_p2)
         self._r1_input.setEnabled(not is_p1)
         self._r2_input.setEnabled(not is_p2)
+        self._update_sag_ranges()
         self._update_calculated()
         self._viz_widget.update_lens(lens)
         self._class_type_label.setText(lens.classify_lens_type())

@@ -198,6 +198,24 @@ else:
             self.assertEqual(lens.radius_of_curvature_1, 100.0)
             self.assertEqual(lens.parabolic_sag_1, 2.0)
 
+        def test_sag_ranges_track_diameter(self):
+            """Sag spinbox limits follow the physics-scaled bound."""
+            self._load(lock=True)
+            self.assertAlmostEqual(self.widget._para1_sag_input.maximum(), 20.0)
+            self.assertAlmostEqual(self.widget._para1_sag_input.minimum(), -20.0)
+            self.widget._diameter_input.setValue(10.0)
+            self.assertAlmostEqual(self.widget._para1_sag_input.maximum(), 5.0)
+
+        def test_sag_clamp_syncs_model(self):
+            """Shrinking the aperture clamps sag in spinbox and model."""
+            self._load(lock=True)
+            self.widget._para1_check.setChecked(True)
+            self.widget._para1_sag_input.setValue(15.0)
+            self.assertEqual(self.widget._lens.parabolic_sag_1, 15.0)
+            self.widget._diameter_input.setValue(10.0)
+            self.assertEqual(self.widget._para1_sag_input.value(), 5.0)
+            self.assertEqual(self.widget._lens.parabolic_sag_1, 5.0)
+
         def test_uncheck_parabolic_zeroes_sag(self):
             """Unchecking a parabolic surface resets its sag to zero."""
             self._load(lock=True)
