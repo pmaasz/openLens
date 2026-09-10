@@ -216,6 +216,34 @@ else:
             self.assertEqual(self.widget._para1_sag_input.value(), 5.0)
             self.assertEqual(self.widget._lens.parabolic_sag_1, 5.0)
 
+        def test_load_preserves_over_limit_sag(self):
+            """Loading never silently normalizes; the warning flags it."""
+            widget_lens = Lens(
+                name="T",
+                thickness=5.0,
+                diameter=10.0,
+                is_parabolic_1=True,
+                parabolic_sag_1=15.0,
+            )
+            self.widget._lock_edge_check.setChecked(True)
+            self.widget.load_lens(widget_lens)
+            self.assertEqual(self.widget._lens.parabolic_sag_1, 15.0)
+            self.assertEqual(self.widget._para1_sag_input.value(), 5.0)
+            self.assertFalse(self.widget._feas_warning_label.isHidden())
+
+        def test_external_latch_heals_panel(self):
+            """Optimizer-style flag mutation snaps the panel on next edit."""
+            self._load(lock=True)
+            self.widget._lens.is_parabolic_1 = True
+            self.widget._lens.parabolic_sag_1 = 8.0
+            self.assertFalse(self.widget._para1_check.isChecked())
+            self.widget._diameter_input.setValue(30.0)
+            self.assertTrue(self.widget._para1_check.isChecked())
+            self.assertFalse(self.widget._r1_input.isEnabled())
+            self.assertEqual(self.widget._para1_sag_input.value(), 8.0)
+            self.widget._on_interactive_property_changed("r1", 5.0)
+            self.assertEqual(self.widget._lens.radius_of_curvature_1, 100.0)
+
         def test_uncheck_parabolic_zeroes_sag(self):
             """Unchecking a parabolic surface resets its sag to zero."""
             self._load(lock=True)
