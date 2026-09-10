@@ -9,12 +9,16 @@ from dataclasses import dataclass, field
 import copy
 from concurrent.futures import ProcessPoolExecutor
 
+import logging
+
 from .constants import MIN_EDGE_THICKNESS
 from .lens import Lens
 from .optical_system import OpticalSystem
 from .aberrations import AberrationsCalculator
 from .analysis import SpotDiagram
 from .analysis.beam_synthesis import PSFCalculator, WavefrontSensor, NUMPY_AVAILABLE
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -370,11 +374,14 @@ class LensOptimizer:
         # First vertex is current design
         simplex.append(current_values.copy())
 
-        # Create n additional vertices by perturbing each variable
+        # Create n additional vertices by perturbing each variable.
+        # Deliberately NOT clamped: out-of-bounds vertices earn a bound
+        # penalty in _evaluate_design instead, so the search sees the true
+        # landscape. Clamping collapses distinct vertices onto one bound
+        # point, faking convergence (merit_range -> 0, success=True).
         for i in range(n_vars):
             vertex = current_values.copy()
             vertex[i] += self.variables[i].step_size
-            vertex[i] = self.variables[i].clamp(vertex[i])
             simplex.append(vertex)
 
         # Evaluate merit for all vertices
@@ -403,18 +410,51 @@ class LensOptimizer:
             if callback:
                 callback(iteration, merit_values[0], simplex[0])
 
-            # Check convergence
             merit_range = merit_values[-1] - merit_values[0]
+            n_clamped = sum(
+                1
+                for vertex in simplex
+                if any(not var.is_valid(v) for var, v in zip(self.variables, vertex))
+            )
+            logger.debug(
+                "simplex iter %d: merit_range=%.3g n_clamped=%d best=%.3g",
+                iteration,
+                merit_range,
+                n_clamped,
+                merit_values[0],
+            )
+            if n_clamped > n_vars / 2 and merit_range < tolerance:
+                # Asphyxiation, not convergence: a majority of vertices is
+                # pinned outside the box with no merit spread between them.
+                return OptimizationResult(
+                    success=False,
+                    iterations=iteration + 1,
+                    initial_merit=initial_merit,
+                    final_merit=merit_values[0],
+                    improvement=(
+                        ((initial_merit - merit_values[0]) / initial_merit * 100)
+                        if initial_merit > 0
+                        else 0
+                    ),
+                    optimized_system=self._apply_variables(simplex[0]),
+                    variable_history=variable_history,
+                    merit_history=merit_history,
+                    message=(
+                        f"Aborted after {iteration + 1} iterations: {n_clamped} of "
+                        f"{len(simplex)} simplex vertices stuck outside variable bounds"
+                    ),
+                )
+
+            # Check convergence
             if merit_range < tolerance:
                 break
 
             # Calculate centroid of best n points (excluding worst)
             centroid = [sum(simplex[i][j] for i in range(n_vars)) / n_vars for j in range(n_vars)]
 
-            # Reflection
+            # Reflection (unclamped: bounds are penalties, not walls)
             worst = simplex[-1]
             reflected = [centroid[j] + alpha * (centroid[j] - worst[j]) for j in range(n_vars)]
-            reflected = [self.variables[j].clamp(reflected[j]) for j in range(n_vars)]
             reflected_merit = self._evaluate_design(reflected)
 
             if merit_values[0] <= reflected_merit < merit_values[-2]:
@@ -426,7 +466,6 @@ class LensOptimizer:
                 expanded = [
                     centroid[j] + gamma * (reflected[j] - centroid[j]) for j in range(n_vars)
                 ]
-                expanded = [self.variables[j].clamp(expanded[j]) for j in range(n_vars)]
                 expanded_merit = self._evaluate_design(expanded)
 
                 if expanded_merit < reflected_merit:
@@ -438,7 +477,6 @@ class LensOptimizer:
             else:
                 # Contraction
                 contracted = [centroid[j] + rho * (worst[j] - centroid[j]) for j in range(n_vars)]
-                contracted = [self.variables[j].clamp(contracted[j]) for j in range(n_vars)]
                 contracted_merit = self._evaluate_design(contracted)
 
                 if contracted_merit < merit_values[-1]:
@@ -451,7 +489,6 @@ class LensOptimizer:
                         simplex[i] = [
                             best[j] + sigma * (simplex[i][j] - best[j]) for j in range(n_vars)
                         ]
-                        simplex[i] = [self.variables[j].clamp(simplex[i][j]) for j in range(n_vars)]
                         merit_values[i] = self._evaluate_design(simplex[i])
 
             # Record history
@@ -460,9 +497,11 @@ class LensOptimizer:
 
             last_iteration = iteration
 
-        # Best solution
+        # Best solution (a best point outside the box is not a success,
+        # even if the merit range converged: the design is unusable).
         best_values = simplex[0]
         final_merit = merit_values[0]
+        best_valid = all(var.is_valid(v) for var, v in zip(self.variables, best_values))
 
         # Apply best values to system
         optimized_system = self._apply_variables(best_values)
@@ -472,7 +511,7 @@ class LensOptimizer:
         )
 
         return OptimizationResult(
-            success=True,
+            success=best_valid,
             iterations=last_iteration + 1,
             initial_merit=initial_merit,
             final_merit=final_merit,
@@ -480,7 +519,11 @@ class LensOptimizer:
             optimized_system=optimized_system,
             variable_history=variable_history,
             merit_history=merit_history,
-            message=f"Converged after {last_iteration + 1} iterations",
+            message=(
+                f"Converged after {last_iteration + 1} iterations"
+                if best_valid
+                else f"Finished after {last_iteration + 1} iterations outside variable bounds"
+            ),
         )
 
     def optimize_gradient_descent(
@@ -506,11 +549,10 @@ class LensOptimizer:
             # Calculate numerical gradient
             gradient = self._calculate_gradient(current_values)
 
-            # Update variables
+            # Update variables (unclamped: bounds are penalties, not walls)
             new_values = []
             for i, (val, grad) in enumerate(zip(current_values, gradient)):
                 new_val = val - learning_rate * grad
-                new_val = self.variables[i].clamp(new_val)
                 new_values.append(new_val)
 
             # Evaluate new design
@@ -533,9 +575,10 @@ class LensOptimizer:
         improvement = (
             ((initial_merit - final_merit) / initial_merit * 100) if initial_merit > 0 else 0
         )
+        final_valid = all(var.is_valid(v) for var, v in zip(self.variables, current_values))
 
         return OptimizationResult(
-            success=True,
+            success=final_valid,
             iterations=last_iteration + 1,
             initial_merit=initial_merit,
             final_merit=final_merit,
@@ -543,7 +586,11 @@ class LensOptimizer:
             optimized_system=optimized_system,
             variable_history=variable_history,
             merit_history=merit_history,
-            message=f"Completed {last_iteration + 1} iterations",
+            message=(
+                f"Completed {last_iteration + 1} iterations"
+                if final_valid
+                else f"Finished {last_iteration + 1} iterations outside variable bounds"
+            ),
         )
 
     def _calculate_gradient(self, values: List[float]) -> List[float]:
@@ -551,12 +598,12 @@ class LensOptimizer:
         epsilon = 1e-5
         n_vars = len(values)
 
-        # Prepare all perturbed designs
+        # Prepare all perturbed designs (unclamped: clamping the +epsilon
+        # step at a bound makes f_plus == f0 and the gradient exactly 0.0).
         perturbed_designs = []
         for i in range(n_vars):
             values_plus = values.copy()
             values_plus[i] += epsilon
-            values_plus[i] = self.variables[i].clamp(values_plus[i])
             perturbed_designs.append(values_plus)
 
         # Evaluate f0 (might already be cached)
@@ -573,6 +620,19 @@ class LensOptimizer:
         gradient = [(f_plus - f0) / epsilon for f_plus in f_plus_list]
         return gradient
 
+    def _bound_penalty(self, values: List[float]) -> float:
+        """Quadratic penalty for bound violations (no clamping in search).
+
+        Clamping search points to the box collapses distinct vertices onto
+        one bound point, faking convergence; penalizing keeps the true
+        landscape (a bowl pulling back inside) visible to simplex/gradient.
+        """
+        penalty = 0.0
+        for var, v in zip(self.variables, values):
+            if not var.is_valid(v):
+                penalty += 1e6 * (v - var.clamp(v)) ** 2
+        return penalty
+
     def _evaluate_design(self, values: List[float]) -> float:
         """Evaluate merit function for given variable values with caching"""
         # Create a cache key from the values (rounded to avoid precision issues)
@@ -581,7 +641,7 @@ class LensOptimizer:
             return self._merit_cache[cache_key]
 
         system = self._apply_variables(values)
-        merit = self.merit_function.evaluate(system)
+        merit = self.merit_function.evaluate(system) + self._bound_penalty(values)
 
         self._merit_cache[cache_key] = merit
         return merit

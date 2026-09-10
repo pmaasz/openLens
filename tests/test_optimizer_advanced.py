@@ -154,6 +154,53 @@ class TestAdvancedOptimizer(unittest.TestCase):
         self.assertTrue(applied.is_parabolic_1)
         self.assertEqual(applied.parabolic_sag_1, 2.5)
 
+    def _thickness_optimizer(self, current, min_v=1.0, max_v=10.0, step=1.0):
+        """Single thickness variable on the default singlet (no targets)."""
+        system = OpticalSystem("Bound System")
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=100.0,
+                radius_of_curvature_2=-100.0,
+                thickness=5.0,
+                diameter=25.0,
+                refractive_index=1.5,
+            )
+        )
+        variables = [
+            OptimizationVariable(
+                name="T",
+                element_index=0,
+                parameter="thickness",
+                current_value=current,
+                min_value=min_v,
+                max_value=max_v,
+                step_size=step,
+            )
+        ]
+        return LensOptimizer(system, variables, [])
+
+    def test_out_of_bounds_penalized_not_clamped(self):
+        """Outside points form a penalty bowl, not a clamped flatland."""
+        optimizer = self._thickness_optimizer(current=9.0)
+        m_in = optimizer._evaluate_design([9.0])
+        m_out1 = optimizer._evaluate_design([11.0])
+        m_out2 = optimizer._evaluate_design([12.0])
+        self.assertGreater(m_out1 - m_in, 1e5)
+        self.assertGreater(m_out2, m_out1)
+
+    def test_wall_gradient_points_inside(self):
+        """Numerical gradient at a bound is non-zero (was exactly 0.0)."""
+        optimizer = self._thickness_optimizer(current=10.0)
+        gradient = optimizer._calculate_gradient([10.0])
+        self.assertGreater(gradient[0], 0.0)
+
+    def test_wall_collapse_aborts_not_converges(self):
+        """Simplex stuck outside bounds fails loudly instead of 'Converged'."""
+        optimizer = self._thickness_optimizer(current=100.0, step=1e-15)
+        result = optimizer.optimize_simplex(max_iterations=50)
+        self.assertFalse(result.success)
+        self.assertIn("bounds", result.message)
+
     def test_coma_target(self):
         """Test that coma target can be evaluated"""
         targets = [
