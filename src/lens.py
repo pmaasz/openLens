@@ -595,13 +595,19 @@ class Lens:
         """
         Calculate Front Focal Length (FFL).
 
-        FFL is the distance from the front vertex of the lens to the front focal point.
-        For a thick lens: FFL = f * (1 - d * P2 / n)
-        where P2 = -(n-1)/R2 is the power of the second surface,
-        d is the thickness, n is the refractive index, and f is the focal length.
+        FFL is the Cartesian x-coordinate of the front focal point measured
+        from the front vertex (+x along the light direction). For a
+        converging lens the front focus lies to the LEFT of the front
+        vertex, so FFL is negative: FFL = -f * (1 - d * P2 / n), where
+        P2 = (1-n)/R2 is the second-surface power, d the thickness, n the
+        refractive index and f the effective focal length. (From the system
+        matrix in (y, n*theta) form: the front object distance is s = -D/C,
+        hence the Cartesian coordinate is D/C = -f*(1 - d*P2/n).)
+        The mirror image of BFL = -A/C = +f * (1 - d * P1 / n).
 
         Returns:
-            Front focal length in mm, or inf if undefined
+            Front focal length in mm (signed Cartesian coordinate),
+            or inf if undefined
         """
         f = self.calculate_focal_length()
         if f is None:
@@ -617,8 +623,9 @@ class Lens:
             # Flat surface: r2 = inf -> P2 = 0
             P2 = -(n - 1) / r2
 
-            # FFL = f * (1 - d * P2 / n)
-            ffl = f * (1.0 - t * P2 / n)
+            # FFL = -f * (1 - d * P2 / n); the minus sign places the front
+            # focus on the object side (-x) for converging lenses.
+            ffl = -f * (1.0 - t * P2 / n)
 
             return ffl
         except ZeroDivisionError:
