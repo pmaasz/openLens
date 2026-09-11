@@ -78,6 +78,25 @@ class TestStrehlRatio(unittest.TestCase):
         self.assertGreater(ratio, 12.0)
         self.assertLess(ratio, 20.0)
 
+    def test_short_focus_lens_gets_real_strehl(self):
+        """BFL shorter than the exit propagation must still reference."""
+        short = Lens(
+            name="Short fast singlet",
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=-50.0,
+            thickness=6.0,
+            diameter=25.0,
+            refractive_index=1.5168,
+            material="BK7",
+        )
+        results = AberrationsCalculator(short).calculate_all_aberrations()
+
+        # Fast uncorrected singlet: huge but finite wavefront error, and a
+        # defined (near-zero) Strehl rather than a computation bail-out.
+        self.assertGreater(results["wfe_rms_waves"], 1.0)
+        self.assertGreaterEqual(results["strehl"], 0.0)
+        self.assertLessEqual(results["strehl"], 1.0)
+
     def test_marechal_consistency_for_small_aberration(self):
         """Exact pupil average must match Marechal for sigma << 1 wave."""
         results = AberrationsCalculator(_biconvex(5.0)).calculate_all_aberrations()
