@@ -287,20 +287,13 @@ class LensRayTracer3D:
             intersection = self._intersect_sphere(ray, center, abs(R), (R > 0))
 
         if intersection is None:
-            if surface_type == "back" and not is_flat:
-                dist_sq = (ray.origin - center).magnitude_sq()
-                R_abs = abs(R)
-                already_exited = False
-
-                if R < 0 and dist_sq > R_abs**2:
-                    already_exited = True
-                elif R > 0 and dist_sq < R_abs**2:
-                    already_exited = True
-
-                if already_exited:
-                    ray.n = default_n2
-                    return RefractionResult.REFRACTED
-
+            # No forward intersection with this surface (the ray line misses
+            # the sphere/paraboloid/plane entirely). This is a miss however
+            # the ray got here: report MISSED with state unchanged so the
+            # caller terminates the ray, exactly like the 2D tracer. (A ray
+            # that has somehow crossed the surface already must NOT be
+            # fabricated into a transmitted ray: returning REFRACTED here
+            # would leave origin/direction stale while flipping n to air.)
             return RefractionResult.MISSED
 
         v_to_i = intersection - vertex
