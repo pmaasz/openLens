@@ -233,8 +233,11 @@ class TestRayTracer3D(unittest.TestCase):
 
         tracer.trace_ray(ray)
 
-        # Should not terminate inside (should pass through or exit immediately)
-        self.assertFalse(ray.terminated, "Ray terminated inside crossed lens region")
+        # Crossed surfaces are unrealizable: past the crossing point no back
+        # surface exists in front of the ray, so its line misses the back
+        # sphere and the ray must terminate (matching the 2D tracer) rather
+        # than continue as a fabricated transmission with a stale origin.
+        self.assertTrue(ray.terminated, "Ray should terminate at crossed region")
 
     def test_cemented_doublet_trace(self):
         """Test tracing through a cemented doublet (surfaces touching)."""
@@ -279,6 +282,43 @@ class TestRayTracer3D(unittest.TestCase):
         # Path: Start(-10), L1F(0), L1B/L2F(5), L2B(10), End(60)
         # Should have at least 5 points
         self.assertGreaterEqual(len(ray.path), 5)
+
+    def test_back_surface_miss_reports_missed(self):
+        """A ray whose line misses the back surface must be MISSED, never a
+        phantom REFRACTED with stale origin/direction (and a flipped index).
+        """
+        from src.ray_tracer import RefractionResult
+
+        # Back sphere: center (10 - 100, 0, 0), radius 100. A +x ray at
+        # height 150 misses it outright (closest approach 150 > 100).
+        ray = Ray3D(vec3(60, 150, 0), vec3(1, 0, 0))
+        ray.n = 1.5  # simulate in-glass state after front refraction
+        origin_before = vec3(ray.origin.x, ray.origin.y, ray.origin.z)
+
+        result = self.tracer3d.trace_surface(ray, "back", "refract")
+
+        self.assertEqual(result, RefractionResult.MISSED)
+        # State untouched: caller terminates the ray from here.
+        self.assertEqual(ray.n, 1.5)
+        self.assertEqual(
+            (ray.origin.x, ray.origin.y, ray.origin.z),
+            (origin_before.x, origin_before.y, origin_before.z),
+        )
+
+    def test_normal_ray_still_refracts_at_back_surface(self):
+        """Guard against over-deletion: ordinary rays refract normally."""
+        from src.ray_tracer import RefractionResult
+
+        ray = Ray3D(vec3(-50, 5, 0), vec3(1, 0, 0))
+        self.assertEqual(
+            self.tracer3d.trace_surface(ray, "front", "refract"),
+            RefractionResult.REFRACTED,
+        )
+        self.assertEqual(
+            self.tracer3d.trace_surface(ray, "back", "refract"),
+            RefractionResult.REFRACTED,
+        )
+        self.assertFalse(ray.terminated)
 
 
 if __name__ == "__main__":

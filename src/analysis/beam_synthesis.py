@@ -182,8 +182,11 @@ class WavefrontSensor:
                 ray = Ray3D(origin, direction, wavelength=wavelength)
                 self.tracer.trace_ray(ray)
 
-                if ray.terminated and len(ray.path) < len(self.system.elements):
-                    # Vignetted
+                if ray.terminated:
+                    # Vignetted / blocked / TIR: exclude from the OPD map.
+                    # (Ray3D.path holds origin + hits + exit propagation, so
+                    # comparing its length to the element count is almost
+                    # always false and would leak terminated rays into W.)
                     W[i, j] = float("nan")
                 else:
                     # Calculate OPD

@@ -363,7 +363,13 @@ class OpticalSystem:
             return None
 
     def calculate_chromatic_aberration(self) -> Dict[str, Any]:
-        """Calculate system longitudinal chromatic aberration using standard F, d, C lines."""
+        """Calculate system longitudinal chromatic aberration using standard F, d, C lines.
+
+        For each line the system matrix is rebuilt with wavelength-correct
+        indices, giving both the back focal length (BFL = -A/C, the
+        observable focus position) and the effective focal length
+        (EFL = -1/C). The ``f_*`` keys are true EFLs, not copies of BFL.
+        """
         # Standard Fraunhofer lines in nm
         lines = {
             "F": WAVELENGTH_F_LINE,  # Blue
@@ -371,10 +377,18 @@ class OpticalSystem:
             "C": WAVELENGTH_C_LINE,  # Red
         }
 
-        bfls = {}
+        bfls: Dict[str, Optional[float]] = {}
+        efls: Dict[str, Optional[float]] = {}
         for line, wl in lines.items():
             n_map = {i: el.lens.refractive_index_at(wl) for i, el in enumerate(self.elements)}
-            bfls[line] = self.calculate_back_focal_length(n_overrides=n_map)
+            matrix = self._calculate_system_matrix(n_overrides=n_map)
+            if matrix and abs(matrix[2]) > 1e-10:
+                A, B, C, D = matrix
+                bfls[line] = -A / C
+                efls[line] = -1.0 / C
+            else:
+                bfls[line] = None
+                efls[line] = None
 
         if bfls["F"] is not None and bfls["C"] is not None:
             longitudinal = bfls["C"] - bfls["F"]
@@ -383,9 +397,9 @@ class OpticalSystem:
                 "bfl_F": bfls["F"],
                 "bfl_d": bfls["d"],
                 "bfl_C": bfls["C"],
-                "f_F": bfls["F"],
-                "f_d": bfls["d"],
-                "f_C": bfls["C"],
+                "f_F": efls["F"],
+                "f_d": efls["d"],
+                "f_C": efls["C"],
                 "corrected": abs(longitudinal) < 0.1,
             }
         return {"longitudinal": 0.0, "corrected": False}

@@ -185,6 +185,29 @@ class TestChromaticAberration(unittest.TestCase):
         # Should be well corrected
         self.assertLess(chrom["longitudinal"], 1.0)
 
+    def test_efl_keys_are_true_efl_not_bfl_copies(self):
+        """f_F/f_d/f_C must be matrix EFLs (-1/C), not BFL copies."""
+        lens = Lens(
+            radius_of_curvature_1=100,
+            radius_of_curvature_2=-100,
+            thickness=10,
+            diameter=50,
+            material="BK7",
+        )
+        system = OpticalSystem()
+        system.add_lens(lens)
+
+        chrom = system.calculate_chromatic_aberration()
+
+        # Thick lens: EFL and BFL differ, so copies would be identical.
+        self.assertNotAlmostEqual(chrom["f_d"], chrom["bfl_d"], places=3)
+        # f_d is the matrix EFL at the d-line indices.
+        n_map = {i: el.lens.refractive_index_at(587.6) for i, el in enumerate(system.elements)}
+        matrix = system._calculate_system_matrix(n_overrides=n_map)
+        self.assertAlmostEqual(chrom["f_d"], -1.0 / matrix[2], places=9)
+        # BFL entries still match the dedicated BFL method.
+        self.assertAlmostEqual(chrom["bfl_d"], system.calculate_back_focal_length(), places=3)
+
 
 class TestAchromaticDoublet(unittest.TestCase):
     """Test achromatic doublet design"""
