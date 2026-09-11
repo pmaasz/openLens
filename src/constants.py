@@ -229,14 +229,18 @@ ALL_LENS_TYPES = [
     LENS_TYPE_MENISCUS_CONCAVE,
 ]
 
-# Standard radius preset (R1, R2) in mm applied per lens type
+# Standard radius preset (R1, R2) in mm applied per lens type.
+# Meniscus lenses need same-sign radii (both centers on one side);
+# opposite signs would be (bi)convex/concave. "Convex" = net converging
+# (R1 < R2 for positive pairs), "Concave" = net diverging, matching
+# Lens.classify_lens_type().
 LENS_TYPE_PRESET_RADII = {
     LENS_TYPE_BICONVEX: (DEFAULT_RADIUS_1, DEFAULT_RADIUS_2),
     LENS_TYPE_BICONCAVE: (-DEFAULT_RADIUS_1, -DEFAULT_RADIUS_2),
     LENS_TYPE_PLANO_CONVEX: (DEFAULT_RADIUS_1, float("inf")),
     LENS_TYPE_PLANO_CONCAVE: (float("inf"), DEFAULT_RADIUS_1),
-    LENS_TYPE_MENISCUS_CONVEX: (80.0, -120.0),
-    LENS_TYPE_MENISCUS_CONCAVE: (-120.0, 80.0),
+    LENS_TYPE_MENISCUS_CONVEX: (80.0, 120.0),
+    LENS_TYPE_MENISCUS_CONCAVE: (-80.0, -120.0),
 }
 
 # ==================== Quality Assessment Constants ====================

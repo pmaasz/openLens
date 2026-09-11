@@ -165,6 +165,34 @@ class TestLensTypePresets(unittest.TestCase):
         )
         self.assertEqual(lens.classify_lens_type(), "Biconvex")
 
+    def test_every_preset_classifies_as_its_own_type(self):
+        """set_lens_type presets must round-trip through classify_lens_type."""
+        from src.constants import ALL_LENS_TYPES
+
+        for lens_type in ALL_LENS_TYPES:
+            lens = Lens()
+            lens.set_lens_type(lens_type)
+            self.assertEqual(
+                lens.classify_lens_type(),
+                lens_type,
+                f"Preset for {lens_type} classifies as " f"{lens.classify_lens_type()}",
+            )
+
+    def test_meniscus_presets_have_same_sign_radii(self):
+        """Meniscus presets need same-sign radii and matching power sign."""
+        lens = Lens()
+        lens.set_lens_type("Meniscus Convex")
+        r1, r2 = lens.radius_of_curvature_1, lens.radius_of_curvature_2
+        self.assertGreater(r1, 0)
+        self.assertGreater(r2, 0)
+        self.assertGreater(lens.calculate_focal_length(), 0)
+
+        lens.set_lens_type("Meniscus Concave")
+        r1, r2 = lens.radius_of_curvature_1, lens.radius_of_curvature_2
+        self.assertLess(r1, 0)
+        self.assertLess(r2, 0)
+        self.assertLess(lens.calculate_focal_length(), 0)
+
 
 class TestLensSerialization(unittest.TestCase):
     """to_dict / from_dict round-trips"""
