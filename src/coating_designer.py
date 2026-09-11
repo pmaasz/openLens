@@ -4,6 +4,7 @@ Anti-Reflection Coating Designer
 Calculate coating thickness and reflectivity for optical coatings
 """
 
+import cmath
 import math
 from typing import List, Tuple
 from dataclasses import dataclass
@@ -16,6 +17,23 @@ class CoatingLayer:
     material: str
     refractive_index: float
     thickness_nm: float  # Physical thickness in nanometers
+
+
+def _tilted_admittance(n: float, cos_theta: complex, polarization: str) -> complex:
+    """Tilted optical admittance for the transfer-matrix method.
+
+    Args:
+        n: Refractive index of the medium.
+        cos_theta: Cosine of the propagation angle in the medium
+            (complex in general, real here since light enters from air).
+        polarization: "s" (TE) or "p" (TM).
+
+    Returns:
+        n*cos(theta) for s-polarization, n/cos(theta) for p-polarization.
+    """
+    if polarization == "s":
+        return n * cos_theta
+    return n / cos_theta
 
 
 class CoatingDesigner:
@@ -103,51 +121,96 @@ class CoatingDesigner:
         self, layers: List[CoatingLayer], wavelength_nm: float, angle_deg: float = 0
     ) -> float:
         """
-        Calculate reflectivity of coating stack using transfer matrix method
+        Calculate reflectivity of coating stack using transfer matrix method.
+
+        Each layer j is represented by its characteristic matrix (Macleod,
+        Thin-Film Optical Filters; Hecht, Optics):
+
+            M_j = [[cos d_j,  i*sin d_j / eta_j],
+                   [i*eta_j*sin d_j, cos d_j]],
+
+        with phase thickness d_j = 2*pi*n_j*t_j*cos(th_j)/lambda and tilted
+        admittances eta_j = n_j*cos(th_j) (s-polarization) or
+        eta_j = n_j/cos(th_j) (p-polarization). Angles inside the stack
+        follow Snell's law from the angle of incidence in air. The system
+        matrix M = prod(M_j) gives
+        [B, C]^T = M.[1, eta_substrate]^T and
+        r = (eta_inc*B - C)/(eta_inc*B + C), R = |r|^2, averaged over both
+        polarizations for unpolarized light.
 
         Args:
             layers: List of coating layers (substrate to air)
             wavelength_nm: Wavelength in nanometers
-            angle_deg: Angle of incidence in degrees
+            angle_deg: Angle of incidence in degrees from the surface
+                normal, in the incident (air) medium. Must be in [0, 90).
 
         Returns:
             Reflectivity (0 to 1)
+
+        Raises:
+            ValueError: If wavelength is not positive or the angle is
+                outside [0, 90) degrees.
+
+        Note:
+            Layer indices are real (lossless films), so transmission is
+            reported as T = 1 - R elsewhere; absorption is neglected.
         """
+        if wavelength_nm <= 0:
+            raise ValueError(f"Wavelength must be positive, got {wavelength_nm}")
+        if not 0 <= angle_deg < 90:
+            raise ValueError(f"Angle of incidence must be in [0, 90), got {angle_deg}")
+
+        theta_0 = math.radians(angle_deg)
+        sin_0 = math.sin(theta_0)
+        cos_0 = math.cos(theta_0)
+
         if not layers:
-            # No coating - Fresnel reflection
-            r = (self.substrate_index - self.air_index) / (self.substrate_index + self.air_index)
-            return r**2
-
-        # Simplified calculation for normal incidence
-        if angle_deg == 0:
-            # Build refractive index stack
-            indices = (
-                [self.substrate_index]
-                + [layer.refractive_index for layer in layers]
-                + [self.air_index]
+            # No coating - Fresnel reflection at the bare air/substrate interface.
+            cos_s = cmath.sqrt(1 - (sin_0 / self.substrate_index) ** 2)
+            rs = (self.air_index * cos_0 - self.substrate_index * cos_s) / (
+                self.air_index * cos_0 + self.substrate_index * cos_s
             )
+            rp = (self.substrate_index * cos_0 - self.air_index * cos_s) / (
+                self.substrate_index * cos_0 + self.air_index * cos_s
+            )
+            return float(min(max((abs(rs) ** 2 + abs(rp) ** 2) / 2.0, 0.0), 1.0))
 
-            # Calculate phase thickness for each layer
-            wavelength_m = wavelength_nm * 1e-9
-            phases = []
-            for layer in layers:
-                thickness_m = layer.thickness_nm * 1e-9
-                phase = 2 * math.pi * layer.refractive_index * thickness_m / wavelength_m
-                phases.append(phase)
+        # Light is incident from air, so traverse the stored
+        # (substrate-to-air) stack in reverse.
+        incident_order = list(reversed(layers))
 
-            # Transfer matrix method (simplified for normal incidence)
-            # For exact calculation, would use full 2x2 matrices
+        r_sum = 0.0
+        # Unpolarized light: average s- and p-polarized reflectances.
+        for polarization in ("s", "p"):
+            eta_inc = _tilted_admittance(self.air_index, cos_0, polarization)
+            eta_sub = _tilted_admittance(
+                self.substrate_index,
+                cmath.sqrt(1 - (self.air_index * sin_0 / self.substrate_index) ** 2),
+                polarization,
+            )
+            # System matrix M = prod(M_j), identity to start.
+            m11, m12, m21, m22 = 1.0 + 0.0j, 0.0j, 0.0j, 1.0 + 0.0j
+            for layer in incident_order:
+                n = layer.refractive_index
+                cos_t = cmath.sqrt(1 - (self.air_index * sin_0 / n) ** 2)
+                delta = 2 * math.pi * n * layer.thickness_nm * cos_t / wavelength_nm
+                eta = _tilted_admittance(n, cos_t, polarization)
+                cos_d = cmath.cos(delta)
+                sin_d = cmath.sin(delta)
+                a11, a12 = cos_d, 1j * sin_d / eta
+                a21, a22 = 1j * eta * sin_d, cos_d
+                m11, m12, m21, m22 = (
+                    m11 * a11 + m12 * a21,
+                    m11 * a12 + m12 * a22,
+                    m21 * a11 + m22 * a21,
+                    m21 * a12 + m22 * a22,
+                )
+            b = m11 + m12 * eta_sub
+            c = m21 + m22 * eta_sub
+            r = (eta_inc * b - c) / (eta_inc * b + c)
+            r_sum += abs(r) ** 2
 
-            # Approximate using thin film interference
-            total_reflection = 0
-            for i in range(len(indices) - 1):
-                r = (indices[i] - indices[i + 1]) / (indices[i] + indices[i + 1])
-                total_reflection += r**2
-
-            # Normalize (rough approximation)
-            return min(total_reflection / len(indices), 1.0)
-
-        return 0.04  # Placeholder for angled incidence
+        return float(min(max(r_sum / 2.0, 0.0), 1.0))
 
     def calculate_reflectivity_curve(
         self,

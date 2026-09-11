@@ -206,11 +206,21 @@ class TestCoatingDesignWorkflow(unittest.TestCase):
 
         self.assertEqual(len(curve), 50)
 
-        # Step 7: Verify reflectivity is low across visible spectrum
+        # Step 7: Verify reflectivity curve is physical across visible spectrum.
+        # NOTE: the dual-layer heuristic (QW Ta2O5 + QW MgF2) is not an
+        # optimized broadband AR design: exact transfer-matrix physics gives
+        # ~4.3% at the 550nm design wavelength and ~5.4% averaged over
+        # 450-650nm (a QW high-low pair is the start of a Bragg reflector,
+        # so it underperforms bare glass off-design). The bound below pins
+        # that exact-physics behavior; it must not be re-tightened to the
+        # ~2.4% the old incoherent (interface-sum) formula produced.
         visible_reflectivities = [R for wl, R in curve if 450 <= wl <= 650]
         avg_R = sum(visible_reflectivities) / len(visible_reflectivities)
 
-        self.assertLess(avg_R, 0.05)  # < 5% average reflectivity
+        for R in visible_reflectivities:
+            self.assertGreaterEqual(R, 0.0)
+            self.assertLessEqual(R, 1.0)
+        self.assertLess(avg_R, 0.065)  # exact-physics average is ~5.4%
 
         print("✓ Coating design workflow successful!")
 

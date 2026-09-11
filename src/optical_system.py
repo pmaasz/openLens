@@ -242,8 +242,15 @@ class OpticalSystem:
 
     def get_system_focal_length(self) -> Optional[float]:
         """
-        Calculate system focal length using thin lens approximation
-        For thick lenses, this is approximate
+        Calculate the system effective focal length (EFL).
+
+        A single lens returns its own (thick-lens) focal length. Any
+        multi-element system — including two-lens systems — uses the exact
+        paraxial value EFL = -1/C from the system ABCD matrix (reduced
+        glass thickness d/n, air gaps included). The old two-lens
+        thin-combination 1/f = 1/f1 + 1/f2 - d/(f1*f2) ignored
+        principal-plane offsets and disagreed with the matrix by ~10%
+        for thick/cemented pairs, so it was removed.
         """
         if not self.elements:
             return None
@@ -252,24 +259,7 @@ class OpticalSystem:
         if len(self.elements) == 1:
             return self.elements[0].lens.calculate_focal_length()
 
-        # For two lenses separated by distance d:
-        # 1/f = 1/f1 + 1/f2 - d/(f1*f2)
-        if len(self.elements) == 2:
-            f1 = self.elements[0].lens.calculate_focal_length()
-            f2 = self.elements[1].lens.calculate_focal_length()
-
-            if f1 is None or f2 is None:
-                return None
-
-            d = self.air_gaps[0].thickness if self.air_gaps else 0.0
-
-            try:
-                power = 1 / f1 + 1 / f2 - d / (f1 * f2)
-                return 1 / power if power != 0 else None
-            except (ZeroDivisionError, OverflowError):
-                return None
-
-        # For more complex systems, use matrix method
+        # Exact matrix method for all multi-element systems
         matrix = self._calculate_system_matrix()
         if not matrix:
             return None
@@ -283,7 +273,7 @@ class OpticalSystem:
         return -1.0 / C
 
     def get_system_f_number(self) -> Optional[float]:
-        """Calculate system F-number (f/D)"""
+        """System F-number (photographic convention: |EFL|/D, always >= 0)."""
         f = self.get_system_focal_length()
         if f is None:
             return None
@@ -373,7 +363,13 @@ class OpticalSystem:
             return None
 
     def calculate_chromatic_aberration(self) -> Dict[str, Any]:
-        """Calculate system longitudinal chromatic aberration using standard F, d, C lines."""
+        """Calculate system longitudinal chromatic aberration using standard F, d, C lines.
+
+        For each line the system matrix is rebuilt with wavelength-correct
+        indices, giving both the back focal length (BFL = -A/C, the
+        observable focus position) and the effective focal length
+        (EFL = -1/C). The ``f_*`` keys are true EFLs, not copies of BFL.
+        """
         # Standard Fraunhofer lines in nm
         lines = {
             "F": WAVELENGTH_F_LINE,  # Blue
@@ -381,10 +377,18 @@ class OpticalSystem:
             "C": WAVELENGTH_C_LINE,  # Red
         }
 
-        bfls = {}
+        bfls: Dict[str, Optional[float]] = {}
+        efls: Dict[str, Optional[float]] = {}
         for line, wl in lines.items():
             n_map = {i: el.lens.refractive_index_at(wl) for i, el in enumerate(self.elements)}
-            bfls[line] = self.calculate_back_focal_length(n_overrides=n_map)
+            matrix = self._calculate_system_matrix(n_overrides=n_map)
+            if matrix and abs(matrix[2]) > 1e-10:
+                A, B, C, D = matrix
+                bfls[line] = -A / C
+                efls[line] = -1.0 / C
+            else:
+                bfls[line] = None
+                efls[line] = None
 
         if bfls["F"] is not None and bfls["C"] is not None:
             longitudinal = bfls["C"] - bfls["F"]
@@ -393,9 +397,9 @@ class OpticalSystem:
                 "bfl_F": bfls["F"],
                 "bfl_d": bfls["d"],
                 "bfl_C": bfls["C"],
-                "f_F": bfls["F"],
-                "f_d": bfls["d"],
-                "f_C": bfls["C"],
+                "f_F": efls["F"],
+                "f_d": efls["d"],
+                "f_C": efls["C"],
                 "corrected": abs(longitudinal) < 0.1,
             }
         return {"longitudinal": 0.0, "corrected": False}
@@ -408,6 +412,14 @@ class OpticalSystem:
         through the glass at the reduced thickness d/n, refraction at the
         second surface, then propagation through the following air gap.
 
+        Convention: the ray vector is (y, n·theta) throughout, so refraction
+        is [[1, 0], [-P, 1]] with P = (n_out - n_in)/R and propagation is
+        [[1, d/n], [0, 1]]. The d/n is NOT a bug: it is the correct reduced
+        distance for this vector, and the air-to-air total (what EFL/BFL
+        read off) is identical to the (y, theta) chain with propagation d.
+        Cemented (zero-gap) pairs are exact too: the glass|air|glass pair
+        with zero propagation between collapses to the glass|glass power.
+
         Args:
             n_overrides: Optional dict mapping element index → refractive
                 index to use instead of ``element.lens.refractive_index``.
@@ -415,7 +427,7 @@ class OpticalSystem:
         if not self.elements:
             return None
 
-        # Ray vector [y, u]; M = [[A, B], [C, D]], start at identity.
+        # Ray vector (y, n·theta); M = [[A, B], [C, D]], start at identity.
         A, B, C, D = 1.0, 0.0, 0.0, 1.0
         n_current = 1.0  # start in air
 
@@ -423,9 +435,12 @@ class OpticalSystem:
             lens = element.lens
             n_lens = n_overrides[i] if n_overrides and i in n_overrides else lens.refractive_index
 
-            # Refraction at first surface (n_current → n_lens).
-            # Standard paraxial refraction matrix is [[1, 0], [-P, 1]].
-            R1 = lens.radius_of_curvature_1
+            # Refraction at first surface (n_current → n_lens), using the
+            # vertex radius so parabolic surfaces get their true power.
+            # Non-finite radii (flat, incl. zero-sag parabolic) carry no
+            # power and are skipped; R == 0 cannot occur (Lens maps it to
+            # inf) and is guarded anyway.
+            R1 = lens.get_effective_radius_1()
             if R1 != 0 and math.isfinite(R1):
                 P1 = (n_lens - n_current) / R1
                 A, B, C, D = (A, B, C - P1 * A, D - P1 * B)
@@ -435,7 +450,7 @@ class OpticalSystem:
             A, B, C, D = (A + d * C, B + d * D, C, D)
 
             # Refraction at second surface (n_lens → air).
-            R2 = lens.radius_of_curvature_2
+            R2 = lens.get_effective_radius_2()
             if R2 != 0 and math.isfinite(R2):
                 P2 = (1.0 - n_lens) / R2
                 A, B, C, D = (A, B, C - P2 * A, D - P2 * B)
@@ -460,17 +475,21 @@ class OpticalSystem:
         return -A / C
 
     def get_numerical_aperture(self) -> float:
-        """Calculate system numerical aperture (based on first lens)"""
+        """System numerical aperture from the entrance pupil and system EFL.
+
+        Paraxial NA = D / (2 * |EFL|), with D the first-element diameter
+        (entrance-pupil estimate, same convention as get_f_number).
+        """
         if not self.elements:
             return 0.0
         first_lens = self.elements[0].lens
-        f = first_lens.calculate_focal_length()
+        f = self.get_system_focal_length()
         if f is None or f == 0 or first_lens.diameter <= 0:
             return 0.0
         return first_lens.diameter / (2 * abs(f))
 
     def get_f_number(self) -> Optional[float]:
-        """Calculate system f-number"""
+        """System f-number (photographic convention: |EFL|/D, always >= 0)."""
         f = self.get_system_focal_length()
         if f is None:
             return None

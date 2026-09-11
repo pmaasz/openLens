@@ -3,6 +3,7 @@ OpenLens PySide6 Lens Editor Widget
 Main editor widget for lens properties with visualization
 """
 
+from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
 from PySide6.QtWidgets import (
@@ -21,6 +22,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal
 
 from .lens_viz_container import LensVisualizationWidget
+from ...validation import (
+    ValidationError,
+    check_physical_feasibility,
+    parabolic_sag_limit,
+)
 
 if TYPE_CHECKING:
     from ...lens import Lens
@@ -77,9 +83,16 @@ class LensEditorWidget(QWidget):
                 'diameter').
             value: New numeric value for the property.
         """
+        # Radius drags on a parabolic surface would mutate hidden state the
+        # tracer ignores (it uses the sag), so they are dropped. The viz no
+        # longer offers those handles; this guards programmatic emits too.
         if prop == "r1":
+            if self._lens is not None and bool(getattr(self._lens, "is_parabolic_1", False)):
+                return
             self._r1_input.setValue(value)
         elif prop == "r2":
+            if self._lens is not None and bool(getattr(self._lens, "is_parabolic_2", False)):
+                return
             self._r2_input.setValue(value)
         elif prop == "thickness":
             self._thickness_input.setValue(value)
@@ -147,10 +160,22 @@ class LensEditorWidget(QWidget):
 
         self._diameter_input = QDoubleSpinBox()
         self._diameter_input.setRange(1, 500)
-        self._diameter_input.setValue(50)
+        self._diameter_input.setValue(40)
         self._diameter_input.setSuffix(" mm")
         self._diameter_input.valueChanged.connect(self._on_property_changed)
         dim_layout.addRow("Diameter:", self._diameter_input)
+
+        # Edge lock: keep the rim-wall thickness fixed when radii/diameter
+        # change by compensating the center thickness (which is what the
+        # "Thickness" spinbox stores). Unchecked = classic behavior where
+        # the center stays fixed and the rim wall absorbs the change.
+        self._lock_edge_check = QCheckBox("Lock edge thickness")
+        self._lock_edge_check.setChecked(True)
+        self._lock_edge_check.setToolTip(
+            "When locked, editing radii or diameter adjusts center thickness "
+            "so the rim (edge) thickness stays constant."
+        )
+        dim_layout.addRow(self._lock_edge_check)
 
         layout.addWidget(dim_group)
 
@@ -255,16 +280,31 @@ class LensEditorWidget(QWidget):
         self._ffl_label = QLabel("--")
         calc_layout.addRow("Front Focal Length:", self._ffl_label)
 
+        self._edge_label = QLabel("--")
+        calc_layout.addRow("Edge Thickness:", self._edge_label)
+
+        self._feas_warning_label = QLabel("")
+        self._feas_warning_label.setWordWrap(True)
+        self._feas_warning_label.setStyleSheet("color: #ff6b6b; font-weight: bold;")
+        self._feas_warning_label.hide()
+        calc_layout.addRow("Feasibility:", self._feas_warning_label)
+
         layout.addWidget(calc_group)
 
         layout.addStretch()
 
         return frame
 
+    def _touch_lens(self) -> None:
+        """Stamp the model modified time (shown in the UI and persisted)."""
+        if self._lens is not None:
+            self._lens.modified_at = datetime.now().isoformat()
+
     def _on_name_changed(self, name: str) -> None:
         """Handle name change"""
         if self._lens:
             self._lens.name = name
+            self._touch_lens()
             self.lens_modified.emit(self._lens)
 
     def _on_parabolic_changed(self) -> None:
@@ -278,9 +318,21 @@ class LensEditorWidget(QWidget):
         self._r2_input.setEnabled(not is_p2)
         if self._lens:
             self._lens.is_parabolic_1 = is_p1
-            self._lens.parabolic_sag_1 = self._para1_sag_input.value()
             self._lens.is_parabolic_2 = is_p2
-            self._lens.parabolic_sag_2 = self._para2_sag_input.value()
+            # Unchecking is a true reset to spherical: zero the sag so stale
+            # values cannot resurrect on the next check.
+            for enabled, attr, spin in (
+                (is_p1, "parabolic_sag_1", self._para1_sag_input),
+                (is_p2, "parabolic_sag_2", self._para2_sag_input),
+            ):
+                if enabled:
+                    setattr(self._lens, attr, spin.value())
+                else:
+                    setattr(self._lens, attr, 0.0)
+                    spin.blockSignals(True)
+                    spin.setValue(0.0)
+                    spin.blockSignals(False)
+            self._touch_lens()
             self._update_calculated()
             self._viz_widget.update_lens(self._lens)
             self.lens_modified.emit(self._lens)
@@ -289,11 +341,29 @@ class LensEditorWidget(QWidget):
     def _on_property_changed(self) -> None:
         """Handle property changes with auto-save"""
         if self._lens:
-            self._lens.radius_of_curvature_1 = self._r1_input.value()
-            self._lens.radius_of_curvature_2 = self._r2_input.value()
-            self._lens.thickness = self._thickness_input.value()
-            self._lens.diameter = self._diameter_input.value()
+            if self._lock_edge_check.isChecked() and self.sender() in (
+                self._r1_input,
+                self._r2_input,
+                self._diameter_input,
+            ):
+                self._apply_geometry_preserving_edge(
+                    self._r1_input.value(),
+                    self._r2_input.value(),
+                    self._diameter_input.value(),
+                )
+            else:
+                # Radius boxes are disabled while parabolic; writing them
+                # would only churn hidden state the tracer ignores.
+                if not bool(getattr(self._lens, "is_parabolic_1", False)):
+                    self._lens.radius_of_curvature_1 = self._r1_input.value()
+                if not bool(getattr(self._lens, "is_parabolic_2", False)):
+                    self._lens.radius_of_curvature_2 = self._r2_input.value()
+                self._lens.thickness = self._thickness_input.value()
+                self._lens.diameter = self._diameter_input.value()
             self._lens.refractive_index = self._n_input.value()
+            self._touch_lens()
+            self._refresh_parabolic_ui()
+            self._update_sag_ranges()
             # Sync parabolic sag diameters if needed (sag stays as absolute distance)
             self._update_calculated()
             self._viz_widget.update_lens(self._lens)
@@ -302,6 +372,103 @@ class LensEditorWidget(QWidget):
 
             self.lens_modified.emit(self._lens)
             self.lens_updated.emit()
+
+    def _apply_geometry_preserving_edge(
+        self, radius_1: float, radius_2: float, diameter: float
+    ) -> None:
+        """Apply radii/diameter while preserving the current edge thickness.
+
+        Thickness stores the CENTER thickness, so steepening a surface would
+        otherwise thin the rim wall. With the edge lock on, the center
+        thickness compensates instead (edge(t) = t - sag1 + sag2, hence
+        t_new = edge_old + t_old - edge_new_at_old_t). Already-infeasible
+        or undefined geometry is applied as-is so the warning can show.
+        """
+        lens = self._lens
+        try:
+            old_edge = lens.calculate_edge_thickness()
+        except Exception:
+            old_edge = None
+        if not bool(getattr(lens, "is_parabolic_1", False)):
+            lens.radius_of_curvature_1 = radius_1
+        if not bool(getattr(lens, "is_parabolic_2", False)):
+            lens.radius_of_curvature_2 = radius_2
+        lens.diameter = diameter
+        if old_edge is None or old_edge <= 0:
+            return
+        try:
+            new_edge_at_old_t = lens.calculate_edge_thickness()
+        except Exception:
+            new_edge_at_old_t = None
+        if new_edge_at_old_t is None:
+            return
+        t_new = lens.thickness + (old_edge - new_edge_at_old_t)
+        t_new = max(0.1, min(1000.0, t_new))
+        lens.thickness = t_new
+        self._thickness_input.blockSignals(True)
+        self._thickness_input.setValue(t_new)
+        self._thickness_input.blockSignals(False)
+
+    def _refresh_parabolic_ui(self) -> None:
+        """Snap parabolic checkboxes, enables, and sag boxes to the model.
+
+        External mutations (optimizer latch/clear, file loads) bypass the
+        panel and would otherwise leave it lying about which definition is
+        live. Display-only sync (blocked signals, model never touched), so
+        it is safe on every edit and load.
+        """
+        if self._lens is None:
+            return
+        for check, r_spin, sag_spin, flag_attr, sag_attr in (
+            (
+                self._para1_check,
+                self._r1_input,
+                self._para1_sag_input,
+                "is_parabolic_1",
+                "parabolic_sag_1",
+            ),
+            (
+                self._para2_check,
+                self._r2_input,
+                self._para2_sag_input,
+                "is_parabolic_2",
+                "parabolic_sag_2",
+            ),
+        ):
+            flag = bool(getattr(self._lens, flag_attr, False))
+            check.blockSignals(True)
+            check.setChecked(flag)
+            check.blockSignals(False)
+            r_spin.setEnabled(not flag)
+            sag_spin.setEnabled(flag)
+            sag_spin.blockSignals(True)
+            sag_spin.setValue(float(getattr(self._lens, sag_attr, 0.0)))
+            sag_spin.blockSignals(False)
+
+    def _update_sag_ranges(self, sync_model: bool = True) -> None:
+        """Clamp parabolic sag spinboxes to the diameter-scaled limit.
+
+        Sag without diameter is meaningless (R_vertex = r²/2·sag), so the
+        boxes track the current aperture/thickness instead of a fixed ±100.
+        With sync_model (user edits), clamped values sync back into the
+        model for enabled surfaces so the display never lies; loads pass
+        False to preserve file values until the user acts.
+        """
+        if self._lens is None:
+            return
+        try:
+            limit = parabolic_sag_limit(self._lens.diameter, self._lens.thickness)
+        except ValidationError:
+            limit = 100.0
+        for spin, attr, enabled in (
+            (self._para1_sag_input, "parabolic_sag_1", self._para1_check.isChecked()),
+            (self._para2_sag_input, "parabolic_sag_2", self._para2_check.isChecked()),
+        ):
+            spin.blockSignals(True)
+            spin.setRange(-limit, limit)
+            spin.blockSignals(False)
+            if sync_model and enabled:
+                setattr(self._lens, attr, spin.value())
 
     def _on_material_changed(self, material: str) -> None:
         """Handle material change"""
@@ -317,6 +484,7 @@ class LensEditorWidget(QWidget):
         if self._lens:
             self._lens.refractive_index = self._n_input.value()
             self._lens.material = material
+            self._touch_lens()
             self._update_calculated()
             if self._viz_widget:
                 self._viz_widget.update_lens(self._lens)
@@ -341,6 +509,7 @@ class LensEditorWidget(QWidget):
         if enabled and self._lens:
             self._lens.is_fresnel = True
             self._lens.groove_pitch = self._groove_pitch_input.value()
+            self._touch_lens()
             self._update_groove_count()
             self.lens_modified.emit(self._lens)
             self.lens_updated.emit()
@@ -354,6 +523,7 @@ class LensEditorWidget(QWidget):
         """Handle groove pitch change"""
         if self._lens and getattr(self._lens, "is_fresnel", False):
             self._lens.groove_pitch = value
+            self._touch_lens()
             self._update_groove_count()
             self.lens_modified.emit(self._lens)
             self.lens_updated.emit()
@@ -369,54 +539,86 @@ class LensEditorWidget(QWidget):
             self._num_grooves_value.setText(str(grooves))
 
     def _update_calculated(self) -> None:
-        """Update calculated properties"""
+        """Update calculated properties (delegates to the Lens model)."""
         if not self._lens:
             return
 
-        n = self._lens.refractive_index
-        # Use effective radius for parabolic surfaces
-        if hasattr(self._lens, "get_effective_radius_1"):
-            r1 = self._lens.get_effective_radius_1()
-            r2 = self._lens.get_effective_radius_2()
-        else:
-            r1 = self._lens.radius_of_curvature_1
-            r2 = self._lens.radius_of_curvature_2
-        t = self._lens.thickness
-
-        if r1 == 0:
-            r1 = float("inf")
-        if r2 == 0:
-            r2 = float("inf")
-
-        power1 = (n - 1) / r1 if r1 != float("inf") else 0
-        power2 = -(n - 1) / r2 if r2 != float("inf") else 0
-
-        if r1 != float("inf") and r2 != float("inf") and r1 * r2 != 0:
-            power_spacing = (n - 1) ** 2 * t / (n * r1 * r2)
-        else:
-            power_spacing = 0
-
-        total_power = power1 + power2 + power_spacing
-
-        if abs(total_power) > 1e-10:
-            f = 1.0 / total_power
-            self._focal_label.setText(f"{f:.2f} mm")
-            self._power_label.setText(f"{1000/f:.2f} D")
-
-            # BFL and FFL – use effective radii
-            try:
-                bfl = self._lens.calculate_back_focal_length()
-                ffl = self._lens.calculate_front_focal_length()
-                self._bfl_label.setText(f"{bfl:.2f} mm" if abs(bfl) != float("inf") else "--")
-                self._ffl_label.setText(f"{ffl:.2f} mm" if abs(ffl) != float("inf") else "--")
-            except Exception:
-                self._bfl_label.setText("--")
-                self._ffl_label.setText("--")
-        else:
+        focal = self._lens.calculate_focal_length()
+        if focal is None:
             self._focal_label.setText("--")
             self._power_label.setText("--")
             self._bfl_label.setText("--")
             self._ffl_label.setText("--")
+            return
+
+        self._focal_label.setText(f"{focal:.2f} mm")
+        power = self._lens.calculate_optical_power()
+        self._power_label.setText(f"{power:.2f} D" if power is not None else "--")
+
+        try:
+            bfl = self._lens.calculate_back_focal_length()
+            ffl = self._lens.calculate_front_focal_length()
+            self._bfl_label.setText(f"{bfl:.2f} mm" if bfl is not None else "--")
+            self._ffl_label.setText(f"{ffl:.2f} mm" if ffl is not None else "--")
+        except Exception:
+            self._bfl_label.setText("--")
+            self._ffl_label.setText("--")
+
+        self._update_feasibility()
+
+    def _update_feasibility(self) -> None:
+        """Show edge thickness and warn about unrealizable geometry.
+
+        Thickness is the CENTER (vertex to vertex) thickness; the derived
+        rim thickness must stay positive or the surfaces intersect within
+        the clear aperture (as drawn in the 2D view).
+        """
+        if not self._lens:
+            return
+
+        try:
+            edge = self._lens.calculate_edge_thickness()
+        except Exception:
+            edge = None
+
+        if edge is None:
+            self._edge_label.setText("--")
+        else:
+            self._edge_label.setText(f"{edge:.2f} mm")
+
+        message = None
+        if edge is None or edge <= 0:
+            if edge is None:
+                message = (
+                    "Geometry undefined at the rim: aperture overhangs a surface. "
+                    "Reduce diameter or flatten radii."
+                )
+            else:
+                message = (
+                    f"Surfaces intersect within the clear aperture (edge {edge:.2f} mm). "
+                    "Increase thickness, reduce diameter, or flatten radii."
+                )
+        else:
+            # Full cross-parameter check, parabolic-aware (radii alone say
+            # nothing once a surface is defined by its sag).
+            feasible, soft_msg = check_physical_feasibility(
+                self._lens.radius_of_curvature_1,
+                self._lens.radius_of_curvature_2,
+                self._lens.thickness,
+                self._lens.diameter,
+                bool(getattr(self._lens, "is_parabolic_1", False)),
+                float(getattr(self._lens, "parabolic_sag_1", 0.0)),
+                bool(getattr(self._lens, "is_parabolic_2", False)),
+                float(getattr(self._lens, "parabolic_sag_2", 0.0)),
+            )
+            if not feasible:
+                message = soft_msg
+
+        if message:
+            self._feas_warning_label.setText("\u26a0 " + message)
+            self._feas_warning_label.show()
+        else:
+            self._feas_warning_label.hide()
 
     def load_lens(self, lens: "Lens") -> None:
         """Load a lens into the editor
@@ -428,30 +630,30 @@ class LensEditorWidget(QWidget):
         self._name_input.blockSignals(True)
         self._name_input.setText(lens.name)
         self._name_input.blockSignals(False)
+        # Block dimension-spinbox signals while loading: each valueChanged
+        # slot rewrites the whole model from the spinboxes, so letting them
+        # fire here would clobber not-yet-loaded fields with stale values.
+        dim_inputs = (
+            self._r1_input,
+            self._r2_input,
+            self._thickness_input,
+            self._diameter_input,
+        )
+        for spin in dim_inputs:
+            spin.blockSignals(True)
         self._r1_input.setValue(lens.radius_of_curvature_1)
         self._r2_input.setValue(lens.radius_of_curvature_2)
         self._thickness_input.setValue(lens.thickness)
         self._diameter_input.setValue(lens.diameter)
+        for spin in dim_inputs:
+            spin.blockSignals(False)
         self._n_input.setValue(lens.refractive_index)
         # Parabolic
-        is_p1 = bool(getattr(lens, "is_parabolic_1", False))
-        is_p2 = bool(getattr(lens, "is_parabolic_2", False))
-        self._para1_check.blockSignals(True)
-        self._para1_check.setChecked(is_p1)
-        self._para1_check.blockSignals(False)
-        self._para1_sag_input.blockSignals(True)
-        self._para1_sag_input.setValue(float(getattr(lens, "parabolic_sag_1", 0.0)))
-        self._para1_sag_input.blockSignals(False)
-        self._para2_check.blockSignals(True)
-        self._para2_check.setChecked(is_p2)
-        self._para2_check.blockSignals(False)
-        self._para2_sag_input.blockSignals(True)
-        self._para2_sag_input.setValue(float(getattr(lens, "parabolic_sag_2", 0.0)))
-        self._para2_sag_input.blockSignals(False)
-        self._para1_sag_input.setEnabled(is_p1)
-        self._para2_sag_input.setEnabled(is_p2)
-        self._r1_input.setEnabled(not is_p1)
-        self._r2_input.setEnabled(not is_p2)
+        # Ranges first (from model D/t), then values: a stale narrow range
+        # must never clamp the incoming values, and the model keeps file
+        # values until the user acts (sync_model=False).
+        self._update_sag_ranges(sync_model=False)
+        self._refresh_parabolic_ui()
         self._update_calculated()
         self._viz_widget.update_lens(lens)
         self._class_type_label.setText(lens.classify_lens_type())

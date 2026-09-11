@@ -23,8 +23,10 @@ from .constants import (
     MAX_DIAMETER,
     MIN_REFRACTIVE_INDEX,
     MAX_REFRACTIVE_INDEX,
+    MIN_EDGE_THICKNESS,
     EPSILON,
 )
+from .lens import Lens
 
 
 class ValidationError(Exception):
@@ -319,12 +321,50 @@ def validate_range(
     return value
 
 
-def validate_parabolic_sag(sag: float, param_name: str = "parabolic sag") -> float:
+def parabolic_sag_limit(diameter: float, thickness: float = 0.0) -> float:
+    """
+    Maximum meaningful |sag| for a parabolic surface of given aperture.
+
+    Sag without diameter is meaningless (vertex radius R = r²/(2·sag)):
+    the bound keeps the implied vertex radius above MIN_RADIUS_OF_CURVATURE
+    while also capping the rim slope via half the diameter.
+
+    Args:
+        diameter: Clear aperture diameter (mm, must be positive).
+        thickness: Center thickness (mm), loosens the bound slightly for
+            deeper sags the edge can still accommodate.
+
+    Returns:
+        float: The symmetric bound; valid sags lie in [-limit, +limit].
+
+    Raises:
+        ValidationError: If diameter/thickness are not valid numbers.
+    """
+    diameter = _validate_number(diameter, "diameter")
+    thickness = _validate_number(thickness, "thickness")
+    if diameter <= 0:
+        raise ValidationError(f"diameter must be positive, got {diameter}")
+    if thickness < 0:
+        raise ValidationError(f"thickness cannot be negative, got {thickness}")
+    r = diameter / 2
+    return min(0.5 * diameter, 0.5 * thickness + r * r / (2 * MIN_RADIUS_OF_CURVATURE))
+
+
+def validate_parabolic_sag(
+    sag: float,
+    diameter: Optional[float] = None,
+    thickness: float = 0.0,
+    param_name: str = "parabolic sag",
+) -> float:
     """
     Validate parabolic sag (vertex to rim distance at D/2).
 
     Args:
         sag: Sag value to validate (mm)
+        diameter: Clear aperture diameter (mm). When given, the bound is
+            diameter-scaled via parabolic_sag_limit(); otherwise a legacy
+            absolute cap of 100 mm applies.
+        thickness: Center thickness (mm), only used with diameter.
         param_name: Parameter name for error messages
 
     Returns:
@@ -334,9 +374,18 @@ def validate_parabolic_sag(sag: float, param_name: str = "parabolic sag") -> flo
         ValidationError: If sag is invalid
     """
     sag = _validate_number(sag, param_name)
-    # Sag can be negative (concave direction) or positive, but should be reasonable
-    if abs(sag) > 100:
-        raise ValidationError(f"{param_name} magnitude must be at most 100 mm")
+    if diameter is None:
+        # Legacy absolute cap (no aperture context to scale by).
+        if abs(sag) > 100:
+            raise ValidationError(f"{param_name} magnitude must be at most 100 mm")
+        return sag
+    limit = parabolic_sag_limit(diameter, thickness)
+    if abs(sag) > limit:
+        detail = f"{param_name} magnitude {abs(sag):.3f}mm exceeds the {limit:.3f}mm limit"
+        if abs(sag) > 0:
+            r = diameter / 2
+            detail += f" (implies vertex radius {abs(r * r / (2 * sag)):.3f}mm)"
+        raise ValidationError(detail + f" for D={diameter}mm")
     return sag
 
 
@@ -409,6 +458,10 @@ def validate_lens_parameters(
     thickness: float,
     diameter: float,
     refractive_index: float,
+    is_parabolic_1: bool = False,
+    parabolic_sag_1: float = 0.0,
+    is_parabolic_2: bool = False,
+    parabolic_sag_2: float = 0.0,
 ) -> dict:
     """
     Validate all lens parameters at once.
@@ -419,6 +472,10 @@ def validate_lens_parameters(
         thickness: Center thickness (mm)
         diameter: Lens diameter (mm)
         refractive_index: Refractive index
+        is_parabolic_1: Whether the front surface is parabolic
+        parabolic_sag_1: Front parabolic sag at D/2 (mm)
+        is_parabolic_2: Whether the back surface is parabolic
+        parabolic_sag_2: Back parabolic sag at D/2 (mm)
 
     Returns:
         dict: Dictionary of validated parameters
@@ -426,17 +483,41 @@ def validate_lens_parameters(
     Raises:
         ValidationError: If any parameter is invalid
     """
+    validated_diameter = validate_diameter(diameter)
+    validated_thickness = validate_thickness(thickness)
+    sag_1 = _validate_number(parabolic_sag_1, "parabolic sag 1")
+    sag_2 = _validate_number(parabolic_sag_2, "parabolic sag 2")
+    if is_parabolic_1:
+        # Diameter-scaled bound (vertex radius, slope) for the live surface.
+        sag_1 = validate_parabolic_sag(
+            sag_1, validated_diameter, validated_thickness, "parabolic sag 1"
+        )
+    if is_parabolic_2:
+        sag_2 = validate_parabolic_sag(
+            sag_2, validated_diameter, validated_thickness, "parabolic sag 2"
+        )
     return {
         "radius1": validate_radius(radius1, allow_negative=True, param_name="R1"),
         "radius2": validate_radius(radius2, allow_negative=True, param_name="R2"),
-        "thickness": validate_thickness(thickness),
-        "diameter": validate_diameter(diameter),
+        "thickness": validated_thickness,
+        "diameter": validated_diameter,
         "refractive_index": validate_refractive_index(refractive_index),
+        "is_parabolic_1": bool(is_parabolic_1),
+        "parabolic_sag_1": sag_1,
+        "is_parabolic_2": bool(is_parabolic_2),
+        "parabolic_sag_2": sag_2,
     }
 
 
 def check_physical_feasibility(
-    radius1: float, radius2: float, thickness: float, diameter: float
+    radius1: float,
+    radius2: float,
+    thickness: float,
+    diameter: float,
+    is_parabolic_1: bool = False,
+    parabolic_sag_1: float = 0.0,
+    is_parabolic_2: bool = False,
+    parabolic_sag_2: float = 0.0,
 ) -> Tuple[bool, Optional[str]]:
     """
     Check if lens parameters are physically feasible.
@@ -446,11 +527,65 @@ def check_physical_feasibility(
         radius2: Back surface radius (mm)
         thickness: Center thickness (mm)
         diameter: Lens diameter (mm)
+        is_parabolic_1: Whether the front surface is parabolic
+        parabolic_sag_1: Front parabolic sag at D/2 (mm)
+        is_parabolic_2: Whether the back surface is parabolic
+        parabolic_sag_2: Back parabolic sag at D/2 (mm)
 
     Returns:
         Tuple[bool, Optional[str]]: (is_feasible, warning_message)
     """
     warnings = []
+
+    # Hard geometric check via the single source of truth: probe the spec
+    # through Lens so rim/edge math cannot drift from the tracer or views.
+    # Thickness is the CENTER (vertex to vertex) thickness, so the VERTEX-
+    # correct edge is thickness - sag1 + sag2 (a plus-sign variant would
+    # reject valid concave lenses). Edge <= 0 means the surfaces intersect
+    # within the clear aperture; edge None means the aperture overhangs a
+    # surface (|R| < D/2, sag undefined).
+    hard_error = None
+    h = diameter / 2
+    try:
+        probe = Lens(
+            radius_of_curvature_1=radius1,
+            radius_of_curvature_2=radius2,
+            thickness=thickness,
+            diameter=diameter,
+            is_parabolic_1=is_parabolic_1,
+            parabolic_sag_1=parabolic_sag_1,
+            is_parabolic_2=is_parabolic_2,
+            parabolic_sag_2=parabolic_sag_2,
+        )
+        edge = probe.calculate_edge_thickness()
+    except Exception:
+        edge = None
+    if edge is None:
+        for r in (radius1, radius2):
+            if r is not None and math.isfinite(r) and abs(r) >= EPSILON and abs(h) > abs(r):
+                hard_error = (
+                    f"Aperture overhangs a surface (|R| = {abs(r):.1f}mm < "
+                    f"D/2 = {h:.1f}mm) - no real surface exists at the rim. "
+                    "Reduce the diameter or flatten the radii."
+                )
+                break
+        if hard_error is None:
+            hard_error = (
+                "Lens geometry is undefined for these parameters. "
+                "Reduce the diameter or flatten the radii."
+            )
+    elif edge <= 0:
+        hard_error = (
+            f"Surfaces intersect within the clear aperture (edge thickness "
+            f"{edge:.2f}mm <= 0). Increase center thickness, reduce diameter, "
+            "or flatten the radii."
+        )
+
+    # Soft floor: positive yet fragile rim (parabolic-aware via the probe).
+    if hard_error is None and edge is not None and edge < MIN_EDGE_THICKNESS:
+        warnings.append(
+            f"Edge thickness ({edge:.2f}mm) is below {MIN_EDGE_THICKNESS}mm. " "May be fragile."
+        )
 
     min_radius = min(abs(radius1), abs(radius2))
 
@@ -474,6 +609,11 @@ def check_physical_feasibility(
             f"Lens is very thin ({thickness:.1f}mm) relative to "
             f"diameter ({diameter:.1f}mm). May be fragile."
         )
+
+    if hard_error is not None:
+        if warnings:
+            return False, hard_error + " " + " ".join(warnings)
+        return False, hard_error
 
     if warnings:
         return False, " ".join(warnings)

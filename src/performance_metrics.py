@@ -8,7 +8,7 @@ import math
 from typing import Optional, Dict, Any
 
 from .lens import Lens
-from .constants import WAVELENGTH_GREEN
+from .constants import WAVELENGTH_GREEN, NM_TO_MM
 from .optical_system import OpticalSystem
 
 
@@ -159,7 +159,7 @@ class PerformanceMetrics:
         if self.lens:
             D = self.lens.diameter
             if hasattr(self.lens, "wavelength"):
-                wavelength = self.lens.wavelength / 1000.0  # nm to mm
+                wavelength = self.lens.wavelength * NM_TO_MM  # nm to mm
         elif self.system and self.system.elements:
             D = self.system.elements[0].lens.diameter
         else:

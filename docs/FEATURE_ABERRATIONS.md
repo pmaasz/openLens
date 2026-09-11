@@ -47,31 +47,29 @@ Quick standalone test for verification
 1. **Spherical Aberration (SA)**
    - Longitudinal spherical aberration
    - Causes rays at different apertures to focus at different points
-   - Formula: LSA ∝ y⁴ / f³
-   - Depends on: aperture size, lens shape, focal length
+   - Exact ray trace: marginal focus minus paraxial (y = 0.001 mm) focus
+   - Scales as LSA ∝ y⁴ / f³; depends on aperture size, lens shape, focal length
 
 2. **Coma**
    - Off-axis aberration
    - Point sources appear comet-shaped
+   - Even part of the traced tangential ray fan, (top + bottom) / 2
    - Varies linearly with field angle
-   - Formula: Coma ∝ y³ · θ / f²
 
 3. **Astigmatism**
    - Point sources appear as lines
-   - Different focal points for sagittal and tangential rays
-   - Formula: AST ∝ θ² / f
+   - Traced tangential/sagittal best-focus split |tan − sag|
    - Increases quadratically with field angle
 
 4. **Field Curvature (Petzval)**
    - Image forms on curved surface instead of flat plane
-   - Petzval radius: R_p = -f · n
+   - Petzval radius: R_p = n · f
    - Affects edge sharpness in imaging
 
 5. **Distortion**
-   - Magnification varies with field position
+   - Exactly 0 % for a single lens with the stop at the lens (S5 = 0
+     by construction); use the distortion curve for general stop positions
    - Barrel distortion (negative) or pincushion (positive)
-   - Formula: Distortion ∝ θ³
-   - Depends on lens shape factor
 
 ### Chromatic Aberration
 
@@ -101,6 +99,16 @@ Quick standalone test for verification
    - Diffraction-limited spot size
    - Airy diameter = 2.44 · λ · f/#
    - Default wavelength: 550nm (green light)
+
+10. **Strehl Ratio**
+    - S = |⟨exp(i·2πW)⟩|² over the traced exit pupil (W in waves,
+      piston/tilt removed); ≈ exp(−(2πσ)²) for small σ
+    - Reported with the RMS wavefront error (`wfe_rms_waves`)
+
+11. **Wavelength Handling**
+    - `calculate_all_aberrations(wavelength_nm=...)` evaluates focal
+      length, all traces, Airy disk, Strehl and MTF cutoff at one
+      consistent wavelength (lens state restored afterwards)
 
 ---
 
@@ -256,36 +264,38 @@ python3 -m unittest discover -s tests -t .
 ### Formulas Implemented
 
 1. **Spherical Aberration:**
+   Exact trace (fallback: third-order Seidel):
    ```
-   LSA = -K · y⁴ / f³
-   K = (n / (8(n-1)²)) · (1 + q²)
-   q = (R₂ + R₁) / (R₂ - R₁)  [shape factor]
+   LSA = marginal focus - paraxial focus   (paraxial ray at y = 0.001 mm)
+   LSA_Seidel = -(y²/8f)·[(n/(n-1))² + (n+2)/(n(n-1)²)·(B + 2(n²-1)/(n+2)·C)²]
+   B = (c1+c2)/(c1-c2)  [shape factor from curvatures; flat c = 0], C = -1
    ```
 
 2. **Coma:**
    ```
-   Coma = K_coma · y³ · θ / f²
-   K_coma = (n / (2(n-1))) · q
+   Coma = (err_top + err_bottom) / 2   (traced tangential fan, chief-referenced)
    ```
 
 3. **Astigmatism:**
    ```
-   AST = f · θ² / (2n)
+   AST = |tan_focus - sag_focus|   (traced best-focus split, longitudinal)
    ```
 
 4. **Field Curvature:**
    ```
-   R_petzval = -f · n
+   R_petzval = n · f
    ```
 
 5. **Distortion:**
    ```
-   Dist% = q · θ³ · 100
+   Dist = 0  (single lens, stop at lens: S5 = 0 exactly)
+   General stops: traced distortion curve (chief-ray heights)
    ```
 
 6. **Chromatic Aberration:**
    ```
-   LCA = f / V_d
+   LCA = f / V_d            (single thin lens)
+   LCA = BFL_C - BFL_F      (systems: traced back focal lengths)
    V_d = Abbe number
    ```
 

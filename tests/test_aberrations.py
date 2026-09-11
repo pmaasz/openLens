@@ -7,6 +7,7 @@ import unittest
 
 from src.lens import Lens
 from src.aberrations import AberrationsCalculator, analyze_lens_quality
+import math
 
 
 class TestAberrationsCalculator(unittest.TestCase):
@@ -193,6 +194,145 @@ class TestAberrationsCalculator(unittest.TestCase):
         ast_10deg = abs(calc._calculate_astigmatism(focal_length, field_angle_deg=10.0))
 
         self.assertGreater(ast_10deg, ast_5deg)
+
+    def test_coma_scales_linearly_with_field(self):
+        """Traced coma grows ~linearly with field angle (slow lens)."""
+        lens = Lens(
+            name="Slow Biconvex",
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=20.0,
+            refractive_index=1.5168,
+            material="BK7",
+        )
+        calc = AberrationsCalculator(lens)
+        focal_length = lens.calculate_focal_length()
+
+        coma_5 = abs(calc._calculate_coma(focal_length, field_angle_deg=5.0))
+        coma_10 = abs(calc._calculate_coma(focal_length, field_angle_deg=10.0))
+
+        self.assertGreater(coma_5, 0)
+        self.assertGreater(coma_10 / coma_5, 1.6)
+        self.assertLess(coma_10 / coma_5, 2.4)
+
+    def test_astigmatism_scales_quadratically_with_field(self):
+        """Traced longitudinal astigmatism grows ~quadratically (slow lens)."""
+        lens = Lens(
+            name="Slow Biconvex",
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=20.0,
+            refractive_index=1.5168,
+            material="BK7",
+        )
+        calc = AberrationsCalculator(lens)
+        focal_length = lens.calculate_focal_length()
+
+        ast_5 = abs(calc._calculate_astigmatism(focal_length, field_angle_deg=5.0))
+        ast_10 = abs(calc._calculate_astigmatism(focal_length, field_angle_deg=10.0))
+
+        self.assertGreater(ast_5, 0)
+        self.assertGreater(ast_10 / ast_5, 3.2)
+        self.assertLess(ast_10 / ast_5, 4.8)
+
+    def test_wavelength_changes_focal_length(self):
+        """Focal length must follow the requested wavelength (blue < red)."""
+        calc = AberrationsCalculator(self.biconvex)
+
+        blue = calc.calculate_all_aberrations(wavelength_nm=450.0)
+        red = calc.calculate_all_aberrations(wavelength_nm=650.0)
+
+        self.assertLess(blue["focal_length"], red["focal_length"])
+        self.assertGreater(red["focal_length"] - blue["focal_length"], 0.5)
+
+    def test_wavelength_changes_traced_aberrations(self):
+        """Traced quantities (spherical, coma) must respond to wavelength."""
+        calc = AberrationsCalculator(self.biconvex)
+
+        blue = calc.calculate_all_aberrations(field_angle_deg=5.0, wavelength_nm=450.0)
+        red = calc.calculate_all_aberrations(field_angle_deg=5.0, wavelength_nm=650.0)
+
+        self.assertNotAlmostEqual(blue["spherical"], red["spherical"], delta=1e-6)
+        self.assertNotAlmostEqual(blue["coma"], red["coma"], delta=1e-9)
+
+    def test_wavelength_does_not_mutate_lens(self):
+        """Analysis must restore the lens wavelength/index afterwards."""
+        calc = AberrationsCalculator(self.biconvex)
+        wl_before = self.biconvex.wavelength
+        n_before = self.biconvex.refractive_index
+
+        calc.calculate_all_aberrations(field_angle_deg=5.0, wavelength_nm=650.0)
+
+        self.assertEqual(self.biconvex.wavelength, wl_before)
+        self.assertEqual(self.biconvex.refractive_index, n_before)
+
+    def test_singlet_system_coma_agree(self):
+        """Same optics as singlet or system must give the same coma."""
+        from src.optical_system import OpticalSystem
+
+        system = OpticalSystem(name="wrapped")
+        system.add_lens(self.biconvex)
+
+        singlet = AberrationsCalculator(self.biconvex).calculate_all_aberrations(
+            field_angle_deg=5.0, wavelength_nm=450.0
+        )
+        wrapped = AberrationsCalculator(system).calculate_all_aberrations(
+            field_angle_deg=5.0, wavelength_nm=450.0
+        )
+
+        self.assertAlmostEqual(singlet["coma"], wrapped["coma"], places=5)
+
+    def test_summary_and_quality_accept_wavelength(self):
+        """Wavelength passthrough must reach summary and quality helpers."""
+        calc = AberrationsCalculator(self.biconvex)
+        summary = calc.get_aberration_summary(field_angle=5.0, wavelength_nm=650.0)
+        self.assertIn("ABERRATIONS ANALYSIS", summary)
+
+        quality = analyze_lens_quality(self.biconvex, field_angle_deg=5.0, wavelength_nm=650.0)
+        self.assertIn(quality["rating"], ["Excellent", "Good", "Fair", "Poor", "Very Poor"])
+
+    def test_system_lsa_uses_paraxial_reference(self):
+        """System LSA must match the y=0.001 paraxial focus (~-6.87)."""
+        from src.optical_system import OpticalSystem
+
+        lens = Lens(
+            name="LSA ref",
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=40.0,
+            refractive_index=1.5168,
+            material="BK7",
+        )
+        system = OpticalSystem(name="LSA ref")
+        system.add_lens(lens)
+
+        calc = AberrationsCalculator(system)
+        lsa = calc._calculate_spherical_aberration(system.get_system_focal_length())
+
+        self.assertAlmostEqual(lsa, -6.87, delta=0.3)
+
+    def test_seidel_fallback_finite_for_plano_and_close_to_exact(self):
+        """Seidel fallback must handle flat surfaces and track exact LSA."""
+        plano = Lens(
+            name="Plano",
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=float("inf"),
+            thickness=5.0,
+            diameter=20.0,
+            refractive_index=1.5168,
+            material="BK7",
+        )
+        calc = AberrationsCalculator(plano)
+        f = plano.calculate_focal_length()
+
+        fallback = calc._calculate_spherical_aberration_seidel(f)
+        exact = calc._calculate_spherical_aberration_exact()
+
+        self.assertTrue(math.isfinite(fallback))
+        self.assertAlmostEqual(fallback / exact, 1.0, delta=0.15)
 
     def test_field_curvature_calculation(self):
         """Test field curvature (Petzval) calculation"""

@@ -1,10 +1,31 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import math
 
 from ..vector3 import vec3
 from ..ray_tracer import Ray3D, SystemRayTracer3D
 from ..optical_system import OpticalSystem
 from ..constants import NM_TO_MM, WAVELENGTH_GREEN
+
+
+def _sagittal_focus_on_chief_ray(chief_ray: Ray3D, sag_ray: Ray3D) -> Optional[float]:
+    """X-coordinate where a sagittal fan ray meets the chief ray.
+
+    The sagittal focus is the intersection of the skew sagittal ray with
+    the chief ray (not with the z=0 plane, which coincides with the chief
+    only on axis). Skew lines rarely intersect exactly, so this returns
+    the chief-ray parameter at closest approach. Returns None for
+    (near-)parallel rays where no focus exists.
+    """
+    pc, dc = chief_ray.origin, chief_ray.direction.normalize()
+    ps, ds = sag_ray.origin, sag_ray.direction.normalize()
+    w0 = pc - ps
+    b = dc.dot(ds)
+    denom = 1.0 - b * b
+    if abs(denom) < 1e-12:
+        return None
+    s = (b * ds.dot(w0) - dc.dot(w0)) / denom
+    focus = pc + dc * s
+    return focus.x
 
 
 class GeometricTraceAnalysis:
@@ -81,6 +102,45 @@ class GeometricTraceAnalysis:
         Returns:
             Dictionary with 'pupil_coords' (normalized -1 to 1) and 'ray_errors_mm' (mm).
         """
+        # Trace at the requested wavelength (indices restored on exit), so
+        # the wavelength argument controls the physics, not just labels.
+        saved_state = self._apply_wavelength(wavelength_nm)
+        try:
+            return self._calculate_ray_fan_traced(
+                field_angle_deg, wavelength_nm, num_points, pupil_axis
+            )
+        finally:
+            self._restore_lens_state(saved_state)
+
+    def _snapshot_lens_state(self) -> list:
+        """Save (lens, wavelength, index) for every system element."""
+        return [
+            (element.lens, element.lens.wavelength, element.lens.refractive_index)
+            for element in self.system.elements
+        ]
+
+    @staticmethod
+    def _restore_lens_state(saved: list) -> None:
+        """Restore lens state saved by _snapshot_lens_state."""
+        for lens, wavelength, refractive_index in saved:
+            lens.wavelength = wavelength
+            lens.refractive_index = refractive_index
+
+    def _apply_wavelength(self, wavelength_nm: float) -> list:
+        """Point all element indices at wavelength_nm; return restore state."""
+        saved = self._snapshot_lens_state()
+        for element in self.system.elements:
+            element.lens.update_refractive_index(wavelength_nm=wavelength_nm)
+        return saved
+
+    def _calculate_ray_fan_traced(
+        self,
+        field_angle_deg: float,
+        wavelength_nm: float,
+        num_points: int,
+        pupil_axis: str,
+    ) -> Dict[str, Any]:
+        """Ray-fan body: traces with the currently set lens indices."""
         wl_mm = wavelength_nm * NM_TO_MM
         image_plane_x = self._get_image_plane_x(wavelength_nm)
 
@@ -184,6 +244,23 @@ class GeometricTraceAnalysis:
         Returns:
             Dictionary with arrays for field angles, tangential/sagittal focus shift, and distortion %.
         """
+        # Trace at the requested wavelength (indices restored on exit).
+        saved_state = self._apply_wavelength(wavelength_nm)
+        try:
+            return self._calculate_curvature_traced(
+                max_field_angle_deg, num_points, wavelength_nm, kwargs
+            )
+        finally:
+            self._restore_lens_state(saved_state)
+
+    def _calculate_curvature_traced(
+        self,
+        max_field_angle_deg: float,
+        num_points: int,
+        wavelength_nm: float,
+        kwargs: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Field-curvature body: traces with the currently set lens indices."""
         # Backward compatibility: accept max_field_angle as alias
         if "max_field_angle" in kwargs:
             max_field_angle_deg = kwargs.pop("max_field_angle")
@@ -275,12 +352,11 @@ class GeometricTraceAnalysis:
             self.tracer.trace_ray(ray_sag)
 
             if not ray_sag.terminated:
-                if abs(ray_sag.direction.z) > 1e-9:
-                    u = -ray_sag.origin.z / ray_sag.direction.z
-                    x_sag_focus = ray_sag.origin.x + u * ray_sag.direction.x
-                    sag_focus_shifts_mm.append(x_sag_focus - image_plane_x)
+                x_sag_focus = _sagittal_focus_on_chief_ray(chief_ray, ray_sag)
+                if x_sag_focus is None:
+                    sag_focus_shifts_mm.append(float("nan"))
                 else:
-                    sag_focus_shifts_mm.append(0.0)
+                    sag_focus_shifts_mm.append(x_sag_focus - image_plane_x)
             else:
                 sag_focus_shifts_mm.append(float("nan"))
 

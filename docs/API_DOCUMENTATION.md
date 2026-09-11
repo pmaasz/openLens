@@ -125,7 +125,7 @@ class Lens:
 | `radius_of_curvature_1` | float | 100.0 | Front surface radius (mm), positive=convex |
 | `radius_of_curvature_2` | float | -100.0 | Back surface radius (mm), negative=convex |
 | `thickness` | float | 5.0 | Center thickness (mm) |
-| `diameter` | float | 50.0 | Physical diameter (mm) |
+| `diameter` | float | 40.0 | Physical diameter (mm) |
 | `refractive_index` | float | 1.5168 | Refractive index at design wavelength |
 | `lens_type` | str | "Biconvex" | Lens type classification |
 | `material` | str | "BK7" | Optical material name |
@@ -249,6 +249,10 @@ openlens uses the **Cartesian sign convention**:
 - **Negative radius**: Surface center is to the left (concave from left)
 - **Positive focal length**: Converging lens
 - **Negative focal length**: Diverging lens
+- **BFL/FFL** are Cartesian x-coordinates from the back/front vertex:
+  a converging lens has BFL > 0 (focus right of the lens) and FFL < 0
+  (front focus left of the lens); afocal cases return `None`, as does
+  `OpticalSystem.calculate_back_focal_length()`
 
 #### Thick Lens Formula
 
@@ -399,85 +403,65 @@ class AberrationsCalculator:
 
 ##### `calculate_all_aberrations()`
 
-Calculate all five Seidel aberrations.
+Calculate aberrations (exact ray tracing where applicable).
 
 ```python
 calc = AberrationsCalculator(lens)
-aberrations = calc.calculate_all_aberrations()
+aberrations = calc.calculate_all_aberrations(
+    object_distance_mm=None, field_angle_deg=5.0, wavelength_nm=550.0
+)
 
 print(f"Spherical: {aberrations['spherical']:.4f}")
 print(f"Coma: {aberrations['coma']:.4f}")
 print(f"Astigmatism: {aberrations['astigmatism']:.4f}")
 print(f"Field Curvature: {aberrations['field_curvature']:.4f}")
 print(f"Distortion: {aberrations['distortion']:.4f}")
+print(f"Strehl: {aberrations['strehl']:.4f}")
 ```
+
+All quantities are evaluated at `wavelength_nm` (lens state restored
+afterwards). Coma/astigmatism come from traced ray fans and focus
+splits; Strehl is `|⟨exp(i·2πW)⟩|²` over the traced exit pupil.
 
 **Returns:** `dict` with keys:
-- `spherical`: Longitudinal spherical aberration (mm)
-- `coma`: Tangential coma (mm)
-- `astigmatism`: Astigmatic difference (mm)
-- `field_curvature`: Petzval curvature (mm⁻¹)
-- `distortion`: Percent distortion (%)
+- `focal_length`: Effective focal length (mm)
+- `f_number`: F-number, photographic `|f|/D` convention
+- `numerical_aperture`: Paraxial NA value
+- `spherical` / `spherical_aberration`: Longitudinal SA, marginal minus
+  paraxial (y = 0.001 mm) focus (mm)
+- `coma`: Tangential coma from ray-fan asymmetry (mm)
+- `astigmatism`: Tangential/sagittal focus split (mm)
+- `field_curvature`: Petzval radius `n·f` (mm)
+- `distortion`: 0.0 for a single lens with stop at lens (%)
+- `chromatic` / `chromatic_aberration`: Longitudinal chromatic (mm)
+- `airy_disk_diameter`: Airy disk diameter (mm)
+- `spot_rms`: RMS spot size, systems only (µm)
+- `strehl`: Strehl ratio (0-1)
+- `wfe_rms_waves`: RMS wavefront error (waves)
+- `mtf_cutoff`: Diffraction MTF cutoff `1/(λ·f/#)` (lp/mm)
 
-##### `calculate_chromatic_aberration(wavelength1=486.1, wavelength2=656.3)`
+For wavelength-dependent system focus data see
+`OpticalSystem.calculate_chromatic_aberration()` (F/d/C lines; `f_*`
+keys are true EFLs, `bfl_*` back focal lengths).
 
-Calculate chromatic aberration.
-
-```python
-chrom_aberr = calc.calculate_chromatic_aberration()
-```
-
-**Parameters:**
-- `wavelength1` (float): Blue wavelength (nm), default F-line
-- `wavelength2` (float): Red wavelength (nm), default C-line
-
-**Returns:** `float` - Axial chromatic aberration (mm)
-
-##### `calculate_spot_size()`
-
-Calculate geometric spot size at best focus.
-
-```python
-spot_size = calc.calculate_spot_size()
-```
-
-**Returns:** `float` - RMS spot diameter (mm)
-
-##### `calculate_diffraction_limit()`
-
-Calculate Airy disk diameter.
-
-```python
-airy_diameter = calc.calculate_diffraction_limit()
-```
-
-**Returns:** `float` - Airy disk diameter (µm)
-
----
-
-#### Function: `analyze_lens_quality(lens, verbose=False)`
+##### `analyze_lens_quality(lens, field_angle=5.0, wavelength_nm=550.0)`
 
 Perform comprehensive lens quality analysis.
 
 ```python
 from aberrations import analyze_lens_quality
 
-quality = analyze_lens_quality(lens, verbose=True)
+quality = analyze_lens_quality(lens, field_angle=5.0)
 
-print(f"Overall Quality Score: {quality['overall_score']}/100")
-print(f"Quality Rating: {quality['quality_rating']}")
-print(f"Diffraction Limited: {quality['is_diffraction_limited']}")
+print(f"Overall Quality Score: {quality['quality_score']}/100")
+print(f"Quality Rating: {quality['rating']}")
 ```
 
 **Returns:** `dict` with keys:
-- `overall_score` (float): 0-100 quality score
-- `quality_rating` (str): "Excellent", "Good", "Fair", or "Poor"
-- `is_diffraction_limited` (bool): Performance limited by diffraction
-- `aberrations` (dict): All aberration values
-- `f_number` (float): F-number (f/#)
-- `numerical_aperture` (float): NA value
-- `airy_disk_diameter_um` (float): Diffraction limit (µm)
-- `recommendations` (list): Improvement suggestions
+- `quality_score` (float): 0-100 quality score
+- `rating` (str): "Excellent", "Good", "Fair", "Poor", "Very Poor", or "Error"
+- `issues` (list): Detected issue descriptions
+- `aberrations` (dict): All aberration values (see above)
 
 ---
 
@@ -567,40 +551,47 @@ Multi-element optical systems.
 from optical_system import OpticalSystem
 
 system = OpticalSystem(name="My Doublet")
-system.add_element(lens1, position=0.0)
-system.add_element(lens2, position=10.0)
+system.add_lens(lens1)
+system.add_lens(lens2, air_gap_before=10.0)
 ```
 
 **Methods:**
 
-##### `add_element(lens, position=0.0)`
+##### `add_lens(lens, air_gap_before=0.0)`
 
-Add a lens element at specified position.
+Add a lens element, separated from the previous one by the air gap.
 
 **Parameters:**
 - `lens` (Lens): Lens element to add
-- `position` (float): Z-position along optical axis (mm)
+- `air_gap_before` (float): Air gap before this element (mm)
 
-##### `calculate_system_focal_length()`
+##### `get_system_focal_length()`
 
-Calculate effective focal length of the system.
-
-```python
-f_system = system.calculate_system_focal_length()
-```
-
-**Returns:** `float` - System focal length (mm)
-
-##### `trace_through_system(rays)`
-
-Trace rays through all elements.
+Exact paraxial effective focal length `EFL = -1/C` from the system ABCD
+matrix (reduced glass thickness, air gaps included) for every
+multi-element system; a single lens returns its own focal length.
 
 ```python
-rays = [Ray([0, 5, 0], [1, 0, 0]) for _ in range(10)]
-traced_rays = system.trace_through_system(rays)
+f_system = system.get_system_focal_length()
 ```
 
-**Returns:** `list[Ray]` - Rays traced through entire system
+**Returns:** `float` - System EFL (mm), or `None` if afocal
+
+##### `get_numerical_aperture()`
+
+Paraxial system NA `D/(2·|EFL|)` from the first-element diameter
+(entrance-pupil estimate) and the system EFL.
+
+##### `calculate_chromatic_aberration()`
+
+Focus data at the F/d/C Fraunhofer lines with wavelength-correct
+indices. `bfl_*` keys are back focal lengths, `f_*` keys true EFLs;
+`longitudinal` is `BFL_C - BFL_F`.
+
+##### `trace rays`
+
+Use `ray_tracer.SystemRayTracer3D(system).trace_ray(ray)` to trace rays
+through all elements.
 
 ---
 
@@ -635,14 +626,17 @@ export_lens_stl(
 
 **Module:** `coating_designer.py`
 
-Design anti-reflection and dielectric coatings.
+Design anti-reflection coatings; reflectivity uses the exact
+characteristic transfer-matrix method (lossless films, unpolarized
+average over s/p, angle-aware).
 
 ```python
 from coating_designer import CoatingDesigner
 
-designer = CoatingDesigner(lens)
-designer.add_layer(material="MgF2", thickness=110.0)  # nm
-transmittance = designer.calculate_transmittance(wavelength=550.0)
+designer = CoatingDesigner(substrate_index=1.5168)
+layer = designer.design_single_layer_ar(wavelength_nm=550.0)
+R = designer.calculate_reflectivity([layer], wavelength_nm=550.0, angle_deg=0.0)
+curve = designer.calculate_reflectivity_curve([layer], wavelength_range=(400, 700))
 ```
 
 ---
@@ -651,18 +645,24 @@ transmittance = designer.calculate_transmittance(wavelength=550.0)
 
 **Module:** `image_simulator.py`
 
-Simulate image formation through lens systems.
+Simulate image formation through lens systems (Gaussian fit to the Airy
+disk matched at the FWHM, true cos⁴ sensor vignetting).
 
 ```python
 from image_simulator import ImageSimulator
 
-simulator = ImageSimulator(lens)
-image = simulator.simulate_image(
+simulator = ImageSimulator(optical_system)
+result = simulator.simulate_image(
+    input_image,
     object_distance=200.0,
-    object_size=10.0,
-    resolution=512
+    wavelength=587.6,
+    pixel_pitch_mm=0.01,
 )
 ```
+
+Image metrics use honest names: `psnr` (valid for [0, 1] floats),
+`global_ssim` (single-window similarity, not MSSIM),
+`nyquist_spectral_ratio` (image spectrum, not optical MTF), `sharpness`.
 
 ---
 
@@ -670,12 +670,16 @@ image = simulator.simulate_image(
 
 **Module:** `performance_metrics.py`
 
-Calculate MTF, PSF, and other performance metrics.
+F-number, NA (paraxial `D/(2·|f|)`), BFL, working distance, Rayleigh
+resolution (`θ = 1.22·λ/D`), MTF cutoff (`1/(λ·f/#)`), Airy disk and
+field of view via the `PerformanceMetrics` class:
 
 ```python
-from performance_metrics import calculate_mtf
+from performance_metrics import PerformanceMetrics
 
-mtf = calculate_mtf(lens, spatial_frequency=100)  # lp/mm
+metrics = PerformanceMetrics(lens_or_system)
+f_number = metrics.calculate_f_number()
+cutoff = metrics.estimate_mtf_cutoff(wavelength=550.0)  # lp/mm
 ```
 
 ---
@@ -706,13 +710,13 @@ print(f"Focal length: {f:.2f} mm")
 print(f"Optical power: {power:.2f} D")
 
 # Analyze quality
-quality = analyze_lens_quality(lens, verbose=True)
-print(f"\nQuality score: {quality['overall_score']:.1f}/100")
-print(f"Rating: {quality['quality_rating']}")
+quality = analyze_lens_quality(lens, field_angle=5.0)
+print(f"\nQuality score: {quality['quality_score']:.1f}/100")
+print(f"Rating: {quality['rating']}")
 
-# Show recommendations
-for rec in quality['recommendations']:
-    print(f"  • {rec}")
+# Show issues
+for issue in quality['issues']:
+    print(f"  • {issue}")
 ```
 
 ### Example 2: Ray Tracing Simulation
@@ -797,11 +801,11 @@ lens2 = Lens(
 
 # Create system
 system = OpticalSystem(name="Achromatic Doublet")
-system.add_element(lens1, position=0.0)
-system.add_element(lens2, position=4.1)  # 0.1mm air gap
+system.add_lens(lens1)
+system.add_lens(lens2, air_gap_before=0.1)
 
 # Calculate system properties
-f_system = system.calculate_system_focal_length()
+f_system = system.get_system_focal_length()
 print(f"System focal length: {f_system:.2f} mm")
 ```
 
@@ -839,8 +843,8 @@ for lens in items:
     results.append({
         'name': lens.name,
         'focal_length': lens.calculate_focal_length(),
-        'quality_score': quality['overall_score'],
-        'rating': quality['quality_rating']
+        'quality_score': quality['quality_score'],
+        'rating': quality['rating']
     })
 
 # Save results

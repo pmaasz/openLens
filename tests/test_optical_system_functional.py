@@ -185,6 +185,29 @@ class TestChromaticAberration(unittest.TestCase):
         # Should be well corrected
         self.assertLess(chrom["longitudinal"], 1.0)
 
+    def test_efl_keys_are_true_efl_not_bfl_copies(self):
+        """f_F/f_d/f_C must be matrix EFLs (-1/C), not BFL copies."""
+        lens = Lens(
+            radius_of_curvature_1=100,
+            radius_of_curvature_2=-100,
+            thickness=10,
+            diameter=50,
+            material="BK7",
+        )
+        system = OpticalSystem()
+        system.add_lens(lens)
+
+        chrom = system.calculate_chromatic_aberration()
+
+        # Thick lens: EFL and BFL differ, so copies would be identical.
+        self.assertNotAlmostEqual(chrom["f_d"], chrom["bfl_d"], places=3)
+        # f_d is the matrix EFL at the d-line indices.
+        n_map = {i: el.lens.refractive_index_at(587.6) for i, el in enumerate(system.elements)}
+        matrix = system._calculate_system_matrix(n_overrides=n_map)
+        self.assertAlmostEqual(chrom["f_d"], -1.0 / matrix[2], places=9)
+        # BFL entries still match the dedicated BFL method.
+        self.assertAlmostEqual(chrom["bfl_d"], system.calculate_back_focal_length(), places=3)
+
 
 class TestAchromaticDoublet(unittest.TestCase):
     """Test achromatic doublet design"""
@@ -355,6 +378,35 @@ class TestNumericalAperture(unittest.TestCase):
         na = system.get_numerical_aperture()
         self.assertGreater(na, 0)
         self.assertLess(na, 1.0)
+
+    def test_numerical_aperture_uses_system_focal_length(self):
+        """NA must equal D/(2*|EFL_sys|), not D/(2*|f_first|)."""
+        first = Lens(
+            radius_of_curvature_1=100,
+            radius_of_curvature_2=-100,
+            thickness=5,
+            diameter=40,
+        )
+        second = Lens(
+            radius_of_curvature_1=50,
+            radius_of_curvature_2=-50,
+            thickness=5,
+            diameter=40,
+        )
+        system = OpticalSystem()
+        system.add_lens(first)
+        system.add_lens(second, air_gap_before=10.0)
+
+        efl = system.get_system_focal_length()
+        self.assertIsNotNone(efl)
+        self.assertAlmostEqual(system.get_numerical_aperture(), 40.0 / (2 * abs(efl)), places=9)
+        # The two elements differ enough that the first-lens value disagrees.
+        f_first = first.calculate_focal_length()
+        self.assertNotAlmostEqual(
+            system.get_numerical_aperture(),
+            40.0 / (2 * abs(f_first)),
+            delta=0.01,
+        )
 
 
 class TestSystemIntegration(unittest.TestCase):

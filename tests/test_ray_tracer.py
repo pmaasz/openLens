@@ -283,6 +283,24 @@ class TestLensRayTracer(unittest.TestCase):
         for ray in rays:
             self.assertGreater(len(ray.path), 1)
 
+    def test_parallel_fan_defaults_to_full_aperture(self):
+        """Default fan spans the full semi-aperture (rim SA traced)."""
+        tracer = LensRayTracer(self.biconvex)
+        rays = tracer.trace_parallel_rays(num_rays=5)
+        heights = sorted(abs(ray.path[0][1]) for ray in rays)
+        self.assertAlmostEqual(heights[-1], self.biconvex.diameter / 2, places=9)
+
+    def test_parallel_fan_explicit_fill(self):
+        """Legacy viz-style fill narrows the fan explicitly."""
+        from src.constants import APERTURE_FILL_FACTOR
+
+        tracer = LensRayTracer(self.biconvex)
+        rays = tracer.trace_parallel_rays(num_rays=5, fill=APERTURE_FILL_FACTOR)
+        heights = sorted(abs(ray.path[0][1]) for ray in rays)
+        self.assertAlmostEqual(
+            heights[-1], self.biconvex.diameter / 2 * APERTURE_FILL_FACTOR, places=9
+        )
+
     def test_ray_misses_lens(self):
         """Test behavior when ray misses the lens"""
         tracer = LensRayTracer(self.biconvex)
@@ -293,6 +311,32 @@ class TestLensRayTracer(unittest.TestCase):
 
         # Ray should be marked as terminated
         self.assertTrue(ray.terminated)
+
+    def test_back_surface_miss_returns_none(self):
+        """No forward back-sphere hit must MISS, not fabricate a zero-length hit."""
+        steep = Lens(
+            radius_of_curvature_1=30.0,
+            radius_of_curvature_2=-30.0,
+            thickness=5.0,
+            diameter=50.0,
+            refractive_index=1.5,
+        )
+        tracer = LensRayTracer(steep)
+        # Ray inside the glass, aimed so it misses the back sphere forward.
+        ray = Ray(x=2.0, y=20.0, angle_rad=math.radians(30))
+        hit = tracer._intersect_sphere_surface(
+            ray, tracer.back_center_x, abs(tracer.R2), is_front=False
+        )
+        self.assertIsNone(hit)
+
+    def test_back_surface_hit_still_found(self):
+        """Ordinary on-axis rays must still intersect the back surface."""
+        tracer = LensRayTracer(self.biconvex)
+        ray = Ray(x=-50.0, y=0.0, angle_rad=0.0)
+        hit = tracer._intersect_sphere_surface(
+            ray, tracer.back_center_x, abs(tracer.R2), is_front=False
+        )
+        self.assertIsNotNone(hit)
 
     def test_chromatic_dispersion(self):
         """Test that different wavelengths can be traced"""

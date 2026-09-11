@@ -73,22 +73,42 @@ class TestOpticalSystem(unittest.TestCase):
         system.add_lens(self.lens1)
         system.add_lens(self.lens2, air_gap_before=20.0)
 
-        f1 = self.lens1.calculate_focal_length()
-        f2 = self.lens2.calculate_focal_length()
-        d = 20.0
-
-        # Theoretical combined focal length for two thin lenses
-        # 1/f = 1/f1 + 1/f2 - d/(f1*f2)
-        expected_power = 1 / f1 + 1 / f2 - d / (f1 * f2)
-        expected_f = 1 / expected_power
-
         calculated_f = system.get_system_focal_length()
 
-        # Since the implementation might use matrix method or thick lens approximation,
-        # we expect it to be close but maybe not exact to the thin lens formula if using matrix
-        # However, the current implementation explicitly uses the thin lens formula for 2 lenses
+        # Exact matrix EFL (-1/C), which accounts for lens thickness and
+        # principal-plane offsets that the thin combination
+        # 1/f = 1/f1 + 1/f2 - d/(f1*f2) (= 49.31 here) ignores.
+        A, B, C, D = system._calculate_system_matrix()
         self.assertIsNotNone(calculated_f)
-        self.assertAlmostEqual(calculated_f, expected_f, places=1)
+        self.assertAlmostEqual(calculated_f, -1.0 / C, places=9)
+
+        f1 = self.lens1.calculate_focal_length()
+        f2 = self.lens2.calculate_focal_length()
+        thin_f = 1 / (1 / f1 + 1 / f2 - 20.0 / (f1 * f2))
+        self.assertNotAlmostEqual(calculated_f, thin_f, places=1)
+
+    def test_system_matrix_uses_effective_radii(self):
+        """System matrix must honor parabolic sags, not stale raw radii."""
+        lens = Lens(
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=25.0,
+            refractive_index=1.5,
+            is_parabolic_1=True,
+            parabolic_sag_1=3.0,
+        )
+        system = OpticalSystem()
+        system.add_lens(lens)
+
+        A, B, C, D = system._calculate_system_matrix()
+        # Effective front radius is 26.04, not the stale 100.0.
+        self.assertAlmostEqual(-1.0 / C, lens.calculate_focal_length(), places=3)
+        self.assertAlmostEqual(
+            system.calculate_back_focal_length(),
+            lens.calculate_back_focal_length(),
+            places=3,
+        )
 
     def test_system_f_number(self):
         """Test system f-number calculation"""

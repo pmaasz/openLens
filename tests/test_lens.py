@@ -9,7 +9,11 @@ serialization, independent of the CLI manager in lens_editor.
 import unittest
 
 from src.lens import Lens
-from src.validation import ValidationError, validate_radius
+from src.validation import (
+    ValidationError,
+    validate_radius,
+    check_physical_feasibility,
+)
 
 
 class TestLensConstruction(unittest.TestCase):
@@ -32,6 +36,43 @@ class TestLensConstruction(unittest.TestCase):
     def test_ids_are_unique_per_instance(self):
         """Two lenses never share an id (uuid4)"""
         self.assertNotEqual(Lens().id, Lens().id)
+
+    def test_default_lens_is_feasible(self):
+        """Default geometry has positive edge thickness (surfaces do not cross)"""
+        lens = Lens()
+        edge = lens.calculate_edge_thickness()
+        self.assertIsNotNone(edge)
+        self.assertGreater(edge, 0)
+        feasible, message = check_physical_feasibility(
+            lens.radius_of_curvature_1,
+            lens.radius_of_curvature_2,
+            lens.thickness,
+            lens.diameter,
+        )
+        self.assertTrue(feasible)
+        self.assertIsNone(message)
+
+    def test_edge_thickness_none_when_aperture_overhangs(self):
+        """|R| < D/2 gives undefined sag, so edge thickness is None"""
+        lens = Lens(
+            radius_of_curvature_1=20.0,
+            radius_of_curvature_2=-20.0,
+            thickness=5.0,
+            diameter=50.0,
+        )
+        self.assertIsNone(lens.calculate_edge_thickness())
+
+    def test_edge_thickness_negative_when_surfaces_cross(self):
+        """R=86.63/-109.97, t=5, D=50 crosses inside the aperture"""
+        lens = Lens(
+            radius_of_curvature_1=86.63,
+            radius_of_curvature_2=-109.97,
+            thickness=5.0,
+            diameter=50.0,
+        )
+        edge = lens.calculate_edge_thickness()
+        self.assertIsNotNone(edge)
+        self.assertLess(edge, 0)
 
 
 class TestLensOptics(unittest.TestCase):
@@ -74,6 +115,58 @@ class TestLensOptics(unittest.TestCase):
         self.assertTrue(hasattr(self.lens.calculate_back_focal_length(), "__abs__"))
         self.assertTrue(hasattr(self.lens.calculate_front_focal_length(), "__abs__"))
 
+    def test_front_focal_length_cartesian_sign(self):
+        """Converging lens: front focus is left of front vertex (FFL < 0)."""
+        biconvex = Lens(
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=40.0,
+            refractive_index=1.5168,
+        )
+        self.assertLess(biconvex.calculate_front_focal_length(), 0)
+        self.assertGreater(biconvex.calculate_back_focal_length(), 0)
+
+    def test_symmetric_lens_ffl_mirrors_bfl(self):
+        """Symmetric biconvex: FFL = -BFL by mirror symmetry."""
+        biconvex = Lens(
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=40.0,
+            refractive_index=1.5168,
+        )
+        self.assertAlmostEqual(
+            biconvex.calculate_front_focal_length(),
+            -biconvex.calculate_back_focal_length(),
+            places=6,
+        )
+
+    def test_diverging_lens_ffl_positive(self):
+        """Diverging lens: virtual front focus is right of vertex (FFL > 0)."""
+        biconcave = Lens(
+            radius_of_curvature_1=-100.0,
+            radius_of_curvature_2=100.0,
+            thickness=5.0,
+            diameter=40.0,
+            refractive_index=1.5168,
+        )
+        self.assertGreater(biconcave.calculate_front_focal_length(), 0)
+        self.assertLess(biconcave.calculate_back_focal_length(), 0)
+
+    def test_afocal_focal_lengths_are_none(self):
+        """Afocal (flat-flat) lens: BFL/FFL are None like the system API."""
+        window = Lens(
+            radius_of_curvature_1=float("inf"),
+            radius_of_curvature_2=float("inf"),
+            thickness=5.0,
+            diameter=40.0,
+            refractive_index=1.5168,
+        )
+        self.assertIsNone(window.calculate_focal_length())
+        self.assertIsNone(window.calculate_back_focal_length())
+        self.assertIsNone(window.calculate_front_focal_length())
+
 
 class TestLensTypePresets(unittest.TestCase):
     """Radius presets applied per lens_type"""
@@ -104,6 +197,53 @@ class TestLensTypePresets(unittest.TestCase):
         lens.set_lens_type("Biconcave")
         self.assertEqual(lens.radius_of_curvature_1, -100.0)
         self.assertEqual(lens.radius_of_curvature_2, 100.0)
+
+    def test_set_lens_type_clears_parabolic(self):
+        """Spherical type presets reset parabolic surfaces (exclusive)."""
+        lens = Lens(is_parabolic_1=True, parabolic_sag_1=3.0)
+        lens.set_lens_type("Biconvex")
+        self.assertFalse(lens.is_parabolic_1)
+        self.assertFalse(lens.is_parabolic_2)
+        self.assertEqual(lens.parabolic_sag_1, 0.0)
+        self.assertEqual(lens.parabolic_sag_2, 0.0)
+
+    def test_classify_uses_effective_radii(self):
+        """Parabolic shape classifies by sag, not stale spherical radii."""
+        lens = Lens(
+            radius_of_curvature_1=-100.0,  # stale concave value
+            radius_of_curvature_2=-100.0,
+            is_parabolic_1=True,
+            parabolic_sag_1=2.0,  # convex parabola (R_eff = +100)
+        )
+        self.assertEqual(lens.classify_lens_type(), "Biconvex")
+
+    def test_every_preset_classifies_as_its_own_type(self):
+        """set_lens_type presets must round-trip through classify_lens_type."""
+        from src.constants import ALL_LENS_TYPES
+
+        for lens_type in ALL_LENS_TYPES:
+            lens = Lens()
+            lens.set_lens_type(lens_type)
+            self.assertEqual(
+                lens.classify_lens_type(),
+                lens_type,
+                f"Preset for {lens_type} classifies as " f"{lens.classify_lens_type()}",
+            )
+
+    def test_meniscus_presets_have_same_sign_radii(self):
+        """Meniscus presets need same-sign radii and matching power sign."""
+        lens = Lens()
+        lens.set_lens_type("Meniscus Convex")
+        r1, r2 = lens.radius_of_curvature_1, lens.radius_of_curvature_2
+        self.assertGreater(r1, 0)
+        self.assertGreater(r2, 0)
+        self.assertGreater(lens.calculate_focal_length(), 0)
+
+        lens.set_lens_type("Meniscus Concave")
+        r1, r2 = lens.radius_of_curvature_1, lens.radius_of_curvature_2
+        self.assertLess(r1, 0)
+        self.assertLess(r2, 0)
+        self.assertLess(lens.calculate_focal_length(), 0)
 
 
 class TestLensSerialization(unittest.TestCase):

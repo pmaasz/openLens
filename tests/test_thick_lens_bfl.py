@@ -60,14 +60,14 @@ class TestDoubletBFL(unittest.TestCase):
         A, B, C, D = self.system._calculate_system_matrix()
         self.assertAlmostEqual(-1.0 / C, 36.2980, delta=0.01)
 
-    def test_system_focal_length_is_thin_lens_estimate_for_doublets(self):
-        """Documented behaviour: get_system_focal_length() uses the thin-lens
-        combination 1/f = 1/f1 + 1/f2 - d/(f1*f2) for two elements, so it
-        deviates from the exact matrix EFL for thick lenses."""
+    def test_system_focal_length_matches_matrix_efl_for_doublets(self):
+        """get_system_focal_length() uses the exact matrix EFL (-1/C) for
+        two elements, not the thin combination 1/f1 + 1/f2 - d/(f1*f2)
+        (which gave 35.047 here by ignoring principal-plane offsets)."""
         f = self.system.get_system_focal_length()
-        self.assertAlmostEqual(f, 35.0470, delta=0.01)
+        self.assertAlmostEqual(f, 36.2980, delta=0.01)
         A, B, C, D = self.system._calculate_system_matrix()
-        self.assertNotAlmostEqual(f, -1.0 / C, places=2)
+        self.assertAlmostEqual(f, -1.0 / C, places=9)
 
     def test_bfl_changes_with_air_gap(self):
         """Increasing the air gap moves the focus (matrix is gap-sensitive)"""

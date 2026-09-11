@@ -48,10 +48,16 @@ DEFAULT_MATERIAL_INDICES = {
 # ==================== Default Lens Parameters ====================
 
 # Default lens geometry (in mm)
+#
+# NOTE: Lens.thickness is the CENTER (vertex to vertex) thickness, so the
+# defaults must satisfy edge = thickness - sag1 + sag2 > 0 at the clear
+# aperture. With R = +/-100 mm and t = 5 mm, D = 50 mm gives edge = -1.35 mm
+# (surfaces cross inside the aperture - unrealizable). D = 40 mm gives
+# edge = +0.96 mm, a feasible default biconvex.
 DEFAULT_RADIUS_1 = 100.0
 DEFAULT_RADIUS_2 = -100.0
 DEFAULT_THICKNESS = 5.0
-DEFAULT_DIAMETER = 50.0
+DEFAULT_DIAMETER = 40.0
 DEFAULT_PROPAGATION_DISTANCE = 100.0  # mm — free-space propagation before first surface
 DEFAULT_TEMPERATURE = 20.0  # degrees Celsius
 
@@ -63,7 +69,7 @@ DEFAULT_RAY_HEIGHT_RANGE = (-20.0, 20.0)  # mm
 DEFAULT_ANGLE_RANGE = (-30.0, 30.0)  # degrees
 
 # Geometry of ray bundles (mm)
-APERTURE_FILL_FACTOR = 0.95  # rays span 95% of the lens aperture
+APERTURE_FILL_FACTOR = 0.95  # legacy viz-style fan: pass as fill= explicitly; traces default to 1.0
 RAY_START_OFFSET_MM = 100.0  # 2D collimated beams start this far before the first surface
 RAY_START_OFFSET_3D_MM = 50.0  # same, for 3D/system traces
 RAY_EXIT_PROPAGATION_2D_MM = 150.0  # draw length after the last element (2D)
@@ -103,6 +109,16 @@ COLOR_SUCCESS = "#4caf50"
 COLOR_WARNING = "#ff9800"
 COLOR_ERROR = "#f44336"
 COLOR_HIGHLIGHT = COLOR_ACCENT
+
+# Lens outline palette: shared by every 2D/3D lens renderer (Qt widgets and
+# matplotlib) so the same lens looks the same everywhere. Hex strings work
+# for both QColor and matplotlib. Glass fill is drawn at alpha 80 (Qt) /
+# 0.3 (matplotlib); surface strokes fully opaque (Qt) / 0.9 (matplotlib).
+COLOR_LENS_FILL = "#96c8e6"  # glass body
+COLOR_LENS_R1 = "#0096ff"  # front surface highlight
+COLOR_LENS_R2 = "#00c864"  # back surface highlight
+COLOR_LENS_RIM = "#969696"  # rim (edge-wall) segments
+COLOR_LENS_BAD = "#ff6e6e"  # unrealizable-geometry tint/warning
 
 # Borders and light-theme surfaces
 COLOR_BORDER_DARK = "#3f3f3f"
@@ -147,6 +163,7 @@ MIN_DIAMETER = 1.0  # mm
 MAX_DIAMETER = 500.0  # mm
 MIN_REFRACTIVE_INDEX = 1.0
 MAX_REFRACTIVE_INDEX = 3.0
+MIN_EDGE_THICKNESS = 0.5  # mm - manufacturable rim (edge thickness) floor
 
 # ==================== Calculation Constants ====================
 
@@ -212,14 +229,18 @@ ALL_LENS_TYPES = [
     LENS_TYPE_MENISCUS_CONCAVE,
 ]
 
-# Standard radius preset (R1, R2) in mm applied per lens type
+# Standard radius preset (R1, R2) in mm applied per lens type.
+# Meniscus lenses need same-sign radii (both centers on one side);
+# opposite signs would be (bi)convex/concave. "Convex" = net converging
+# (R1 < R2 for positive pairs), "Concave" = net diverging, matching
+# Lens.classify_lens_type().
 LENS_TYPE_PRESET_RADII = {
     LENS_TYPE_BICONVEX: (DEFAULT_RADIUS_1, DEFAULT_RADIUS_2),
     LENS_TYPE_BICONCAVE: (-DEFAULT_RADIUS_1, -DEFAULT_RADIUS_2),
     LENS_TYPE_PLANO_CONVEX: (DEFAULT_RADIUS_1, float("inf")),
     LENS_TYPE_PLANO_CONCAVE: (float("inf"), DEFAULT_RADIUS_1),
-    LENS_TYPE_MENISCUS_CONVEX: (80.0, -120.0),
-    LENS_TYPE_MENISCUS_CONCAVE: (-120.0, 80.0),
+    LENS_TYPE_MENISCUS_CONVEX: (80.0, 120.0),
+    LENS_TYPE_MENISCUS_CONCAVE: (-80.0, -120.0),
 }
 
 # ==================== Quality Assessment Constants ====================

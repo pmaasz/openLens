@@ -385,6 +385,40 @@ class Lens:
         lens.modified_at = data.get("modified_at", lens.modified_at)
         return lens
 
+    def calculate_edge_thickness(self) -> Optional[float]:
+        """
+        Calculate the rim (edge) thickness at the clear aperture.
+
+        Canonical convention: ``self.thickness`` is the CENTER (vertex to
+        vertex) thickness. The edge thickness is derived as
+        ``thickness - sag1 + sag2`` evaluated at ``diameter / 2``, where
+        sag1/sag2 are the vertex-referenced surface sags (parabolic-aware).
+
+        Returns:
+            Edge thickness in mm, or None if the geometry is undefined
+            (a spherical surface with |R| < D/2 has no real sag there) or
+            non-finite. A value <= 0 means the surfaces intersect within
+            the clear aperture (unrealizable lens).
+        """
+        h = self.diameter / 2
+        if not math.isfinite(h):
+            return None
+        for surface in (1, 2):
+            if getattr(self, f"is_parabolic_{surface}", False):
+                continue
+            r = self.radius_of_curvature_1 if surface == 1 else self.radius_of_curvature_2
+            if _is_flat(r):
+                continue
+            if abs(h) > abs(r):
+                return None
+        try:
+            s1 = self.get_sag_1(h)
+            s2 = self.get_sag_2(h)
+        except (ArithmeticError, ValueError):
+            return None
+        edge = self.thickness - s1 + s2
+        return edge if math.isfinite(edge) else None
+
     def calculate_focal_length(self) -> Optional[float]:
         """
         Calculate focal length using the lensmaker's equation.
@@ -412,12 +446,18 @@ class Lens:
     def _update_radii_for_type(self) -> None:
         """Apply the standard radius preset for the current lens_type.
 
-        Unknown types leave the radii untouched.
+        Type presets are spherical, so applying one clears any parabolic
+        surface flags (setters exclusive). Unknown types leave the radii
+        untouched.
         """
         preset = LENS_TYPE_PRESET_RADII.get(self.lens_type)
         if preset is None:
             return
         self.radius_of_curvature_1, self.radius_of_curvature_2 = preset
+        self.is_parabolic_1 = False
+        self.is_parabolic_2 = False
+        self.parabolic_sag_1 = 0.0
+        self.parabolic_sag_2 = 0.0
 
     def set_lens_type(self, lens_type: str) -> None:
         """Set lens type and update radii accordingly."""
@@ -426,9 +466,13 @@ class Lens:
         self.modified_at = datetime.now().isoformat()
 
     def classify_lens_type(self) -> str:
-        """Classify lens type based on current radii values."""
-        r1 = self.radius_of_curvature_1
-        r2 = self.radius_of_curvature_2
+        """Classify lens type based on current radii values.
+
+        Uses effective (vertex) radii so parabolic surfaces classify by the
+        shape the tracer actually sees rather than stale spherical radii.
+        """
+        r1 = self.get_effective_radius_1()
+        r2 = self.get_effective_radius_2()
 
         r1_flat = _is_flat(r1)
         r2_flat = _is_flat(r2)
@@ -510,13 +554,17 @@ class Lens:
         }
 
     def calculate_f_number(self) -> float:
-        """Calculate f-number (f/#)"""
+        """Calculate f-number (f/#).
+
+        Photographic convention: uses |f|, so diverging lenses report a
+        positive f/# matching the signed EFL's magnitude.
+        """
         focal_length = self.calculate_focal_length()
         if focal_length is None or abs(self.diameter) < EPSILON:
             return float("inf")
         return abs(focal_length) / self.diameter
 
-    def calculate_back_focal_length(self) -> float:
+    def calculate_back_focal_length(self) -> Optional[float]:
         """
         Calculate Back Focal Length (BFL).
 
@@ -526,11 +574,12 @@ class Lens:
         d is the thickness, n is the refractive index, and f is the focal length.
 
         Returns:
-            Back focal length in mm, or inf if undefined
+            Back focal length in mm, or None if undefined (afocal).
+            None (not inf) matches OpticalSystem.calculate_back_focal_length.
         """
         f = self.calculate_focal_length()
         if f is None:
-            return float("inf")
+            return None
 
         n = self.refractive_index
         r1 = self.get_effective_radius_1()
@@ -545,23 +594,30 @@ class Lens:
 
             return bfl
         except ZeroDivisionError:
-            return float("inf")
+            return None
 
-    def calculate_front_focal_length(self) -> float:
+    def calculate_front_focal_length(self) -> Optional[float]:
         """
         Calculate Front Focal Length (FFL).
 
-        FFL is the distance from the front vertex of the lens to the front focal point.
-        For a thick lens: FFL = f * (1 - d * P2 / n)
-        where P2 = -(n-1)/R2 is the power of the second surface,
-        d is the thickness, n is the refractive index, and f is the focal length.
+        FFL is the Cartesian x-coordinate of the front focal point measured
+        from the front vertex (+x along the light direction). For a
+        converging lens the front focus lies to the LEFT of the front
+        vertex, so FFL is negative: FFL = -f * (1 - d * P2 / n), where
+        P2 = (1-n)/R2 is the second-surface power, d the thickness, n the
+        refractive index and f the effective focal length. (From the system
+        matrix in (y, n*theta) form: the front object distance is s = -D/C,
+        hence the Cartesian coordinate is D/C = -f*(1 - d*P2/n).)
+        The mirror image of BFL = -A/C = +f * (1 - d * P1 / n).
 
         Returns:
-            Front focal length in mm, or inf if undefined
+            Front focal length in mm (signed Cartesian coordinate),
+            or None if undefined (afocal). None (not inf) matches the
+            system-level convention.
         """
         f = self.calculate_focal_length()
         if f is None:
-            return float("inf")
+            return None
 
         n = self.refractive_index
         r2 = self.get_effective_radius_2()
@@ -573,12 +629,13 @@ class Lens:
             # Flat surface: r2 = inf -> P2 = 0
             P2 = -(n - 1) / r2
 
-            # FFL = f * (1 - d * P2 / n)
-            ffl = f * (1.0 - t * P2 / n)
+            # FFL = -f * (1 - d * P2 / n); the minus sign places the front
+            # focus on the object side (-x) for converging lenses.
+            ffl = -f * (1.0 - t * P2 / n)
 
             return ffl
         except ZeroDivisionError:
-            return float("inf")
+            return None
 
     def __str__(self) -> str:
         focal_length = self.calculate_focal_length()

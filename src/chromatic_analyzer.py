@@ -6,8 +6,53 @@ Performs wavelength-dependent ray tracing and dispersion analysis
 
 from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass
-from .constants import WAVELENGTH_D_LINE, WAVELENGTH_C_LINE, WAVELENGTH_F_LINE
+import logging
+import math
+
+from .constants import (
+    WAVELENGTH_D_LINE,
+    WAVELENGTH_C_LINE,
+    WAVELENGTH_F_LINE,
+    DEFAULT_DIAMETER,
+    EPSILON,
+)
 from .material_database import MaterialDatabase
+
+logger = logging.getLogger(__name__)
+
+# Reference off-axis field (degrees) at which lateral color is evaluated.
+# Lateral color is identically zero on the optical axis, so a documented
+# small field angle is required for a meaningful number.
+REFERENCE_FIELD_DEG = 5.0
+
+
+def thick_lens_focal_length_mm(n: float, R1: float, R2: float, d: float) -> Optional[float]:
+    """Thick-lens effective focal length in mm (single source for dict inputs).
+
+    Mirrors ``Lens.calculate_focal_length``:
+    ``1/f = (n-1)*[1/R1 - 1/R2 + (n-1)*d/(n*R1*R2)]``.
+    Zero radii are treated as flat (infinite), matching the Lens setters.
+
+    Args:
+        n: Refractive index at the wavelength of interest.
+        R1: First surface radius of curvature (mm).
+        R2: Second surface radius of curvature (mm).
+        d: Center thickness (mm).
+
+    Returns:
+        Effective focal length in mm, or None for an afocal geometry.
+    """
+    if R1 == 0:
+        R1 = float("inf")
+    if R2 == 0:
+        R2 = float("inf")
+    try:
+        power = (n - 1) * ((1 / R1) - (1 / R2) + ((n - 1) * d) / (n * R1 * R2))
+    except ZeroDivisionError:
+        return None
+    if abs(power) < EPSILON:
+        return None
+    return 1 / power
 
 
 @dataclass
@@ -64,17 +109,33 @@ class ChromaticAnalyzer:
         temperature_c: float = 20.0,
     ) -> ChromaticResult:
         """
-        Analyze chromatic aberration for a lens
+        Analyze chromatic aberration for a lens.
+
+        Focal lengths use the thick-lens lensmaker's equation evaluated with
+        the wavelength-dependent index. Spot sizes are RMS spot radii from
+        exact ray tracing (hexapolar pupil sampling) at each wavelength's own
+        paraxial image plane, so they scale with aperture and include
+        spherical aberration. Lateral color is the chief-ray image-height
+        difference between the extreme wavelengths at the reference field.
 
         Args:
-            lens_params: Dictionary with lens parameters
+            lens_params: Dictionary with lens parameters (radius1, radius2,
+                thickness, diameter, material). Missing diameter defaults to
+                DEFAULT_DIAMETER.
             wavelengths: List of wavelengths in nm (defaults to F, d, C lines)
-            num_rays: Number of rays to trace per wavelength
+            num_rays: Approximate number of rays per spot diagram
             temperature_c: Temperature in Celsius
 
         Returns:
             ChromaticResult with analysis data
+
+        Raises:
+            ValueError: If the geometry is afocal (no finite focal length).
         """
+        from .lens import Lens
+        from .optical_system import OpticalSystem
+        from .analysis.spot_diagram import SpotDiagram
+
         if wavelengths is None:
             # Use primary spectral lines (blue, yellow, red)
             wavelengths = [
@@ -83,41 +144,78 @@ class ChromaticAnalyzer:
                 self.WAVELENGTHS["C"],
             ]
 
+        R1 = lens_params.get("radius1", 50.0)
+        R2 = lens_params.get("radius2", -50.0)
+        d = lens_params.get("thickness", 5.0)
+        diameter = lens_params.get("diameter", DEFAULT_DIAMETER)
+        material_name = lens_params.get("material", "BK7")
+        num_rings = max(1, round(math.sqrt(max(num_rays - 1, 1) / 3.0)))
+
         focal_lengths = []
         spot_sizes = []
         transverse_aberrations = []
-
-        material_name = lens_params.get("material", "BK7")
+        image_planes = []
 
         for wavelength in wavelengths:
-            # Get wavelength-dependent refractive index
+            # Wavelength-dependent refractive index (Sellmeier + TIE-19).
             n = self.material_db.get_refractive_index(material_name, wavelength, temperature_c)
 
-            # Calculate focal length using lensmaker's equation
-            # 1/f = (n-1)[1/R1 - 1/R2 + (n-1)d/(nR1R2)]
-            R1 = lens_params.get("radius1", 50.0)
-            R2 = lens_params.get("radius2", -50.0)
-            d = lens_params.get("thickness", 5.0)
+            lens = Lens(
+                name=f"chromatic@{wavelength:g}nm",
+                radius_of_curvature_1=R1,
+                radius_of_curvature_2=R2,
+                thickness=d,
+                diameter=diameter,
+                refractive_index=n,
+                material=material_name,
+                wavelength=wavelength,
+                temperature=temperature_c,
+            )
+            focal_length = lens.calculate_focal_length()
+            if focal_length is None:
+                raise ValueError(
+                    f"Afocal geometry (R1={R1}, R2={R2}) has no finite "
+                    f"focal length; chromatic analysis is undefined."
+                )
 
-            # Simplified lensmaker's equation (thin lens approximation)
-            focal_length = 1.0 / ((n - 1) * (1 / R1 - 1 / R2))
-
-            # Estimate spot size based on spherical aberration
-            spot_size = abs(focal_length) * 0.001  # Rough estimate
-
-            # Estimate transverse aberration
-            transverse_ab = abs(focal_length) * 0.002
+            system = OpticalSystem(name=f"chromatic@{wavelength:g}nm")
+            system.add_lens(lens)
+            spot = SpotDiagram(system).trace_spot(
+                wavelength_nm=wavelength,
+                num_rings=num_rings,
+            )
+            if spot.get("error") or not spot.get("valid_rays"):
+                logger.warning("Spot trace failed at %.1fnm; reporting NaN", wavelength)
+                spot_sizes.append(float("nan"))
+                transverse_aberrations.append(float("nan"))
+                image_planes.append(float("nan"))
+            else:
+                spot_sizes.append(spot["rms_radius"])
+                transverse_aberrations.append(spot["geo_radius"])
+                image_planes.append(spot["image_plane_x"])
 
             focal_lengths.append(focal_length)
-            spot_sizes.append(spot_size)
-            transverse_aberrations.append(transverse_ab)
 
         # Calculate chromatic aberration metrics
         focal_shift = max(focal_lengths) - min(focal_lengths)
         axial_chromatic = abs(focal_lengths[0] - focal_lengths[-1])
 
-        # Lateral color (difference in image height for off-axis rays)
-        lateral_color = abs(transverse_aberrations[0] - transverse_aberrations[-1])
+        # Lateral color: chief-ray image-height difference between the
+        # extreme wavelengths at the reference field, evaluated at the
+        # middle wavelength's image plane.
+        lateral_color = self._lateral_color(
+            R1,
+            R2,
+            d,
+            diameter,
+            material_name,
+            wavelengths[0],
+            wavelengths[-1],
+            wavelengths[len(wavelengths) // 2],
+            image_planes[len(wavelengths) // 2],
+            temperature_c,
+            num_rings,
+        )
 
         return ChromaticResult(
             wavelengths=wavelengths,
@@ -128,6 +226,68 @@ class ChromaticAnalyzer:
             transverse_aberration=transverse_aberrations,
             axial_chromatic_aberration=axial_chromatic,
         )
+
+    def _lateral_color(
+        self,
+        R1: float,
+        R2: float,
+        d: float,
+        diameter: float,
+        material_name: str,
+        wl_first: float,
+        wl_last: float,
+        wl_ref: float,
+        image_plane_x_mm: float,
+        temperature_c: float,
+        num_rings: int,
+    ) -> float:
+        """Chief-ray image-height difference between two wavelengths.
+
+        Traces hexapolar bundles at REFERENCE_FIELD_DEG through lenses
+        whose indices are set at each extreme wavelength, and returns the
+        centroid separation at the reference image plane. Returns 0.0 for
+        a single wavelength and NaN if either trace fails.
+        """
+        from .lens import Lens
+        from .optical_system import OpticalSystem
+        from .analysis.spot_diagram import SpotDiagram
+
+        if wl_first == wl_last or not math.isfinite(image_plane_x_mm):
+            return 0.0
+
+        centroids = []
+        for wavelength in (wl_first, wl_last):
+            n = self.material_db.get_refractive_index(material_name, wavelength, temperature_c)
+            lens = Lens(
+                name=f"lateral@{wavelength:g}nm",
+                radius_of_curvature_1=R1,
+                radius_of_curvature_2=R2,
+                thickness=d,
+                diameter=diameter,
+                refractive_index=n,
+                material=material_name,
+                wavelength=wavelength,
+                temperature=temperature_c,
+            )
+            system = OpticalSystem(name=f"lateral@{wavelength:g}nm")
+            system.add_lens(lens)
+            spot = SpotDiagram(system).trace_spot(
+                field_angle_y_deg=REFERENCE_FIELD_DEG,
+                wavelength_nm=wavelength,
+                image_plane_x_mm=image_plane_x_mm,
+                num_rings=num_rings,
+            )
+            if spot.get("error") or not spot.get("valid_rays"):
+                logger.warning(
+                    "Lateral-color trace failed at %.1fnm; reporting NaN",
+                    wavelength,
+                )
+                return float("nan")
+            centroids.append(spot["centroid"])
+
+        dy = centroids[0][0] - centroids[1][0]
+        dz = centroids[0][1] - centroids[1][1]
+        return math.sqrt(dy * dy + dz * dz)
 
     def calculate_abbe_number(self, material_name: str) -> float:
         """
@@ -220,6 +380,7 @@ class ChromaticAnalyzer:
 
         Returns:
             Dictionary with 'wavelengths' and 'focal_lengths' lists
+            (focal length is None at any wavelength with afocal power)
         """
         wavelengths = []
         focal_lengths = []
@@ -231,11 +392,12 @@ class ChromaticAnalyzer:
             wl = wl_min + (wl_max - wl_min) * i / (num_points - 1)
             n = self.material_db.get_refractive_index(material_name, wl)
 
-            # Calculate focal length using lensmaker's equation
+            # Thick-lens lensmaker's equation (shared helper).
             R1 = lens_params.get("radius1", 50.0)
             R2 = lens_params.get("radius2", -50.0)
+            d = lens_params.get("thickness", 5.0)
 
-            focal_length = 1.0 / ((n - 1) * (1 / R1 - 1 / R2))
+            focal_length = thick_lens_focal_length_mm(n, R1, R2, d)
 
             wavelengths.append(wl)
             focal_lengths.append(focal_length)

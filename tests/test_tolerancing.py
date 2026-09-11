@@ -139,5 +139,21 @@ class TestInverseSensitivity(unittest.TestCase):
         self.assertEqual(new_tols[0].min_val, -new_tols[0].max_val)
 
 
+class TestPercentile(unittest.TestCase):
+    def test_90th_percentile_interpolates(self):
+        """0..99 must give 89.1, not index 90 (off-by-one without interp)."""
+        from src.tolerancing import _percentile
+
+        self.assertAlmostEqual(_percentile(list(range(100)), 90.0), 89.1, places=9)
+
+    def test_percentile_edges(self):
+        """Single value and empty handling."""
+        from src.tolerancing import _percentile
+
+        self.assertEqual(_percentile([3.0], 90.0), 3.0)
+        with self.assertRaises(ValueError):
+            _percentile([], 90.0)
+
+
 if __name__ == "__main__":
     unittest.main()

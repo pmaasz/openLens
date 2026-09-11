@@ -63,6 +63,36 @@ class TestAnalysisTools(unittest.TestCase):
         if len(data["distortion_pct"]) > 0:
             self.assertTrue(abs(data["distortion_pct"][-1]) < 5.0)
 
+    def test_sagittal_focus_meets_chief_ray(self):
+        """Sagittal focus is the skew-line meeting with the chief ray."""
+        from src.ray_tracer import Ray3D
+        from src.vector3 import vec3
+        from src.analysis.geometric import _sagittal_focus_on_chief_ray
+
+        chief = Ray3D(vec3(0, 0, 0), vec3(1, 0, 0))
+        # Skew ray crossing z=0 exactly at x=10 must focus there.
+        sag = Ray3D(vec3(0, 0, 1), vec3(1, 0, -0.1))
+
+        self.assertAlmostEqual(_sagittal_focus_on_chief_ray(chief, sag), 10.0, places=6)
+
+    def test_sagittal_focus_parallel_returns_none(self):
+        """Parallel skew rays have no finite sagittal focus."""
+        from src.ray_tracer import Ray3D
+        from src.vector3 import vec3
+        from src.analysis.geometric import _sagittal_focus_on_chief_ray
+
+        chief = Ray3D(vec3(0, 0, 0), vec3(1, 0, 0))
+        sag = Ray3D(vec3(0, 0, 1), vec3(1, 0, 0))
+
+        self.assertIsNone(_sagittal_focus_on_chief_ray(chief, sag))
+
+    def test_sagittal_shift_vanishes_on_axis(self):
+        """On-axis sagittal shift is ~0 (both methods agree at field zero)."""
+        analyzer = GeometricTraceAnalysis(self.system)
+        data = analyzer.calculate_field_curvature_distortion(max_field_angle_deg=5.0, num_points=3)
+
+        self.assertAlmostEqual(data["sag_focus_shift_mm"][0], 0.0, delta=0.05)
+
     @unittest.skipUnless(HAS_NUMPY, "Numpy required for PSF/MTF analysis")
     def test_psf_mtf_fallback(self):
         if ImageQualityAnalyzer is None:

@@ -90,6 +90,175 @@ class TestAdvancedOptimizer(unittest.TestCase):
         merit = optimizer.merit_function.evaluate(sys_bad)
         self.assertGreater(merit, 1000.0)
 
+    def test_vertex_collapse_penalty(self):
+        """Designs with crossed surfaces (edge <= 0) get a hard penalty."""
+        crossed_lens = Lens(
+            radius_of_curvature_1=86.63,
+            radius_of_curvature_2=-109.97,
+            thickness=5.0,
+            diameter=50.0,
+            refractive_index=1.5,
+        )
+        sys_crossed = OpticalSystem("Crossed System")
+        sys_crossed.add_lens(crossed_lens)
+
+        optimizer = LensOptimizer(sys_crossed, [], [])
+        merit = optimizer.merit_function.evaluate(sys_crossed)
+        self.assertGreaterEqual(merit, 1e8)
+
+    def test_thin_center_penalty(self):
+        """Designs with non-positive center thickness get a hard penalty."""
+        flat_lens = Lens(
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=-2.0,
+            diameter=25.0,
+            refractive_index=1.5,
+        )
+        sys_flat = OpticalSystem("Flat System")
+        sys_flat.add_lens(flat_lens)
+
+        optimizer = LensOptimizer(sys_flat, [], [])
+        merit = optimizer.merit_function.evaluate(sys_flat)
+        self.assertGreaterEqual(merit, 1e8)
+
+    def test_radius_variable_clears_parabolic_flag(self):
+        """Radius variables take effect on parabolic surfaces (no silent no-op)."""
+        lens = Lens(
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=25.0,
+            refractive_index=1.5,
+            is_parabolic_1=True,
+            parabolic_sag_1=3.0,
+        )
+        system = OpticalSystem("Parabolic System")
+        system.add_lens(lens)
+        optimizer = LensOptimizer(system, [], [])
+        f_before = system.elements[0].lens.calculate_focal_length()
+
+        optimizer._apply_single_variable(system, 0, "radius_of_curvature_1", 60.0)
+
+        applied = system.elements[0].lens
+        self.assertFalse(applied.is_parabolic_1)
+        self.assertEqual(applied.radius_of_curvature_1, 60.0)
+        self.assertNotAlmostEqual(applied.calculate_focal_length(), f_before)
+
+    def test_empty_system_scores_infeasible(self):
+        """Unevaluatable targets share one INFEASIBLE scale (not 0.0)."""
+        from src.optimizer import INFEASIBLE_MERIT
+
+        system = OpticalSystem("Empty System")
+        optimizer = LensOptimizer(system, [], [])
+        merit = optimizer.merit_function.evaluate(system)
+        self.assertEqual(merit, 0.0)  # no targets, no elements: nothing to score
+        for target_name in ("coma", "astigmatism"):
+            target = OptimizationTarget(target_name, 0.0, weight=1.0, target_type="minimize")
+            value = optimizer.merit_function._TARGET_DISPATCH[target_name](
+                optimizer.merit_function, system, target
+            )
+            self.assertEqual(value, INFEASIBLE_MERIT)
+
+    def test_afocal_focal_length_scores_infeasible(self):
+        """Undefined focus scores INFEASIBLE, not a magic 1e6."""
+        from src.optimizer import INFEASIBLE_MERIT
+
+        afocal = Lens(
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=100.0,
+            thickness=0.0,
+            diameter=25.0,
+            refractive_index=1.0,  # n = 1 -> zero power -> None focal length
+        )
+        system = OpticalSystem("Afocal System")
+        system.add_lens(afocal)
+        optimizer = LensOptimizer(system, [], [])
+        target = OptimizationTarget("focal_length", 100.0, weight=1.0, target_type="target")
+        value = optimizer.merit_function._eval_focal_length(system, target)
+        self.assertEqual(value, INFEASIBLE_MERIT)
+
+    def test_chromatic_uses_magnitude(self):
+        """Signed LCA must not reward large negative aberration."""
+        system = OpticalSystem("Chromatic System")
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=100.0,
+                radius_of_curvature_2=-100.0,
+                thickness=5.0,
+                diameter=25.0,
+                refractive_index=1.5168,
+            )
+        )
+        optimizer = LensOptimizer(system, [], [])
+        target = OptimizationTarget("chromatic_aberration", 0.0, weight=2.0, target_type="minimize")
+        value = optimizer.merit_function._eval_chromatic(system, target)
+        expected = 2.0 * abs(system.calculate_chromatic_aberration()["longitudinal"])
+        self.assertAlmostEqual(value, expected, places=12)
+        self.assertGreaterEqual(value, 0.0)
+
+    def test_diameter_variable_applies(self):
+        """Diameter variables take effect (previously a silent no-op)."""
+        optimizer = LensOptimizer(self.system, [], [])
+        optimizer._apply_single_variable(self.system, 0, "diameter", 30.0)
+        self.assertEqual(self.system.elements[0].lens.diameter, 30.0)
+
+    def test_sag_variable_latches_parabolic_flag(self):
+        """Sag variables switch the surface to parabolic."""
+        optimizer = LensOptimizer(self.system, [], [])
+        optimizer._apply_single_variable(self.system, 0, "parabolic_sag_1", 2.5)
+
+        applied = self.system.elements[0].lens
+        self.assertTrue(applied.is_parabolic_1)
+        self.assertEqual(applied.parabolic_sag_1, 2.5)
+
+    def _thickness_optimizer(self, current, min_v=1.0, max_v=10.0, step=1.0):
+        """Single thickness variable on the default singlet (no targets)."""
+        system = OpticalSystem("Bound System")
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=100.0,
+                radius_of_curvature_2=-100.0,
+                thickness=5.0,
+                diameter=25.0,
+                refractive_index=1.5,
+            )
+        )
+        variables = [
+            OptimizationVariable(
+                name="T",
+                element_index=0,
+                parameter="thickness",
+                current_value=current,
+                min_value=min_v,
+                max_value=max_v,
+                step_size=step,
+            )
+        ]
+        return LensOptimizer(system, variables, [])
+
+    def test_out_of_bounds_penalized_not_clamped(self):
+        """Outside points form a penalty bowl, not a clamped flatland."""
+        optimizer = self._thickness_optimizer(current=9.0)
+        m_in = optimizer._evaluate_design([9.0])
+        m_out1 = optimizer._evaluate_design([11.0])
+        m_out2 = optimizer._evaluate_design([12.0])
+        self.assertGreater(m_out1 - m_in, 1e5)
+        self.assertGreater(m_out2, m_out1)
+
+    def test_wall_gradient_points_inside(self):
+        """Numerical gradient at a bound is non-zero (was exactly 0.0)."""
+        optimizer = self._thickness_optimizer(current=10.0)
+        gradient = optimizer._calculate_gradient([10.0])
+        self.assertGreater(gradient[0], 0.0)
+
+    def test_wall_collapse_aborts_not_converges(self):
+        """Simplex stuck outside bounds fails loudly instead of 'Converged'."""
+        optimizer = self._thickness_optimizer(current=100.0, step=1e-15)
+        result = optimizer.optimize_simplex(max_iterations=50)
+        self.assertFalse(result.success)
+        self.assertIn("bounds", result.message)
+
     def test_coma_target(self):
         """Test that coma target can be evaluated"""
         targets = [

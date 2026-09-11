@@ -4,17 +4,26 @@ Optical System Optimization Engine
 Automatically optimize lens parameters to minimize aberrations and improve performance
 """
 
-import math
 from typing import List, Dict, Tuple, Callable, Optional
 from dataclasses import dataclass, field
 import copy
 from concurrent.futures import ProcessPoolExecutor
 
+import logging
+
+from .constants import MIN_EDGE_THICKNESS
 from .lens import Lens
 from .optical_system import OpticalSystem
 from .aberrations import AberrationsCalculator
 from .analysis import SpotDiagram
 from .analysis.beam_synthesis import PSFCalculator, WavefrontSensor, NUMPY_AVAILABLE
+
+logger = logging.getLogger(__name__)
+
+#: Merit for unevaluatable targets (empty system, undefined focus, failed
+#: trace). Single scale above the hard-geometry penalties (1e8) so "cannot
+#: score" always ranks worse than "scores badly".
+INFEASIBLE_MERIT = 1e9
 
 
 @dataclass
@@ -66,39 +75,6 @@ class OptimizationResult:
     message: str = ""
 
 
-def _get_sag(r: float, h: float) -> float:
-    """Calculate surface sag (z-displacement) at height *h* for radius *r*."""
-    if abs(r) < 1e-6:
-        return 0.0
-    c = 1.0 / r
-    disc = 1.0 - (c * h) ** 2
-    if disc < 0:
-        return r  # invalid geometry sentinel
-    return c * h**2 / (1.0 + math.sqrt(disc))
-
-
-def _get_sag_for_lens(lens, surface: int, h: float) -> float:
-    """Get sag for a lens surface, handling parabolic (sag at D/2)."""
-    if surface == 1 and getattr(lens, "is_parabolic_1", False):
-        r_max = lens.diameter / 2
-        if abs(r_max) < 1e-9:
-            return 0.0
-        sag = float(getattr(lens, "parabolic_sag_1", 0.0))
-        # Clamp h to aperture
-        h_c = max(-r_max, min(h, r_max))
-        return sag * (h_c * h_c) / (r_max * r_max)
-    if surface == 2 and getattr(lens, "is_parabolic_2", False):
-        r_max = lens.diameter / 2
-        if abs(r_max) < 1e-9:
-            return 0.0
-        sag = float(getattr(lens, "parabolic_sag_2", 0.0))
-        h_c = max(-r_max, min(h, r_max))
-        return sag * (h_c * h_c) / (r_max * r_max)
-    # Spherical
-    r = lens.radius_of_curvature_1 if surface == 1 else lens.radius_of_curvature_2
-    return _get_sag(r, h)
-
-
 class MeritFunction:
     """Calculate merit function for optical system quality"""
 
@@ -113,7 +89,7 @@ class MeritFunction:
         self.constraints = constraints or {
             "min_center_thickness": 1.0,
             "max_center_thickness": 100.0,
-            "min_edge_thickness": 0.5,
+            "min_edge_thickness": MIN_EDGE_THICKNESS,
             "min_air_gap": 0.1,
             "min_edge_clearance": 0.1,
         }
@@ -137,44 +113,46 @@ class MeritFunction:
 
     def _eval_spherical(self, system: OpticalSystem, target: OptimizationTarget) -> float:
         if not system.elements:
-            return 1e6
+            return INFEASIBLE_MERIT
         calc = AberrationsCalculator(system)
         results = calc.calculate_all_aberrations()
         value = results.get("spherical_aberration")
         if value is None:
-            return 1e6
+            return INFEASIBLE_MERIT
         return self._apply_target(target, abs(value))
 
     def _eval_coma(self, system: OpticalSystem, target: OptimizationTarget) -> float:
         if not system.elements:
-            return 0.0
+            return INFEASIBLE_MERIT
         calc = AberrationsCalculator(system)
         results = calc.calculate_all_aberrations(field_angle_deg=5.0)
         value = results.get("coma")
         if value is None:
-            return 0.0
+            return INFEASIBLE_MERIT
         return self._apply_target(target, abs(value))
 
     def _eval_astigmatism(self, system: OpticalSystem, target: OptimizationTarget) -> float:
         if not system.elements:
-            return 0.0
+            return INFEASIBLE_MERIT
         calc = AberrationsCalculator(system)
         results = calc.calculate_all_aberrations(field_angle_deg=5.0)
         value = results.get("astigmatism")
         if value is None:
-            return 0.0
+            return INFEASIBLE_MERIT
         return self._apply_target(target, abs(value))
 
     @staticmethod
     def _eval_chromatic(system: OpticalSystem, target: OptimizationTarget) -> float:
         chrom = system.calculate_chromatic_aberration()
-        return MeritFunction._apply_target(target, chrom["longitudinal"])
+        # Longitudinal chromatic aberration is signed; minimizing the raw
+        # value would reward large negative LCA, so score its magnitude.
+        return MeritFunction._apply_target(target, abs(chrom["longitudinal"]))
 
     @staticmethod
     def _eval_focal_length(system: OpticalSystem, target: OptimizationTarget) -> float:
         f = system.get_system_focal_length()
         if not f:
-            return 1e6
+            return INFEASIBLE_MERIT
         return MeritFunction._apply_target(target, f)
 
     @staticmethod
@@ -191,7 +169,7 @@ class MeritFunction:
                 return MeritFunction._apply_target(target, value)
         except Exception:
             pass
-        return 1e3
+        return INFEASIBLE_MERIT
 
     @staticmethod
     def _eval_mtf(system: OpticalSystem, target: OptimizationTarget) -> float:
@@ -203,7 +181,7 @@ class MeritFunction:
                 and globals()["NUMPY_AVAILABLE"]
             )
             if not has_deps:
-                return 0.0
+                return INFEASIBLE_MERIT
 
             import numpy as np
 
@@ -211,14 +189,14 @@ class MeritFunction:
             Y, Z, W = sensor.get_pupil_wavefront()
 
             if W.size == 0 or np.all(np.isnan(W)):
-                return target.weight * 1e3
+                return INFEASIBLE_MERIT
 
             psf = globals()["PSFCalculator"].calculate_psf(Y, Z, W)
             mtf = globals()["PSFCalculator"].calculate_mtf(psf)
             value = float(np.sum(mtf))
             return MeritFunction._apply_target(target, value)
         except Exception:
-            return target.weight * 1e3
+            return INFEASIBLE_MERIT
 
     _TARGET_DISPATCH = {
         "spherical_aberration": _eval_spherical,
@@ -236,28 +214,58 @@ class MeritFunction:
     # ------------------------------------------------------------------
 
     def _penalty_physical(self, system: OpticalSystem) -> float:
-        """Penalties for invalid geometries (thickness, air gaps, edge clearance)."""
+        """Penalties for invalid geometries (thickness, air gaps, edge clearance).
+
+        Canonical convention: ``Lens.thickness`` is the CENTER (vertex to
+        vertex) thickness, matching the ray tracers (tracer_2d/3d), the ABCD
+        matrix, the lensmaker equation, and ``LensGeometry``. All sags come
+        from the single source of truth (``Lens.get_sag_1/2``); undefined
+        geometry (aperture overhanging a sphere) surfaces as
+        ``calculate_edge_thickness() is None``.
+        """
         merit = 0.0
         min_ct = self.constraints.get("min_center_thickness", 1.0)
         max_ct = self.constraints.get("max_center_thickness", 100.0)
-        min_et = self.constraints.get("min_edge_thickness", 0.5)
+        min_et = self.constraints.get("min_edge_thickness", MIN_EDGE_THICKNESS)
         min_ag = self.constraints.get("min_air_gap", 0.1)
         min_ec = self.constraints.get("min_edge_clearance", 0.1)
 
         for element in system.elements:
             lens = element.lens
-            if lens.thickness < min_ct:
-                merit += 1e5 * (min_ct - lens.thickness) ** 2
-            if lens.thickness > max_ct:
-                merit += 1e3 * (lens.thickness - max_ct) ** 2
+            # Center (vertex separation) thickness IS lens.thickness.
+            center_thickness = lens.thickness
+            if center_thickness <= 0:
+                # Hard infeasible: vertices crossed/coincident (inside-out lens).
+                merit += 1e8
+            if center_thickness < min_ct:
+                merit += 1e5 * (min_ct - center_thickness) ** 2
+            if center_thickness > max_ct:
+                merit += 1e3 * (center_thickness - max_ct) ** 2
 
             try:
                 y = lens.diameter / 2.0
-                s1 = _get_sag_for_lens(lens, 1, y)
-                s2 = _get_sag_for_lens(lens, 2, y)
-                edge_thickness = lens.thickness - s1 + s2
+                edge_thickness = lens.calculate_edge_thickness()
+                if edge_thickness is None:
+                    # Aperture overhangs a spherical surface (|R| < h):
+                    # sag is undefined there.
+                    merit += 1e8
+                    continue
+                if edge_thickness <= 0:
+                    # Hard infeasible: rim collapse / surfaces crossed at edge.
+                    merit += 1e8
                 if edge_thickness < min_et:
                     merit += 1e4 * (min_et - edge_thickness) ** 2
+                # Interior check: meniscus shapes can self-intersect inside
+                # the aperture even when center and rim are both positive.
+                # (Rim defined implies interior sags are defined too.)
+                for frac in (0.5, 0.7071):
+                    yi = y * frac
+                    ti = center_thickness - lens.get_sag_1(yi) + lens.get_sag_2(yi)
+                    if ti <= 0:
+                        merit += 1e8
+                        break
+                    if ti < min_et:
+                        merit += 1e4 * (min_et - ti) ** 2
             except Exception:
                 merit += 1e5
 
@@ -269,9 +277,17 @@ class MeritFunction:
                 lens1 = system.elements[i].lens
                 lens2 = system.elements[i + 1].lens
                 max_h = min(lens1.diameter, lens2.diameter) / 2.0
-                s_back_1 = _get_sag_for_lens(lens1, 2, max_h)
-                s_front_2 = _get_sag_for_lens(lens2, 1, max_h)
+                if (
+                    lens1.calculate_edge_thickness() is None
+                    or lens2.calculate_edge_thickness() is None
+                ):
+                    merit += 1e8
+                    continue
+                s_back_1 = lens1.get_sag_2(max_h)
+                s_front_2 = lens2.get_sag_1(max_h)
                 edge_clearance = gap.thickness + s_front_2 - s_back_1
+                if edge_clearance <= 0:
+                    merit += 1e8
                 if edge_clearance < min_ec:
                     merit += 1e5 * (min_ec - edge_clearance) ** 2
 
@@ -365,11 +381,14 @@ class LensOptimizer:
         # First vertex is current design
         simplex.append(current_values.copy())
 
-        # Create n additional vertices by perturbing each variable
+        # Create n additional vertices by perturbing each variable.
+        # Deliberately NOT clamped: out-of-bounds vertices earn a bound
+        # penalty in _evaluate_design instead, so the search sees the true
+        # landscape. Clamping collapses distinct vertices onto one bound
+        # point, faking convergence (merit_range -> 0, success=True).
         for i in range(n_vars):
             vertex = current_values.copy()
             vertex[i] += self.variables[i].step_size
-            vertex[i] = self.variables[i].clamp(vertex[i])
             simplex.append(vertex)
 
         # Evaluate merit for all vertices
@@ -398,18 +417,51 @@ class LensOptimizer:
             if callback:
                 callback(iteration, merit_values[0], simplex[0])
 
-            # Check convergence
             merit_range = merit_values[-1] - merit_values[0]
+            n_clamped = sum(
+                1
+                for vertex in simplex
+                if any(not var.is_valid(v) for var, v in zip(self.variables, vertex))
+            )
+            logger.debug(
+                "simplex iter %d: merit_range=%.3g n_clamped=%d best=%.3g",
+                iteration,
+                merit_range,
+                n_clamped,
+                merit_values[0],
+            )
+            if n_clamped > n_vars / 2 and merit_range < tolerance:
+                # Asphyxiation, not convergence: a majority of vertices is
+                # pinned outside the box with no merit spread between them.
+                return OptimizationResult(
+                    success=False,
+                    iterations=iteration + 1,
+                    initial_merit=initial_merit,
+                    final_merit=merit_values[0],
+                    improvement=(
+                        ((initial_merit - merit_values[0]) / initial_merit * 100)
+                        if initial_merit > 0
+                        else 0
+                    ),
+                    optimized_system=self._apply_variables(simplex[0]),
+                    variable_history=variable_history,
+                    merit_history=merit_history,
+                    message=(
+                        f"Aborted after {iteration + 1} iterations: {n_clamped} of "
+                        f"{len(simplex)} simplex vertices stuck outside variable bounds"
+                    ),
+                )
+
+            # Check convergence
             if merit_range < tolerance:
                 break
 
             # Calculate centroid of best n points (excluding worst)
             centroid = [sum(simplex[i][j] for i in range(n_vars)) / n_vars for j in range(n_vars)]
 
-            # Reflection
+            # Reflection (unclamped: bounds are penalties, not walls)
             worst = simplex[-1]
             reflected = [centroid[j] + alpha * (centroid[j] - worst[j]) for j in range(n_vars)]
-            reflected = [self.variables[j].clamp(reflected[j]) for j in range(n_vars)]
             reflected_merit = self._evaluate_design(reflected)
 
             if merit_values[0] <= reflected_merit < merit_values[-2]:
@@ -421,7 +473,6 @@ class LensOptimizer:
                 expanded = [
                     centroid[j] + gamma * (reflected[j] - centroid[j]) for j in range(n_vars)
                 ]
-                expanded = [self.variables[j].clamp(expanded[j]) for j in range(n_vars)]
                 expanded_merit = self._evaluate_design(expanded)
 
                 if expanded_merit < reflected_merit:
@@ -433,7 +484,6 @@ class LensOptimizer:
             else:
                 # Contraction
                 contracted = [centroid[j] + rho * (worst[j] - centroid[j]) for j in range(n_vars)]
-                contracted = [self.variables[j].clamp(contracted[j]) for j in range(n_vars)]
                 contracted_merit = self._evaluate_design(contracted)
 
                 if contracted_merit < merit_values[-1]:
@@ -446,7 +496,6 @@ class LensOptimizer:
                         simplex[i] = [
                             best[j] + sigma * (simplex[i][j] - best[j]) for j in range(n_vars)
                         ]
-                        simplex[i] = [self.variables[j].clamp(simplex[i][j]) for j in range(n_vars)]
                         merit_values[i] = self._evaluate_design(simplex[i])
 
             # Record history
@@ -455,9 +504,11 @@ class LensOptimizer:
 
             last_iteration = iteration
 
-        # Best solution
+        # Best solution (a best point outside the box is not a success,
+        # even if the merit range converged: the design is unusable).
         best_values = simplex[0]
         final_merit = merit_values[0]
+        best_valid = all(var.is_valid(v) for var, v in zip(self.variables, best_values))
 
         # Apply best values to system
         optimized_system = self._apply_variables(best_values)
@@ -467,7 +518,7 @@ class LensOptimizer:
         )
 
         return OptimizationResult(
-            success=True,
+            success=best_valid,
             iterations=last_iteration + 1,
             initial_merit=initial_merit,
             final_merit=final_merit,
@@ -475,7 +526,11 @@ class LensOptimizer:
             optimized_system=optimized_system,
             variable_history=variable_history,
             merit_history=merit_history,
-            message=f"Converged after {last_iteration + 1} iterations",
+            message=(
+                f"Converged after {last_iteration + 1} iterations"
+                if best_valid
+                else f"Finished after {last_iteration + 1} iterations outside variable bounds"
+            ),
         )
 
     def optimize_gradient_descent(
@@ -501,11 +556,10 @@ class LensOptimizer:
             # Calculate numerical gradient
             gradient = self._calculate_gradient(current_values)
 
-            # Update variables
+            # Update variables (unclamped: bounds are penalties, not walls)
             new_values = []
             for i, (val, grad) in enumerate(zip(current_values, gradient)):
                 new_val = val - learning_rate * grad
-                new_val = self.variables[i].clamp(new_val)
                 new_values.append(new_val)
 
             # Evaluate new design
@@ -528,9 +582,10 @@ class LensOptimizer:
         improvement = (
             ((initial_merit - final_merit) / initial_merit * 100) if initial_merit > 0 else 0
         )
+        final_valid = all(var.is_valid(v) for var, v in zip(self.variables, current_values))
 
         return OptimizationResult(
-            success=True,
+            success=final_valid,
             iterations=last_iteration + 1,
             initial_merit=initial_merit,
             final_merit=final_merit,
@@ -538,7 +593,11 @@ class LensOptimizer:
             optimized_system=optimized_system,
             variable_history=variable_history,
             merit_history=merit_history,
-            message=f"Completed {last_iteration + 1} iterations",
+            message=(
+                f"Completed {last_iteration + 1} iterations"
+                if final_valid
+                else f"Finished {last_iteration + 1} iterations outside variable bounds"
+            ),
         )
 
     def _calculate_gradient(self, values: List[float]) -> List[float]:
@@ -546,12 +605,12 @@ class LensOptimizer:
         epsilon = 1e-5
         n_vars = len(values)
 
-        # Prepare all perturbed designs
+        # Prepare all perturbed designs (unclamped: clamping the +epsilon
+        # step at a bound makes f_plus == f0 and the gradient exactly 0.0).
         perturbed_designs = []
         for i in range(n_vars):
             values_plus = values.copy()
             values_plus[i] += epsilon
-            values_plus[i] = self.variables[i].clamp(values_plus[i])
             perturbed_designs.append(values_plus)
 
         # Evaluate f0 (might already be cached)
@@ -568,6 +627,19 @@ class LensOptimizer:
         gradient = [(f_plus - f0) / epsilon for f_plus in f_plus_list]
         return gradient
 
+    def _bound_penalty(self, values: List[float]) -> float:
+        """Quadratic penalty for bound violations (no clamping in search).
+
+        Clamping search points to the box collapses distinct vertices onto
+        one bound point, faking convergence; penalizing keeps the true
+        landscape (a bowl pulling back inside) visible to simplex/gradient.
+        """
+        penalty = 0.0
+        for var, v in zip(self.variables, values):
+            if not var.is_valid(v):
+                penalty += 1e6 * (v - var.clamp(v)) ** 2
+        return penalty
+
     def _evaluate_design(self, values: List[float]) -> float:
         """Evaluate merit function for given variable values with caching"""
         # Create a cache key from the values (rounded to avoid precision issues)
@@ -576,7 +648,7 @@ class LensOptimizer:
             return self._merit_cache[cache_key]
 
         system = self._apply_variables(values)
-        merit = self.merit_function.evaluate(system)
+        merit = self.merit_function.evaluate(system) + self._bound_penalty(values)
 
         self._merit_cache[cache_key] = merit
         return merit
@@ -603,11 +675,22 @@ class LensOptimizer:
     def _apply_single_variable(
         self, system: OpticalSystem, element_index: int, parameter: str, value: float
     ):
-        """Apply a single variable value to the system"""
+        """Apply a single variable value to the system.
+
+        Spherical and parabolic definitions are exclusive per surface: a
+        radius write clears the parabolic flag (otherwise the tracer would
+        keep using the sag and the variable would silently no-op), while a
+        sag write latches it on (a sag variable is meaningless on a
+        spherical surface).
+        """
         if parameter == "radius_of_curvature_1":
-            system.elements[element_index].lens.radius_of_curvature_1 = value
+            lens = system.elements[element_index].lens
+            lens.is_parabolic_1 = False
+            lens.radius_of_curvature_1 = value
         elif parameter == "radius_of_curvature_2":
-            system.elements[element_index].lens.radius_of_curvature_2 = value
+            lens = system.elements[element_index].lens
+            lens.is_parabolic_2 = False
+            lens.radius_of_curvature_2 = value
         elif parameter == "parabolic_sag_1":
             system.elements[element_index].lens.is_parabolic_1 = True
             system.elements[element_index].lens.parabolic_sag_1 = value
@@ -616,6 +699,8 @@ class LensOptimizer:
             system.elements[element_index].lens.parabolic_sag_2 = value
         elif parameter == "thickness":
             system.elements[element_index].lens.thickness = value
+        elif parameter == "diameter":
+            system.elements[element_index].lens.diameter = value
         elif parameter == "air_gap":
             if element_index < len(system.air_gaps):
                 system.air_gaps[element_index].thickness = value

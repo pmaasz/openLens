@@ -233,11 +233,11 @@ class TestImageSimulator(unittest.TestCase):
         metrics = self.simulator._calculate_image_metrics(original, simulated)
 
         assert "psnr" in metrics
-        assert "ssim" in metrics
-        assert "mtf_nyquist" in metrics
+        assert "global_ssim" in metrics
+        assert "nyquist_spectral_ratio" in metrics
         assert "sharpness" in metrics
         assert np.isfinite(metrics["psnr"])
-        assert 0 <= metrics["ssim"] <= 1
+        assert 0 <= metrics["global_ssim"] <= 1
 
     def test_test_patterns(self):
         """Test all test pattern generators."""
@@ -280,6 +280,30 @@ class TestImageSimulator(unittest.TestCase):
         edge_val = vignetted[0, 0]
         assert center_val > edge_val
 
+    def test_vignetting_matches_cos_fourth_law(self):
+        """Vignetting must equal cos^4(atan(r / L)), not a pixel mapping."""
+        import math
+
+        image = np.ones((100, 100))
+        vignetted = self.simulator._apply_vignetting(
+            image, image_distance_mm=10.0, pixel_pitch_mm=0.01
+        )
+
+        r_corner = math.sqrt(50**2 + 50**2) * 0.01
+        expected = (10.0 / math.sqrt(10.0**2 + r_corner**2)) ** 4
+        assert abs(vignetted[0, 0] - expected) < 1e-9
+        assert vignetted[50, 50] == 1.0
+
+    def test_vignetting_never_forces_zero_corners(self):
+        """Even a wide-field sensor keeps most corner illumination."""
+        image = np.ones((100, 100))
+        vignetted = self.simulator._apply_vignetting(
+            image, image_distance_mm=10.0, pixel_pitch_mm=0.01
+        )
+
+        # Old cos(r_norm*pi/2)^4 mapping gave ~1e-65 here; true law ~0.99.
+        assert vignetted[0, 0] > 0.9
+
     @unittest.skipUnless(SCIPY_AVAILABLE, "diffraction simulation requires scipy")
     def test_diffraction(self):
         """Test diffraction blur."""
@@ -291,6 +315,28 @@ class TestImageSimulator(unittest.TestCase):
         # Should spread energy
         assert blurred[25, 25] < 1.0
         assert blurred.sum() > 0
+
+    @unittest.skipUnless(SCIPY_AVAILABLE, "diffraction simulation requires scipy")
+    def test_diffraction_widens_with_wavelength(self):
+        """Longer wavelength means a larger Airy disk and a lower peak."""
+        image = np.zeros((50, 50))
+        image[25, 25] = 1.0
+
+        blue = self.simulator._apply_diffraction(image, 450.0)
+        red = self.simulator._apply_diffraction(image, 650.0)
+
+        assert red[25, 25] < blue[25, 25]
+
+    @unittest.skipUnless(SCIPY_AVAILABLE, "diffraction simulation requires scipy")
+    def test_diffraction_honors_pixel_pitch(self):
+        """Finer pixels spread the same blur over more pixels (lower peak)."""
+        image = np.zeros((50, 50))
+        image[25, 25] = 1.0
+
+        coarse = self.simulator._apply_diffraction(image, 587.6, pixel_pitch_mm=0.02)
+        fine = self.simulator._apply_diffraction(image, 587.6, pixel_pitch_mm=0.005)
+
+        assert fine[25, 25] < coarse[25, 25]
 
 
 class TestMechanicalDesigner(unittest.TestCase):
