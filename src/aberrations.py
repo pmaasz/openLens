@@ -184,16 +184,18 @@ class AberrationsCalculator:
                 "mtf_cutoff": mtf_cutoff,
             }
 
+        coma_val, astig_val = self._calculate_singlet_field_estimators(
+            field_angle_deg, wavelength_nm
+        )
+
         return {
             "focal_length": focal_length,
             "numerical_aperture": na,
             "f_number": f_number,
             "spherical": spherical,
             "spherical_aberration": spherical,
-            "coma": self._calculate_coma(focal_length, field_angle_deg, wavelength_nm),
-            "astigmatism": self._calculate_astigmatism(
-                focal_length, field_angle_deg, wavelength_nm
-            ),
+            "coma": coma_val,
+            "astigmatism": astig_val,
             "field_curvature": self._calculate_field_curvature(focal_length),
             "distortion": self._calculate_distortion(focal_length, field_angle_deg),
             "chromatic": chromatic,
@@ -203,6 +205,14 @@ class AberrationsCalculator:
             "wfe_rms_waves": wfe_rms_waves,
             "mtf_cutoff": mtf_cutoff,
         }
+
+    def _calculate_singlet_field_estimators(
+        self, field_angle_deg: float, wavelength_nm: float
+    ) -> Tuple[float, float]:
+        """Single off-axis evaluation feeding both coma and astigmatism."""
+        if abs(field_angle_deg) < EPSILON:
+            return 0.0, 0.0
+        return self._calculate_field_estimators(field_angle_deg, wavelength_nm)
 
     def _calculate_f_number(self, focal_length: float) -> float:
         """Calculate the f-number (f/D)"""
@@ -255,28 +265,14 @@ class AberrationsCalculator:
                 wavelength_nm=wavelength_nm,
             )
 
-            # 2. Coma (from Ray Fan)
-            fan_data = analysis.calculate_ray_fan(
-                field_angle_deg=field_angle, wavelength_nm=wavelength_nm
-            )
-
             # Extract metrics at the requested field_angle
             # fc_data['tan_focus_shift_mm'] etc are lists, we want the last element if we sampled up to field_angle
             field_curv = fc_data["tan_focus_shift_mm"][-1] if fc_data["tan_focus_shift_mm"] else 0.0
             dist = fc_data["distortion_pct"][-1] if fc_data["distortion_pct"] else 0.0
-            astig = (
-                abs(fc_data["tan_focus_shift_mm"][-1] - fc_data["sag_focus_shift_mm"][-1])
-                if fc_data["tan_focus_shift_mm"] and fc_data["sag_focus_shift_mm"]
-                else 0.0
-            )
 
-            # Coma estimation from ray fan (asymmetry in transverse error)
-            errors = fan_data.get("ray_errors_mm", fan_data.get("transverse_aberration", []))
-            coma_val = 0.0
-            if len(errors) >= 2:
-                # Coma ~= (y_top + y_bottom) / 2 - y_chief
-                # Ray fan returns errors relative to chief ray, so coma is (error_top + error_bottom)/2
-                coma_val = (errors[0] + errors[-1]) / 2.0
+            # 2. Coma and astigmatism share one cheap sampling with the
+            # singlet path (exact agreement by construction).
+            coma_val, astig = self._calculate_field_estimators(field_angle, wavelength_nm)
 
             return {
                 "field_curvature": field_curv,
@@ -309,19 +305,19 @@ class AberrationsCalculator:
             (coma_mm, astigmatism_mm); (0.0, 0.0) if tracing fails.
         """
         try:
-            # Sampling matches _calculate_field_metrics_system so singlets
-            # and systems report identical estimators for the same optics.
+            # Economical sampling shared verbatim with the system path, so
+            # singlets and systems agree exactly for identical optics.
             fan = self.calculate_ray_fan(
                 field_angle_deg=field_angle_deg,
                 wavelength_nm=wavelength_nm,
-                num_points=21,
+                num_points=11,
             )
             errors = fan.get("ray_errors_mm", fan.get("transverse_aberration", []))
             coma = (errors[0] + errors[-1]) / 2.0 if len(errors) >= 2 else 0.0
 
             _, sag, tan = self.calculate_field_curvature(
                 max_field_angle_deg=max(field_angle_deg, 0.5),
-                num_points=10,
+                num_points=6,
                 wavelength_nm=wavelength_nm,
             )
             astigmatism = abs(tan[-1] - sag[-1]) if tan and sag else 0.0
