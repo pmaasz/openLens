@@ -356,6 +356,35 @@ class TestNumericalAperture(unittest.TestCase):
         self.assertGreater(na, 0)
         self.assertLess(na, 1.0)
 
+    def test_numerical_aperture_uses_system_focal_length(self):
+        """NA must equal D/(2*|EFL_sys|), not D/(2*|f_first|)."""
+        first = Lens(
+            radius_of_curvature_1=100,
+            radius_of_curvature_2=-100,
+            thickness=5,
+            diameter=40,
+        )
+        second = Lens(
+            radius_of_curvature_1=50,
+            radius_of_curvature_2=-50,
+            thickness=5,
+            diameter=40,
+        )
+        system = OpticalSystem()
+        system.add_lens(first)
+        system.add_lens(second, air_gap_before=10.0)
+
+        efl = system.get_system_focal_length()
+        self.assertIsNotNone(efl)
+        self.assertAlmostEqual(system.get_numerical_aperture(), 40.0 / (2 * abs(efl)), places=9)
+        # The two elements differ enough that the first-lens value disagrees.
+        f_first = first.calculate_focal_length()
+        self.assertNotAlmostEqual(
+            system.get_numerical_aperture(),
+            40.0 / (2 * abs(f_first)),
+            delta=0.01,
+        )
+
 
 class TestSystemIntegration(unittest.TestCase):
     """Integration tests"""
