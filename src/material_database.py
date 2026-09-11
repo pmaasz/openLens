@@ -36,12 +36,20 @@ class MaterialProperties:
     C2: float = 0.0
     C3: float = 0.0
 
-    # Temperature coefficients (dn/dT in 1/°C)
-    D0: float = 0.0  # Absolute term
-    D1: float = 0.0  # Linear term
-    D2: float = 0.0  # Quadratic term
-    E0: float = 0.0  # Wavelength term
-    E1: float = 0.0  # Wavelength term
+    # Temperature coefficients for the Schott TIE-19 model of the
+    # ABSOLUTE refractive index (vs. vacuum, reference T0 = 20 C):
+    #   dn/dT = (n^2-1)/(2n) * [D0 + 2*D1*dT + 3*D2*dT^2
+    #                           + (E0 + 2*E1*dT)/(wl_um^2 - tk_um^2)]
+    #   dn    = (n^2-1)/(2n) * [D0*dT + D1*dT^2 + D2*dT^3
+    #                           + (E0*dT + E1*dT^2)/(wl_um^2 - tk_um^2)]
+    # with dT = T - 20 C and wavelength in micrometers. All-zero
+    # coefficients mean "no thermal data": no correction is applied.
+    D0: float = 0.0
+    D1: float = 0.0
+    D2: float = 0.0
+    E0: float = 0.0
+    E1: float = 0.0
+    lambda_tk_um: float = 0.0  # TIE-19 thermal resonance wavelength (um)
 
     # Thermal properties
     thermal_expansion: float = 7.1e-6  # α (1/K)
@@ -94,11 +102,12 @@ class MaterialDatabase:
             C1=6.00069867e-3,
             C2=2.00179144e-2,
             C3=1.03560653e2,
-            D0=-1.28e-6,
-            D1=9.3e-9,
-            D2=4.43e-11,
-            E0=0.48e-6,
-            E1=2.0e-9,
+            D0=1.86e-6,
+            D1=1.31e-8,
+            D2=-1.37e-11,
+            E0=4.34e-7,
+            E1=6.27e-10,
+            lambda_tk_um=0.17,
             thermal_expansion=7.1e-6,
             density=2.51,
             climate_resistance=1,
@@ -130,11 +139,12 @@ class MaterialDatabase:
             C1=6.00069867e-3,
             C2=2.00179144e-2,
             C3=1.03560653e2,
-            D0=-1.28e-6,
-            D1=9.3e-9,
-            D2=4.43e-11,
-            E0=0.48e-6,
-            E1=2.0e-9,
+            D0=1.86e-6,
+            D1=1.31e-8,
+            D2=-1.37e-11,
+            E0=4.34e-7,
+            E1=6.27e-10,
+            lambda_tk_um=0.17,
             thermal_expansion=7.1e-6,
             density=2.51,
             climate_resistance=2,
@@ -154,11 +164,12 @@ class MaterialDatabase:
             C1=1.35382130e-2,
             C2=6.15960463e-2,
             C3=1.74017590e2,
-            D0=1.62e-6,
-            D1=1.4e-8,
-            D2=1.8e-10,
-            E0=1.0e-6,
-            E1=3.5e-9,
+            D0=1.12e-5,
+            D1=1.81e-8,
+            D2=-5.03e-11,
+            E0=1.46e-6,
+            E1=1.58e-9,
+            lambda_tk_um=0.282,
             thermal_expansion=8.2e-6,
             density=4.74,
             climate_resistance=1,
@@ -178,9 +189,12 @@ class MaterialDatabase:
             C1=9.97743871e-3,
             C2=4.70450767e-2,
             C3=1.11886764e2,
-            D0=0.0,
-            D1=1.1e-8,
-            D2=1.5e-10,
+            D0=1.51e-6,
+            D1=1.56e-8,
+            D2=-2.78e-11,
+            E0=9.34e-7,
+            E1=1.04e-9,
+            lambda_tk_um=0.25,
             thermal_expansion=8.2e-6,
             density=3.61,
             climate_resistance=1,
@@ -200,9 +214,12 @@ class MaterialDatabase:
             C1=0.0684043**2,  # C values should be squared
             C2=0.1162414**2,
             C3=9.896161**2,
-            D0=9.7e-6,
-            D1=0.0,
-            D2=0.0,
+            D0=2.06e-5,
+            D1=2.51e-8,
+            D2=-2.47e-11,
+            E0=3.12e-7,
+            E1=4.22e-10,
+            lambda_tk_um=0.16,
             thermal_expansion=0.55e-6,
             density=2.20,
             climate_resistance=4,
@@ -326,12 +343,27 @@ class MaterialDatabase:
 
         n_base = math.sqrt(n_sq)
 
-        # Temperature correction
-        if temperature_c != 20.0:
+        # Temperature correction: Schott TIE-19 model of the ABSOLUTE
+        # refractive index (reference temperature T0 = 20 C):
+        #   dn = (n^2-1)/(2n) * [D0*dT + D1*dT^2 + D2*dT^3
+        #                        + (E0*dT + E1*dT^2)/(wl_um^2 - tk_um^2)]
+        # All-zero coefficients mean "no thermal data": no correction.
+        if temperature_c != 20.0 and any((mat.D0, mat.D1, mat.D2, mat.E0, mat.E1)):
             delta_T = temperature_c - 20.0
-            dn_abs = mat.D0 * delta_T + mat.D1 * delta_T**2 + mat.D2 * delta_T**3
-            dn_rel = (n_base**2 - 1) / (2 * n_base) * (mat.E0 * delta_T + mat.E1 * delta_T**2)
-            n_base += dn_abs + dn_rel
+            bracket = mat.D0 * delta_T + mat.D1 * delta_T**2 + mat.D2 * delta_T**3
+            if (mat.E0 or mat.E1) and mat.lambda_tk_um > 0.0:
+                denom = lambda_sq - mat.lambda_tk_um**2
+                if abs(denom) > 1e-12:
+                    bracket += (mat.E0 * delta_T + mat.E1 * delta_T**2) / denom
+                else:
+                    logger.warning(
+                        "TIE-19 resonance: wl=%.1fnm too close to "
+                        "lambda_TK=%.3fum for %s; E-term skipped",
+                        wavelength_nm,
+                        mat.lambda_tk_um,
+                        mat.name,
+                    )
+            n_base += (n_base**2 - 1) / (2 * n_base) * bracket
 
         return n_base
 

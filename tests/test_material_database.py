@@ -119,15 +119,54 @@ class TestRefractiveIndex(unittest.TestCase):
         self.assertGreater(sf11_dispersion, bk7_dispersion)
 
     def test_temperature_dependence_bk7(self):
-        """Test temperature coefficient for BK7"""
+        """BK7 absolute index rises with temperature (Schott TIE-19)."""
         n_cold = self.db.get_refractive_index("BK7", 587.6, 0)
         n_room = self.db.get_refractive_index("BK7", 587.6, 20)
         n_hot = self.db.get_refractive_index("BK7", 587.6, 60)
 
-        # BK7 has negative temperature coefficient (decreases with temp) relative to n_abs?
-        # Actually standard dn/dt for BK7 is positive ~+3e-6 relative.
-        # But let's just check they are different.
-        self.assertNotEqual(n_room, n_hot)
+        # Absolute dn/dT of N-BK7 is positive (~+1.4e-6/K at the d-line);
+        # the old model returned a negative shift (wrong sign).
+        self.assertLess(n_cold, n_room)
+        self.assertLess(n_room, n_hot)
+
+    def test_tie19_absolute_shift_order_of_magnitude(self):
+        """+10 K shifts the d-line index by ~+1.4e-5 for BK7 (not -9.7e-6)."""
+        n_room = self.db.get_refractive_index("BK7", 587.6, 20)
+        n_hot = self.db.get_refractive_index("BK7", 587.6, 30)
+
+        shift = n_hot - n_room
+        self.assertGreater(shift, 1.0e-5)
+        self.assertLess(shift, 2.0e-5)
+
+    def test_tie19_thermal_dispersion(self):
+        """Temperature sensitivity grows toward blue (E-term dispersion)."""
+        n486_20 = self.db.get_refractive_index("BK7", 486.1, 20)
+        n486_30 = self.db.get_refractive_index("BK7", 486.1, 30)
+        n656_20 = self.db.get_refractive_index("BK7", 656.3, 20)
+        n656_30 = self.db.get_refractive_index("BK7", 656.3, 30)
+
+        self.assertGreater(n486_30 - n486_20, n656_30 - n656_20)
+
+    def test_tie19_flint_and_silica_shifts(self):
+        """SF11 and fused silica shifts match Schott catalog magnitude."""
+        sf11_shift = self.db.get_refractive_index("SF11", 587.6, 30) - self.db.get_refractive_index(
+            "SF11", 587.6, 20
+        )
+        self.assertGreater(sf11_shift, 0.7e-4)
+        self.assertLess(sf11_shift, 1.4e-4)
+
+        silica_shift = self.db.get_refractive_index(
+            "FUSEDSILICA", 587.6, 30
+        ) - self.db.get_refractive_index("FUSEDSILICA", 587.6, 20)
+        self.assertGreater(silica_shift, 6.0e-5)
+        self.assertLess(silica_shift, 1.1e-4)
+
+    def test_no_thermal_data_means_no_correction(self):
+        """Materials without D/E coefficients are temperature-independent."""
+        n_cold = self.db.get_refractive_index("S-LAH79", 587.6, 0)
+        n_hot = self.db.get_refractive_index("S-LAH79", 587.6, 60)
+
+        self.assertEqual(n_cold, n_hot)
 
 
 class TestTransmission(unittest.TestCase):
