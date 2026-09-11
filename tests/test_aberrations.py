@@ -7,6 +7,7 @@ import unittest
 
 from src.lens import Lens
 from src.aberrations import AberrationsCalculator, analyze_lens_quality
+import math
 
 
 class TestAberrationsCalculator(unittest.TestCase):
@@ -193,6 +194,89 @@ class TestAberrationsCalculator(unittest.TestCase):
         ast_10deg = abs(calc._calculate_astigmatism(focal_length, field_angle_deg=10.0))
 
         self.assertGreater(ast_10deg, ast_5deg)
+
+    def test_coma_scales_linearly_with_field(self):
+        """Traced coma grows ~linearly with field angle (slow lens)."""
+        lens = Lens(
+            name="Slow Biconvex",
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=20.0,
+            refractive_index=1.5168,
+            material="BK7",
+        )
+        calc = AberrationsCalculator(lens)
+        focal_length = lens.calculate_focal_length()
+
+        coma_5 = abs(calc._calculate_coma(focal_length, field_angle_deg=5.0))
+        coma_10 = abs(calc._calculate_coma(focal_length, field_angle_deg=10.0))
+
+        self.assertGreater(coma_5, 0)
+        self.assertGreater(coma_10 / coma_5, 1.6)
+        self.assertLess(coma_10 / coma_5, 2.4)
+
+    def test_astigmatism_scales_quadratically_with_field(self):
+        """Traced longitudinal astigmatism grows ~quadratically (slow lens)."""
+        lens = Lens(
+            name="Slow Biconvex",
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=20.0,
+            refractive_index=1.5168,
+            material="BK7",
+        )
+        calc = AberrationsCalculator(lens)
+        focal_length = lens.calculate_focal_length()
+
+        ast_5 = abs(calc._calculate_astigmatism(focal_length, field_angle_deg=5.0))
+        ast_10 = abs(calc._calculate_astigmatism(focal_length, field_angle_deg=10.0))
+
+        self.assertGreater(ast_5, 0)
+        self.assertGreater(ast_10 / ast_5, 3.2)
+        self.assertLess(ast_10 / ast_5, 4.8)
+
+    def test_system_lsa_uses_paraxial_reference(self):
+        """System LSA must match the y=0.001 paraxial focus (~-6.87)."""
+        from src.optical_system import OpticalSystem
+
+        lens = Lens(
+            name="LSA ref",
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=40.0,
+            refractive_index=1.5168,
+            material="BK7",
+        )
+        system = OpticalSystem(name="LSA ref")
+        system.add_lens(lens)
+
+        calc = AberrationsCalculator(system)
+        lsa = calc._calculate_spherical_aberration(system.get_system_focal_length())
+
+        self.assertAlmostEqual(lsa, -6.87, delta=0.3)
+
+    def test_seidel_fallback_finite_for_plano_and_close_to_exact(self):
+        """Seidel fallback must handle flat surfaces and track exact LSA."""
+        plano = Lens(
+            name="Plano",
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=float("inf"),
+            thickness=5.0,
+            diameter=20.0,
+            refractive_index=1.5168,
+            material="BK7",
+        )
+        calc = AberrationsCalculator(plano)
+        f = plano.calculate_focal_length()
+
+        fallback = calc._calculate_spherical_aberration_seidel(f)
+        exact = calc._calculate_spherical_aberration_exact()
+
+        self.assertTrue(math.isfinite(fallback))
+        self.assertAlmostEqual(fallback / exact, 1.0, delta=0.15)
 
     def test_field_curvature_calculation(self):
         """Test field curvature (Petzval) calculation"""
