@@ -56,6 +56,7 @@ class ImageSimulator:
         object_distance: float,
         image_distance: Optional[float] = None,
         wavelength: float = WAVELENGTH_D_LINE,
+        pixel_pitch_mm: float = 0.01,
     ) -> Dict[str, Any]:
         """
         Simulate image formation through the optical system.
@@ -65,6 +66,7 @@ class ImageSimulator:
             object_distance: Distance from lens to object
             image_distance: Distance from lens to image (None for auto)
             wavelength: Wavelength in nm
+            pixel_pitch_mm: Sensor pixel pitch in mm (for vignetting scale)
 
         Returns:
             Dictionary with simulated image and metrics
@@ -90,7 +92,11 @@ class ImageSimulator:
             final_image = diffracted_image
 
         # Apply vignetting
-        final_image = self._apply_vignetting(final_image)
+        final_image = self._apply_vignetting(
+            final_image,
+            image_distance_mm=image_distance,
+            pixel_pitch_mm=pixel_pitch_mm,
+        )
 
         # Calculate metrics
         metrics = self._calculate_image_metrics(input_image, final_image)
@@ -258,24 +264,68 @@ class ImageSimulator:
 
         return result
 
-    def _apply_vignetting(self, image: np.ndarray) -> np.ndarray:
-        """Apply vignetting (brightness falloff at edges)."""
+    def _apply_vignetting(
+        self,
+        image: np.ndarray,
+        image_distance_mm: Optional[float] = None,
+        pixel_pitch_mm: float = 0.01,
+    ) -> np.ndarray:
+        """Apply natural (cos^4) illumination falloff toward the sensor edges.
+
+        Relative illumination follows E(r)/E(0) = cos^4(theta) with
+        theta = atan(r / L), where r is the physical off-axis distance on
+        the sensor (pixels times pixel_pitch_mm) and L the lens-to-image
+        distance. For L much larger than the sensor the factor is ~1
+        everywhere (correct: negligible falloff); it never forces the
+        corners to zero for arbitrary fields of view.
+
+        Args:
+            image: Input image array.
+            image_distance_mm: Lens-to-image distance in mm. Falls back to
+                the optical system's focal length, or no falloff if unknown.
+            pixel_pitch_mm: Sensor pixel pitch in mm (default 10 um).
+
+        Returns:
+            Vignetted image array (same shape).
+        """
+        import math
+
+        if image_distance_mm is None or not math.isfinite(image_distance_mm):
+            image_distance_mm = self._vignetting_fallback_distance()
+        if image_distance_mm is None or image_distance_mm <= 0 or pixel_pitch_mm <= 0:
+            return image
+
         h, w = image.shape[:2]
         y, x = np.ogrid[:h, :w]
         cy, cx = h / 2, w / 2
 
-        # Radial distance from center
-        r = np.sqrt((x - cx) ** 2 + (y - cy) ** 2)
-        r_max = np.sqrt(cx**2 + cy**2)
-        r_norm = r / r_max
+        # Physical off-axis distance on the sensor (mm).
+        r_mm = np.sqrt((x - cx) ** 2 + (y - cy) ** 2) * pixel_pitch_mm
 
-        # Cos^4 falloff
-        vignette = np.cos(r_norm * np.pi / 2) ** 4
+        # Natural illumination law (cos^4 of the chief-ray angle).
+        cos_theta = image_distance_mm / np.sqrt(image_distance_mm**2 + r_mm**2)
+        vignette = cos_theta**4
 
         if len(image.shape) == 3:
             vignette = vignette[:, :, np.newaxis]
 
         return image * vignette
+
+    def _vignetting_fallback_distance(self) -> Optional[float]:
+        """Best-effort lens-to-image distance for vignetting scale."""
+        system = self.optical_system
+        for attr in ("effective_focal_length", "get_system_focal_length"):
+            method = getattr(system, attr, None)
+            if callable(method):
+                try:
+                    value = (
+                        method(WAVELENGTH_GREEN) if attr == "effective_focal_length" else method()
+                    )
+                except TypeError:
+                    continue
+                if value is not None and np.isfinite(value) and abs(value) > 0:
+                    return abs(float(value))
+        return None
 
     def _calculate_image_metrics(
         self, original: np.ndarray, simulated: np.ndarray
