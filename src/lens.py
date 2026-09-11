@@ -554,13 +554,17 @@ class Lens:
         }
 
     def calculate_f_number(self) -> float:
-        """Calculate f-number (f/#)"""
+        """Calculate f-number (f/#).
+
+        Photographic convention: uses |f|, so diverging lenses report a
+        positive f/# matching the signed EFL's magnitude.
+        """
         focal_length = self.calculate_focal_length()
         if focal_length is None or abs(self.diameter) < EPSILON:
             return float("inf")
         return abs(focal_length) / self.diameter
 
-    def calculate_back_focal_length(self) -> float:
+    def calculate_back_focal_length(self) -> Optional[float]:
         """
         Calculate Back Focal Length (BFL).
 
@@ -570,11 +574,12 @@ class Lens:
         d is the thickness, n is the refractive index, and f is the focal length.
 
         Returns:
-            Back focal length in mm, or inf if undefined
+            Back focal length in mm, or None if undefined (afocal).
+            None (not inf) matches OpticalSystem.calculate_back_focal_length.
         """
         f = self.calculate_focal_length()
         if f is None:
-            return float("inf")
+            return None
 
         n = self.refractive_index
         r1 = self.get_effective_radius_1()
@@ -589,9 +594,9 @@ class Lens:
 
             return bfl
         except ZeroDivisionError:
-            return float("inf")
+            return None
 
-    def calculate_front_focal_length(self) -> float:
+    def calculate_front_focal_length(self) -> Optional[float]:
         """
         Calculate Front Focal Length (FFL).
 
@@ -607,11 +612,12 @@ class Lens:
 
         Returns:
             Front focal length in mm (signed Cartesian coordinate),
-            or inf if undefined
+            or None if undefined (afocal). None (not inf) matches the
+            system-level convention.
         """
         f = self.calculate_focal_length()
         if f is None:
-            return float("inf")
+            return None
 
         n = self.refractive_index
         r2 = self.get_effective_radius_2()
@@ -629,7 +635,7 @@ class Lens:
 
             return ffl
         except ZeroDivisionError:
-            return float("inf")
+            return None
 
     def __str__(self) -> str:
         focal_length = self.calculate_focal_length()

@@ -291,6 +291,27 @@ class TestPolarization(unittest.TestCase):
         self.assertAlmostEqual(np.abs(coeffs["r_s"]), 1.0)
         self.assertAlmostEqual(np.abs(coeffs["r_p"]), 1.0)
 
+    def test_tir_preserves_fresnel_rhomb_phase(self):
+        """TIR coefficients must carry the complex s/p retardance."""
+        import cmath
+        import math
+
+        n1, n2, angle = 1.5, 1.0, 60.0
+        coeffs = self.calc.fresnel_coefficients(n1, n2, angle)
+
+        self.assertTrue(coeffs["total_internal_reflection"])
+        self.assertAlmostEqual(abs(coeffs["r_s"]), 1.0, places=9)
+        self.assertAlmostEqual(abs(coeffs["r_p"]), 1.0, places=9)
+        self.assertEqual(coeffs["t_s"], 0j)
+        # Analytic rhomb retardance: 2*atan(cos1*sqrt(sin1^2-n^2)/sin1^2)
+        theta1 = math.radians(angle)
+        n = n2 / n1
+        expected = 2 * math.atan(
+            math.cos(theta1) * math.sqrt(math.sin(theta1) ** 2 - n**2) / math.sin(theta1) ** 2
+        )
+        delta = cmath.phase(coeffs["r_p"]) - cmath.phase(coeffs["r_s"])
+        self.assertAlmostEqual(abs(delta), expected, places=6)
+
     def test_energy_conservation(self):
         """Test that R + T = 1 (energy conservation)"""
         n1 = 1.0

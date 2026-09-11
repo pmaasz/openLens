@@ -56,7 +56,11 @@ class EnvironmentalAnalyzer:
 
     @classmethod
     def apply_environment(
-        cls, system: OpticalSystem, temperature_c: float, pressure_atm: float
+        cls,
+        system: OpticalSystem,
+        temperature_c: float,
+        pressure_atm: float,
+        housing_cte: float = 23.6e-6,
     ) -> OpticalSystem:
         """
         Create a new OpticalSystem with environmental effects applied.
@@ -65,6 +69,9 @@ class EnvironmentalAnalyzer:
             system: The nominal optical system
             temperature_c: New temperature in °C
             pressure_atm: New pressure in atm
+            housing_cte: Housing expansion coefficient in 1/K for air gaps
+                (default aluminum 23.6e-6; steel ~12e-6, invar ~1e-6,
+                plastics ~50-200e-6)
 
         Returns:
             A new OpticalSystem instance with perturbed parameters
@@ -121,10 +128,8 @@ class EnvironmentalAnalyzer:
                 lens.refractive_index = n_rel_T * (n_air_ref / n_air_new)
 
         # 2. Update Air Gaps (Housing Expansion)
-        # We need an assumption for housing CTE.
-        # Aluminum ~ 23.6e-6, Steel ~ 12e-6, Invar ~ 1e-6
-        # Let's assume Aluminum for generic "Housing"
-        housing_alpha_k = 23.6e-6
+        # Gaps scale with the housing CTE (parameter; defaults to aluminum).
+        housing_alpha_k = housing_cte
         gap_scaling = 1.0 + housing_alpha_k * delta_T_k
 
         for gap in new_system.air_gaps:

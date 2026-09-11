@@ -7,9 +7,25 @@ Implements polarization calculations including:
 - Brewster angle calculations
 - Birefringent materials
 - Fresnel equations with polarization
+
+Conventions (fixed; do not "correct" individual signs in isolation):
+- Jones vectors are (Ex, Ey) in the transverse plane for light
+  propagating toward +z. This module never fixes the time dependence,
+  so handedness is defined algebraically, not by clock face:
+- circular_right() = [1, +i]/sqrt(2) and circular_left() = [1, -i]/sqrt(2).
+  The two are orthogonal. Stokes S3 = 2*Im(Ex*conj(Ey)) is -1 for
+  circular_right and +1 for circular_left. Some texts (e.g. Hecht) use
+  the opposite R/L assignment with conjugated S3: convert by swapping
+  the labels (equivalently, conjugating S3) when interoperating.
+- Consistency anchor: horizontal light through a QWP at 45 deg gives
+  circular_left up to a global phase, and degree_of_polarization() is
+  1.0 because Jones vectors can only represent fully polarized light.
+- rotator() uses [[c, s], [-s, c]] (clockwise-positive looking into the
+  beam); keep the sense when comparing with other sources.
 """
 
 import numpy as np
+import cmath
 import logging
 from typing import Dict, Optional
 
@@ -53,12 +69,12 @@ class PolarizationState:
 
     @classmethod
     def circular_right(cls):
-        """Right circular polarization"""
+        """Right circular polarization ([1, +i]/sqrt(2); S3 = -1, see module docstring)"""
         return cls(np.array([1.0, 1j]) / np.sqrt(2))
 
     @classmethod
     def circular_left(cls):
-        """Left circular polarization"""
+        """Left circular polarization ([1, -i]/sqrt(2); S3 = +1, see module docstring)"""
         return cls(np.array([1.0, -1j]) / np.sqrt(2))
 
     @classmethod
@@ -83,7 +99,12 @@ class PolarizationState:
         return PolarizationState(new_vector)
 
     def degree_of_polarization(self) -> float:
-        """Calculate degree of polarization (0-1)"""
+        """Degree of polarization (always 1.0: Jones vectors are pure states).
+
+        Jones calculus cannot represent partially polarized or unpolarized
+        light (that needs Stokes vectors / Mueller matrices or coherency
+        matrices); this method reports that modeling limit, not a measurement.
+        """
         I_total = self.intensity()
         if I_total == 0:
             return 0.0
@@ -204,10 +225,17 @@ class PolarizationCalculator:
 
         # Check for total internal reflection
         if sin_theta2 > 1.0:
-            # Total internal reflection
+            # Total internal reflection: cos(theta2) is imaginary and the
+            # same Fresnel formulas give complex unit-magnitude
+            # coefficients whose relative phase is the s/p retardance
+            # (basis of the Fresnel rhomb). Power reflectance stays 1.
+            cos_theta2 = cmath.sqrt(1.0 - sin_theta2**2)
+            cos_theta1 = np.cos(theta1)
+            r_s = (n1 * cos_theta1 - n2 * cos_theta2) / (n1 * cos_theta1 + n2 * cos_theta2)
+            r_p = (n2 * cos_theta1 - n1 * cos_theta2) / (n2 * cos_theta1 + n1 * cos_theta2)
             return {
-                "r_s": 1.0 + 0j,
-                "r_p": 1.0 + 0j,
+                "r_s": r_s,
+                "r_p": r_p,
                 "t_s": 0.0 + 0j,
                 "t_p": 0.0 + 0j,
                 "total_internal_reflection": True,

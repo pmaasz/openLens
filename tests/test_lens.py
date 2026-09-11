@@ -154,6 +154,19 @@ class TestLensOptics(unittest.TestCase):
         self.assertGreater(biconcave.calculate_front_focal_length(), 0)
         self.assertLess(biconcave.calculate_back_focal_length(), 0)
 
+    def test_afocal_focal_lengths_are_none(self):
+        """Afocal (flat-flat) lens: BFL/FFL are None like the system API."""
+        window = Lens(
+            radius_of_curvature_1=float("inf"),
+            radius_of_curvature_2=float("inf"),
+            thickness=5.0,
+            diameter=40.0,
+            refractive_index=1.5168,
+        )
+        self.assertIsNone(window.calculate_focal_length())
+        self.assertIsNone(window.calculate_back_focal_length())
+        self.assertIsNone(window.calculate_front_focal_length())
+
 
 class TestLensTypePresets(unittest.TestCase):
     """Radius presets applied per lens_type"""
