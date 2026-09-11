@@ -29,7 +29,6 @@ openlens.db.bak
 *.db-shm
 *.db-wal
 docs/codereviews
-docs/SCIENTIFIC_REVIEW.md
 IMPLEMENTATION_PLAN.md
 data/
 specs/

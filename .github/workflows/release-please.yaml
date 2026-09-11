@@ -1,0 +1,22 @@
+name: Release Please
+
+# Keeps a Release PR open against master from Conventional Commits
+# (feat: -> minor, fix: -> patch, BREAKING CHANGE -> major, minor while <1.0).
+# Merging that PR creates the tag + GitHub Release + CHANGELOG + version bump.
+# The `release.yaml` workflow then builds and publishes to PyPI.
+on:
+  push:
+    branches: ["master"]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: .github/release-please-config.json
+          manifest-file: .release-please-manifest.json
