@@ -130,6 +130,22 @@ class TestEnvironmental(unittest.TestCase):
 
         self.assertAlmostEqual(new_sys.elements[1].position, expected_pos2, places=4)
 
+    def test_housing_cte_parameter(self):
+        """Air gaps must follow the housing CTE, not hardcoded aluminum."""
+        l2 = Lens("L2", radius_of_curvature_1=50, thickness=5, material="BK7")
+        self.sys.add_lens(l2, air_gap_before=10.0)
+
+        invar_sys = EnvironmentalAnalyzer.apply_environment(
+            self.sys, temperature_c=120.0, pressure_atm=1.0, housing_cte=1e-6
+        )
+        self.assertAlmostEqual(invar_sys.air_gaps[0].thickness, 10.0 * (1.0 + 1e-6 * 100), places=6)
+
+        # Default is still aluminum for backward compatibility.
+        al_sys = EnvironmentalAnalyzer.apply_environment(
+            self.sys, temperature_c=120.0, pressure_atm=1.0
+        )
+        self.assertAlmostEqual(al_sys.air_gaps[0].thickness, 10.0 * (1.0 + 23.6e-6 * 100), places=6)
+
 
 if __name__ == "__main__":
     unittest.main()

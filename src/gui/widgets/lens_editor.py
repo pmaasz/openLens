@@ -558,8 +558,8 @@ class LensEditorWidget(QWidget):
         try:
             bfl = self._lens.calculate_back_focal_length()
             ffl = self._lens.calculate_front_focal_length()
-            self._bfl_label.setText(f"{bfl:.2f} mm" if abs(bfl) != float("inf") else "--")
-            self._ffl_label.setText(f"{ffl:.2f} mm" if abs(ffl) != float("inf") else "--")
+            self._bfl_label.setText(f"{bfl:.2f} mm" if bfl is not None else "--")
+            self._ffl_label.setText(f"{ffl:.2f} mm" if ffl is not None else "--")
         except Exception:
             self._bfl_label.setText("--")
             self._ffl_label.setText("--")

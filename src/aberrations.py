@@ -215,7 +215,7 @@ class AberrationsCalculator:
         return self._calculate_field_estimators(field_angle_deg, wavelength_nm)
 
     def _calculate_f_number(self, focal_length: float) -> float:
-        """Calculate the f-number (f/D)"""
+        """F-number |f|/D (photographic convention; sign of EFL dropped)."""
         if self.diameter <= 0:
             return float("inf")
         return abs(focal_length) / self.diameter

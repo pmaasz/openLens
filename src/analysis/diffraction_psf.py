@@ -113,9 +113,8 @@ class WavefrontSensor:
             logger.warning("Chief ray trace failed; cannot reference wavefront")
             return _nan_map()
         t_q = (x_focus - chief.origin.x) / chief.direction.x
-        if t_q < 0:
-            logger.warning("Chief ray focus behind exit ray; cannot reference wavefront")
-            return _nan_map()
+        # t_q may be negative (focus in front of the exit-propagation end):
+        # extending the chief line backward to the image plane is still valid.
         qx = chief.origin.x + t_q * chief.direction.x
         qy = chief.origin.y + t_q * chief.direction.y
         qz = chief.origin.z + t_q * chief.direction.z

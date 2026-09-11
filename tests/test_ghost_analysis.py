@@ -89,6 +89,15 @@ class TestGhostAnalysis(unittest.TestCase):
         ghosts = analyzer.trace_ghosts()
         self.assertEqual(len(ghosts), 0)
 
+    def test_interact_reports_miss_as_bool_false(self):
+        """Missed interactions return actual False so paths can abort."""
+        from src.vector3 import vec3
+        from src.ray_tracer import Ray3D
+
+        # Far outside the aperture, heading away: cannot hit the front.
+        ray = Ray3D(vec3(1000, 500, 0), vec3(1, 0, 0))
+        self.assertIs(self.analyzer._interact(ray, 0, "refract"), False)
+
 
 if __name__ == "__main__":
     unittest.main()

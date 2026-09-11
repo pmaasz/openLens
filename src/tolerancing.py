@@ -14,6 +14,24 @@ from .vector3 import vec3
 logger = logging.getLogger(__name__)
 
 
+def _percentile(values: List[float], pct: float) -> float:
+    """Percentile by linear interpolation (numpy 'linear' method).
+
+    Avoids statistics.quantiles (absent on Python 3.7) and the off-by-one
+    of indexing int(p * N) without interpolation. pct in [0, 100].
+    """
+    ordered = sorted(values)
+    if not ordered:
+        raise ValueError("percentile of empty data")
+    if len(ordered) == 1:
+        return ordered[0]
+    rank = (pct / 100.0) * (len(ordered) - 1)
+    low = int(rank)
+    high = min(low + 1, len(ordered) - 1)
+    frac = rank - low
+    return ordered[low] * (1.0 - frac) + ordered[high] * frac
+
+
 class ToleranceType(enum.Enum):
     RADIUS_1 = "Radius 1"
     RADIUS_2 = "Radius 2"
@@ -281,7 +299,7 @@ class MonteCarloAnalyzer:
             "trials": num_trials,
             "criterion": criterion,
             "limit": criterion_limit,
-            "90th_percentile": sorted(values)[int(0.9 * len(values))] if values else 0,
+            "90th_percentile": _percentile(values, 90.0) if values else 0,
         }
 
         return stats

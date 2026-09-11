@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 
-from ..ray_tracer import Ray3D, LensRayTracer3D, vec3
+from ..ray_tracer import Ray3D, LensRayTracer3D, RefractionResult, vec3
 from ..optical_system import OpticalSystem
 from ..constants import WAVELENGTH_GREEN, NM_TO_MM
 
@@ -24,6 +24,14 @@ class GhostAnalyzer:
     """
     Analyzes ghost reflections in an optical system.
     Focuses on 2nd order ghosts (2 reflections).
+
+    Known limits (deliberate, documented here rather than hidden):
+    - Reflection strength uses bulk Fresnel R from the glass index only.
+      Surfaces carry no coating model, so ghosts in AR-coated systems are
+      overestimated (uncoated R^2 ~ 0.16% per pair instead of coated values).
+    - Rays that reflect twice but miss the exit leg are still counted in
+      the path intensity: conservative flare estimate, since their energy
+      still scatters inside the housing.
     """
 
     def __init__(self, system: OpticalSystem):
@@ -151,9 +159,17 @@ class GhostAnalyzer:
         return GhostPath(i, j, rays, intensity=avg_intensity)
 
     def _interact(self, ray: Ray3D, surf_idx: int, interaction: str) -> bool:
+        """Single surface interaction; True only on the required outcome.
+
+        (RefractionResult is a plain Enum, so every member is truthy: the
+        comparison must be explicit, otherwise misses never abort a path.)
+        """
         surf = self.surfaces[surf_idx]
         tracer = LensRayTracer3D(surf["lens"], x_offset=surf["element"].position)
-        return tracer.trace_surface(ray, surf["type"], interaction)
+        result = tracer.trace_surface(ray, surf["type"], interaction)
+        if interaction == "reflect":
+            return result is RefractionResult.REFLECTED
+        return result is RefractionResult.REFRACTED
 
     def _trace_sequence(self, ray: Ray3D, start_idx: int, end_idx: int, interaction: str) -> bool:
         """Trace forward sequence of interactions."""

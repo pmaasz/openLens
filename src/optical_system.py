@@ -273,7 +273,7 @@ class OpticalSystem:
         return -1.0 / C
 
     def get_system_f_number(self) -> Optional[float]:
-        """Calculate system F-number (f/D)"""
+        """System F-number (photographic convention: |EFL|/D, always >= 0)."""
         f = self.get_system_focal_length()
         if f is None:
             return None
@@ -489,7 +489,7 @@ class OpticalSystem:
         return first_lens.diameter / (2 * abs(f))
 
     def get_f_number(self) -> Optional[float]:
-        """Calculate system f-number"""
+        """System f-number (photographic convention: |EFL|/D, always >= 0)."""
         f = self.get_system_focal_length()
         if f is None:
             return None
