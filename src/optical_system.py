@@ -242,8 +242,15 @@ class OpticalSystem:
 
     def get_system_focal_length(self) -> Optional[float]:
         """
-        Calculate system focal length using thin lens approximation
-        For thick lenses, this is approximate
+        Calculate the system effective focal length (EFL).
+
+        A single lens returns its own (thick-lens) focal length. Any
+        multi-element system — including two-lens systems — uses the exact
+        paraxial value EFL = -1/C from the system ABCD matrix (reduced
+        glass thickness d/n, air gaps included). The old two-lens
+        thin-combination 1/f = 1/f1 + 1/f2 - d/(f1*f2) ignored
+        principal-plane offsets and disagreed with the matrix by ~10%
+        for thick/cemented pairs, so it was removed.
         """
         if not self.elements:
             return None
@@ -252,24 +259,7 @@ class OpticalSystem:
         if len(self.elements) == 1:
             return self.elements[0].lens.calculate_focal_length()
 
-        # For two lenses separated by distance d:
-        # 1/f = 1/f1 + 1/f2 - d/(f1*f2)
-        if len(self.elements) == 2:
-            f1 = self.elements[0].lens.calculate_focal_length()
-            f2 = self.elements[1].lens.calculate_focal_length()
-
-            if f1 is None or f2 is None:
-                return None
-
-            d = self.air_gaps[0].thickness if self.air_gaps else 0.0
-
-            try:
-                power = 1 / f1 + 1 / f2 - d / (f1 * f2)
-                return 1 / power if power != 0 else None
-            except (ZeroDivisionError, OverflowError):
-                return None
-
-        # For more complex systems, use matrix method
+        # Exact matrix method for all multi-element systems
         matrix = self._calculate_system_matrix()
         if not matrix:
             return None
