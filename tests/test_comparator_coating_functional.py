@@ -348,6 +348,82 @@ class TestCoatingLayer(unittest.TestCase):
         self.assertEqual(layer.thickness_nm, 100)
 
 
+class TestTransferMatrixPhysics(unittest.TestCase):
+    """Exact-value tests for the characteristic-matrix reflectivity.
+
+    Guards against regression to incoherent (interface-sum) estimates:
+    every value below is the closed-form thin-film result.
+    """
+
+    def test_mgf2_quarter_wave_matches_exact_value(self):
+        """MgF2 QW on BK7 at design wavelength gives 1.28%, not 0.92%."""
+        designer = CoatingDesigner(substrate_index=1.5168)
+        mgf2 = CoatingLayer("MgF2", 1.38, 550 / (4 * 1.38))
+
+        R = designer.calculate_reflectivity([mgf2], wavelength_nm=550)
+
+        n0, ns, nc = 1.0, 1.5168, 1.38
+        expected = ((n0 * ns - nc**2) / (n0 * ns + nc**2)) ** 2
+        self.assertAlmostEqual(R, expected, delta=1e-6)
+        self.assertAlmostEqual(R, 0.01284, delta=1e-4)
+
+    def test_uncoated_matches_fresnel(self):
+        """Bare substrate matches the Fresnel reflectance."""
+        designer = CoatingDesigner(substrate_index=1.5168)
+
+        R = designer.calculate_reflectivity([], wavelength_nm=550)
+
+        expected = ((1.5168 - 1.0) / (1.5168 + 1.0)) ** 2
+        self.assertAlmostEqual(R, expected, delta=1e-12)
+
+    def test_ideal_index_quarter_wave_is_zero(self):
+        """A QW film with n = sqrt(ns) has exactly zero reflectance."""
+        import math
+
+        designer = CoatingDesigner(substrate_index=1.5168)
+        n_ideal = math.sqrt(1.5168)
+        ideal = CoatingLayer("ideal", n_ideal, 550 / (4 * n_ideal))
+
+        R = designer.calculate_reflectivity([ideal], wavelength_nm=550)
+
+        self.assertLess(R, 1e-12)
+
+    def test_off_design_wavelength_shows_interference(self):
+        """Reflectance must vary with wavelength (phase term is live)."""
+        designer = CoatingDesigner(substrate_index=1.5168)
+        mgf2 = CoatingLayer("MgF2", 1.38, 550 / (4 * 1.38))
+
+        r_design = designer.calculate_reflectivity([mgf2], wavelength_nm=550)
+        r_blue = designer.calculate_reflectivity([mgf2], wavelength_nm=400)
+
+        self.assertNotAlmostEqual(r_design, r_blue, delta=1e-4)
+        # Design wavelength is the minimum for a single AR layer.
+        self.assertLess(r_design, r_blue)
+
+    def test_angled_incidence_computed_not_stubbed(self):
+        """Oblique reflectance is angle-dependent and bounded."""
+        designer = CoatingDesigner(substrate_index=1.5168)
+        mgf2 = CoatingLayer("MgF2", 1.38, 550 / (4 * 1.38))
+
+        r_normal = designer.calculate_reflectivity([mgf2], 550, angle_deg=0)
+        r_tilted = designer.calculate_reflectivity([mgf2], 550, angle_deg=30)
+
+        self.assertGreaterEqual(r_tilted, 0.0)
+        self.assertLessEqual(r_tilted, 1.0)
+        self.assertNotAlmostEqual(r_normal, r_tilted, delta=1e-6)
+
+    def test_invalid_inputs_raise(self):
+        """Non-positive wavelength and out-of-range angle are rejected."""
+        designer = CoatingDesigner()
+
+        with self.assertRaises(ValueError):
+            designer.calculate_reflectivity([], wavelength_nm=0)
+        with self.assertRaises(ValueError):
+            designer.calculate_reflectivity([], wavelength_nm=550, angle_deg=90)
+        with self.assertRaises(ValueError):
+            designer.calculate_reflectivity([], wavelength_nm=550, angle_deg=-5)
+
+
 def run_tests():
     """Run all tests"""
     loader = unittest.TestLoader()
@@ -356,6 +432,7 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestLensComparator))
     suite.addTests(loader.loadTestsFromTestCase(TestCoatingDesigner))
     suite.addTests(loader.loadTestsFromTestCase(TestCoatingLayer))
+    suite.addTests(loader.loadTestsFromTestCase(TestTransferMatrixPhysics))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
