@@ -310,6 +310,14 @@ class LensRayTracer3D:
         if dist_sq > self._aperture_sq:
             return RefractionResult.MISSED
 
+        # Accumulate optical path for the segment just travelled in the
+        # current medium (air gap before the front surface, glass between
+        # the surfaces). Without this, Ray3D.optical_path_length would only
+        # contain the exit-propagation leg and every OPL difference (hence
+        # every wavefront map) would be wrong by ~millimetres of glass path.
+        segment = intersection - ray.origin
+        ray.optical_path_length += segment.magnitude() * ray.n
+
         ray.origin = intersection
         ray.path.append(intersection)
 

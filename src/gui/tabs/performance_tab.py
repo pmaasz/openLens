@@ -285,7 +285,8 @@ Chromatic Aberration: {results.get('chromatic', 0):.4f} mm
 
 --- Image Quality Metrics ---
 MTF Cutoff: {results.get('mtf_cutoff', 0):.1f} lp/mm
-Strehl Ratio: {results.get('strehl', 0):.3f}
+Strehl Ratio: {results.get('strehl', 0):.3f} (from traced RMS wavefront error)
+RMS Wavefront Error: {results.get('wfe_rms_waves', 0):.3f} waves
 Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
 Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
 """

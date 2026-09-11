@@ -66,6 +66,12 @@ class AberrationsCalculator:
             self.radius_2 = target.radius_of_curvature_2
             self.thickness = target.thickness
             self.diameter = target.diameter
+        # Cache of wavefront Strehl results keyed on the live optical state.
+        # A 32x32 pupil trace costs ~0.3 s; repeated evaluations of an
+        # unchanged lens/system (GUI refreshes, optimizer bookkeeping,
+        # timing loops) reuse the cached value. The key contains every
+        # parameter the trace depends on, so mutated optics recompute.
+        self._strehl_cache: Dict[tuple, Tuple[float, float]] = {}
 
     def calculate_all_aberrations(
         self,
@@ -111,6 +117,7 @@ class AberrationsCalculator:
                 "airy_disk_diameter": 0.0,
                 "spot_rms": 0.0,
                 "strehl": 0.0,
+                "wfe_rms_waves": 0.0,
                 "mtf_cutoff": 0.0,
                 "error": "Cannot calculate focal length (zero optical power)",
             }
@@ -124,9 +131,11 @@ class AberrationsCalculator:
         spherical = self._calculate_spherical_aberration(focal_length)
         chromatic = self._calculate_chromatic_aberration(focal_length)
         f_number = self._calculate_f_number(focal_length)
-        airy = self._calculate_airy_disk(focal_length)
-        strehl = self._calculate_strehl_ratio(focal_length)
-        mtf_cutoff = self._calculate_mtf_cutoff(focal_length)
+        airy = self._calculate_airy_disk(focal_length, wavelength_nm * 1e-6)
+        strehl, wfe_rms_waves = self._calculate_strehl_ratio(
+            focal_length, wavelength_nm=wavelength_nm
+        )
+        mtf_cutoff = self._calculate_mtf_cutoff(focal_length, wavelength_nm=wavelength_nm)
 
         if self.is_system:
             field_data = self._calculate_field_metrics_system(field_angle_deg)
@@ -152,6 +161,7 @@ class AberrationsCalculator:
                 "airy_disk_diameter": airy,
                 "spot_rms": self._calculate_spot_rms() or 0.0,
                 "strehl": strehl,
+                "wfe_rms_waves": wfe_rms_waves,
                 "mtf_cutoff": mtf_cutoff,
             }
 
@@ -169,6 +179,7 @@ class AberrationsCalculator:
             "chromatic_aberration": chromatic,
             "airy_disk_diameter": airy,
             "strehl": strehl,
+            "wfe_rms_waves": wfe_rms_waves,
             "mtf_cutoff": mtf_cutoff,
         }
 
@@ -374,26 +385,209 @@ class AberrationsCalculator:
         )
         return data["field_angles_deg"], data["distortion_pct"]
 
-    def _calculate_strehl_ratio(self, focal_length: float) -> float:
-        """Estimate Strehl ratio from wavefront error/spot size"""
-        # Simplified estimation: Strehl ~= exp(-(2*pi*RMS_OPD)^2)
-        # For now, return a placeholder based on spot size vs airy disk
-        spot_rms = self._calculate_spot_rms() if self.is_system else 5.0
-        if spot_rms is None:
-            spot_rms = 5.0
-        airy_r = self._calculate_airy_disk(focal_length) * 500  # diameter/2 in um
-        if airy_r <= 0:
-            return 0
-        ratio = airy_r / max(airy_r, spot_rms)
-        return min(1.0, ratio**2)
+    def _calculate_strehl_ratio(
+        self,
+        focal_length: float,
+        wavelength_nm: float = WAVELENGTH_GREEN,
+        grid_size: int = 32,
+    ) -> Tuple[float, float]:
+        """Calculate the on-axis Strehl ratio from the traced wavefront error.
 
-    def _calculate_mtf_cutoff(self, focal_length: float) -> float:
-        """Calculate diffraction-limited MTF cutoff frequency in lp/mm"""
+        The Strehl ratio is defined (Born & Wolf, Principles of Optics,
+        Sec. 9.1) as the ratio of the aberrated to the ideal central
+        irradiance of the point-spread function:
+
+            S = |<exp(i * 2 * pi * W)>|^2,
+
+        where the average is taken over the exit pupil and ``W`` is the
+        wavefront error in waves (piston and tilt removed, i.e. referenced
+        to the chief ray). For small aberrations this reduces to the
+        Marechal approximation ``S ~= exp(-(2 * pi * sigma)^2)`` with
+        ``sigma`` the RMS wavefront error in waves.
+
+        The wavefront map is obtained by exact ray tracing
+        (:class:`analysis.diffraction_psf.WavefrontSensor`) at
+        ``wavelength_nm``, so single lenses and systems share one code path
+        (no singlet placeholder).
+
+        Args:
+            focal_length: Effective focal length in mm (unused in the
+                computation itself; kept for API compatibility).
+            wavelength_nm: Wavelength in nm at which to evaluate.
+            grid_size: Pupil sampling grid (grid_size x grid_size rays).
+
+        Returns:
+            Tuple of (strehl_ratio, wfe_rms_waves), both clamped to
+            physical ranges. (0.0, 0.0) if the wavefront cannot be
+            computed (e.g. numpy missing or all rays vignetted).
+        """
+        key = self._strehl_state_key(wavelength_nm, grid_size)
+        if key is not None and key in self._strehl_cache:
+            return self._strehl_cache[key]
+        wfe_rms = self._calculate_wavefront_rms_waves(
+            wavelength_nm=wavelength_nm, grid_size=grid_size
+        )
+        if wfe_rms is None:
+            return 0.0, 0.0
+        valid_w = wfe_rms[1]
+        if valid_w is None or valid_w.size == 0:
+            return 0.0, 0.0
+        try:
+            import numpy as np
+
+            complex_mean = np.mean(np.exp(2j * np.pi * valid_w))
+            strehl = float(abs(complex_mean) ** 2)
+        except ImportError:
+            # Exact pupil average needs numpy; fall back to Marechal.
+            strehl = math.exp(-((2.0 * math.pi * float(wfe_rms[0])) ** 2))
+        result = (min(1.0, max(0.0, strehl)), float(wfe_rms[0]))
+        if key is not None:
+            if len(self._strehl_cache) >= 8:
+                # Bounded FIFO: drop the oldest entry.
+                self._strehl_cache.pop(next(iter(self._strehl_cache)))
+            self._strehl_cache[key] = result
+        return result
+
+    def _strehl_state_key(self, wavelength_nm: float, grid_size: int) -> Optional[tuple]:
+        """Hashable snapshot of everything the pupil trace depends on.
+
+        Returns None if the state cannot be snapshotted (cache bypassed).
+        """
+        try:
+
+            def _r(x: float) -> float:
+                return round(float(x), 9)
+
+            if self.is_system:
+                elements = tuple(
+                    (
+                        _r(e.lens.radius_of_curvature_1),
+                        _r(e.lens.radius_of_curvature_2),
+                        _r(e.lens.thickness),
+                        _r(e.lens.diameter),
+                        _r(e.lens.refractive_index),
+                        _r(e.position),
+                    )
+                    for e in self.target.elements
+                )
+                gaps = tuple(_r(g.thickness) for g in self.target.air_gaps)
+                return ("system", elements, gaps, _r(wavelength_nm), grid_size)
+            lens = self.lens
+            return (
+                "lens",
+                _r(lens.radius_of_curvature_1),
+                _r(lens.radius_of_curvature_2),
+                _r(lens.thickness),
+                _r(lens.diameter),
+                _r(lens.refractive_index),
+                _r(wavelength_nm),
+                grid_size,
+            )
+        except Exception:
+            return None
+
+    def _calculate_wavefront_rms_waves(
+        self,
+        wavelength_nm: float = WAVELENGTH_GREEN,
+        grid_size: int = 32,
+    ) -> Optional[Tuple[float, Any]]:
+        """Trace the exit-pupil wavefront and return its RMS error in waves.
+
+        Piston and tilt are removed by a least-squares plane fit over the
+        pupil (Strehl is referenced to the chief ray), so pure focus
+        position / beam tilt do not masquerade as aberration.
+
+        Args:
+            wavelength_nm: Wavelength in nm (lens indices are temporarily
+                updated to this wavelength and restored afterwards).
+            grid_size: Pupil sampling grid.
+
+        Returns:
+            (rms_waves, valid_waves_array) or None if unavailable.
+        """
+        try:
+            import numpy as np
+        except ImportError:
+            logger.warning("Strehl ratio needs numpy; returning 0.0")
+            return None
+
+        try:
+            from .analysis.diffraction_psf import WavefrontSensor
+            from .optical_system import OpticalSystem
+        except ImportError as e:
+            logger.warning("Wavefront sensor unavailable: %s", e)
+            return None
+
+        if self.is_system:
+            system = self.target
+            saved_states = []
+        else:
+            system = OpticalSystem(name=getattr(self.lens, "name", "singlet"))
+            system.add_lens(self.lens)
+            saved_states = None  # single shared lens; saved below
+
+        # Temporarily set lens indices to the requested wavelength.
+        saved = []
+        try:
+            for element in system.elements:
+                lens = element.lens
+                saved.append((lens, lens.wavelength, lens.refractive_index))
+                lens.update_refractive_index(wavelength_nm=wavelength_nm)
+
+            sensor = WavefrontSensor(system)
+            wavefront = sensor.get_pupil_wavefront(
+                field_angle_deg=0.0,
+                wavelength_nm=wavelength_nm,
+                grid_size=grid_size,
+            )
+            w_map = np.asarray(wavefront.W, dtype=float)
+            y_map = np.asarray(wavefront.Y, dtype=float)
+            z_map = np.asarray(wavefront.Z, dtype=float)
+        except Exception as e:
+            logger.warning("Wavefront trace failed: %s", e)
+            return None
+        finally:
+            for lens, wl, n in saved:
+                lens.wavelength = wl
+                lens.refractive_index = n
+
+        valid = np.isfinite(w_map)
+        if int(np.count_nonzero(valid)) < 10:
+            logger.warning("Too few valid pupil samples for Strehl computation")
+            return None
+
+        w = w_map[valid]
+        max_r = float(np.max(np.sqrt(y_map[valid] ** 2 + z_map[valid] ** 2)))
+        if max_r <= 0:
+            return None
+
+        # Remove piston + tilt: least-squares fit of a + b*yn + c*zn.
+        yn = y_map[valid] / max_r
+        zn = z_map[valid] / max_r
+        try:
+            design = np.column_stack([np.ones_like(w), yn, zn])
+            coeffs, _, _, _ = np.linalg.lstsq(design, w, rcond=None)
+            w_resid = w - design @ coeffs
+        except Exception:
+            w_resid = w - float(np.mean(w))
+
+        rms = float(np.sqrt(np.mean(w_resid**2)))
+        return rms, w_resid
+
+    def _calculate_mtf_cutoff(
+        self, focal_length: float, wavelength_nm: float = WAVELENGTH_GREEN
+    ) -> float:
+        """Calculate diffraction-limited MTF cutoff frequency in lp/mm.
+
+        Args:
+            focal_length: Focal length in mm (sets the f-number).
+            wavelength_nm: Wavelength in nm (default green photopic peak).
+        """
         f_num = self._calculate_f_number(focal_length)
         if f_num <= 0:
             return 0
-        wavelength = WAVELENGTH_GREEN * 1e-6  # mm
-        return 1.0 / (wavelength * f_num)
+        wavelength_mm = wavelength_nm * 1e-6  # nm to mm
+        return 1.0 / (wavelength_mm * f_num)
 
     def _calculate_spot_rms(self) -> float:
         """Calculate RMS spot size using ray tracing (System only)"""
