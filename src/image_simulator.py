@@ -36,6 +36,12 @@ except ImportError:
     # Will use fallback implementations where needed
 
 
+# Gaussian sigma matching the Airy disk FWHM (1.03*λ*F/# = 0.844*r0),
+# so sigma = 0.844/2.355 * r0. The old code divided the first-zero radius
+# by 2.355 as if it were a FWHM, oversizing the blur by ~19%.
+AIRY_RADIUS_TO_GAUSSIAN_SIGMA = 0.844 / 2.355
+
+
 class ImageSimulator:
     """Simulates image formation through optical systems."""
 
@@ -81,7 +87,9 @@ class ImageSimulator:
         )
 
         # Apply diffraction
-        diffracted_image = self._apply_diffraction(aberrated_image, wavelength)
+        diffracted_image = self._apply_diffraction(
+            aberrated_image, wavelength, pixel_pitch_mm=pixel_pitch_mm
+        )
 
         # Apply chromatic aberration if color image
         if len(diffracted_image.shape) == 3:
@@ -183,8 +191,10 @@ class ImageSimulator:
 
         return result
 
-    def _apply_diffraction(self, image: np.ndarray, wavelength: float) -> np.ndarray:
-        """Apply diffraction-limited blur (PSF)."""
+    def _apply_diffraction(
+        self, image: np.ndarray, wavelength: float, pixel_pitch_mm: float = 0.01
+    ) -> np.ndarray:
+        """Apply diffraction-limited blur (Gaussian fit to the Airy disk)."""
         if not SCIPY_AVAILABLE:
             # Fallback: return image without diffraction simulation
             return image
@@ -204,8 +214,10 @@ class ImageSimulator:
         else:
             airy_radius = wavelength * 1e-6  # Simplified
 
-        # Convert to pixels (assume 1 pixel = 1 micron)
-        sigma_pixels = airy_radius * 1000 / 2.355  # FWHM to sigma
+        # Gaussian matched to the Airy FWHM, converted with the true pitch
+        # (mm per pixel) instead of an assumed 1 um pixel.
+        sigma_mm = airy_radius * AIRY_RADIUS_TO_GAUSSIAN_SIGMA
+        sigma_pixels = sigma_mm / pixel_pitch_mm if pixel_pitch_mm > 0 else 0.0
 
         return gaussian_filter(image, sigma=max(0.1, sigma_pixels))
 
@@ -348,28 +360,35 @@ class ImageSimulator:
                     else original
                 )
 
-        # PSNR
+        # PSNR (valid for float images normalized to [0, 1];
+        # uint8 inputs would need 20*log10(255) instead of 10*log10(1/MSE))
         mse = np.mean((original - simulated) ** 2)
         if mse > 0:
             psnr = 10 * np.log10(1.0 / mse)
         else:
             psnr = float("inf")
 
-        # SSIM (simplified)
-        ssim = self._calculate_ssim(original, simulated)
+        # Global SSIM-like similarity (single-window formula, NOT MSSIM)
+        global_ssim = self._calculate_global_ssim(original, simulated)
 
-        # MTF at Nyquist
-        mtf_nyquist = self._calculate_mtf_nyquist(simulated)
+        # Nyquist spectral ratio (content-dependent image spectrum, NOT
+        # the optical OTF/MTF)
+        nyquist_spectral_ratio = self._calculate_nyquist_spectral_ratio(simulated)
 
         return {
             "psnr": psnr,
-            "ssim": ssim,
-            "mtf_nyquist": mtf_nyquist,
+            "global_ssim": global_ssim,
+            "nyquist_spectral_ratio": nyquist_spectral_ratio,
             "sharpness": self._calculate_sharpness(simulated),
         }
 
-    def _calculate_ssim(self, img1: np.ndarray, img2: np.ndarray) -> float:
-        """Calculate structural similarity index (simplified)."""
+    def _calculate_global_ssim(self, img1: np.ndarray, img2: np.ndarray) -> float:
+        """Global SSIM-formula similarity (heuristic, not windowed MSSIM).
+
+        Applies the SSIM equation once over the whole images instead of
+        averaging local windows (mean structural similarity), so it is a
+        rough similarity score, not the standard MSSIM metric.
+        """
         c1 = 0.01**2
         c2 = 0.03**2
 
@@ -385,8 +404,14 @@ class ImageSimulator:
 
         return float(ssim)
 
-    def _calculate_mtf_nyquist(self, image: np.ndarray) -> float:
-        """Calculate MTF at Nyquist frequency."""
+    def _calculate_nyquist_spectral_ratio(self, image: np.ndarray) -> float:
+        """High-frequency image-energy ratio (heuristic, not optical MTF).
+
+        Returns the image-spectrum energy in a ring near Nyquist relative
+        to DC. It depends on image content (a blank image scores ~0, noise
+        scores high) and must not be confused with the lens OTF/MTF, which
+        is a property of the optics alone (see analysis.psf_mtf).
+        """
         if len(image.shape) == 3:
             image = np.mean(image, axis=2)
 
@@ -405,9 +430,9 @@ class ImageSimulator:
         r = np.sqrt((x - cx) ** 2 + (y - cy) ** 2)
 
         mask = (r >= nyquist_idx - 2) & (r <= nyquist_idx + 2)
-        mtf = magnitude[mask].mean() / magnitude[cy, cx]
+        ratio = magnitude[mask].mean() / magnitude[cy, cx]
 
-        return float(mtf)
+        return float(ratio)
 
     def _calculate_sharpness(self, image: np.ndarray) -> float:
         """Calculate image sharpness using gradient magnitude."""

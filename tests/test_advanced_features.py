@@ -233,11 +233,11 @@ class TestImageSimulator(unittest.TestCase):
         metrics = self.simulator._calculate_image_metrics(original, simulated)
 
         assert "psnr" in metrics
-        assert "ssim" in metrics
-        assert "mtf_nyquist" in metrics
+        assert "global_ssim" in metrics
+        assert "nyquist_spectral_ratio" in metrics
         assert "sharpness" in metrics
         assert np.isfinite(metrics["psnr"])
-        assert 0 <= metrics["ssim"] <= 1
+        assert 0 <= metrics["global_ssim"] <= 1
 
     def test_test_patterns(self):
         """Test all test pattern generators."""
@@ -315,6 +315,28 @@ class TestImageSimulator(unittest.TestCase):
         # Should spread energy
         assert blurred[25, 25] < 1.0
         assert blurred.sum() > 0
+
+    @unittest.skipUnless(SCIPY_AVAILABLE, "diffraction simulation requires scipy")
+    def test_diffraction_widens_with_wavelength(self):
+        """Longer wavelength means a larger Airy disk and a lower peak."""
+        image = np.zeros((50, 50))
+        image[25, 25] = 1.0
+
+        blue = self.simulator._apply_diffraction(image, 450.0)
+        red = self.simulator._apply_diffraction(image, 650.0)
+
+        assert red[25, 25] < blue[25, 25]
+
+    @unittest.skipUnless(SCIPY_AVAILABLE, "diffraction simulation requires scipy")
+    def test_diffraction_honors_pixel_pitch(self):
+        """Finer pixels spread the same blur over more pixels (lower peak)."""
+        image = np.zeros((50, 50))
+        image[25, 25] = 1.0
+
+        coarse = self.simulator._apply_diffraction(image, 587.6, pixel_pitch_mm=0.02)
+        fine = self.simulator._apply_diffraction(image, 587.6, pixel_pitch_mm=0.005)
+
+        assert fine[25, 25] < coarse[25, 25]
 
 
 class TestMechanicalDesigner(unittest.TestCase):
