@@ -471,11 +471,15 @@ class OpticalSystem:
         return -A / C
 
     def get_numerical_aperture(self) -> float:
-        """Calculate system numerical aperture (based on first lens)"""
+        """System numerical aperture from the entrance pupil and system EFL.
+
+        Paraxial NA = D / (2 * |EFL|), with D the first-element diameter
+        (entrance-pupil estimate, same convention as get_f_number).
+        """
         if not self.elements:
             return 0.0
         first_lens = self.elements[0].lens
-        f = first_lens.calculate_focal_length()
+        f = self.get_system_focal_length()
         if f is None or f == 0 or first_lens.diameter <= 0:
             return 0.0
         return first_lens.diameter / (2 * abs(f))
