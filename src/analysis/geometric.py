@@ -81,6 +81,45 @@ class GeometricTraceAnalysis:
         Returns:
             Dictionary with 'pupil_coords' (normalized -1 to 1) and 'ray_errors_mm' (mm).
         """
+        # Trace at the requested wavelength (indices restored on exit), so
+        # the wavelength argument controls the physics, not just labels.
+        saved_state = self._apply_wavelength(wavelength_nm)
+        try:
+            return self._calculate_ray_fan_traced(
+                field_angle_deg, wavelength_nm, num_points, pupil_axis
+            )
+        finally:
+            self._restore_lens_state(saved_state)
+
+    def _snapshot_lens_state(self) -> list:
+        """Save (lens, wavelength, index) for every system element."""
+        return [
+            (element.lens, element.lens.wavelength, element.lens.refractive_index)
+            for element in self.system.elements
+        ]
+
+    @staticmethod
+    def _restore_lens_state(saved: list) -> None:
+        """Restore lens state saved by _snapshot_lens_state."""
+        for lens, wavelength, refractive_index in saved:
+            lens.wavelength = wavelength
+            lens.refractive_index = refractive_index
+
+    def _apply_wavelength(self, wavelength_nm: float) -> list:
+        """Point all element indices at wavelength_nm; return restore state."""
+        saved = self._snapshot_lens_state()
+        for element in self.system.elements:
+            element.lens.update_refractive_index(wavelength_nm=wavelength_nm)
+        return saved
+
+    def _calculate_ray_fan_traced(
+        self,
+        field_angle_deg: float,
+        wavelength_nm: float,
+        num_points: int,
+        pupil_axis: str,
+    ) -> Dict[str, Any]:
+        """Ray-fan body: traces with the currently set lens indices."""
         wl_mm = wavelength_nm * NM_TO_MM
         image_plane_x = self._get_image_plane_x(wavelength_nm)
 
@@ -184,6 +223,23 @@ class GeometricTraceAnalysis:
         Returns:
             Dictionary with arrays for field angles, tangential/sagittal focus shift, and distortion %.
         """
+        # Trace at the requested wavelength (indices restored on exit).
+        saved_state = self._apply_wavelength(wavelength_nm)
+        try:
+            return self._calculate_curvature_traced(
+                max_field_angle_deg, num_points, wavelength_nm, kwargs
+            )
+        finally:
+            self._restore_lens_state(saved_state)
+
+    def _calculate_curvature_traced(
+        self,
+        max_field_angle_deg: float,
+        num_points: int,
+        wavelength_nm: float,
+        kwargs: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Field-curvature body: traces with the currently set lens indices."""
         # Backward compatibility: accept max_field_angle as alias
         if "max_field_angle" in kwargs:
             max_field_angle_deg = kwargs.pop("max_field_angle")

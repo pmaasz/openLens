@@ -237,6 +237,62 @@ class TestAberrationsCalculator(unittest.TestCase):
         self.assertGreater(ast_10 / ast_5, 3.2)
         self.assertLess(ast_10 / ast_5, 4.8)
 
+    def test_wavelength_changes_focal_length(self):
+        """Focal length must follow the requested wavelength (blue < red)."""
+        calc = AberrationsCalculator(self.biconvex)
+
+        blue = calc.calculate_all_aberrations(wavelength_nm=450.0)
+        red = calc.calculate_all_aberrations(wavelength_nm=650.0)
+
+        self.assertLess(blue["focal_length"], red["focal_length"])
+        self.assertGreater(red["focal_length"] - blue["focal_length"], 0.5)
+
+    def test_wavelength_changes_traced_aberrations(self):
+        """Traced quantities (spherical, coma) must respond to wavelength."""
+        calc = AberrationsCalculator(self.biconvex)
+
+        blue = calc.calculate_all_aberrations(field_angle_deg=5.0, wavelength_nm=450.0)
+        red = calc.calculate_all_aberrations(field_angle_deg=5.0, wavelength_nm=650.0)
+
+        self.assertNotAlmostEqual(blue["spherical"], red["spherical"], delta=1e-6)
+        self.assertNotAlmostEqual(blue["coma"], red["coma"], delta=1e-9)
+
+    def test_wavelength_does_not_mutate_lens(self):
+        """Analysis must restore the lens wavelength/index afterwards."""
+        calc = AberrationsCalculator(self.biconvex)
+        wl_before = self.biconvex.wavelength
+        n_before = self.biconvex.refractive_index
+
+        calc.calculate_all_aberrations(field_angle_deg=5.0, wavelength_nm=650.0)
+
+        self.assertEqual(self.biconvex.wavelength, wl_before)
+        self.assertEqual(self.biconvex.refractive_index, n_before)
+
+    def test_singlet_system_coma_agree(self):
+        """Same optics as singlet or system must give the same coma."""
+        from src.optical_system import OpticalSystem
+
+        system = OpticalSystem(name="wrapped")
+        system.add_lens(self.biconvex)
+
+        singlet = AberrationsCalculator(self.biconvex).calculate_all_aberrations(
+            field_angle_deg=5.0, wavelength_nm=450.0
+        )
+        wrapped = AberrationsCalculator(system).calculate_all_aberrations(
+            field_angle_deg=5.0, wavelength_nm=450.0
+        )
+
+        self.assertAlmostEqual(singlet["coma"], wrapped["coma"], places=5)
+
+    def test_summary_and_quality_accept_wavelength(self):
+        """Wavelength passthrough must reach summary and quality helpers."""
+        calc = AberrationsCalculator(self.biconvex)
+        summary = calc.get_aberration_summary(field_angle=5.0, wavelength_nm=650.0)
+        self.assertIn("ABERRATIONS ANALYSIS", summary)
+
+        quality = analyze_lens_quality(self.biconvex, field_angle_deg=5.0, wavelength_nm=650.0)
+        self.assertIn(quality["rating"], ["Excellent", "Good", "Fair", "Poor", "Very Poor"])
+
     def test_system_lsa_uses_paraxial_reference(self):
         """System LSA must match the y=0.001 paraxial focus (~-6.87)."""
         from src.optical_system import OpticalSystem

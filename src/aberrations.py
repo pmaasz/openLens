@@ -95,8 +95,25 @@ class AberrationsCalculator:
         field_angle = kwargs.get("field_angle", field_angle_deg)
         field_angle_deg = field_angle  # Update for use in the function
 
-        # Note: Current simplified model uses primary wavelength for Seidel aberrations
-        # Future enhancement: Update refractive indices based on wavelength parameter
+        # Every quantity below is evaluated at wavelength_nm: lens indices
+        # are temporarily updated (restored on exit), so analytic scalings
+        # and exact traces share one wavelength instead of mixing the
+        # requested wavelength with the lenses' stored state.
+        saved_indices = self._set_wavelength_for_trace(wavelength_nm)
+        try:
+            return self._calculate_all_at_wavelength(
+                object_distance_mm, field_angle_deg, wavelength_nm
+            )
+        finally:
+            self._restore_wavelength_after_trace(saved_indices)
+
+    def _calculate_all_at_wavelength(
+        self,
+        object_distance_mm: Optional[float],
+        field_angle_deg: float,
+        wavelength_nm: float,
+    ) -> Dict[str, Any]:
+        """Body of calculate_all_aberrations at one consistent wavelength."""
         if self.is_system:
             focal_length = self.target.get_system_focal_length()
         else:
@@ -138,7 +155,9 @@ class AberrationsCalculator:
         mtf_cutoff = self._calculate_mtf_cutoff(focal_length, wavelength_nm=wavelength_nm)
 
         if self.is_system:
-            field_data = self._calculate_field_metrics_system(field_angle_deg)
+            field_data = self._calculate_field_metrics_system(
+                field_angle_deg, wavelength_nm=wavelength_nm
+            )
             if field_data is None:
                 field_data = {
                     "coma": 0.0,
@@ -171,8 +190,10 @@ class AberrationsCalculator:
             "f_number": f_number,
             "spherical": spherical,
             "spherical_aberration": spherical,
-            "coma": self._calculate_coma(focal_length, field_angle_deg),
-            "astigmatism": self._calculate_astigmatism(focal_length, field_angle_deg),
+            "coma": self._calculate_coma(focal_length, field_angle_deg, wavelength_nm),
+            "astigmatism": self._calculate_astigmatism(
+                focal_length, field_angle_deg, wavelength_nm
+            ),
             "field_curvature": self._calculate_field_curvature(focal_length),
             "distortion": self._calculate_distortion(focal_length, field_angle_deg),
             "chromatic": chromatic,
@@ -196,7 +217,30 @@ class AberrationsCalculator:
         # For object at infinity: NA = D / (2 * f)
         return self.diameter / (2 * abs(focal_length))
 
-    def _calculate_field_metrics_system(self, field_angle: float) -> Dict[str, float]:
+    def _traceable_lenses(self) -> List[Any]:
+        """Lens objects the exact traces read indices from."""
+        if self.is_system:
+            return [element.lens for element in self.target.elements]
+        return [self.lens]
+
+    def _set_wavelength_for_trace(self, wavelength_nm: float) -> list:
+        """Point all traceable lenses at wavelength_nm; return restore state."""
+        saved = []
+        for lens in self._traceable_lenses():
+            saved.append((lens, lens.wavelength, lens.refractive_index))
+            lens.update_refractive_index(wavelength_nm=wavelength_nm)
+        return saved
+
+    @staticmethod
+    def _restore_wavelength_after_trace(saved: list) -> None:
+        """Restore lens wavelength/index state saved by _set_wavelength_for_trace."""
+        for lens, wavelength, refractive_index in saved:
+            lens.wavelength = wavelength
+            lens.refractive_index = refractive_index
+
+    def _calculate_field_metrics_system(
+        self, field_angle: float, wavelength_nm: float = WAVELENGTH_GREEN
+    ) -> Dict[str, float]:
         """Calculate field-dependent aberrations for an optical system using real ray tracing"""
         try:
             from .analysis.geometric import GeometricTraceAnalysis
@@ -206,11 +250,15 @@ class AberrationsCalculator:
             # 1. Field Curvature and Distortion
             # Sample up to field_angle
             fc_data = analysis.calculate_field_curvature_distortion(
-                max_field_angle_deg=max(field_angle, 0.1), num_points=10
+                max_field_angle_deg=max(field_angle, 0.1),
+                num_points=10,
+                wavelength_nm=wavelength_nm,
             )
 
             # 2. Coma (from Ray Fan)
-            fan_data = analysis.calculate_ray_fan(field_angle_deg=field_angle)
+            fan_data = analysis.calculate_ray_fan(
+                field_angle_deg=field_angle, wavelength_nm=wavelength_nm
+            )
 
             # Extract metrics at the requested field_angle
             # fc_data['tan_focus_shift_mm'] etc are lists, we want the last element if we sampled up to field_angle
@@ -240,7 +288,9 @@ class AberrationsCalculator:
             logger.warning("Field metrics computation failed at %.1f deg: %s", field_angle, e)
             return None
 
-    def _calculate_field_estimators(self, field_angle_deg: float) -> Tuple[float, float]:
+    def _calculate_field_estimators(
+        self, field_angle_deg: float, wavelength_nm: float = WAVELENGTH_GREEN
+    ) -> Tuple[float, float]:
         """Ray-traced off-axis estimators: (coma, astigmatism).
 
         Coma is the even part of the tangential ray fan,
@@ -251,16 +301,28 @@ class AberrationsCalculator:
         heuristics, sign conventions, or stop-shift approximations enter.
         Object at infinity; entrance pupil is the first-element aperture.
 
+        Args:
+            field_angle_deg: Off-axis field angle in degrees.
+            wavelength_nm: Traced wavelength in nm.
+
         Returns:
             (coma_mm, astigmatism_mm); (0.0, 0.0) if tracing fails.
         """
         try:
-            fan = self.calculate_ray_fan(field_angle_deg=field_angle_deg, num_points=11)
+            # Sampling matches _calculate_field_metrics_system so singlets
+            # and systems report identical estimators for the same optics.
+            fan = self.calculate_ray_fan(
+                field_angle_deg=field_angle_deg,
+                wavelength_nm=wavelength_nm,
+                num_points=21,
+            )
             errors = fan.get("ray_errors_mm", fan.get("transverse_aberration", []))
             coma = (errors[0] + errors[-1]) / 2.0 if len(errors) >= 2 else 0.0
 
             _, sag, tan = self.calculate_field_curvature(
-                max_field_angle_deg=max(field_angle_deg, 0.5), num_points=6
+                max_field_angle_deg=max(field_angle_deg, 0.5),
+                num_points=10,
+                wavelength_nm=wavelength_nm,
             )
             astigmatism = abs(tan[-1] - sag[-1]) if tan and sag else 0.0
             return coma, astigmatism
@@ -268,28 +330,40 @@ class AberrationsCalculator:
             logger.warning("Field estimators ray trace failed: %s", e)
             return 0.0, 0.0
 
-    def _calculate_coma(self, focal_length: float, field_angle_deg: float) -> float:
+    def _calculate_coma(
+        self,
+        focal_length: float,
+        field_angle_deg: float,
+        wavelength_nm: float = WAVELENGTH_GREEN,
+    ) -> float:
         """Transverse coma from the traced ray fan (0.0 on axis by symmetry).
 
         Args:
             focal_length: Kept for API compatibility (unused; the value is
                 traced, not scaled from paraxial quantities).
+            wavelength_nm: Traced wavelength in nm.
         """
         if abs(field_angle_deg) < EPSILON:
             return 0.0
-        coma, _ = self._calculate_field_estimators(field_angle_deg)
+        coma, _ = self._calculate_field_estimators(field_angle_deg, wavelength_nm)
         return coma
 
-    def _calculate_astigmatism(self, focal_length: float, field_angle_deg: float) -> float:
+    def _calculate_astigmatism(
+        self,
+        focal_length: float,
+        field_angle_deg: float,
+        wavelength_nm: float = WAVELENGTH_GREEN,
+    ) -> float:
         """Longitudinal astigmatism as the traced tan/sag focus split.
 
         Args:
             focal_length: Kept for API compatibility (unused; the value is
                 traced, not f * theta^2).
+            wavelength_nm: Traced wavelength in nm.
         """
         if abs(field_angle_deg) < EPSILON:
             return 0.0
-        _, astigmatism = self._calculate_field_estimators(field_angle_deg)
+        _, astigmatism = self._calculate_field_estimators(field_angle_deg, wavelength_nm)
         return astigmatism
 
     def _calculate_field_curvature(self, focal_length: float) -> float:
@@ -537,12 +611,13 @@ class AberrationsCalculator:
             saved_states = None  # single shared lens; saved below
 
         # Temporarily set lens indices to the requested wavelength.
-        saved = []
+        saved = [
+            (element.lens, element.lens.wavelength, element.lens.refractive_index)
+            for element in system.elements
+        ]
         try:
             for element in system.elements:
-                lens = element.lens
-                saved.append((lens, lens.wavelength, lens.refractive_index))
-                lens.update_refractive_index(wavelength_nm=wavelength_nm)
+                element.lens.update_refractive_index(wavelength_nm=wavelength_nm)
 
             sensor = WavefrontSensor(system)
             wavefront = sensor.get_pupil_wavefront(
@@ -557,9 +632,7 @@ class AberrationsCalculator:
             logger.warning("Wavefront trace failed: %s", e)
             return None
         finally:
-            for lens, wl, n in saved:
-                lens.wavelength = wl
-                lens.refractive_index = n
+            self._restore_wavelength_after_trace(saved)
 
         valid = np.isfinite(w_map)
         if int(np.count_nonzero(valid)) < 10:
@@ -802,6 +875,7 @@ class AberrationsCalculator:
         self,
         object_distance: Optional[float] = None,
         field_angle: float = 5.0,
+        wavelength_nm: float = WAVELENGTH_GREEN,
         **kwargs,
     ) -> str:
         """
@@ -810,6 +884,7 @@ class AberrationsCalculator:
         Args:
             object_distance: Distance to object (mm). None for infinity
             field_angle: Off-axis angle in degrees
+            wavelength_nm: Wavelength in nm evaluated throughout
 
         Returns:
             Formatted string with aberration summary
@@ -817,7 +892,9 @@ class AberrationsCalculator:
         # Handle backward compatibility
         field_angle_deg = kwargs.get("field_angle_deg", field_angle)
 
-        results = self.calculate_all_aberrations(object_distance, field_angle_deg)
+        results = self.calculate_all_aberrations(
+            object_distance, field_angle_deg, wavelength_nm=wavelength_nm
+        )
 
         if results.get("error"):
             return f"Error: {results['error']}"
@@ -905,15 +982,17 @@ def analyze_lens_quality(lens: Any, field_angle: float = 5.0, **kwargs) -> Dict[
     Args:
         lens: Lens object
         field_angle: Field angle for off-axis aberrations (degrees)
+        wavelength_nm: Wavelength in nm evaluated throughout (kwarg)
 
     Returns:
         Dictionary with quality assessment
     """
     # Handle backward compatibility
     field_angle = kwargs.get("field_angle_deg", field_angle)
+    wavelength_nm = kwargs.get("wavelength_nm", WAVELENGTH_GREEN)
 
     calc = AberrationsCalculator(lens)
-    results = calc.calculate_all_aberrations(field_angle=field_angle)
+    results = calc.calculate_all_aberrations(field_angle=field_angle, wavelength_nm=wavelength_nm)
 
     if results.get("error"):
         return {"quality_score": 0, "rating": "Error", "issues": [results["error"]]}
