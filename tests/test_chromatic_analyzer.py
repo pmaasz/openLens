@@ -171,6 +171,89 @@ class TestChromaticAnalyzer(unittest.TestCase):
         self.assertGreater(trans, 0.9)
         self.assertLessEqual(trans, 1.0)
 
+    def test_analyze_lens_thick_focal_lengths(self):
+        """Focal lengths must use the thick lensmaker equation."""
+        from src.lens import Lens
+
+        lens_params = {
+            "radius1": 50.0,
+            "radius2": -50.0,
+            "thickness": 5.0,
+            "diameter": 25.0,
+            "material": "BK7",
+        }
+        result = self.analyzer.analyze_lens(lens_params)
+
+        n_d = self.material_db.get_refractive_index("BK7", 587.6, 20.0)
+        expected = Lens(
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=-50.0,
+            thickness=5.0,
+            diameter=25.0,
+            refractive_index=n_d,
+            material="BK7",
+        ).calculate_focal_length()
+
+        # d-line is the middle wavelength (F, d, C default order)
+        self.assertAlmostEqual(result.focal_lengths[1], expected, places=6)
+        # Thin model would give ~48.37; thick gives ~49.21 (1.7% apart)
+        self.assertGreater(result.focal_lengths[1], 49.0)
+
+    def test_analyze_lens_spot_scales_with_aperture(self):
+        """RMS spots must grow with aperture (no f-scaled placeholder)."""
+        base = {
+            "radius1": 50.0,
+            "radius2": -50.0,
+            "thickness": 5.0,
+            "material": "BK7",
+        }
+        small = self.analyzer.analyze_lens(dict(base, diameter=10.0))
+        large = self.analyzer.analyze_lens(dict(base, diameter=20.0))
+
+        for s_small, s_large in zip(small.spot_sizes, large.spot_sizes):
+            self.assertGreater(s_large, 2.0 * s_small)
+        # And differ per wavelength (dispersion, not a constant factor)
+        self.assertNotAlmostEqual(small.spot_sizes[0], small.spot_sizes[2], delta=1e-6)
+
+    def test_analyze_lens_chromatic_metrics(self):
+        """Axial shift must match f/V order; lateral color physical."""
+        import math
+
+        lens_params = {
+            "radius1": 50.0,
+            "radius2": -50.0,
+            "thickness": 5.0,
+            "diameter": 25.0,
+            "material": "BK7",
+        }
+        result = self.analyzer.analyze_lens(lens_params)
+
+        # Axial F-C shift ~= f_d / Vd to first order (within 10%)
+        f_d = result.focal_lengths[1]
+        abbe = self.analyzer.calculate_abbe_number("BK7")
+        self.assertAlmostEqual(
+            result.axial_chromatic_aberration, f_d / abbe, delta=0.1 * f_d / abbe
+        )
+        # Lateral color at 5 deg field is order |fF-fC|*tan(5deg)
+        paraxial = abs(result.focal_lengths[0] - result.focal_lengths[2]) * math.tan(
+            math.radians(5.0)
+        )
+        self.assertGreater(result.lateral_color, 0.2 * paraxial)
+        self.assertLess(result.lateral_color, 5.0 * paraxial)
+
+    def test_analyze_lens_afocal_raises(self):
+        """Afocal geometry (flat window) raises instead of returning zeros."""
+        with self.assertRaises(ValueError):
+            self.analyzer.analyze_lens(
+                {
+                    "radius1": float("inf"),
+                    "radius2": float("inf"),
+                    "thickness": 5.0,
+                    "diameter": 25.0,
+                    "material": "BK7",
+                }
+            )
+
     def test_chromatic_result_structure(self):
         """Test ChromaticResult data structure"""
         result = ChromaticResult(
