@@ -115,6 +115,45 @@ class TestLensOptics(unittest.TestCase):
         self.assertTrue(hasattr(self.lens.calculate_back_focal_length(), "__abs__"))
         self.assertTrue(hasattr(self.lens.calculate_front_focal_length(), "__abs__"))
 
+    def test_front_focal_length_cartesian_sign(self):
+        """Converging lens: front focus is left of front vertex (FFL < 0)."""
+        biconvex = Lens(
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=40.0,
+            refractive_index=1.5168,
+        )
+        self.assertLess(biconvex.calculate_front_focal_length(), 0)
+        self.assertGreater(biconvex.calculate_back_focal_length(), 0)
+
+    def test_symmetric_lens_ffl_mirrors_bfl(self):
+        """Symmetric biconvex: FFL = -BFL by mirror symmetry."""
+        biconvex = Lens(
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=40.0,
+            refractive_index=1.5168,
+        )
+        self.assertAlmostEqual(
+            biconvex.calculate_front_focal_length(),
+            -biconvex.calculate_back_focal_length(),
+            places=6,
+        )
+
+    def test_diverging_lens_ffl_positive(self):
+        """Diverging lens: virtual front focus is right of vertex (FFL > 0)."""
+        biconcave = Lens(
+            radius_of_curvature_1=-100.0,
+            radius_of_curvature_2=100.0,
+            thickness=5.0,
+            diameter=40.0,
+            refractive_index=1.5168,
+        )
+        self.assertGreater(biconcave.calculate_front_focal_length(), 0)
+        self.assertLess(biconcave.calculate_back_focal_length(), 0)
+
 
 class TestLensTypePresets(unittest.TestCase):
     """Radius presets applied per lens_type"""
