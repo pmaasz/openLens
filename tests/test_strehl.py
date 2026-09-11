@@ -72,12 +72,8 @@ class TestStrehlRatio(unittest.TestCase):
 
     def test_spherical_wavefront_scales_with_aperture_fourth_power(self):
         """Third-order spherical wavefront error scales as y^4."""
-        wfe_5 = AberrationsCalculator(_biconvex(5.0)).calculate_all_aberrations()[
-            "wfe_rms_waves"
-        ]
-        wfe_10 = AberrationsCalculator(_biconvex(10.0)).calculate_all_aberrations()[
-            "wfe_rms_waves"
-        ]
+        wfe_5 = AberrationsCalculator(_biconvex(5.0)).calculate_all_aberrations()["wfe_rms_waves"]
+        wfe_10 = AberrationsCalculator(_biconvex(10.0)).calculate_all_aberrations()["wfe_rms_waves"]
         ratio = wfe_10 / wfe_5
         self.assertGreater(ratio, 12.0)
         self.assertLess(ratio, 20.0)

@@ -135,9 +135,7 @@ class AberrationsCalculator:
         strehl, wfe_rms_waves = self._calculate_strehl_ratio(
             focal_length, wavelength_nm=wavelength_nm
         )
-        mtf_cutoff = self._calculate_mtf_cutoff(
-            focal_length, wavelength_nm=wavelength_nm
-        )
+        mtf_cutoff = self._calculate_mtf_cutoff(focal_length, wavelength_nm=wavelength_nm)
 
         if self.is_system:
             field_data = self._calculate_field_metrics_system(field_angle_deg)
@@ -450,9 +448,7 @@ class AberrationsCalculator:
             self._strehl_cache[key] = result
         return result
 
-    def _strehl_state_key(
-        self, wavelength_nm: float, grid_size: int
-    ) -> Optional[tuple]:
+    def _strehl_state_key(self, wavelength_nm: float, grid_size: int) -> Optional[tuple]:
         """Hashable snapshot of everything the pupil trace depends on.
 
         Returns None if the state cannot be snapshotted (cache bypassed).

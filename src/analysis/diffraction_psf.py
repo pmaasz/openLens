@@ -173,9 +173,7 @@ class WavefrontSensor:
             yn = Y[valid_mask] / max_r
             zn = Z[valid_mask] / max_r
             try:
-                design = np.column_stack(
-                    [np.ones_like(w_valid), yn, zn]
-                )
+                design = np.column_stack([np.ones_like(w_valid), yn, zn])
                 coeffs, _, _, _ = np.linalg.lstsq(design, w_valid, rcond=None)
                 W[valid_mask] = w_valid - design @ coeffs
             except Exception:
