@@ -1,10 +1,31 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import math
 
 from ..vector3 import vec3
 from ..ray_tracer import Ray3D, SystemRayTracer3D
 from ..optical_system import OpticalSystem
 from ..constants import NM_TO_MM, WAVELENGTH_GREEN
+
+
+def _sagittal_focus_on_chief_ray(chief_ray: Ray3D, sag_ray: Ray3D) -> Optional[float]:
+    """X-coordinate where a sagittal fan ray meets the chief ray.
+
+    The sagittal focus is the intersection of the skew sagittal ray with
+    the chief ray (not with the z=0 plane, which coincides with the chief
+    only on axis). Skew lines rarely intersect exactly, so this returns
+    the chief-ray parameter at closest approach. Returns None for
+    (near-)parallel rays where no focus exists.
+    """
+    pc, dc = chief_ray.origin, chief_ray.direction.normalize()
+    ps, ds = sag_ray.origin, sag_ray.direction.normalize()
+    w0 = pc - ps
+    b = dc.dot(ds)
+    denom = 1.0 - b * b
+    if abs(denom) < 1e-12:
+        return None
+    s = (b * ds.dot(w0) - dc.dot(w0)) / denom
+    focus = pc + dc * s
+    return focus.x
 
 
 class GeometricTraceAnalysis:
@@ -331,12 +352,11 @@ class GeometricTraceAnalysis:
             self.tracer.trace_ray(ray_sag)
 
             if not ray_sag.terminated:
-                if abs(ray_sag.direction.z) > 1e-9:
-                    u = -ray_sag.origin.z / ray_sag.direction.z
-                    x_sag_focus = ray_sag.origin.x + u * ray_sag.direction.x
-                    sag_focus_shifts_mm.append(x_sag_focus - image_plane_x)
+                x_sag_focus = _sagittal_focus_on_chief_ray(chief_ray, ray_sag)
+                if x_sag_focus is None:
+                    sag_focus_shifts_mm.append(float("nan"))
                 else:
-                    sag_focus_shifts_mm.append(0.0)
+                    sag_focus_shifts_mm.append(x_sag_focus - image_plane_x)
             else:
                 sag_focus_shifts_mm.append(float("nan"))
 
