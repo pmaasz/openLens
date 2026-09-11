@@ -64,6 +64,19 @@ class TestPerformanceMetrics(unittest.TestCase):
         self.assertGreater(resolution, 0)
         print(f"✓ Resolution (Rayleigh): {resolution:.3f} μm")
 
+    def test_angular_rayleigh_resolution_absolute_value(self):
+        """Angular Rayleigh limit must equal 1.22*lambda/D (guards nm->mm units)."""
+        calc = PerformanceMetrics(self.lens)
+        res_urad = calc.calculate_resolution_rayleigh()
+
+        self.assertIsNotNone(res_urad)
+        expected_urad = 1.22 * (self.lens.wavelength * 1e-6) / self.lens.diameter * 1e6
+        self.assertAlmostEqual(res_urad, expected_urad, places=3)
+        # Order-of-magnitude guard: the old /1000 bug inflated this 1000x
+        # (~29000 urad instead of ~29 urad for this lens).
+        self.assertLess(res_urad, 1000.0)
+        print(f"✓ Angular Rayleigh limit: {res_urad:.3f} μrad")
+
     def test_mtf_cutoff(self):
         """Test MTF cutoff frequency"""
         calc = PerformanceMetrics(self.lens)
