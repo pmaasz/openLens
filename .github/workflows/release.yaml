@@ -3,6 +3,8 @@ name: Release
 # Fires when release-please's Release PR is merged (GitHub Release published),
 # or on a manual `git tag v*` push as fallback. Builds the package, attaches
 # dist/ assets to the GitHub Release, and publishes to PyPI via OIDC.
+# Also builds standalone PyInstaller executables (Linux/Windows/macOS on
+# both ARM64 and Intel) and attaches them to the same GitHub Release.
 on:
   release:
     types: [published]
@@ -33,3 +35,51 @@ jobs:
           files: dist/*
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  executable:
+    name: Executable (${{ matrix.suffix }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            suffix: Linux
+          - os: windows-latest
+            suffix: Windows
+          - os: macos-latest
+            suffix: macOS-arm64
+          - os: macos-15-intel
+            suffix: macOS-x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: Install Linux system libs (best effort)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libxcb-cursor0 libtiff5 || sudo apt-get install -y -qq libxcb-cursor0 libtiff6 || true
+      - name: Build executable with PyInstaller
+        shell: bash
+        run: |
+          TAG="${{ github.event.release.tag_name || github.ref_name }}"
+          TAG="${TAG##*/}"
+          APP_NAME="OpenLens-${TAG}-${{ matrix.suffix }}"
+          pyinstaller --noconfirm --clean --onefile --windowed \
+            --name "$APP_NAME" \
+            openlens.py
+          ls -lh dist/
+          test -f "dist/${APP_NAME}" -o -f "dist/${APP_NAME}.exe"
+      - name: Attach executable to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
+          files: dist/OpenLens-*
