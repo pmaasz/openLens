@@ -73,8 +73,35 @@ jobs:
           TAG="${{ github.event.release.tag_name || github.ref_name }}"
           TAG="${TAG##*/}"
           APP_NAME="OpenLens-${TAG}-${{ matrix.suffix }}"
+          # Bundle ALL runtime deps (required + optional) so the standalone
+          # executable has full functionality: PySide6, numpy, matplotlib,
+          # scipy, Pillow. --collect-all is needed because optional imports
+          # are guarded / function-level / string-based (__import__ in
+          # src/dependencies.py) and invisible to static analysis.
+          # Mirrors openlens.spec (canonical local build: pyinstaller openlens.spec).
           pyinstaller --noconfirm --clean --onefile --windowed \
             --name "$APP_NAME" \
+            --collect-all PySide6 \
+            --collect-all numpy \
+            --collect-all matplotlib \
+            --collect-all scipy \
+            --collect-all PIL \
+            --hidden-import numpy \
+            --hidden-import matplotlib \
+            --hidden-import matplotlib.backends.backend_qtagg \
+            --hidden-import matplotlib.backends.backend_qt5agg \
+            --hidden-import matplotlib.figure \
+            --hidden-import matplotlib.axes \
+            --hidden-import matplotlib.patches \
+            --hidden-import matplotlib.pyplot \
+            --hidden-import scipy \
+            --hidden-import scipy.special \
+            --hidden-import scipy.ndimage \
+            --hidden-import scipy.signal \
+            --hidden-import PIL \
+            --hidden-import PIL.Image \
+            --hidden-import PIL.ImageDraw \
+            --hidden-import PIL.ImageFont \
             openlens.py
           ls -lh dist/
           test -f "dist/${APP_NAME}" -o -f "dist/${APP_NAME}.exe"
