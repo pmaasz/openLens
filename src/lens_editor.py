@@ -4,6 +4,7 @@ openlens - Interactive Optical Lens Creation and Modification Tool
 """
 
 import logging
+import os
 from datetime import datetime
 from typing import Optional, List
 
@@ -43,6 +44,15 @@ class LensManager:
             print(f"note: storage is SQLite; using {storage_file}")
 
         self.storage_file = storage_file
+        # Seed the built-in example only for the default app database.
+        # Custom/temp paths (unit tests, user exports) stay exactly as stored.
+        if os.path.basename(self.storage_file) == "openlens.db":
+            try:
+                from .seed_data import ensure_nikon_series_e_example
+
+                ensure_nikon_series_e_example(self.storage_file)
+            except Exception as e:
+                logger.warning("Example data seeding failed: %s", e)
         self.lenses = self.load_lenses()
 
     def load_lenses(self) -> List[Lens]:

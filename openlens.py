@@ -961,7 +961,17 @@ def main() -> None:
 
     # Set dark theme
     app.setStyleSheet(get_app_stylesheet(DARK))
-    
+
+    # Ensure the built-in example lens exists for every app instance.
+    # Done once here (not in OpenLensWindow.__init__) so unit tests that
+    # construct the window directly never touch the production database.
+    try:
+        from src.seed_data import ensure_nikon_series_e_example
+
+        ensure_nikon_series_e_example("openlens.db")
+    except Exception as e:
+        logger.warning("Example data seeding failed: %s", e)
+
     startup = StartupDialog()
     result = startup.exec()
     
