@@ -724,19 +724,49 @@ class OptimizationTab(BaseTab):
             self._parent._update_status(f"Optimization failed: {message}")
 
     def _on_apply_optimization(self) -> None:
-        """Apply the optimization results to the current system."""
+        """Apply the optimization results to the current system.
+
+        The worker always hands back an OpticalSystem (single lenses are
+        wrapped around a deep copy of the original lens, keeping its id).
+        The result is folded back into the parent library by id — replacing
+        the original member, or adopted when the original is gone — so the
+        editor shows it and the reconciling save persists it.
+        """
         if not self._parent or not self._opt_pending_target:
             return
 
         from ...optical_system import OpticalSystem
 
-        if isinstance(self._opt_pending_target, OpticalSystem):
-            self._parent._current_assembly = self._opt_pending_target
-            self._parent._optical_system = self._opt_pending_target
-            self._parent._assembly_tab_widget._assembly_viz.update_system(self._opt_pending_target)
+        pending = self._opt_pending_target
+        original = self._opt_original_target
+
+        if isinstance(original, OpticalSystem) and isinstance(pending, OpticalSystem):
+            replaced = False
+            for i, asm in enumerate(self._parent._assemblies):
+                if getattr(asm, "id", None) == getattr(pending, "id", None):
+                    self._parent._assemblies[i] = pending
+                    replaced = True
+                    break
+            if not replaced:
+                self._parent._assemblies.append(pending)
+            self._parent._assembly_tab_widget._optical_system = pending
+            self._parent._set_current_item(pending, is_assembly=True)
         else:
-            self._parent._current_lens = self._opt_pending_target
-            self._parent._lens_editor.load_lens(self._opt_pending_target)
+            # Single-lens case: unwrap the optimized lens from its wrapper.
+            lens = (
+                pending.elements[0].lens
+                if isinstance(pending, OpticalSystem) and pending.elements
+                else pending
+            )
+            replaced = False
+            for i, item in enumerate(self._parent._lenses):
+                if getattr(item, "id", None) == getattr(lens, "id", None):
+                    self._parent._lenses[i] = lens
+                    replaced = True
+                    break
+            if not replaced:
+                self._parent._lenses.append(lens)
+            self._parent._set_current_item(lens, is_assembly=False)
 
         self._parent._update_all_tabs()
         self._opt_apply_btn.setEnabled(False)
