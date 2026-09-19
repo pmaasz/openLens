@@ -41,6 +41,11 @@ class LensElement:
     lens: Lens
     position: float = 0.0  # Position along optical axis (mm)
     lens_id: Optional[str] = None  # Reference to lens ID for database persistence
+    decenter_y: float = 0.0  # Lateral offset perpendicular to axis (mm)
+    decenter_z: float = 0.0  # Lateral offset perpendicular to axis (mm)
+    tilt_x: float = 0.0  # Tilt about x (deg)
+    tilt_y: float = 0.0  # Tilt about y (deg)
+    tilt_z: float = 0.0  # Roll about the optical axis (deg)
 
     def __post_init__(self) -> None:
         """Calculate element thickness and ensure ID is set"""
@@ -78,10 +83,105 @@ class OpticalSystem:
         self.name = name
         self.elements: List[LensElement] = []
         self.air_gaps: List[AirGap] = []
+        # Aperture stop: index into air_gaps where the stop sits, plus its
+        # diameter (mm). None gap = no defined stop.
+        self.aperture_stop_gap: Optional[int] = None
+        self.aperture_stop_diameter: Optional[float] = None
         self.root = OpticalAssembly(name="Root")
         self._update_positions()
 
-    def add_lens(self, lens: Lens, air_gap_before: float = 0.0):
+    def set_aperture_stop(self, gap_index: int, diameter: Optional[float] = None) -> None:
+        """Place the aperture stop in an air gap.
+
+        Args:
+            gap_index: Index into ``air_gaps`` (gap before element
+                ``gap_index + 1``).
+            diameter: Stop diameter in mm, or None for unspecified.
+
+        Raises:
+            ValueError: If the gap index is out of range or the diameter
+                is non-positive.
+        """
+        from .validation import validate_diameter
+
+        if not isinstance(gap_index, int) or not 0 <= gap_index < len(self.air_gaps):
+            raise ValueError(
+                f"Stop gap index {gap_index} out of range "
+                f"for {len(self.air_gaps)} air gap(s)"
+            )
+        if diameter is not None:
+            validate_diameter(diameter, param_name="stop diameter")
+        self.aperture_stop_gap = gap_index
+        self.aperture_stop_diameter = diameter
+        self.modified_at = datetime.now().isoformat()
+
+    def clear_aperture_stop(self) -> None:
+        """Remove the aperture stop definition."""
+        self.aperture_stop_gap = None
+        self.aperture_stop_diameter = None
+        self.modified_at = datetime.now().isoformat()
+
+    def get_aperture_stop(self) -> Optional[Dict[str, Any]]:
+        """Return the validated stop as a dict, or None if unset/stale.
+
+        A stop goes stale when elements are added or removed so its gap
+        index no longer exists; callers should treat that as unset.
+        """
+        if self.aperture_stop_gap is None:
+            return None
+        if not 0 <= self.aperture_stop_gap < len(self.air_gaps):
+            return None
+        gap = self.air_gaps[self.aperture_stop_gap]
+        return {
+            "gap_index": self.aperture_stop_gap,
+            "position": gap.position,
+            "diameter": self.aperture_stop_diameter,
+        }
+
+    def set_element_alignment(
+        self,
+        index: int,
+        decenter_y: float = 0.0,
+        decenter_z: float = 0.0,
+        tilt_x: float = 0.0,
+        tilt_y: float = 0.0,
+        tilt_z: float = 0.0,
+    ) -> bool:
+        """Set decenter/tilt of one element (tree node + flat record).
+
+        Args:
+            index: Element index in ``elements``.
+
+        Returns:
+            True on success, False for an out-of-range index.
+        """
+        if not 0 <= index < len(self.elements):
+            return False
+        flat_nodes = self.root.get_flat_list()
+        element_nodes = [node for node, _ in flat_nodes if getattr(node, "is_element", False)]
+        if not 0 <= index < len(element_nodes):
+            return False
+        node = element_nodes[index]
+        node.position.y = float(decenter_y)
+        node.position.z = float(decenter_z)
+        node.rotation.x = float(tilt_x)
+        node.rotation.y = float(tilt_y)
+        node.rotation.z = float(tilt_z)
+        # Re-derive the flat lists so element records match the tree.
+        self._rebuild_from_tree()
+        self.modified_at = datetime.now().isoformat()
+        return True
+
+    def add_lens(
+        self,
+        lens: Lens,
+        air_gap_before: float = 0.0,
+        decenter_y: float = 0.0,
+        decenter_z: float = 0.0,
+        tilt_x: float = 0.0,
+        tilt_y: float = 0.0,
+        tilt_z: float = 0.0,
+    ):
         """Add a lens element to the system"""
         # Calculate new position based on last element in flat list
         last_pos = 0.0
@@ -102,7 +202,8 @@ class OpticalSystem:
         # Create Hierarchical Node
         # Add to root (flat hierarchy by default)
         node = OpticalElement(element_model=lens, name=lens.name)
-        node.position = vec3(new_pos, 0, 0)
+        node.position = vec3(new_pos, decenter_y, decenter_z)
+        node.rotation = vec3(tilt_x, tilt_y, tilt_z)
         self.root.add_child(node)
 
         # Rebuild flat lists from tree to maintain compatibility
@@ -180,8 +281,19 @@ class OpticalSystem:
             if not lens:
                 continue
 
-            # Create LensElement wrapper
-            le = LensElement(lens=lens, position=global_pos.x)
+            # Create LensElement wrapper. Axial position comes from the
+            # global frame; decenter/tilt are the node's local offsets
+            # (identical to global for the flat hierarchies that the
+            # database round-trips).
+            le = LensElement(
+                lens=lens,
+                position=global_pos.x,
+                decenter_y=node.position.y,
+                decenter_z=node.position.z,
+                tilt_x=node.rotation.x,
+                tilt_y=node.rotation.y,
+                tilt_z=node.rotation.z,
+            )
             new_elements.append(le)
 
             # Calculate gap to next element
@@ -214,10 +326,12 @@ class OpticalSystem:
         for i, element in enumerate(self.elements):
             element.position = current_pos
 
-            # Update hierarchical node if it exists as direct child
+            # Update hierarchical node if it exists as direct child.
+            # Preserve lateral offsets: only the axial position is managed
+            # here; decenter lives on the node.
             if i < len(self.root.children):
                 node = self.root.children[i]
-                node.position = vec3(current_pos, 0, 0)
+                node.position = vec3(current_pos, node.position.y, node.position.z)
 
             current_pos += element.thickness
 
@@ -306,11 +420,18 @@ class OpticalSystem:
             "type": "OpticalSystem",
             "created_at": self.created_at,
             "modified_at": self.modified_at,
+            "aperture_stop_gap": self.aperture_stop_gap,
+            "aperture_stop_diameter": self.aperture_stop_diameter,
             "elements": [
                 {
                     "lens": e.lens.to_dict(),
                     "lens_id": e.lens_id or getattr(e.lens, "id", None),
                     "position": e.position,
+                    "decenter_y": e.decenter_y,
+                    "decenter_z": e.decenter_z,
+                    "tilt_x": e.tilt_x,
+                    "tilt_y": e.tilt_y,
+                    "tilt_z": e.tilt_z,
                 }
                 for e in self.elements
             ],
@@ -328,6 +449,8 @@ class OpticalSystem:
         system.id = data.get("id", system.id)
         system.created_at = data.get("created_at", system.created_at)
         system.modified_at = data.get("modified_at", system.modified_at)
+        system.aperture_stop_gap = data.get("aperture_stop_gap")
+        system.aperture_stop_diameter = data.get("aperture_stop_diameter")
 
         # Clear default tree/flat state to avoid duplication.
         system.elements = []
@@ -347,7 +470,15 @@ class OpticalSystem:
             if i > 0 and i - 1 < len(gaps_data):
                 gap_before = gaps_data[i - 1].get("thickness", 0.0)
 
-            system.add_lens(lens, air_gap_before=gap_before)
+            system.add_lens(
+                lens,
+                air_gap_before=gap_before,
+                decenter_y=float(elem_data.get("decenter_y", 0.0) or 0.0),
+                decenter_z=float(elem_data.get("decenter_z", 0.0) or 0.0),
+                tilt_x=float(elem_data.get("tilt_x", 0.0) or 0.0),
+                tilt_y=float(elem_data.get("tilt_y", 0.0) or 0.0),
+                tilt_z=float(elem_data.get("tilt_z", 0.0) or 0.0),
+            )
 
         return system
 

@@ -114,3 +114,18 @@ Reference example throughout: Nikon Series E 50mm f/1.8
 7. Full-system Zemax export and a Zemax importer.
 
 Each item above is tracked as a prioritized todo in the current session.
+
+## Status log
+
+- Item 1 DONE (see above).
+- Item 2 DONE: `OpticalSystem.aperture_stop_gap/diameter` with
+  `set/clear/get_aperture_stop()` (stale indices read as unset),
+  per-element `decenter_y/z` + `tilt_x/y/z` synced between the tree nodes
+  and the flat records (`set_element_alignment`, `add_lens` params,
+  `_update_positions` preserves lateral offsets), DB schema v4 with
+  chained v1→v2→v3→v4 migration, assembly-tab stop editor (gap combo,
+  diameter, set/clear) plus per-element alignment editor, ISO STOP plane
+  marker, and the Series E seed carrying the L3–L4a stop (gap 2, Ø20 mm,
+  backfilled onto pre-existing seed assemblies). Ray tracers still trace
+  centered systems — physically stopping rays at decentered elements and
+  the stop diameter is follow-up work.

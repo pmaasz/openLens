@@ -212,7 +212,7 @@ class TestClearAperturePersistence(unittest.TestCase):
             db = DatabaseManager(path)
             conn = sqlite3.connect(path)
             try:
-                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 3)
+                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 4)
             finally:
                 conn.close()
             rows = {r["id"]: r for r in db.load_all()}

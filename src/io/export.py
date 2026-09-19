@@ -44,6 +44,15 @@ class ISO10110Generator:
             f'<text x="20" y="30" class="title">ISO 10110 Drawing: {self.system.name}</text>',
             f'<text x="20" y="50" class="text">Date: {datetime.now().strftime("%Y-%m-%d")}</text>',
         ]
+        stop_getter = getattr(self.system, "get_aperture_stop", None)
+        stop = stop_getter() if callable(stop_getter) else None
+        if stop is not None:
+            stop_dia = stop.get("diameter")
+            stop_txt = (
+                f"Aperture stop: gap {stop['gap_index']}"
+                + (f", Ø{stop_dia:.2f}mm" if stop_dia else "")
+            )
+            lines.append(f'<text x="20" y="68" class="text">{stop_txt}</text>')
 
         # Optical Axis
         lines.append(
@@ -63,6 +72,21 @@ class ISO10110Generator:
             start_x = center_x - (total_length * scale) / 2
         else:
             start_x = center_x
+
+        # Aperture stop marker: vertical line at the stop plane.
+        if stop is not None and elements:
+            max_diam = max(e.lens.diameter for e in elements)
+            stop_x = start_x + stop["position"] * scale
+            stop_h = max_diam / 2 * scale + 10
+            lines.append(
+                f'<line x1="{stop_x:.2f}" y1="{center_y - stop_h:.2f}"'
+                f' x2="{stop_x:.2f}" y2="{center_y + stop_h:.2f}"'
+                f' stroke="black" stroke-width="1.5"/>'
+            )
+            lines.append(
+                f'<text x="{stop_x:.2f}" y="{center_y - stop_h - 6:.2f}"'
+                f' class="text" text-anchor="middle">STOP</text>'
+            )
 
         for i, elem in enumerate(elements):
             lens = elem.lens

@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QGroupBox,
     QFormLayout,
+    QComboBox,
     QDoubleSpinBox,
     QPushButton,
     QListWidget,
@@ -85,6 +86,56 @@ class AssemblyTab(BaseTab):
         sys_layout.addLayout(btn_row)
 
         left_layout.addWidget(sys_group)
+
+        # Aperture stop: which air gap holds the stop, and its diameter.
+        # 0 diameter = unspecified (position only).
+        stop_group = QGroupBox("Aperture Stop")
+        stop_layout = QFormLayout(stop_group)
+        self._stop_gap_combo = QComboBox()
+        stop_layout.addRow("Gap:", self._stop_gap_combo)
+        self._stop_dia_input = QDoubleSpinBox()
+        self._stop_dia_input.setRange(0, 500)
+        self._stop_dia_input.setDecimals(3)
+        self._stop_dia_input.setSingleStep(0.1)
+        self._stop_dia_input.setSuffix(" mm")
+        stop_layout.addRow("Diameter (0 = n/a):", self._stop_dia_input)
+        stop_btn_row = QHBoxLayout()
+        stop_set_btn = QPushButton("Set")
+        stop_set_btn.clicked.connect(self._on_stop_set_clicked)
+        stop_clear_btn = QPushButton("Clear")
+        stop_clear_btn.clicked.connect(self._on_stop_clear_clicked)
+        stop_btn_row.addWidget(stop_set_btn)
+        stop_btn_row.addWidget(stop_clear_btn)
+        stop_layout.addRow(stop_btn_row)
+        left_layout.addWidget(stop_group)
+
+        # Element alignment: decenter/tilt of the selected element.
+        self._align_group = QGroupBox("Element Alignment")
+        self._align_group.setEnabled(False)
+        align_layout = QFormLayout(self._align_group)
+        self._decenter_y_input = QDoubleSpinBox()
+        self._decenter_y_input.setRange(-10, 10)
+        self._decenter_y_input.setDecimals(3)
+        self._decenter_y_input.setSuffix(" mm")
+        align_layout.addRow("Decenter Y:", self._decenter_y_input)
+        self._decenter_z_input = QDoubleSpinBox()
+        self._decenter_z_input.setRange(-10, 10)
+        self._decenter_z_input.setDecimals(3)
+        self._decenter_z_input.setSuffix(" mm")
+        align_layout.addRow("Decenter Z:", self._decenter_z_input)
+        self._tilt_inputs = []
+        for axis in ("X", "Y", "Z"):
+            spin = QDoubleSpinBox()
+            spin.setRange(-5, 5)
+            spin.setDecimals(3)
+            spin.setSuffix(" deg")
+            align_layout.addRow(f"Tilt {axis}:", spin)
+            self._tilt_inputs.append(spin)
+        align_apply_btn = QPushButton("Apply to selected element")
+        align_apply_btn.clicked.connect(self._on_align_apply_clicked)
+        align_layout.addRow(align_apply_btn)
+        left_layout.addWidget(self._align_group)
+
         layout.addWidget(left_panel, 1)
 
         # Right: 2D visualization
@@ -116,6 +167,8 @@ class AssemblyTab(BaseTab):
     def _update_system_list(self) -> None:
         """Update the system list widget from the optical system model."""
         self._system_list.clear()
+        stop = self._optical_system.get_aperture_stop()
+        stop_gap = stop["gap_index"] if stop is not None else None
         for i, element in enumerate(self._optical_system.elements):
             # Air gap before element i is at index i-1
             gap_str = ""
@@ -123,9 +176,84 @@ class AssemblyTab(BaseTab):
                 gap = self._optical_system.air_gaps[i - 1]
                 gap_value = gap.thickness if isinstance(gap, AirGap) else gap
                 gap_str = f" (Gap: {gap_value:.3f}mm)"
+                if stop_gap is not None and i - 1 == stop_gap:
+                    dia = stop.get("diameter")
+                    gap_str += f" STOP{f' Ø{dia:.2f}mm' if dia else ''}"
+            align_str = ""
+            if any(
+                abs(getattr(element, attr, 0.0) or 0.0) > 1e-12
+                for attr in ("decenter_y", "decenter_z", "tilt_x", "tilt_y", "tilt_z")
+            ):
+                align_str = " [aligned≠0]"
 
-            item = QListWidgetItem(f"{i+1}: {element.lens.name}{gap_str}")
+            item = QListWidgetItem(f"{i+1}: {element.lens.name}{gap_str}{align_str}")
             self._system_list.addItem(item)
+        self._refresh_stop_ui()
+
+    def _refresh_stop_ui(self) -> None:
+        """Rebuild the stop gap combo and reflect the current stop."""
+        combo = self._stop_gap_combo
+        combo.blockSignals(True)
+        combo.clear()
+        gaps = self._optical_system.air_gaps
+        if not gaps:
+            combo.addItem("(no air gaps)", -1)
+            combo.setEnabled(False)
+        else:
+            combo.setEnabled(True)
+            for g in range(len(gaps)):
+                combo.addItem(f"Gap {g} (before element {g + 2})", g)
+        stop = self._optical_system.get_aperture_stop()
+        if stop is not None:
+            idx = combo.findData(stop["gap_index"])
+            combo.setCurrentIndex(idx if idx >= 0 else 0)
+            dia = stop.get("diameter")
+            self._stop_dia_input.setValue(dia if dia else 0.0)
+        else:
+            combo.setCurrentIndex(0)
+            self._stop_dia_input.setValue(0.0)
+        combo.blockSignals(False)
+
+    def _on_stop_set_clicked(self) -> None:
+        """Place the aperture stop in the selected gap."""
+        gap_index = self._stop_gap_combo.currentData()
+        if gap_index is None or gap_index < 0:
+            return
+        diameter = self._stop_dia_input.value()
+        try:
+            self._optical_system.set_aperture_stop(
+                int(gap_index), diameter if diameter > 0 else None
+            )
+        except ValueError:
+            return
+        self._update_system_list()
+        self._assembly_viz.update_system(self._optical_system)
+        self._on_assembly_changed()
+
+    def _on_stop_clear_clicked(self) -> None:
+        """Remove the aperture stop definition."""
+        self._optical_system.clear_aperture_stop()
+        self._update_system_list()
+        self._assembly_viz.update_system(self._optical_system)
+        self._on_assembly_changed()
+
+    def _on_align_apply_clicked(self) -> None:
+        """Apply decenter/tilt values to the selected element."""
+        current = self._system_list.currentRow()
+        if current < 0 or current >= len(self._optical_system.elements):
+            return
+        tilts = [spin.value() for spin in self._tilt_inputs]
+        if self._optical_system.set_element_alignment(
+            current,
+            decenter_y=self._decenter_y_input.value(),
+            decenter_z=self._decenter_z_input.value(),
+            tilt_x=tilts[0],
+            tilt_y=tilts[1],
+            tilt_z=tilts[2],
+        ):
+            self._update_system_list()
+            self._assembly_viz.update_system(self._optical_system)
+            self._on_assembly_changed()
 
     def _on_add_lens_to_system(self) -> None:
         """Add selected lens to optical system."""
@@ -199,6 +327,26 @@ class AssemblyTab(BaseTab):
                 self._air_gap_group.setEnabled(False)
         else:
             self._air_gap_group.setEnabled(False)
+
+        # Alignment editor follows the selected element (any row, incl. 0).
+        elements = self._optical_system.elements
+        if 0 <= index < len(elements):
+            self._align_group.setEnabled(True)
+            element = elements[index]
+            self._decenter_y_input.blockSignals(True)
+            self._decenter_z_input.blockSignals(True)
+            self._decenter_y_input.setValue(element.decenter_y or 0.0)
+            self._decenter_z_input.setValue(element.decenter_z or 0.0)
+            self._decenter_y_input.blockSignals(False)
+            self._decenter_z_input.blockSignals(False)
+            for spin, attr in zip(
+                self._tilt_inputs, ("tilt_x", "tilt_y", "tilt_z")
+            ):
+                spin.blockSignals(True)
+                spin.setValue(getattr(element, attr, 0.0) or 0.0)
+                spin.blockSignals(False)
+        else:
+            self._align_group.setEnabled(False)
 
     def _on_apply_gap_clicked(self) -> None:
         """Apply the current air gap value to the system."""

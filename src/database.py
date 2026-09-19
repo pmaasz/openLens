@@ -96,18 +96,21 @@ class DatabaseManager:
                     )
                 """)
 
-                # Assemblies table
+                # Assemblies table (v4: aperture stop lives here)
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS assemblies (
                         id TEXT PRIMARY KEY,
                         name TEXT NOT NULL,
                         created_at TEXT,
                         modified_at TEXT,
+                        aperture_stop_gap INTEGER,
+                        aperture_stop_diameter REAL,
                         metadata TEXT
                     )
                 """)
 
-                # Assembly Elements table (junction table)
+                # Assembly Elements table (junction table; v4 carries the
+                # per-element decenter/tilt so the tree's alignment survives)
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS assembly_elements (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -115,6 +118,11 @@ class DatabaseManager:
                         lens_id TEXT NOT NULL,
                         position REAL NOT NULL,
                         order_index INTEGER NOT NULL,
+                        decenter_y REAL NOT NULL DEFAULT 0.0,
+                        decenter_z REAL NOT NULL DEFAULT 0.0,
+                        tilt_x REAL NOT NULL DEFAULT 0.0,
+                        tilt_y REAL NOT NULL DEFAULT 0.0,
+                        tilt_z REAL NOT NULL DEFAULT 0.0,
                         FOREIGN KEY (assembly_id) REFERENCES assemblies (id) ON DELETE CASCADE,
                         FOREIGN KEY (lens_id) REFERENCES lenses (id)
                     )
@@ -132,7 +140,7 @@ class DatabaseManager:
                     )
                 """)
 
-                cursor.execute("PRAGMA user_version = 3")
+                cursor.execute("PRAGMA user_version = 4")
             elif version == 1:
                 # v1 -> v2: promote parabolic surfaces from the metadata
                 # blob to explicit columns. Existing rows keep DEFAULT 0
@@ -165,6 +173,33 @@ class DatabaseManager:
                     "ALTER TABLE lenses ADD COLUMN bevel_2 REAL NOT NULL DEFAULT 0.0"
                 )
                 cursor.execute("PRAGMA user_version = 3")
+
+            # v3 -> v4: aperture stop on assemblies, decenter/tilt on
+            # assembly elements.
+            cursor.execute("PRAGMA user_version")
+            if cursor.fetchone()[0] == 3:
+                cursor.execute("ALTER TABLE assemblies ADD COLUMN aperture_stop_gap INTEGER")
+                cursor.execute(
+                    "ALTER TABLE assemblies ADD COLUMN aperture_stop_diameter REAL"
+                )
+                cursor.execute(
+                    "ALTER TABLE assembly_elements "
+                    "ADD COLUMN decenter_y REAL NOT NULL DEFAULT 0.0"
+                )
+                cursor.execute(
+                    "ALTER TABLE assembly_elements "
+                    "ADD COLUMN decenter_z REAL NOT NULL DEFAULT 0.0"
+                )
+                cursor.execute(
+                    "ALTER TABLE assembly_elements ADD COLUMN tilt_x REAL NOT NULL DEFAULT 0.0"
+                )
+                cursor.execute(
+                    "ALTER TABLE assembly_elements ADD COLUMN tilt_y REAL NOT NULL DEFAULT 0.0"
+                )
+                cursor.execute(
+                    "ALTER TABLE assembly_elements ADD COLUMN tilt_z REAL NOT NULL DEFAULT 0.0"
+                )
+                cursor.execute("PRAGMA user_version = 4")
 
     def save_lens(self, lens_dict: Dict[str, Any]):
         """Save or update a single lens."""
@@ -319,14 +354,18 @@ class DatabaseManager:
                 # 1. Save assembly metadata
                 cursor.execute(
                     """
-                    INSERT OR REPLACE INTO assemblies (id, name, created_at, modified_at, metadata)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT OR REPLACE INTO assemblies
+                    (id, name, created_at, modified_at,
+                     aperture_stop_gap, aperture_stop_diameter, metadata)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
                         assembly_id,
                         assembly_dict.get("name"),
                         assembly_dict.get("created_at"),
                         assembly_dict.get("modified_at"),
+                        assembly_dict.get("aperture_stop_gap"),
+                        assembly_dict.get("aperture_stop_diameter"),
                         json.dumps(
                             {
                                 k: v
@@ -337,6 +376,8 @@ class DatabaseManager:
                                     "name",
                                     "created_at",
                                     "modified_at",
+                                    "aperture_stop_gap",
+                                    "aperture_stop_diameter",
                                     "elements",
                                     "air_gaps",
                                 ]
@@ -362,10 +403,22 @@ class DatabaseManager:
 
                     cursor.execute(
                         """
-                        INSERT INTO assembly_elements (assembly_id, lens_id, position, order_index)
-                        VALUES (?, ?, ?, ?)
+                        INSERT INTO assembly_elements
+                        (assembly_id, lens_id, position, order_index,
+                         decenter_y, decenter_z, tilt_x, tilt_y, tilt_z)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                        (assembly_id, lens_data.get("id"), elem.get("position"), i),
+                        (
+                            assembly_id,
+                            lens_data.get("id"),
+                            elem.get("position"),
+                            i,
+                            float(elem.get("decenter_y", 0.0) or 0.0),
+                            float(elem.get("decenter_z", 0.0) or 0.0),
+                            float(elem.get("tilt_x", 0.0) or 0.0),
+                            float(elem.get("tilt_y", 0.0) or 0.0),
+                            float(elem.get("tilt_z", 0.0) or 0.0),
+                        ),
                     )
 
                 # 4. Save air gaps
@@ -445,9 +498,14 @@ class DatabaseManager:
                              l.bevel_1 AS lens_bevel_1,
                              l.bevel_2 AS lens_bevel_2,
                              l.metadata AS lens_metadata,
-                           ae.lens_id,
-                           ae.position
-                    FROM assembly_elements ae
+                            ae.lens_id,
+                            ae.position,
+                            ae.decenter_y,
+                            ae.decenter_z,
+                            ae.tilt_x,
+                            ae.tilt_y,
+                            ae.tilt_z
+                     FROM assembly_elements ae
                     JOIN lenses l ON ae.lens_id = l.id
                     WHERE ae.assembly_id = ?
                     ORDER BY ae.order_index
@@ -492,6 +550,11 @@ class DatabaseManager:
                             "lens": lens_data,
                             "lens_id": lens_id,
                             "position": e_dict["position"],
+                            "decenter_y": e_dict["decenter_y"],
+                            "decenter_z": e_dict["decenter_z"],
+                            "tilt_x": e_dict["tilt_x"],
+                            "tilt_y": e_dict["tilt_y"],
+                            "tilt_z": e_dict["tilt_z"],
                         }
                     )
 
@@ -543,6 +606,29 @@ class DatabaseManager:
                 (lens_id,),
             )
             return [(row["id"], row["name"]) for row in cursor.fetchall()]
+
+    def update_assembly_stop(
+        self, assembly_id: str, gap: object, diameter: object
+    ) -> None:
+        """Set just the aperture-stop columns of one assembly.
+
+        Additive helper for seeding: fills a missing stop without touching
+        elements, gaps, or user edits.
+        """
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+            try:
+                cursor.execute(
+                    "UPDATE assemblies SET aperture_stop_gap = ?,"
+                    " aperture_stop_diameter = ? WHERE id = ?",
+                    (gap, diameter, assembly_id),
+                )
+                cursor.execute("COMMIT")
+            except Exception as e:
+                cursor.execute("ROLLBACK")
+                logger.error("Failed to update stop for %s: %s", assembly_id, e)
+                raise
 
     def delete_item(self, item_id: str):
         """Delete a lens or assembly by ID (atomic).

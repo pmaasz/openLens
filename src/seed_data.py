@@ -152,13 +152,17 @@ def build_nikon_series_e_system() -> OpticalSystem:
 
     Returns:
         OpticalSystem named for the lens, with patent air gaps between
-        elements (L4a-L4b cemented with a zero gap).
+        elements (L4a-L4b cemented with a zero gap) and the aperture stop
+        in the L3-L4a gap (index 2). The stop diameter (20 mm) passes the
+        paraxial marginal ray (height ~10.7 mm at the stop plane for a
+        full 28 mm entrance beam) with a small margin.
     """
     system = OpticalSystem(name="Nikon Series E 50mm f/1.8 (US4234242 Ex.2)")
     system.id = NIKON_SERIES_E_ASSEMBLY_ID
     for i, lens in enumerate(build_nikon_series_e_lenses()):
         gap_before = 0.0 if i == 0 else NIKON_SERIES_E_AIR_GAPS[i - 1]
         system.add_lens(lens, air_gap_before=gap_before)
+    system.set_aperture_stop(2, 20.0)
     return system
 
 
@@ -223,9 +227,6 @@ def ensure_nikon_series_e_example(db_or_path: Union[str, Any]) -> bool:
         db = db_or_path
 
     try:
-        if is_nikon_series_e_seeded(db):
-            return False
-
         existing = db.all_ids()
         have_lenses = set(existing.get("lenses", []))
         have_assemblies = set(existing.get("assemblies", []))
@@ -259,6 +260,8 @@ def ensure_nikon_series_e_example(db_or_path: Union[str, Any]) -> bool:
             assembly_dict = {
                 "id": NIKON_SERIES_E_ASSEMBLY_ID,
                 "name": "Nikon Series E 50mm f/1.8 (US4234242 Ex.2)",
+                "aperture_stop_gap": 2,
+                "aperture_stop_diameter": 20.0,
                 "elements": [
                     {"lens": lens_dict, "position": positions[i]}
                     for i, lens_dict in enumerate(lens_list)
@@ -270,6 +273,20 @@ def ensure_nikon_series_e_example(db_or_path: Union[str, Any]) -> bool:
             }
             db.save_assembly(assembly_dict)
             inserted = True
+        else:
+            # Backfill a missing stop on a pre-existing assembly without
+            # touching its elements.
+            current_asm = next(
+                (
+                    r
+                    for r in db.load_all()
+                    if r.get("id") == NIKON_SERIES_E_ASSEMBLY_ID
+                ),
+                None,
+            )
+            if current_asm is not None and current_asm.get("aperture_stop_gap") is None:
+                db.update_assembly_stop(NIKON_SERIES_E_ASSEMBLY_ID, 2, 20.0)
+                inserted = True
 
         if inserted:
             logger.info("Seeded Nikon Series E 50mm f/1.8 example data")
