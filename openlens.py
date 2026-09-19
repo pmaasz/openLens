@@ -733,9 +733,12 @@ Ctrl+6         Tolerancing
         try:
             
             system = self._ensure_system(target)
-                
+
+            from src.mechanical_designer import MechanicalDesigner
+
+            housing = MechanicalDesigner(system).suggest_housing()
             exporter = STEPExporter(system)
-            exporter.export(filepath)
+            exporter.export(filepath, housing=housing)
             self._update_status(f"Exported to STEP: {os.path.basename(filepath)}")
         except ImportError:
             logger.error("STEP export failed with ImportError: %s", e)

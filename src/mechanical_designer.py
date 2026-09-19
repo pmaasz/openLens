@@ -235,6 +235,76 @@ class MechanicalDesigner:
 
         return total
 
+    def suggest_housing(
+        self,
+        wall: float = 2.0,
+        clearance: float = 0.25,
+        flange: float = 2.0,
+        material: str = "aluminum",
+        mount: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Derive STEP-exportable housing parts from the optical system.
+
+        Returns part dicts (``name``/``z0``/``z1``/``r_inner``/``r_outer``)
+        for one spacer per positive air gap plus a barrel spanning the
+        stack. Spacer bores clear the smaller neighbor clear aperture;
+        the barrel bore clears the largest element OD. A ``mount`` string
+        (e.g. ``"M42x1.0"``) is recorded in the barrel name as a thread
+        specification — threads are specified, not modeled, without a CAD
+        kernel.
+        """
+        elements = list(getattr(self.optical_system, "elements", []) or [])
+        if not elements:
+            return []
+        gaps = list(getattr(self.optical_system, "air_gaps", []) or [])
+
+        def _ca(lens) -> float:
+            values = [float(lens.diameter)]
+            for attr in ("get_clear_aperture_1", "get_clear_aperture_2"):
+                getter = getattr(lens, attr, None)
+                if callable(getter):
+                    try:
+                        values.append(float(getter()))
+                    except (TypeError, ValueError):
+                        pass
+            return min(values)
+
+        ods = [float(e.lens.diameter) for e in elements]
+        bore = max(ods) + clearance
+        parts: List[Dict[str, Any]] = []
+        for i, gap in enumerate(gaps):
+            thickness = float(getattr(gap, "thickness", gap) or 0.0)
+            if thickness <= 0 or i + 1 >= len(elements):
+                continue
+            z0 = float(gap.position)
+            neighbors = [elements[i].lens, elements[i + 1].lens]
+            inner = min(_ca(lens) for lens in neighbors)
+            parts.append(
+                {
+                    "name": f"Spacer {i + 1} (gap {i}, {material})",
+                    "z0": z0,
+                    "z1": z0 + thickness,
+                    "r_inner": inner / 2,
+                    "r_outer": bore / 2,
+                    "material": material,
+                }
+            )
+        total = float(self.optical_system.get_total_length())
+        barrel_name = f"Barrel ({material}"
+        barrel_name += f", thread {mount}" if mount else ""
+        barrel_name += ")"
+        parts.append(
+            {
+                "name": barrel_name,
+                "z0": -flange,
+                "z1": total + flange,
+                "r_inner": bore / 2,
+                "r_outer": bore / 2 + wall,
+                "material": material,
+            }
+        )
+        return parts
+
     def calculate_total_weight(self) -> float:
         """Calculate total weight of mechanical assembly in grams."""
         total = 0.0
@@ -327,7 +397,9 @@ class MechanicalDesigner:
             step += 1
 
             if i < len(self.spacers):
-                instructions.append(f"{step}. Add Spacer {i+1} ({self.spacers[i].thickness:.2f}mm)")
+                instructions.append(
+                    f"{step}. Add Spacer {i+1} ({self.spacers[i].thickness:.2f}mm)"
+                )
                 instructions.append(f"   - Verify spacer thickness with calipers")
                 instructions.append(f"   - Thread onto previous cell")
                 instructions.append("")

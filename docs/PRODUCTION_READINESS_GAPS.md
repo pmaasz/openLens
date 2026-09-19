@@ -157,3 +157,11 @@ Each item above is tracked as a prioritized todo in the current session.
   block populated from the model (4/ centering from worst element tilt,
   6/ per-surface coating labels; figure/bubbles/laser specs honestly
   marked TBD/— where the model holds no data).
+- Item 5 DONE (no CAD kernel in this environment, so hand-written STEP):
+  annular tube solids (spacer/barrel/retainer with inner-hole ring-face
+  bounds), `MechanicalDesigner.suggest_housing` deriving spacer slabs from
+  air gaps plus a barrel with thread spec recorded in its name (threads
+  specified, not modeled), GUI STEP export including suggested housing,
+  and a minimal STEP reader (`src/io/step_reader.py`) proving import-back
+  of our own files (solid names, counts, axial slabs). Kernel-based
+  validation (e.g. FreeCAD import) and true helical threads remain manual.
