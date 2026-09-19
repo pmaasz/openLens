@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QSpinBox,
     QComboBox,
+    QCheckBox,
     QTextEdit,
     QPushButton,
     QScrollArea,
@@ -52,6 +53,8 @@ class MonteCarloWorker(QThread):
         tol_operands: List[ToleranceOperand],
         num_trials: int,
         criterion: float,
+        refocus: bool = False,
+        focus_range: float = 5.0,
     ) -> None:
         """Initialize the worker inputs.
 
@@ -60,23 +63,34 @@ class MonteCarloWorker(QThread):
             tol_operands: Tolerance operands defining the perturbations.
             num_trials: Number of Monte Carlo trials to run.
             criterion: RMS spot radius limit used as the pass/fail criterion.
+            refocus: Re-optimize focus every trial (focus compensator).
+            focus_range: Focus adjustment range (±mm) when refocusing.
         """
         super().__init__()
         self.current_lens = current_lens
         self.tol_operands = tol_operands
         self.num_trials = num_trials
         self.criterion = criterion
+        self.refocus = refocus
+        self.focus_range = focus_range
 
     def run(self) -> None:
         """Run the Monte Carlo analysis in this thread and emit ``finished``
         with a report and raw results, or ``failed`` on error."""
         from ...optical_system import OpticalSystem
+        from ...tolerancing import ToleranceOperand as _Operand
+        from ...tolerancing import ToleranceType as _Type
 
         try:
             system = OpticalSystem(name="Tolerancing")
             system.add_lens(copy.deepcopy(self.current_lens))
 
-            analyzer = MonteCarloAnalyzer(system, self.tol_operands)
+            compensators = []
+            if self.refocus:
+                compensators.append(
+                    _Operand(0, _Type.FOCUS, -self.focus_range, self.focus_range)
+                )
+            analyzer = MonteCarloAnalyzer(system, self.tol_operands, compensators=compensators)
 
             results = analyzer.run(
                 num_trials=self.num_trials,
@@ -197,11 +211,18 @@ class TolerancingTab(BaseTab):
         clear_btn.clicked.connect(self._on_clear_tolerances)
         default_btn = QPushButton("Default Set")
         default_btn.clicked.connect(self._on_add_default_tolerances)
+        self._grade_combo = QComboBox()
+        self._grade_combo.addItems(["Commercial", "Precision", "High Precision"])
+        self._grade_combo.setCurrentText("Precision")
+        grade_btn = QPushButton("Load Grade")
+        grade_btn.clicked.connect(self._on_load_grade)
 
         toolbar_layout.addWidget(add_btn)
         toolbar_layout.addWidget(remove_btn)
         toolbar_layout.addWidget(clear_btn)
         toolbar_layout.addWidget(default_btn)
+        toolbar_layout.addWidget(self._grade_combo)
+        toolbar_layout.addWidget(grade_btn)
         left_layout.addWidget(toolbar)
 
         # Operands table
@@ -239,6 +260,16 @@ class TolerancingTab(BaseTab):
         self._tol_criterion.setValue(0.05)
         self._tol_criterion.setSuffix(" mm")
         mc_layout.addRow("Criterion Limit (RMS):", self._tol_criterion)
+
+        self._tol_refocus_check = QCheckBox("Refocus each trial")
+        self._tol_refocus_check.setChecked(True)
+        mc_layout.addRow("Focus Compensator:", self._tol_refocus_check)
+
+        self._tol_focus_range = QDoubleSpinBox()
+        self._tol_focus_range.setRange(0.1, 50.0)
+        self._tol_focus_range.setValue(5.0)
+        self._tol_focus_range.setSuffix(" mm")
+        mc_layout.addRow("Focus Range (±):", self._tol_focus_range)
 
         right_layout.addWidget(mc_group)
 
@@ -387,6 +418,26 @@ class TolerancingTab(BaseTab):
         self._parent._tol_operands.extend(new_operands)
         self._update_tolerance_operands_display()
 
+    def _on_load_grade(self) -> None:
+        """Build a full shop-grade tolerance set for the current target."""
+        from ...tolerancing import tolerances_for_system
+        from ...optical_system import OpticalSystem
+
+        if not self._parent or not self._parent._current_lens:
+            return
+        target = self._parent._current_lens
+        if hasattr(target, "elements"):
+            system = target
+        else:
+            system = OpticalSystem(name="Tolerancing")
+            system.add_lens(copy.deepcopy(target))
+        try:
+            new_operands = tolerances_for_system(system, self._grade_combo.currentText())
+        except ValueError:
+            return
+        self._parent._tol_operands.extend(new_operands)
+        self._update_tolerance_operands_display()
+
     def _on_remove_tolerance(self) -> None:
         """Remove selected tolerance operands."""
         if not self._parent:
@@ -495,6 +546,8 @@ class TolerancingTab(BaseTab):
             self._parent._tol_operands,
             self._tol_num_trials.value(),
             self._tol_criterion.value(),
+            refocus=self._tol_refocus_check.isChecked(),
+            focus_range=self._tol_focus_range.value(),
         )
         self._mc_worker.finished.connect(self._on_analysis_finished)
         self._mc_worker.failed.connect(self._on_analysis_failed)

@@ -165,3 +165,19 @@ Each item above is tracked as a prioritized todo in the current session.
   and a minimal STEP reader (`src/io/step_reader.py`) proving import-back
   of our own files (solid names, counts, axial slabs). Kernel-based
   validation (e.g. FreeCAD import) and true helical threads remain manual.
+- Item 6 DONE: shop tolerance grades (Commercial/Precision/High Precision)
+  with `tolerances_for_system` builder; new operands DECENTER_Z, TILT_Y,
+  AIR_GAP, axial DECENTER_X (as gap-before error), WEDGE (arcmin,
+  thin-element half-tilt approximation) and IRREGULARITY (fringes at
+  632.8 nm as power-equivalent radius change at the semi-aperture);
+  previously ignored DECENTER_X/TILT_Y/AIR_GAP now apply (the old TODO is
+  gone); unified `_apply_value` replaces the duplicated application code
+  and state capture/restore now includes air gaps; Monte Carlo supports
+  compensators (FOCUS via image-plane search without system mutation,
+  mechanical via coordinate descent) with per-trial settings recorded;
+  GUI gained grade loading plus a refocus-each-trial option.
+- Item 7 DONE: full-system `.zmx` export in the existing simplified
+  dialect (sequential surfaces with CA DIAMs, GLAS/COAT lines, explicit
+  STOP surface splitting its gap) plus `ZemaxSystemImporter` rebuilding
+  elements, gaps, CAs and stops (verified exact EFL round-trip; COAT
+  labels carry no stack data and are not restored — documented).
