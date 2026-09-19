@@ -102,10 +102,22 @@ class ISO10110Generator:
             )
 
         # Draw ISO Table Block
-        table_x = width - 430
+        table_x = width - 490
         table_y = height - 150  # Start near bottom right
         # We don't need to pass height as it's calculated dynamically
-        lines.append(self._generate_iso_table(table_x, table_y, 410, 0))
+        lines.append(self._generate_iso_table(table_x, table_y, 470, 0))
+
+        # Title block (bottom-left) with drawing metadata.
+        lines.append(self._generate_title_block(20, height - 170, 300, scale))
+
+        # ISO 10110 notes block (left, below the header).
+        lines.extend(self._generate_iso_notes(20, 100))
+
+        # Dimension lines: total track below the profile, max OD at left.
+        if elements:
+            lines.extend(
+                self._generate_dimensions(width, height, center_x, center_y, start_x, scale)
+            )
 
         lines.append("</svg>")
         return "\n".join(lines)
@@ -128,6 +140,116 @@ class ISO10110Generator:
         scale_y = avail_h / (max_diam if max_diam > 0 else 10)
 
         return min(scale_x, scale_y) * 0.8  # 80% fit
+
+    def _generate_title_block(self, x: float, y: float, w: float, scale: float) -> str:
+        """Title block with drawing metadata (bottom-left)."""
+        system = self.system
+        efl = system.get_system_focal_length() if hasattr(system, "get_system_focal_length") else None
+        bfl = (
+            system.calculate_back_focal_length()
+            if hasattr(system, "calculate_back_focal_length")
+            else None
+        )
+        try:
+            efl_txt = f"{efl:.2f} mm" if efl is not None else "—"
+        except (TypeError, ValueError):
+            efl_txt = "—"
+        try:
+            bfl_txt = f"{bfl:.2f} mm" if bfl is not None else "—"
+        except (TypeError, ValueError):
+            bfl_txt = "—"
+        materials = sorted({e.lens.material for e in system.elements}) or ["—"]
+        rows = [
+            ("Title", system.name),
+            ("Dwg No", f"{system.id[:8].upper()}-A"),
+            ("Material", ", ".join(materials)),
+            ("Units", "mm"),
+            ("Scale", f"{scale:.2f} px/mm"),
+            ("EFL / BFL", f"{efl_txt} / {bfl_txt}"),
+            ("Surfaces", f"{2 * len(system.elements)}"),
+            ("Date / Rev", f"{datetime.now().strftime('%Y-%m-%d')} / A"),
+        ]
+        row_h = 18
+        total_h = 24 + len(rows) * row_h + 6
+        parts = [
+            f'<rect x="{x}" y="{y}" width="{w}" height="{total_h}" fill="white" stroke="black" stroke-width="1.5"/>',
+            f'<text x="{x + 8}" y="{y + 17}" class="text" font-weight="bold">TITLE BLOCK</text>',
+        ]
+        for i, (key, value) in enumerate(rows):
+            ry = y + 24 + i * row_h
+            parts.append(
+                f'<line x1="{x}" y1="{ry + row_h - 4}" x2="{x + w}" y2="{ry + row_h - 4}"'
+                f' stroke="black" stroke-width="0.5"/>'
+            )
+            parts.append(f'<text x="{x + 8}" y="{ry + 12}" class="text">{key}:</text>')
+            parts.append(f'<text x="{x + 110}" y="{ry + 12}" class="text">{value}</text>')
+        return "\n".join(parts)
+
+    def _generate_iso_notes(self, x: float, y: float) -> list:
+        """ISO 10110 numbered notes, populated from model data where known."""
+        elements = self.system.elements
+        max_tilt = 0.0
+        for elem in elements:
+            for attr in ("tilt_x", "tilt_y"):
+                max_tilt = max(max_tilt, abs(float(getattr(elem, attr, 0.0) or 0.0)))
+        if max_tilt > 0:
+            centering = f"≤ {max_tilt * 60:.1f}' element tilt (max over assembly)"
+        else:
+            centering = "TBD (assembly nominally centered)"
+        coats = []
+        for i, elem in enumerate(elements):
+            c1 = elem.lens.coating_label(1) if hasattr(elem.lens, "coating_label") else "—"
+            c2 = elem.lens.coating_label(2) if hasattr(elem.lens, "coating_label") else "—"
+            coats.append(f"L{i + 1}: {c1}/{c2}")
+        notes = [
+            "0/ General: all dimensions in mm; surfaces numbered front to back.",
+            "1/ Bubbles and inclusions: — (no data).",
+            "2/ Stress birefringence: — (no data).",
+            "3/ Surface form deviation: TBD (no figure data).",
+            f"4/ Centering: {centering}.",
+            "5/ Surface imperfection: TBD (e.g. 5/ 3x0.16).",
+            f"6/ Coating: {'; '.join(coats) if coats else '—'}.",
+            "7/ Laser damage threshold: — (no data).",
+        ]
+        lines = [f'<text x="{x}" y="{y}" class="text" font-weight="bold">ISO 10110 NOTES</text>']
+        for i, note in enumerate(notes):
+            lines.append(f'<text x="{x}" y="{y + 18 + i * 15}" class="text">{note}</text>')
+        return lines
+
+    def _generate_dimensions(
+        self,
+        width: int,
+        height: int,
+        center_x: float,
+        center_y: float,
+        start_x: float,
+        scale: float,
+    ) -> list:
+        """Overall-length and max-diameter dimension lines."""
+        elements = self.system.elements
+        total_length = elements[-1].position + elements[-1].thickness
+        max_diam = max(e.lens.diameter for e in elements)
+        x0 = start_x
+        x1 = start_x + total_length * scale
+        dim_y = center_y + max_diam / 2 * scale + 44
+        y_top = center_y - max_diam / 2 * scale
+        y_bot = center_y + max_diam / 2 * scale
+        dim_x = x0 - 34
+        parts = [
+            # Total track dimension below the profile.
+            f'<line x1="{x0:.2f}" y1="{dim_y:.2f}" x2="{x1:.2f}" y2="{dim_y:.2f}"'
+            f' stroke="black" stroke-width="1"/>',
+            f'<line x1="{x0:.2f}" y1="{dim_y - 5:.2f}" x2="{x0:.2f}" y2="{dim_y + 5:.2f}"'
+            f' stroke="black" stroke-width="1"/>',
+            f'<text x="{(x0 + x1) / 2:.2f}" y="{dim_y + 16:.2f}" class="text"'
+            f' text-anchor="middle">{total_length:.2f} mm</text>',
+            # Max OD dimension left of the profile.
+            f'<line x1="{dim_x:.2f}" y1="{y_top:.2f}" x2="{dim_x:.2f}" y2="{y_bot:.2f}"'
+            f' stroke="black" stroke-width="1"/>',
+            f'<text x="{dim_x - 6:.2f}" y="{center_y:.2f}" class="text"'
+            f' text-anchor="end">Ø{max_diam:.2f}</text>',
+        ]
+        return parts
 
     def _generate_lens_path(self, lens: Lens, x: float, y: float, scale: float) -> str:
         """Generate SVG path for a lens cross-section."""
@@ -165,8 +287,8 @@ class ISO10110Generator:
         )
 
         # Headers
-        headers = ["Surf", "Radius", "Thick", "Mat", "Diam", "CA", "Coat"]
-        col_x = [x + 10, x + 50, x + 110, x + 160, x + 210, x + 260, x + 310]
+        headers = ["Surf", "Radius", "Thick", "Mat", "Diam", "CA", "Coat", "Bev"]
+        col_x = [x + 10, x + 50, x + 110, x + 160, x + 210, x + 260, x + 310, x + 375]
 
         # Draw Header Row
         lines.append(
@@ -202,6 +324,9 @@ class ISO10110Generator:
             lines.append(
                 f'<text x="{col_x[6]}" y="{curr_y}" class="text">{lens.coating_label(1)}</text>'
             )
+            lines.append(
+                f'<text x="{col_x[7]}" y="{curr_y}" class="text">{lens.bevel_1:.2f}</text>'
+            )
             curr_y += row_h
             surf_idx += 1
 
@@ -222,6 +347,9 @@ class ISO10110Generator:
             )
             lines.append(
                 f'<text x="{col_x[6]}" y="{curr_y}" class="text">{lens.coating_label(2)}</text>'
+            )
+            lines.append(
+                f'<text x="{col_x[7]}" y="{curr_y}" class="text">{lens.bevel_2:.2f}</text>'
             )
             curr_y += row_h
             surf_idx += 1

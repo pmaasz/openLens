@@ -150,3 +150,10 @@ Each item above is tracked as a prioritized todo in the current session.
   (normal-incidence estimate; path transmissions stay bare-Fresnel); the
   Series E seed carries its historic single MgF2 coat on air-glass
   surfaces (cemented interface bare).
+- Item 4 DONE: ISO 10110 drawing now has a title block (title, drawing
+  number, materials, units, scale, EFL/BFL, surface count, date/rev),
+  overall-length and max-OD dimension lines, an 8-column surface table
+  (Surf/Radius/Thick/Mat/Diam/CA/Coat/Bev), and a numbered 0/–7/ notes
+  block populated from the model (4/ centering from worst element tilt,
+  6/ per-surface coating labels; figure/bubbles/laser specs honestly
+  marked TBD/— where the model holds no data).
