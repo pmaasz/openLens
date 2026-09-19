@@ -129,3 +129,13 @@ Each item above is tracked as a prioritized todo in the current session.
   backfilled onto pre-existing seed assemblies). Ray tracers still trace
   centered systems — physically stopping rays at decentered elements and
   the stop diameter is follow-up work.
+- Follow-up DONE (physical vignetting in tracers): 2D/3D element tracers
+  clip at per-surface clear apertures; both system tracers vignette rays
+  at the aperture-stop plane (stop point appended, ray terminated;
+  diameter-None stops are position-only and never clip); 2D traces
+  decenter_y/tilt_z elements through their local frame using the tree
+  pivot convention (front vertex), verified to agree with the 3D
+  transform path to 1e-9, with an identity fast path when alignment is
+  zero. Known pre-existing limits (unchanged): exact on-axis rays can
+  terminate at sphere vertices, and the 2D sequential tracer does not
+  complete very fast double-Gauss designs at full aperture.

@@ -106,8 +106,14 @@ class LensRayTracer3D:
             self._inv = None
 
         # Single aperture tolerance shared by every aperture check here
-        # (matches the exact D/2 convention of the 2D tracer).
-        self._aperture_sq = (self.D / 2.0 + 1e-9) ** 2
+        # (matches the exact D/2 convention of the 2D tracer). Per-surface
+        # clear apertures fall back to the mechanical outer diameter.
+        get_ca1 = getattr(self.lens, "get_clear_aperture_1", None)
+        get_ca2 = getattr(self.lens, "get_clear_aperture_2", None)
+        ca1 = (get_ca1() if callable(get_ca1) else self.D) or self.D
+        ca2 = (get_ca2() if callable(get_ca2) else self.D) or self.D
+        self._aperture_sq_front = (ca1 / 2.0 + 1e-9) ** 2
+        self._aperture_sq_back = (ca2 / 2.0 + 1e-9) ** 2
 
     def _to_local_point(self, point: Vector3, vertex: Vector3) -> Vector3:
         """Map a world point into the surface-local frame (vertex at origin)."""
@@ -185,7 +191,9 @@ class LensRayTracer3D:
 
         return ray.origin + ray.direction * t
 
-    def _intersect_paraboloid(self, ray: Ray3D, vertex: Vector3, R: float) -> Optional[Vector3]:
+    def _intersect_paraboloid(
+        self, ray: Ray3D, vertex: Vector3, R: float, surface_type: str = "front"
+    ) -> Optional[Vector3]:
         """Intersect ray with a paraboloid x = (y²+z²)/(2R) + vertex.x.
 
         R is the vertex radius (positive opens +x, negative -x). Vertex is in
@@ -204,6 +212,9 @@ class LensRayTracer3D:
         # Ray: x = ox + t*dx, y = oy + t*dy, z = oz + t*dz
         ox, oy, oz = local_origin.x, local_origin.y, local_origin.z
         dx, dy, dz = local_dir.x, local_dir.y, local_dir.z
+        aperture_sq = (
+            self._aperture_sq_front if surface_type == "front" else self._aperture_sq_back
+        )
         # Equation: ox + t*dx = ( (oy+t*dy)² + (oz+t*dz)² ) / (2R)
         # => (dy²+dz²)/(2R) * t² + (2*oy*dy+2*oz*dz)/(2R) - dx) * t + (oy²+oz²)/(2R) - ox =0
         # Multiply by 2R: (dy²+dz²) t² + (2*oy*dy+2*oz*dz -2R*dx) t + (oy²+oz² -2R*ox)=0
@@ -219,7 +230,7 @@ class LensRayTracer3D:
                 return None
             local_hit = local_origin + local_dir * t
             # Check aperture in local
-            if local_hit.y * local_hit.y + local_hit.z * local_hit.z > self._aperture_sq:
+            if local_hit.y * local_hit.y + local_hit.z * local_hit.z > aperture_sq:
                 return None
             return self.transform.multiply_point(local_hit)
         disc = b * b - 4 * a * c
@@ -236,14 +247,14 @@ class LensRayTracer3D:
         # For paraboloid, the smaller t is the first hit when outside
         t = min(valid)
         local_hit = local_origin + local_dir * t
-        if local_hit.y * local_hit.y + local_hit.z * local_hit.z > self._aperture_sq:
+        if local_hit.y * local_hit.y + local_hit.z * local_hit.z > aperture_sq:
             # Try other if first outside aperture but second inside
             if len(valid) > 1:
                 t_other = max(valid)
                 local_hit_other = local_origin + local_dir * t_other
                 if (
                     local_hit_other.y * local_hit_other.y + local_hit_other.z * local_hit_other.z
-                    <= self._aperture_sq
+                    <= aperture_sq
                 ):
                     return self.transform.multiply_point(local_hit_other)
             return None
@@ -279,7 +290,7 @@ class LensRayTracer3D:
                 intersection = self._intersect_plane(ray, vertex, self.optical_axis)
             else:
                 normal = None  # gradient-based: oriented outward below
-                intersection = self._intersect_paraboloid(ray, vertex, R)
+                intersection = self._intersect_paraboloid(ray, vertex, R, surface_type)
         elif is_flat:
             normal = self.optical_axis
             intersection = self._intersect_plane(ray, vertex, normal)
@@ -300,7 +311,10 @@ class LensRayTracer3D:
         proj = v_to_i.dot(self.optical_axis)
         dist_sq = v_to_i.magnitude_sq() - proj**2
 
-        if dist_sq > self._aperture_sq:
+        aperture_sq = (
+            self._aperture_sq_front if surface_type == "front" else self._aperture_sq_back
+        )
+        if dist_sq > aperture_sq:
             return RefractionResult.MISSED
 
         # Accumulate optical path for the segment just travelled in the
@@ -395,17 +409,63 @@ class SystemRayTracer3D:
                 t = Matrix4x4.from_translation(elem.position, 0, 0)
                 elements.append((elem.lens, t))
 
-        for lens, transform in elements:
+        # Aperture stop from the flat model (None when unset or stale).
+        stop_getter = getattr(self.system, "get_aperture_stop", None)
+        stop = stop_getter() if callable(stop_getter) else None
+        stop_gap = stop["gap_index"] if stop is not None else None
+        stop_semi = (
+            stop["diameter"] / 2 if stop is not None and stop.get("diameter") else None
+        )
+        flat_gaps = list(getattr(self.system, "air_gaps", []) or [])
+        stop_x = None
+        if stop_gap is not None and 0 <= stop_gap < len(flat_gaps):
+            stop_x = flat_gaps[stop_gap].position
+
+        for idx, (lens, transform) in enumerate(elements):
             if ray.terminated:
                 break
 
             tracer = LensRayTracer3D(lens, transform=transform)
             tracer.trace_ray(ray, propagate_distance=0)
 
+            if ray.terminated:
+                break
+
+            if (
+                stop_gap is not None
+                and stop_semi is not None
+                and stop_x is not None
+                and stop_gap == idx
+            ):
+                if not self._apply_stop(ray, stop_x, stop_semi):
+                    break
+
         if not ray.terminated:
             ray.propagate(RAY_EXIT_PROPAGATION_3D_MM)
 
         return ray
+
+    @staticmethod
+    def _apply_stop(ray: Ray3D, stop_x: float, semi: float) -> bool:
+        """Vignette a ray at the aperture stop plane (centered on axis).
+
+        Returns True if the ray passes; on a miss the stop-plane point is
+        appended (with its optical path) and the ray is terminated.
+        """
+        dx = ray.direction.x
+        if abs(dx) < EPSILON:
+            ray.terminated = True
+            return False
+        t = (stop_x - ray.origin.x) / dx
+        hit = ray.origin + ray.direction * t if t >= 0 else ray.origin
+        if hit.y * hit.y + hit.z * hit.z > (semi + 1e-9) ** 2:
+            if t >= 0:
+                ray.origin = hit
+                ray.path.append(hit)
+                ray.optical_path_length += t * ray.n
+            ray.terminated = True
+            return False
+        return True
 
     def trace_off_axis_rays(
         self,

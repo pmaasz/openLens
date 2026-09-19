@@ -49,6 +49,12 @@ class LensRayTracer:
         self.D = lens.diameter
         self.n = lens.refractive_index
         self.x_offset = x_offset
+        # Per-surface clear apertures (polished aperture; fall back to the
+        # mechanical outer diameter when unset).
+        get_ca1 = getattr(lens, "get_clear_aperture_1", None)
+        get_ca2 = getattr(lens, "get_clear_aperture_2", None)
+        self.CA1 = (get_ca1() if callable(get_ca1) else self.D) or self.D
+        self.CA2 = (get_ca2() if callable(get_ca2) else self.D) or self.D
         # Parabolic flags
         self.is_parabolic_1 = bool(lens.is_parabolic_1)
         self.is_parabolic_2 = bool(lens.is_parabolic_2)
@@ -121,7 +127,9 @@ class LensRayTracer:
                 dy = y
                 return math.atan2(dy, dx)
 
-    def _intersect_flat_surface(self, ray: Ray, vertex_x: float) -> Optional[Tuple[float, float]]:
+    def _intersect_flat_surface(
+        self, ray: Ray, vertex_x: float, semi_aperture: Optional[float] = None
+    ) -> Optional[Tuple[float, float]]:
         """Find intersection of ray with a flat surface at vertex_x."""
         cos_a = math.cos(ray.angle)
         if abs(cos_a) < EPSILON:
@@ -133,7 +141,7 @@ class LensRayTracer:
 
         y = ray.y + t * math.sin(ray.angle)
 
-        if abs(y) > self.D / 2:
+        if abs(y) > (self.D / 2 if semi_aperture is None else semi_aperture):
             return None
 
         return (vertex_x, y)
@@ -144,6 +152,7 @@ class LensRayTracer:
         center_x: float,
         R: float,
         is_front: bool,
+        semi_aperture: Optional[float] = None,
     ) -> Optional[Tuple[float, float]]:
         """
         Find intersection of ray with a spherical surface.
@@ -153,6 +162,7 @@ class LensRayTracer:
             center_x: X coordinate of the sphere center.
             R: Absolute radius of curvature.
             is_front: True for front surface, False for back surface.
+            semi_aperture: Lateral half-aperture for clipping (defaults to D/2).
         """
         dx = math.cos(ray.angle)
         dy = math.sin(ray.angle)
@@ -176,18 +186,23 @@ class LensRayTracer:
         # lets missed rays continue through the system.
         dist_sq = (ray.x - center_x) ** 2 + ray.y**2
         inside = dist_sq < R * R - EPSILON
+        limit = self.D / 2 if semi_aperture is None else semi_aperture
         for t in sorted(valid_ts, reverse=inside):
             x = ray.x + t * dx
             y = ray.y + t * dy
-            if abs(y) <= self.D / 2:
+            if abs(y) <= limit:
                 return (x, y)
         return None
 
     def _intersect_parabolic_surface(
-        self, ray: Ray, vertex_x: float, sag: float
+        self,
+        ray: Ray,
+        vertex_x: float,
+        sag: float,
+        semi_aperture: Optional[float] = None,
     ) -> Optional[Tuple[float, float]]:
         """Intersect ray with a parabolic surface x = vertex + a*y^2, a=sag/r_max^2."""
-        r_max = self.D / 2
+        r_max = self.D / 2 if semi_aperture is None else semi_aperture
         if abs(r_max) < EPSILON or abs(sag) < EPSILON:
             return self._intersect_flat_surface(ray, vertex_x)
         a = sag / (r_max * r_max)
@@ -235,19 +250,29 @@ class LensRayTracer:
 
     def _intersect_front_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
         """Find intersection point of ray with front surface."""
+        semi = self.CA1 / 2
         if self.front_is_parabolic:
-            return self._intersect_parabolic_surface(ray, self.front_vertex_x, self.parabolic_sag_1)
+            return self._intersect_parabolic_surface(
+                ray, self.front_vertex_x, self.parabolic_sag_1, semi
+            )
         if self.front_is_flat:
-            return self._intersect_flat_surface(ray, self.front_vertex_x)
-        return self._intersect_sphere_surface(ray, self.front_center_x, abs(self.R1), is_front=True)
+            return self._intersect_flat_surface(ray, self.front_vertex_x, semi)
+        return self._intersect_sphere_surface(
+            ray, self.front_center_x, abs(self.R1), is_front=True, semi_aperture=semi
+        )
 
     def _intersect_back_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
         """Find intersection point of ray with back surface."""
+        semi = self.CA2 / 2
         if self.back_is_parabolic:
-            return self._intersect_parabolic_surface(ray, self.back_vertex_x, self.parabolic_sag_2)
+            return self._intersect_parabolic_surface(
+                ray, self.back_vertex_x, self.parabolic_sag_2, semi
+            )
         if self.back_is_flat:
-            return self._intersect_flat_surface(ray, self.back_vertex_x)
-        return self._intersect_sphere_surface(ray, self.back_center_x, abs(self.R2), is_front=False)
+            return self._intersect_flat_surface(ray, self.back_vertex_x, semi)
+        return self._intersect_sphere_surface(
+            ray, self.back_center_x, abs(self.R2), is_front=False, semi_aperture=semi
+        )
 
     def trace_ray(self, ray: Ray, propagate_distance: float = DEFAULT_PROPAGATION_DISTANCE) -> Ray:
         """Trace a ray through the lens."""
@@ -279,7 +304,7 @@ class LensRayTracer:
         if intersection is None:
             dy = math.sin(ray.angle)
             if abs(dy) > EPSILON:
-                y_side = (self.D / 2) if dy > 0 else (-self.D / 2)
+                y_side = (self.CA2 / 2) if dy > 0 else (-self.CA2 / 2)
                 t_side = (y_side - ray.y) / dy
                 if t_side > EPSILON:
                     x_side = ray.x + t_side * math.cos(ray.angle)
@@ -515,14 +540,36 @@ class SystemRayTracer:
         A ray that misses an element aperture or terminates inside one
         (TIR/side exit) stops here: it is marked terminated and never
         propagated forward, and a terminated flag is never cleared.
+        Rays wider than the aperture stop are vignetted at the stop plane.
+        Elements with decenter/tilt are traced in their local frame (the
+        2D trace covers the y-meridian: decenter_y and tilt_z apply;
+        decenter_z/tilt_x/tilt_y tip out of plane and are 3D-only).
         """
 
+        stop = self.system.get_aperture_stop()
+        stop_gap = stop["gap_index"] if stop is not None else None
+        stop_semi = (
+            stop["diameter"] / 2
+            if stop is not None and stop.get("diameter")
+            else None
+        )
+
         for i, tracer in enumerate(self._tracers):
-            tracer.trace_ray(ray, propagate_distance=0)
+            element = self.system.elements[i]
+            dy = float(getattr(element, "decenter_y", 0.0) or 0.0)
+            tz = math.radians(float(getattr(element, "tilt_z", 0.0) or 0.0))
+            if dy == 0.0 and tz == 0.0:
+                tracer.trace_ray(ray, propagate_distance=0)
+            else:
+                self._trace_aligned_element(ray, element, tracer)
 
             if not ray.hit or ray.terminated:
                 ray.terminated = True
                 break
+
+            if stop_gap is not None and stop_semi is not None and stop_gap == i:
+                if not self._apply_stop(ray, stop):
+                    break
 
             if i < len(self._tracers) - 1:
                 next_pos = self.system.elements[i + 1].position
@@ -533,3 +580,65 @@ class SystemRayTracer:
                     ray.propagate(EPSILON)
             else:
                 ray.propagate(RAY_EXIT_PROPAGATION_2D_MM)
+
+    def _apply_stop(self, ray: Ray, stop: dict) -> bool:
+        """Vignette a ray at the aperture stop plane.
+
+        Returns True if the ray passes, False if it is stopped (ray is
+        terminated with the stop-plane point appended).
+        """
+        semi = stop["diameter"] / 2
+        stop_x = stop["position"]
+        cos_a = math.cos(ray.angle)
+        if abs(cos_a) < EPSILON:
+            ray.terminated = True
+            return False
+        t = (stop_x - ray.x) / cos_a
+        y_stop = ray.y if t < 0 else ray.y + t * math.sin(ray.angle)
+        if abs(y_stop) > semi:
+            if t >= 0:
+                ray.x = stop_x
+                ray.y = y_stop
+                ray.path.append((ray.x, ray.y))
+            ray.terminated = True
+            return False
+        return True
+
+    def _trace_aligned_element(self, ray: Ray, element, tracer: LensRayTracer) -> None:
+        """Trace through a decentered/tilted element via its local frame.
+
+        The frame matches the tree convention exactly: origin at the
+        element's front vertex, rotation about that origin, so 2D results
+        agree with the 3D tracer (which refracts through the node global
+        transform). The ray is mapped into the frame, traced with a
+        centered element tracer, then mapped back including the new path
+        points. Exact for the centered-tracer math; identity when alignment
+        is zero (callers take the fast path instead).
+        """
+        dy = float(getattr(element, "decenter_y", 0.0) or 0.0)
+        tz = math.radians(float(getattr(element, "tilt_z", 0.0) or 0.0))
+        lens = element.lens
+        cx = element.position
+        cos_t = math.cos(tz)
+        sin_t = math.sin(tz)
+
+        # World -> local (translate to front vertex, rotate by -tz).
+        n_path = len(ray.path)
+        lx = (ray.x - cx) * cos_t + (ray.y - dy) * sin_t
+        ly = -(ray.x - cx) * sin_t + (ray.y - dy) * cos_t
+        ray.x, ray.y = lx, ly
+        ray.angle = ray.angle - tz
+
+        local = LensRayTracer(lens, x_offset=0.0)
+        local.trace_ray(ray, propagate_distance=0)
+
+        # Local -> world (rotate by +tz, translate back), including the
+        # points appended during the local trace.
+        for k in range(n_path, len(ray.path)):
+            px, py = ray.path[k]
+            ray.path[k] = (
+                px * cos_t - py * sin_t + cx,
+                px * sin_t + py * cos_t + dy,
+            )
+        ray.x, ray.y = ray.path[-1]
+        ray.angle = ray.angle + tz
