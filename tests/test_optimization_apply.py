@@ -6,19 +6,46 @@ import sys
 import tempfile
 import unittest
 
-from PySide6.QtWidgets import QApplication
+# Headless environments (CI): fall back to Qt's offscreen platform before
+# any QApplication is created. A real DISPLAY always wins.
+if os.environ.get("DISPLAY", "") == "" and sys.platform.startswith("linux"):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from openlens import OpenLensWindow
+try:
+    from PySide6.QtWidgets import QApplication
+
+    from openlens import OpenLensWindow
+
+    PYSIDE_AVAILABLE = True
+    _PYSIDE_ERROR = None
+except ImportError as _e:
+    QApplication = None  # type: ignore
+    OpenLensWindow = None  # type: ignore
+    PYSIDE_AVAILABLE = False
+    _PYSIDE_ERROR = _e
+
 from src.lens import Lens
 from src.optical_system import OpticalSystem
 
-app = QApplication.instance()
-if not app:
-    app = QApplication(sys.argv)
+if not PYSIDE_AVAILABLE:
+
+    class TestOptimizationApply(unittest.TestCase):
+        @unittest.skip(f"PySide6 not available: {_PYSIDE_ERROR}")
+        def test_skip(self):
+            pass
+
+else:
+    app = QApplication.instance()
+    if not app:
+        app = QApplication(sys.argv)
 
 
+@unittest.skipUnless(PYSIDE_AVAILABLE, "PySide6 not available")
 class _HermeticWindow(unittest.TestCase):
-    """Window wired to a temp database (mirrors test_gui hermetic pattern)."""
+    """Window wired to a temp database (mirrors test_gui hermetic pattern).
+
+    Skipped where Qt bindings are unavailable (e.g. minimal CI images).
+    """
 
     def setUp(self):
         from src.gui.storage import LensStorage
@@ -46,6 +73,7 @@ class _HermeticWindow(unittest.TestCase):
         return [x for x in LensStorage(self.temp_db).load_lenses() if x.id == lens_id]
 
 
+@unittest.skipUnless(PYSIDE_AVAILABLE, "PySide6 not available")
 class TestApplyKeepSingleLens(_HermeticWindow):
     def test_apply_updates_editor_library_and_db(self):
         """Optimized single lens must land in editor, list, and storage."""
@@ -85,6 +113,7 @@ class TestApplyKeepSingleLens(_HermeticWindow):
         self.assertAlmostEqual(rows[0].radius_of_curvature_1, 80.0)
 
 
+@unittest.skipUnless(PYSIDE_AVAILABLE, "PySide6 not available")
 class TestApplyKeepAssembly(_HermeticWindow):
     def test_apply_updates_assembly_library_and_db(self):
         """Optimized assembly must replace its library member and persist."""
