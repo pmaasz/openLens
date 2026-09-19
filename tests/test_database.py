@@ -91,8 +91,7 @@ class TestDatabaseManagerInit(unittest.TestCase):
                 self.assertIn("aperture_stop_gap", asm_columns)
                 self.assertIn("aperture_stop_diameter", asm_columns)
                 elem_columns = {
-                    r[1]
-                    for r in conn.execute("PRAGMA table_info(assembly_elements)").fetchall()
+                    r[1] for r in conn.execute("PRAGMA table_info(assembly_elements)").fetchall()
                 }
                 for col in ("decenter_y", "decenter_z", "tilt_x", "tilt_y", "tilt_z"):
                     self.assertIn(col, elem_columns)
@@ -424,13 +423,10 @@ class TestMigrationV1ToV2(unittest.TestCase):
                 "coating_2",
             ):
                 self.assertIn(col, columns)
-            asm_columns = {
-                r[1] for r in conn.execute("PRAGMA table_info(assemblies)").fetchall()
-            }
+            asm_columns = {r[1] for r in conn.execute("PRAGMA table_info(assemblies)").fetchall()}
             self.assertIn("aperture_stop_gap", asm_columns)
             elem_columns = {
-                r[1]
-                for r in conn.execute("PRAGMA table_info(assembly_elements)").fetchall()
+                r[1] for r in conn.execute("PRAGMA table_info(assembly_elements)").fetchall()
             }
             self.assertIn("decenter_y", elem_columns)
             self.assertIn("tilt_x", elem_columns)

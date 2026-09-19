@@ -40,9 +40,7 @@ class CoatingLayer:
 COATING_PRESETS = ("Uncoated", "MgF2 single-layer", "Dual-layer AR", "V-coating")
 
 
-def design_preset(
-    preset: str, substrate_index: float, wavelength_nm: float
-) -> List[CoatingLayer]:
+def design_preset(preset: str, substrate_index: float, wavelength_nm: float) -> List[CoatingLayer]:
     """Build a preset coating stack (substrate-to-air order).
 
     Args:

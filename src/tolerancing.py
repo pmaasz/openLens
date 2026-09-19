@@ -272,9 +272,7 @@ def _apply_value(
         # whole-element tilt about x.
         node.rotation.x += value / 120.0
     elif param_type == ToleranceType.IRREGULARITY:
-        radius = (
-            lens.radius_of_curvature_1 if surface == 1 else lens.radius_of_curvature_2
-        )
+        radius = lens.radius_of_curvature_1 if surface == 1 else lens.radius_of_curvature_2
         getter = (
             getattr(lens, "get_clear_aperture_1", None)
             if surface == 1
@@ -357,9 +355,7 @@ class MonteCarloAnalyzer:
         for tol in self.tolerances:
             delta = tol.generate_value()
             perturbations[f"El_{tol.element_index}_{tol.param_type.name}"] = delta
-            _apply_value(
-                system, tol.param_type, tol.element_index, delta, surface=tol.surface
-            )
+            _apply_value(system, tol.param_type, tol.element_index, delta, surface=tol.surface)
 
         # Positions/gaps already synced per application; one final sync.
         system._update_positions()
@@ -396,6 +392,7 @@ class MonteCarloAnalyzer:
                 values["focus_shift_mm"] = best_shift
             for _ in range(self.comp_sweeps):
                 for comp in mech_ops:
+
                     def trial_rms(v, _c=comp):
                         _restore_state(self.nominal_system, trial_state)
                         _apply_value(
@@ -463,9 +460,7 @@ class MonteCarloAnalyzer:
 
             # Analyze
             spot = SpotDiagram(self.nominal_system)
-            results = spot.trace_spot(
-                focus_shift_mm=comp_values.get("focus_shift_mm", 0.0)
-            )
+            results = spot.trace_spot(focus_shift_mm=comp_values.get("focus_shift_mm", 0.0))
 
             val = results["rms_radius"]
             passed = val <= criterion_limit

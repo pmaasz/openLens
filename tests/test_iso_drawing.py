@@ -71,10 +71,7 @@ class TestIsoNotes(unittest.TestCase):
         system = _demo_system()
         system.elements[0].lens.set_coating(
             1,
-            [
-                layer.to_dict()
-                for layer in design_preset("MgF2 single-layer", 1.5168, 550.0)
-            ],
+            [layer.to_dict() for layer in design_preset("MgF2 single-layer", 1.5168, 550.0)],
         )
         svg = ISO10110Generator(system)._render_svg(1000, 700)
         self.assertIn("MgF2 SLAR", svg)

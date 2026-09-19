@@ -190,12 +190,8 @@ class DatabaseManager:
             if cursor.fetchone()[0] == 2:
                 cursor.execute("ALTER TABLE lenses ADD COLUMN clear_aperture_1 REAL")
                 cursor.execute("ALTER TABLE lenses ADD COLUMN clear_aperture_2 REAL")
-                cursor.execute(
-                    "ALTER TABLE lenses ADD COLUMN bevel_1 REAL NOT NULL DEFAULT 0.0"
-                )
-                cursor.execute(
-                    "ALTER TABLE lenses ADD COLUMN bevel_2 REAL NOT NULL DEFAULT 0.0"
-                )
+                cursor.execute("ALTER TABLE lenses ADD COLUMN bevel_1 REAL NOT NULL DEFAULT 0.0")
+                cursor.execute("ALTER TABLE lenses ADD COLUMN bevel_2 REAL NOT NULL DEFAULT 0.0")
                 cursor.execute("PRAGMA user_version = 3")
 
             # v3 -> v4: aperture stop on assemblies, decenter/tilt on
@@ -203,9 +199,7 @@ class DatabaseManager:
             cursor.execute("PRAGMA user_version")
             if cursor.fetchone()[0] == 3:
                 cursor.execute("ALTER TABLE assemblies ADD COLUMN aperture_stop_gap INTEGER")
-                cursor.execute(
-                    "ALTER TABLE assemblies ADD COLUMN aperture_stop_diameter REAL"
-                )
+                cursor.execute("ALTER TABLE assemblies ADD COLUMN aperture_stop_diameter REAL")
                 cursor.execute(
                     "ALTER TABLE assembly_elements "
                     "ADD COLUMN decenter_y REAL NOT NULL DEFAULT 0.0"
@@ -659,9 +653,7 @@ class DatabaseManager:
             )
             return [(row["id"], row["name"]) for row in cursor.fetchall()]
 
-    def update_assembly_stop(
-        self, assembly_id: str, gap: object, diameter: object
-    ) -> None:
+    def update_assembly_stop(self, assembly_id: str, gap: object, diameter: object) -> None:
         """Set just the aperture-stop columns of one assembly.
 
         Additive helper for seeding: fills a missing stop without touching

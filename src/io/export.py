@@ -48,9 +48,8 @@ class ISO10110Generator:
         stop = stop_getter() if callable(stop_getter) else None
         if stop is not None:
             stop_dia = stop.get("diameter")
-            stop_txt = (
-                f"Aperture stop: gap {stop['gap_index']}"
-                + (f", Ø{stop_dia:.2f}mm" if stop_dia else "")
+            stop_txt = f"Aperture stop: gap {stop['gap_index']}" + (
+                f", Ø{stop_dia:.2f}mm" if stop_dia else ""
             )
             lines.append(f'<text x="20" y="68" class="text">{stop_txt}</text>')
 
@@ -144,7 +143,9 @@ class ISO10110Generator:
     def _generate_title_block(self, x: float, y: float, w: float, scale: float) -> str:
         """Title block with drawing metadata (bottom-left)."""
         system = self.system
-        efl = system.get_system_focal_length() if hasattr(system, "get_system_focal_length") else None
+        efl = (
+            system.get_system_focal_length() if hasattr(system, "get_system_focal_length") else None
+        )
         bfl = (
             system.calculate_back_focal_length()
             if hasattr(system, "calculate_back_focal_length")

@@ -112,9 +112,7 @@ class TestAlignmentTracing2D(unittest.TestCase):
         aligned.set_element_alignment(0)
         aligned.set_element_alignment(1)
         paths_plain = [r.path for r in SystemRayTracer(plain).trace_parallel_rays(8)]
-        paths_aligned = [
-            r.path for r in SystemRayTracer(aligned).trace_parallel_rays(8)
-        ]
+        paths_aligned = [r.path for r in SystemRayTracer(aligned).trace_parallel_rays(8)]
         self.assertEqual(paths_plain, paths_aligned)
 
     def test_decenter_shifts_aperture(self):
@@ -157,13 +155,9 @@ class TestClearApertureTracing3D(unittest.TestCase):
         lens = _biconvex(diameter=40.0, clear_aperture_1=20.0)
         tracer = LensRayTracer3D(lens, x_offset=0.0)
         wide = Ray3D(vec3(-50, 15, 0), vec3(1, 0, 0))
-        self.assertIs(
-            tracer.trace_surface(wide, "front", "refract"), RefractionResult.MISSED
-        )
+        self.assertIs(tracer.trace_surface(wide, "front", "refract"), RefractionResult.MISSED)
         narrow = Ray3D(vec3(-50, 5, 0), vec3(1, 0, 0))
-        self.assertIs(
-            tracer.trace_surface(narrow, "front", "refract"), RefractionResult.REFRACTED
-        )
+        self.assertIs(tracer.trace_surface(narrow, "front", "refract"), RefractionResult.REFRACTED)
 
 
 class TestApertureStopTracing3D(unittest.TestCase):

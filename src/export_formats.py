@@ -720,11 +720,7 @@ class ZemaxSystemImporter:
             if not line or line.startswith("!") or line.startswith("#"):
                 continue
             head = line.split(None, 1)
-            if (
-                head[0] == "SURF"
-                and len(head) == 2
-                and head[1].split()[0].lstrip("-").isdigit()
-            ):
+            if head[0] == "SURF" and len(head) == 2 and head[1].split()[0].lstrip("-").isdigit():
                 if current is not None:
                     surfaces.append(current)
                 current = {"id": int(head[1].split()[0])}
@@ -787,9 +783,7 @@ class ZemaxSystemImporter:
                 continue
             if "glas" in surf:
                 # Front surface opens an element.
-                gap_before = (
-                    0.0 if last_back_x is None else max(0.0, cursor_x - last_back_x)
-                )
+                gap_before = 0.0 if last_back_x is None else max(0.0, cursor_x - last_back_x)
                 pending_front = {
                     "r1": _curv_to_radius(surf.get("curv", 0.0)),
                     "thickness": disz,

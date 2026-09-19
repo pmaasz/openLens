@@ -87,9 +87,7 @@ class MonteCarloWorker(QThread):
 
             compensators = []
             if self.refocus:
-                compensators.append(
-                    _Operand(0, _Type.FOCUS, -self.focus_range, self.focus_range)
-                )
+                compensators.append(_Operand(0, _Type.FOCUS, -self.focus_range, self.focus_range))
             analyzer = MonteCarloAnalyzer(system, self.tol_operands, compensators=compensators)
 
             results = analyzer.run(

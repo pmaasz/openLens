@@ -347,9 +347,7 @@ class Lens:
         """Normal-incidence bare Fresnel reflectivity of the substrate."""
         from .coating_designer import coated_reflectance
 
-        return coated_reflectance(
-            [], self._coating_substrate_index(wavelength_nm), wavelength_nm
-        )
+        return coated_reflectance([], self._coating_substrate_index(wavelength_nm), wavelength_nm)
 
     def update_refractive_index(
         self, wavelength_nm: Optional[float] = None, temperature: Optional[float] = None

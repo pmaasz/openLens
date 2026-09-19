@@ -212,9 +212,7 @@ class LensRayTracer3D:
         # Ray: x = ox + t*dx, y = oy + t*dy, z = oz + t*dz
         ox, oy, oz = local_origin.x, local_origin.y, local_origin.z
         dx, dy, dz = local_dir.x, local_dir.y, local_dir.z
-        aperture_sq = (
-            self._aperture_sq_front if surface_type == "front" else self._aperture_sq_back
-        )
+        aperture_sq = self._aperture_sq_front if surface_type == "front" else self._aperture_sq_back
         # Equation: ox + t*dx = ( (oy+t*dy)² + (oz+t*dz)² ) / (2R)
         # => (dy²+dz²)/(2R) * t² + (2*oy*dy+2*oz*dz)/(2R) - dx) * t + (oy²+oz²)/(2R) - ox =0
         # Multiply by 2R: (dy²+dz²) t² + (2*oy*dy+2*oz*dz -2R*dx) t + (oy²+oz² -2R*ox)=0
@@ -311,9 +309,7 @@ class LensRayTracer3D:
         proj = v_to_i.dot(self.optical_axis)
         dist_sq = v_to_i.magnitude_sq() - proj**2
 
-        aperture_sq = (
-            self._aperture_sq_front if surface_type == "front" else self._aperture_sq_back
-        )
+        aperture_sq = self._aperture_sq_front if surface_type == "front" else self._aperture_sq_back
         if dist_sq > aperture_sq:
             return RefractionResult.MISSED
 
@@ -413,9 +409,7 @@ class SystemRayTracer3D:
         stop_getter = getattr(self.system, "get_aperture_stop", None)
         stop = stop_getter() if callable(stop_getter) else None
         stop_gap = stop["gap_index"] if stop is not None else None
-        stop_semi = (
-            stop["diameter"] / 2 if stop is not None and stop.get("diameter") else None
-        )
+        stop_semi = stop["diameter"] / 2 if stop is not None and stop.get("diameter") else None
         flat_gaps = list(getattr(self.system, "air_gaps", []) or [])
         stop_x = None
         if stop_gap is not None and 0 <= stop_gap < len(flat_gaps):

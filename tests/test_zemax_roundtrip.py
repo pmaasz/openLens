@@ -123,9 +123,7 @@ class TestZemaxSystemImport(unittest.TestCase):
         finally:
             os.unlink(tmp.name)
         self.assertEqual(len(rebuilt.elements), 1)
-        self.assertAlmostEqual(
-            rebuilt.elements[0].lens.radius_of_curvature_1, 51.5, places=6
-        )
+        self.assertAlmostEqual(rebuilt.elements[0].lens.radius_of_curvature_1, 51.5, places=6)
 
     def test_foreign_keywords_ignored(self):
         """Unknown keywords and comments should not break the import."""

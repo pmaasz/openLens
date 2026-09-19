@@ -37,9 +37,7 @@ NIKON_SERIES_E_LENS_IDS = [
 #: The real lens is single-coated: one MgF2 layer (99.64 nm = 550 nm
 #: quarter-wave) on every air-glass surface; the cemented L4a-L4b
 #: interface stays bare.
-_MGF2_SINGLE_COAT = [
-    {"material": "MgF2", "refractive_index": 1.38, "thickness_nm": 99.64}
-]
+_MGF2_SINGLE_COAT = [{"material": "MgF2", "refractive_index": 1.38, "thickness_nm": 99.64}]
 
 #: Stable assembly ID for the full six-element system.
 NIKON_SERIES_E_ASSEMBLY_ID = "nikon-series-e-50mm-assembly"
@@ -261,9 +259,7 @@ def ensure_nikon_series_e_example(db_or_path: Union[str, Any]) -> bool:
             # Re-read current lens rows so pre-existing (possibly edited)
             # lenses are referenced as-is instead of being overwritten.
             current = {
-                r["id"]: r
-                for r in db.load_all()
-                if r.get("id") in set(NIKON_SERIES_E_LENS_IDS)
+                r["id"]: r for r in db.load_all() if r.get("id") in set(NIKON_SERIES_E_LENS_IDS)
             }
             for lid in NIKON_SERIES_E_LENS_IDS:
                 current.setdefault(lid, seed_dicts[lid])
@@ -286,8 +282,7 @@ def ensure_nikon_series_e_example(db_or_path: Union[str, Any]) -> bool:
                     for i, lens_dict in enumerate(lens_list)
                 ],
                 "air_gaps": [
-                    {"thickness": gap, "position": 0.0}
-                    for gap in NIKON_SERIES_E_AIR_GAPS
+                    {"thickness": gap, "position": 0.0} for gap in NIKON_SERIES_E_AIR_GAPS
                 ],
             }
             db.save_assembly(assembly_dict)
@@ -296,11 +291,7 @@ def ensure_nikon_series_e_example(db_or_path: Union[str, Any]) -> bool:
             # Backfill a missing stop on a pre-existing assembly without
             # touching its elements.
             current_asm = next(
-                (
-                    r
-                    for r in db.load_all()
-                    if r.get("id") == NIKON_SERIES_E_ASSEMBLY_ID
-                ),
+                (r for r in db.load_all() if r.get("id") == NIKON_SERIES_E_ASSEMBLY_ID),
                 None,
             )
             if current_asm is not None and current_asm.get("aperture_stop_gap") is None:

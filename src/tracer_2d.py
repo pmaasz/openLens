@@ -548,11 +548,7 @@ class SystemRayTracer:
 
         stop = self.system.get_aperture_stop()
         stop_gap = stop["gap_index"] if stop is not None else None
-        stop_semi = (
-            stop["diameter"] / 2
-            if stop is not None and stop.get("diameter")
-            else None
-        )
+        stop_semi = stop["diameter"] / 2 if stop is not None and stop.get("diameter") else None
 
         for i, tracer in enumerate(self._tracers):
             element = self.system.elements[i]

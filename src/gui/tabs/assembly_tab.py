@@ -339,9 +339,7 @@ class AssemblyTab(BaseTab):
             self._decenter_z_input.setValue(element.decenter_z or 0.0)
             self._decenter_y_input.blockSignals(False)
             self._decenter_z_input.blockSignals(False)
-            for spin, attr in zip(
-                self._tilt_inputs, ("tilt_x", "tilt_y", "tilt_z")
-            ):
+            for spin, attr in zip(self._tilt_inputs, ("tilt_x", "tilt_y", "tilt_z")):
                 spin.blockSignals(True)
                 spin.setValue(getattr(element, attr, 0.0) or 0.0)
                 spin.blockSignals(False)

@@ -297,9 +297,7 @@ class LensEditorWidget(QWidget):
 
             apply_btn = QPushButton("Apply")
             apply_btn.setFixedWidth(60)
-            apply_btn.clicked.connect(
-                lambda _checked=False, s=surface: self._on_coating_apply(s)
-            )
+            apply_btn.clicked.connect(lambda _checked=False, s=surface: self._on_coating_apply(s))
             row.addWidget(apply_btn)
             coat_layout.addRow("Design λ:", row)
 
@@ -624,9 +622,7 @@ class LensEditorWidget(QWidget):
         from ...coating_designer import COATING_PRESETS, CoatingLayer, design_preset
 
         for surface in (1, 2):
-            stack_dicts = (
-                self._lens.get_coating_1() if surface == 1 else self._lens.get_coating_2()
-            )
+            stack_dicts = self._lens.get_coating_1() if surface == 1 else self._lens.get_coating_2()
             wl = self._coating_design_wl(surface)
             substrate = self._lens._coating_substrate_index(wl)
             match = "Custom" if stack_dicts else "Uncoated"
@@ -641,9 +637,10 @@ class LensEditorWidget(QWidget):
                     for layer, ref in zip(
                         [CoatingLayer.from_dict(d) for d in stack_dicts], candidate
                     ):
-                        if layer.material != ref.material or abs(
-                            layer.thickness_nm - ref.thickness_nm
-                        ) > 0.03 * ref.thickness_nm:
+                        if (
+                            layer.material != ref.material
+                            or abs(layer.thickness_nm - ref.thickness_nm) > 0.03 * ref.thickness_nm
+                        ):
                             ok = False
                             break
                     if ok:
@@ -656,7 +653,9 @@ class LensEditorWidget(QWidget):
             try:
                 refl = self._lens.coating_reflectance(surface, wl)
                 label = self._lens.coating_label(surface)
-                self._coat_info_labels[surface - 1].setText(f"{label} · R({wl:.0f})={refl*100:.2f}%")
+                self._coat_info_labels[surface - 1].setText(
+                    f"{label} · R({wl:.0f})={refl*100:.2f}%"
+                )
             except Exception:
                 self._coat_info_labels[surface - 1].setText("Uncoated")
 
@@ -818,12 +817,8 @@ class LensEditorWidget(QWidget):
         self._r2_input.setValue(lens.radius_of_curvature_2)
         self._thickness_input.setValue(lens.thickness)
         self._diameter_input.setValue(lens.diameter)
-        self._ca1_input.setValue(
-            0 if lens.clear_aperture_1 is None else lens.clear_aperture_1
-        )
-        self._ca2_input.setValue(
-            0 if lens.clear_aperture_2 is None else lens.clear_aperture_2
-        )
+        self._ca1_input.setValue(0 if lens.clear_aperture_1 is None else lens.clear_aperture_1)
+        self._ca2_input.setValue(0 if lens.clear_aperture_2 is None else lens.clear_aperture_2)
         self._bevel1_input.setValue(lens.bevel_1)
         self._bevel2_input.setValue(lens.bevel_2)
         for spin in dim_inputs:

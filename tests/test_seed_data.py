@@ -74,9 +74,7 @@ class TestEnsureSeedData(unittest.TestCase):
         ensure_nikon_series_e_example(self.db)
         self.assertFalse(ensure_nikon_series_e_example(self.db))
         ids = self.db.all_ids()
-        self.assertEqual(
-            len([i for i in ids["lenses"] if i in NIKON_SERIES_E_LENS_IDS]), 6
-        )
+        self.assertEqual(len([i for i in ids["lenses"] if i in NIKON_SERIES_E_LENS_IDS]), 6)
 
     def test_ensure_does_not_overwrite_user_edits(self):
         """Pre-existing seed lens rows should keep user modifications."""

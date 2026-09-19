@@ -128,9 +128,7 @@ class TestNewOperandApplication(unittest.TestCase):
         lens = system.elements[0].lens
         r0, h = 100.0, 12.5
         sag0 = abs(r0) - math.sqrt(r0 * r0 - h * h)
-        self.assertTrue(
-            _apply_value(system, ToleranceType.IRREGULARITY, 0, 0.5, surface=1)
-        )
+        self.assertTrue(_apply_value(system, ToleranceType.IRREGULARITY, 0, 0.5, surface=1))
         r1 = lens.radius_of_curvature_1
         sag1 = abs(r1) - math.sqrt(r1 * r1 - h * h)
         self.assertAlmostEqual(sag1 - sag0, 0.5 * 632.8e-6 / 2, places=6)
@@ -148,9 +146,7 @@ class TestNewOperandApplication(unittest.TestCase):
                 material="BK7",
             )
         )
-        self.assertFalse(
-            _apply_value(system, ToleranceType.IRREGULARITY, 0, 0.5, surface=2)
-        )
+        self.assertFalse(_apply_value(system, ToleranceType.IRREGULARITY, 0, 0.5, surface=2))
 
 
 class TestCompensators(unittest.TestCase):
@@ -183,9 +179,9 @@ class TestCompensators(unittest.TestCase):
             compensators=[ToleranceOperand(0, ToleranceType.FOCUS, -10.0, 10.0)],
         )
         values = analyzer._optimize_compensators()
-        comp_rms = SpotDiagram(perturbed).trace_spot(
-            focus_shift_mm=values["focus_shift_mm"]
-        )["rms_radius"]
+        comp_rms = SpotDiagram(perturbed).trace_spot(focus_shift_mm=values["focus_shift_mm"])[
+            "rms_radius"
+        ]
         self.assertLess(comp_rms, plain_rms)
 
     def test_run_records_compensator_values(self):

@@ -26,10 +26,7 @@ def _make_db():
 
 
 def _mgf2_stack(substrate=1.5168, wavelength=550.0):
-    return [
-        layer.to_dict()
-        for layer in design_preset("MgF2 single-layer", substrate, wavelength)
-    ]
+    return [layer.to_dict() for layer in design_preset("MgF2 single-layer", substrate, wavelength)]
 
 
 class TestCoatingDesigner(unittest.TestCase):

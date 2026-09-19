@@ -45,9 +45,7 @@ class TestSuggestHousing(unittest.TestCase):
 
     def test_mount_thread_recorded(self):
         """A mount string should land in the barrel name as a thread spec."""
-        parts = MechanicalDesigner(_two_element_system()).suggest_housing(
-            mount="M42x1.0"
-        )
+        parts = MechanicalDesigner(_two_element_system()).suggest_housing(mount="M42x1.0")
         barrel = parts[-1]
         self.assertIn("M42x1.0", barrel["name"])
 
@@ -97,9 +95,7 @@ class TestStepAssemblyRoundTrip(unittest.TestCase):
     def test_bad_tube_dims_skipped(self):
         """Degenerate housing parts should be skipped, not crash."""
         system = _two_element_system()
-        housing = [
-            {"name": "Bad", "z0": 5.0, "z1": 5.0, "r_inner": 10.0, "r_outer": 5.0}
-        ]
+        housing = [{"name": "Bad", "z0": 5.0, "z1": 5.0, "r_inner": 10.0, "r_outer": 5.0}]
         path = self._export(system, housing)
         try:
             solids = read_step_solids(path)

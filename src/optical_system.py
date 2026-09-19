@@ -106,8 +106,7 @@ class OpticalSystem:
 
         if not isinstance(gap_index, int) or not 0 <= gap_index < len(self.air_gaps):
             raise ValueError(
-                f"Stop gap index {gap_index} out of range "
-                f"for {len(self.air_gaps)} air gap(s)"
+                f"Stop gap index {gap_index} out of range " f"for {len(self.air_gaps)} air gap(s)"
             )
         if diameter is not None:
             validate_diameter(diameter, param_name="stop diameter")
