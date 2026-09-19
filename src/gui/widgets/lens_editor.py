@@ -165,6 +165,43 @@ class LensEditorWidget(QWidget):
         self._diameter_input.valueChanged.connect(self._on_property_changed)
         dim_layout.addRow("Diameter:", self._diameter_input)
 
+        # Manufacturing aperture: polished clear aperture per surface.
+        # 0 means "full mechanical diameter".
+        self._ca1_input = QDoubleSpinBox()
+        self._ca1_input.setRange(0, 500)
+        self._ca1_input.setValue(0)
+        self._ca1_input.setSuffix(" mm")
+        self._ca1_input.setToolTip("Clear aperture surface 1 (0 = full diameter)")
+        self._ca1_input.valueChanged.connect(self._on_property_changed)
+        dim_layout.addRow("Clear aperture 1:", self._ca1_input)
+
+        self._ca2_input = QDoubleSpinBox()
+        self._ca2_input.setRange(0, 500)
+        self._ca2_input.setValue(0)
+        self._ca2_input.setSuffix(" mm")
+        self._ca2_input.setToolTip("Clear aperture surface 2 (0 = full diameter)")
+        self._ca2_input.valueChanged.connect(self._on_property_changed)
+        dim_layout.addRow("Clear aperture 2:", self._ca2_input)
+
+        # Protective 45-degree chamfer face width per surface (0 = sharp).
+        self._bevel1_input = QDoubleSpinBox()
+        self._bevel1_input.setRange(0, 20)
+        self._bevel1_input.setValue(0)
+        self._bevel1_input.setDecimals(3)
+        self._bevel1_input.setSingleStep(0.1)
+        self._bevel1_input.setSuffix(" mm")
+        self._bevel1_input.valueChanged.connect(self._on_property_changed)
+        dim_layout.addRow("Bevel 1 (45°):", self._bevel1_input)
+
+        self._bevel2_input = QDoubleSpinBox()
+        self._bevel2_input.setRange(0, 20)
+        self._bevel2_input.setValue(0)
+        self._bevel2_input.setDecimals(3)
+        self._bevel2_input.setSingleStep(0.1)
+        self._bevel2_input.setSuffix(" mm")
+        self._bevel2_input.valueChanged.connect(self._on_property_changed)
+        dim_layout.addRow("Bevel 2 (45°):", self._bevel2_input)
+
         # Edge lock: keep the rim-wall thickness fixed when radii/diameter
         # change by compensating the center thickness (which is what the
         # "Thickness" spinbox stores). Unchecked = classic behavior where
@@ -360,6 +397,23 @@ class LensEditorWidget(QWidget):
                     self._lens.radius_of_curvature_2 = self._r2_input.value()
                 self._lens.thickness = self._thickness_input.value()
                 self._lens.diameter = self._diameter_input.value()
+            # Manufacturing aperture: 0 in the UI means full diameter.
+            diameter = self._lens.diameter
+            for spin, attr in (
+                (self._ca1_input, "clear_aperture_1"),
+                (self._ca2_input, "clear_aperture_2"),
+            ):
+                raw = spin.value()
+                if raw <= 0:
+                    setattr(self._lens, attr, None)
+                else:
+                    setattr(self._lens, attr, min(raw, diameter))
+                    if raw > diameter:
+                        spin.blockSignals(True)
+                        spin.setValue(diameter)
+                        spin.blockSignals(False)
+            self._lens.bevel_1 = max(0.0, self._bevel1_input.value())
+            self._lens.bevel_2 = max(0.0, self._bevel2_input.value())
             self._lens.refractive_index = self._n_input.value()
             self._touch_lens()
             self._refresh_parabolic_ui()
@@ -638,6 +692,10 @@ class LensEditorWidget(QWidget):
             self._r2_input,
             self._thickness_input,
             self._diameter_input,
+            self._ca1_input,
+            self._ca2_input,
+            self._bevel1_input,
+            self._bevel2_input,
         )
         for spin in dim_inputs:
             spin.blockSignals(True)
@@ -645,6 +703,14 @@ class LensEditorWidget(QWidget):
         self._r2_input.setValue(lens.radius_of_curvature_2)
         self._thickness_input.setValue(lens.thickness)
         self._diameter_input.setValue(lens.diameter)
+        self._ca1_input.setValue(
+            0 if lens.clear_aperture_1 is None else lens.clear_aperture_1
+        )
+        self._ca2_input.setValue(
+            0 if lens.clear_aperture_2 is None else lens.clear_aperture_2
+        )
+        self._bevel1_input.setValue(lens.bevel_1)
+        self._bevel2_input.setValue(lens.bevel_2)
         for spin in dim_inputs:
             spin.blockSignals(False)
         self._n_input.setValue(lens.refractive_index)

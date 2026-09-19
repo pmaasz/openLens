@@ -41,7 +41,7 @@ class ZemaxExporter:
                 f"  CURV {1/lens.radius_of_curvature_1 if lens.radius_of_curvature_1 != 0 else 0}\n"
             )
             f.write(f"  DISZ {lens.thickness}\n")
-            f.write(f"  DIAM {lens.diameter}\n")
+            f.write(f"  DIAM {lens.get_clear_aperture_1()}\n")
             f.write(f"  GLAS {lens.material}\n")
             f.write("\n")
 
@@ -51,6 +51,7 @@ class ZemaxExporter:
             f.write(
                 f"  CURV {1/lens.radius_of_curvature_2 if lens.radius_of_curvature_2 != 0 else 0}\n"
             )
+            f.write(f"  DIAM {lens.get_clear_aperture_2()}\n")
             f.write("  DISZ 100.0\n")
             f.write("\n")
 
@@ -88,7 +89,12 @@ class OpticStudioExporter:
             f.write("-" * 40 + "\n")
             f.write(f"Material: {lens.material}\n")
             f.write(f"Refractive Index (d-line): {lens.refractive_index:.6f}\n")
-            f.write(f"Clear Aperture: {lens.diameter:.4f} mm\n")
+            f.write(f"Outer Diameter: {lens.diameter:.4f} mm\n")
+            f.write(
+                f"Clear Aperture 1/2: "
+                f"{lens.get_clear_aperture_1():.4f} / {lens.get_clear_aperture_2():.4f} mm\n"
+            )
+            f.write(f"Bevel 1/2 (45 deg): {lens.bevel_1:.4f} / {lens.bevel_2:.4f} mm\n")
 
             focal_length = lens.calculate_focal_length()
             if focal_length:
@@ -120,7 +126,7 @@ class OpticStudioExporter:
                 else "Infinity"
             )
             f.write(
-                f"{'1':<10} {'STANDARD':<12} {r1_str:<14} {lens.thickness:<12.4f} {lens.material:<10} {lens.diameter:<10.4f}\n"
+                f"{'1':<10} {'STANDARD':<12} {r1_str:<14} {lens.thickness:<12.4f} {lens.material:<10} {lens.get_clear_aperture_1():<10.4f}\n"
             )
 
             # Back surface
@@ -130,7 +136,7 @@ class OpticStudioExporter:
                 else "Infinity"
             )
             f.write(
-                f"{'2':<10} {'STANDARD':<12} {r2_str:<14} {'100.0000':<12} {'':<10} {lens.diameter:<10.4f}\n"
+                f"{'2':<10} {'STANDARD':<12} {r2_str:<14} {'100.0000':<12} {'':<10} {lens.get_clear_aperture_2():<10.4f}\n"
             )
 
             # Image surface

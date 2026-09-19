@@ -76,6 +76,10 @@ class Lens:
         parabolic_sag_1: float = 0.0,
         is_parabolic_2: bool = False,
         parabolic_sag_2: float = 0.0,
+        clear_aperture_1: Optional[float] = None,
+        clear_aperture_2: Optional[float] = None,
+        bevel_1: float = 0.0,
+        bevel_2: float = 0.0,
     ) -> None:
 
         self.id = uuid.uuid4().hex
@@ -128,6 +132,14 @@ class Lens:
         self.parabolic_sag_1 = float(parabolic_sag_1)
         self.is_parabolic_2 = bool(is_parabolic_2)
         self.parabolic_sag_2 = float(parabolic_sag_2)
+
+        # Manufacturing aperture per surface: the polished clear aperture
+        # (optical, mm). None means "full mechanical diameter". Bevels are
+        # protective 45° chamfer face widths (mm), 0.0 = sharp edge.
+        self.clear_aperture_1 = None if clear_aperture_1 is None else float(clear_aperture_1)
+        self.clear_aperture_2 = None if clear_aperture_2 is None else float(clear_aperture_2)
+        self.bevel_1 = float(bevel_1 or 0.0)
+        self.bevel_2 = float(bevel_2 or 0.0)
 
         self.created_at = datetime.now().isoformat()
         self.modified_at = datetime.now().isoformat()
@@ -213,6 +225,18 @@ class Lens:
         y_c = min(abs(y), r_a)
         sag = r_a - math.sqrt(max(0, r_a * r_a - y_c * y_c))
         return sag if r > 0 else -sag
+
+    def get_clear_aperture_1(self) -> float:
+        """Polished clear aperture of surface 1 (falls back to diameter)."""
+        if self.clear_aperture_1 is None:
+            return self.diameter
+        return self.clear_aperture_1
+
+    def get_clear_aperture_2(self) -> float:
+        """Polished clear aperture of surface 2 (falls back to diameter)."""
+        if self.clear_aperture_2 is None:
+            return self.diameter
+        return self.clear_aperture_2
 
     def update_refractive_index(
         self, wavelength_nm: Optional[float] = None, temperature: Optional[float] = None
@@ -345,6 +369,10 @@ class Lens:
             "parabolic_sag_1": self.parabolic_sag_1,
             "is_parabolic_2": self.is_parabolic_2,
             "parabolic_sag_2": self.parabolic_sag_2,
+            "clear_aperture_1": self.clear_aperture_1,
+            "clear_aperture_2": self.clear_aperture_2,
+            "bevel_1": self.bevel_1,
+            "bevel_2": self.bevel_2,
             "created_at": self.created_at,
             "modified_at": self.modified_at,
         }
@@ -378,6 +406,10 @@ class Lens:
             parabolic_sag_1=data.get("parabolic_sag_1", 0.0),
             is_parabolic_2=data.get("is_parabolic_2", False),
             parabolic_sag_2=data.get("parabolic_sag_2", 0.0),
+            clear_aperture_1=data.get("clear_aperture_1", None),
+            clear_aperture_2=data.get("clear_aperture_2", None),
+            bevel_1=data.get("bevel_1", 0.0),
+            bevel_2=data.get("bevel_2", 0.0),
         )
 
         lens.id = data.get("id", lens.id)
@@ -647,8 +679,10 @@ Optical Lens Details:
   Name: {self.name}
   Radius of Curvature 1: {self.radius_of_curvature_1}mm
   Radius of Curvature 2: {self.radius_of_curvature_2}mm
-  Center Thickness: {self.thickness}mm
-  Diameter: {self.diameter}mm
+   Center Thickness: {self.thickness}mm
+   Diameter: {self.diameter}mm
+   Clear Aperture 1/2: {self.clear_aperture_1}mm / {self.clear_aperture_2}mm
+   Bevel 1/2: {self.bevel_1}mm / {self.bevel_2}mm
   Refractive Index: {self.refractive_index}
   Type: {self.lens_type}
   Material: {self.material}

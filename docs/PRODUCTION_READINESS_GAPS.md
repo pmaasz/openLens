@@ -97,7 +97,14 @@ Reference example throughout: Nikon Series E 50mm f/1.8
 
 ## Suggested build order
 
-1. Per-surface clear aperture + bevel/chamfer fields, persisted and exported.
+1. ~~Per-surface clear aperture + bevel/chamfer fields, persisted and exported.~~
+   DONE: `Lens.clear_aperture_1/2` (None = full diameter) and `bevel_1/2`
+   (45° face width, 0 = sharp) with `get_clear_aperture_1/2()` fallbacks,
+   `validate_clear_aperture` / `validate_bevel`, DB schema v3 with v1→v2→v3
+   migration, GUI editor fields, ISO table CA column, STEP solid-name
+   labels, and Zemax per-surface DIAM. Ray tracers and f-number math still
+   use the mechanical OD — clipping ray fans at the CA is follow-up work,
+   as are modeled bevel chamfer faces in STEP (B-rep stays on the OD).
 2. Stop surface entity + tilt/decenter persistence in the DB schema.
 3. Per-surface coating field end-to-end (model → DB → ISO/STEP/Zemax).
 4. Real ISO 10110 callouts + dimensioned drawing with title block.

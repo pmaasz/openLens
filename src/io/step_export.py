@@ -359,9 +359,34 @@ class StepExporter:
         shell = self.writer.add_entity("CLOSED_SHELL", ["'shell'", [face1, face2, face3]])
 
         # --- Solid ---
-        solid = self.writer.add_entity("MANIFOLD_SOLID_BREP", [f"'{lens.name}'", shell])
+        # Carry the manufacturing aperture in the solid name so downstream
+        # CAD keeps it even though the B-rep itself is built on the
+        # mechanical outer diameter (bevel chamfer faces are not modeled).
+        solid = self.writer.add_entity(
+            "MANIFOLD_SOLID_BREP", [f"'{self._solid_label(lens)}'", shell]
+        )
 
         return solid
+
+    @staticmethod
+    def _solid_label(lens) -> str:
+        """Human-readable solid name with clear-aperture/bevel data."""
+        name = getattr(lens, "name", "lens")
+        diameter = getattr(lens, "diameter", None)
+        ca1 = getattr(lens, "clear_aperture_1", None)
+        ca2 = getattr(lens, "clear_aperture_2", None)
+        bevel_1 = float(getattr(lens, "bevel_1", 0.0) or 0.0)
+        bevel_2 = float(getattr(lens, "bevel_2", 0.0) or 0.0)
+        details = []
+        if ca1 is not None or ca2 is not None:
+            show1 = diameter if ca1 is None else ca1
+            show2 = diameter if ca2 is None else ca2
+            details.append(f"CA {show1}/{show2}")
+        if bevel_1 or bevel_2:
+            details.append(f"bevel {bevel_1}/{bevel_2}")
+        if details:
+            return f"{name} ({', '.join(details)})"
+        return str(name)
 
     def _create_product_structure(self, shape_ids):
         """Create high-level product structure."""

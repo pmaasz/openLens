@@ -69,8 +69,9 @@ class DatabaseManager:
             version = cursor.fetchone()[0]
 
             if version == 0:
-                # Lenses table (v2 schema: parabolic surfaces are explicit
-                # columns, not just metadata-blob passengers).
+                # Lenses table (v3 schema: parabolic surfaces are explicit
+                # columns, not just metadata-blob passengers; per-surface
+                # clear apertures and bevels likewise).
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS lenses (
                         id TEXT PRIMARY KEY,
@@ -87,6 +88,10 @@ class DatabaseManager:
                         parabolic_sag_1 REAL NOT NULL DEFAULT 0.0,
                         is_parabolic_2 INTEGER NOT NULL DEFAULT 0,
                         parabolic_sag_2 REAL NOT NULL DEFAULT 0.0,
+                        clear_aperture_1 REAL,
+                        clear_aperture_2 REAL,
+                        bevel_1 REAL NOT NULL DEFAULT 0.0,
+                        bevel_2 REAL NOT NULL DEFAULT 0.0,
                         metadata TEXT
                     )
                 """)
@@ -127,7 +132,7 @@ class DatabaseManager:
                     )
                 """)
 
-                cursor.execute("PRAGMA user_version = 2")
+                cursor.execute("PRAGMA user_version = 3")
             elif version == 1:
                 # v1 -> v2: promote parabolic surfaces from the metadata
                 # blob to explicit columns. Existing rows keep DEFAULT 0
@@ -147,6 +152,20 @@ class DatabaseManager:
                 )
                 cursor.execute("PRAGMA user_version = 2")
 
+            # v2 -> v3: per-surface clear apertures (NULL = full diameter)
+            # and 45-degree bevel face widths (0.0 = sharp edge).
+            cursor.execute("PRAGMA user_version")
+            if cursor.fetchone()[0] == 2:
+                cursor.execute("ALTER TABLE lenses ADD COLUMN clear_aperture_1 REAL")
+                cursor.execute("ALTER TABLE lenses ADD COLUMN clear_aperture_2 REAL")
+                cursor.execute(
+                    "ALTER TABLE lenses ADD COLUMN bevel_1 REAL NOT NULL DEFAULT 0.0"
+                )
+                cursor.execute(
+                    "ALTER TABLE lenses ADD COLUMN bevel_2 REAL NOT NULL DEFAULT 0.0"
+                )
+                cursor.execute("PRAGMA user_version = 3")
+
     def save_lens(self, lens_dict: Dict[str, Any]):
         """Save or update a single lens."""
         with self._connection() as conn:
@@ -159,8 +178,9 @@ class DatabaseManager:
                     (id, name, radius1, radius2, thickness, material, refractive_index, diameter,
                      created_at, modified_at,
                      is_parabolic_1, parabolic_sag_1, is_parabolic_2, parabolic_sag_2,
+                     clear_aperture_1, clear_aperture_2, bevel_1, bevel_2,
                      metadata)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
                         lens_dict.get("id"),
@@ -177,6 +197,10 @@ class DatabaseManager:
                         float(lens_dict.get("parabolic_sag_1", 0.0) or 0.0),
                         1 if lens_dict.get("is_parabolic_2") else 0,
                         float(lens_dict.get("parabolic_sag_2", 0.0) or 0.0),
+                        lens_dict.get("clear_aperture_1"),
+                        lens_dict.get("clear_aperture_2"),
+                        float(lens_dict.get("bevel_1", 0.0) or 0.0),
+                        float(lens_dict.get("bevel_2", 0.0) or 0.0),
                         json.dumps(
                             {
                                 k: v
@@ -199,6 +223,10 @@ class DatabaseManager:
                                     "parabolic_sag_1",
                                     "is_parabolic_2",
                                     "parabolic_sag_2",
+                                    "clear_aperture_1",
+                                    "clear_aperture_2",
+                                    "bevel_1",
+                                    "bevel_2",
                                 ]
                             }
                         ),
@@ -222,8 +250,9 @@ class DatabaseManager:
             (id, name, radius1, radius2, thickness, material, refractive_index, diameter,
              created_at, modified_at,
              is_parabolic_1, parabolic_sag_1, is_parabolic_2, parabolic_sag_2,
+             clear_aperture_1, clear_aperture_2, bevel_1, bevel_2,
              metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 lens_dict.get("id"),
@@ -240,6 +269,10 @@ class DatabaseManager:
                 float(lens_dict.get("parabolic_sag_1", 0.0) or 0.0),
                 1 if lens_dict.get("is_parabolic_2") else 0,
                 float(lens_dict.get("parabolic_sag_2", 0.0) or 0.0),
+                lens_dict.get("clear_aperture_1"),
+                lens_dict.get("clear_aperture_2"),
+                float(lens_dict.get("bevel_1", 0.0) or 0.0),
+                float(lens_dict.get("bevel_2", 0.0) or 0.0),
                 json.dumps(
                     {
                         k: v
@@ -262,6 +295,10 @@ class DatabaseManager:
                             "parabolic_sag_1",
                             "is_parabolic_2",
                             "parabolic_sag_2",
+                            "clear_aperture_1",
+                            "clear_aperture_2",
+                            "bevel_1",
+                            "bevel_2",
                         ]
                     }
                 ),
@@ -399,11 +436,15 @@ class DatabaseManager:
                            l.diameter AS lens_diameter,
                             l.created_at AS lens_created_at,
                             l.modified_at AS lens_modified_at,
-                            l.is_parabolic_1 AS lens_is_parabolic_1,
-                            l.parabolic_sag_1 AS lens_parabolic_sag_1,
-                            l.is_parabolic_2 AS lens_is_parabolic_2,
-                            l.parabolic_sag_2 AS lens_parabolic_sag_2,
-                            l.metadata AS lens_metadata,
+                             l.is_parabolic_1 AS lens_is_parabolic_1,
+                             l.parabolic_sag_1 AS lens_parabolic_sag_1,
+                             l.is_parabolic_2 AS lens_is_parabolic_2,
+                             l.parabolic_sag_2 AS lens_parabolic_sag_2,
+                             l.clear_aperture_1 AS lens_clear_aperture_1,
+                             l.clear_aperture_2 AS lens_clear_aperture_2,
+                             l.bevel_1 AS lens_bevel_1,
+                             l.bevel_2 AS lens_bevel_2,
+                             l.metadata AS lens_metadata,
                            ae.lens_id,
                            ae.position
                     FROM assembly_elements ae
@@ -438,6 +479,10 @@ class DatabaseManager:
                             "parabolic_sag_1": e_dict["lens_parabolic_sag_1"],
                             "is_parabolic_2": bool(e_dict["lens_is_parabolic_2"]),
                             "parabolic_sag_2": e_dict["lens_parabolic_sag_2"],
+                            "clear_aperture_1": e_dict["lens_clear_aperture_1"],
+                            "clear_aperture_2": e_dict["lens_clear_aperture_2"],
+                            "bevel_1": e_dict["lens_bevel_1"],
+                            "bevel_2": e_dict["lens_bevel_2"],
                         }
                         if e_dict["lens_metadata"]:
                             lens_data.update(json.loads(e_dict["lens_metadata"]))

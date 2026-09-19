@@ -165,6 +165,58 @@ def validate_diameter(diameter: float, param_name: str = "diameter") -> float:
     return diameter
 
 
+def validate_clear_aperture(
+    clear_aperture: Union[float, None],
+    diameter: float,
+    param_name: str = "clear aperture",
+) -> Union[float, None]:
+    """Validate a per-surface clear aperture.
+
+    Args:
+        clear_aperture: Polished clear aperture in mm, or None for "full
+            mechanical diameter".
+        diameter: Mechanical outer diameter in mm (the ceiling).
+        param_name: Parameter name for error messages.
+
+    Returns:
+        The validated value (None passes through).
+
+    Raises:
+        ValidationError: If set but non-positive or larger than the diameter.
+    """
+    if clear_aperture is None:
+        return None
+    value = _validate_number(clear_aperture, param_name)
+    if value <= 0:
+        raise ValidationError(f"{param_name} must be positive")
+    if value > diameter + EPSILON:
+        raise ValidationError(
+            f"{param_name} ({value} mm) cannot exceed the lens diameter ({diameter} mm)"
+        )
+    return value
+
+
+def validate_bevel(bevel: float, param_name: str = "bevel") -> float:
+    """Validate a protective 45-degree chamfer face width.
+
+    Args:
+        bevel: Chamfer face width in mm (0.0 = sharp edge).
+        param_name: Parameter name for error messages.
+
+    Returns:
+        float: Validated bevel value.
+
+    Raises:
+        ValidationError: If negative or absurdly large.
+    """
+    bevel = _validate_number(bevel, param_name)
+    if bevel < 0:
+        raise ValidationError(f"{param_name} cannot be negative")
+    if bevel > MAX_DIAMETER:
+        raise ValidationError(f"{param_name} must be at most {MAX_DIAMETER} mm")
+    return bevel
+
+
 def validate_refractive_index(n: float, param_name: str = "refractive index") -> float:
     """
     Validate refractive index.
