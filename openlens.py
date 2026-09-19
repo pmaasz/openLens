@@ -82,6 +82,10 @@ class OpenLensWindow(QMainWindow):
         self._assemblies = []
         self._current_lens = None
         self._current_assembly = None
+        # Ids of startup-created defaults that were never saved. The deferred
+        # library load drops (rather than adopts) these when saved members
+        # exist, so reopening shows the user's work instead of a blank lens.
+        self._ephemeral_ids = set()
         
         self._setup_ui()
         self._create_menu()
@@ -114,19 +118,40 @@ class OpenLensWindow(QMainWindow):
             # Never orphan working state: this load runs deferred after startup
             # created an (unsaved) default, and open_* actions append unsaved
             # items too. Anything current but missing from the loaded rows is
-            # adopted into the in-memory library, so the editor always shows
-            # a member whose edits reach the database on the next save.
+            # normally adopted into the in-memory library, so the editor always
+            # shows a member whose edits reach the database on the next save.
             # Adoption is in-memory only (nothing is written here), so no
             # duplicate rows can accumulate across restarts.
+            #
+            # One exception: the startup default is ephemeral. When the library
+            # already holds saved members, stranding the user on a blank
+            # default hides their work (edits look "not persisted" on reopen).
+            # In that case the never-saved default is dropped and the most
+            # recently modified library member becomes current instead.
             loaded_ids = {getattr(x, "id", None) for x in self._lenses + self._assemblies}
-            for attr, bucket in (
-                ("_current_lens", self._lenses),
-                ("_current_assembly", self._assemblies),
+            for attr, bucket, is_assembly in (
+                ("_current_lens", self._lenses, False),
+                ("_current_assembly", self._assemblies, True),
             ):
                 current = getattr(self, attr, None)
-                if current is not None and getattr(current, "id", None) not in loaded_ids:
+                if current is None:
+                    continue
+                cid = getattr(current, "id", None)
+                if cid in loaded_ids:
+                    continue
+                if cid in self._ephemeral_ids and bucket:
+                    best = max(
+                        bucket,
+                        key=lambda x: getattr(x, "modified_at", None)
+                        or getattr(x, "created_at", None)
+                        or "",
+                    )
+                    self._ephemeral_ids.discard(cid)
+                    self._set_current_item(best, is_assembly=is_assembly)
+                    loaded_ids.add(getattr(best, "id", None))
+                else:
                     bucket.append(current)
-                    loaded_ids.add(current.id)
+                    loaded_ids.add(cid)
 
             # Update tabs that depend on the loaded library
             self._update_all_tabs()
@@ -902,6 +927,7 @@ Ctrl+6         Tolerancing
     def _load_default_lens(self) -> None:
         """Create a fresh default lens and make it the active editor target."""
         lens = Lens(name="Default Lens")
+        self._ephemeral_ids.add(lens.id)
         self._lenses.append(lens)
         self._current_lens = lens
         self._current_assembly = None
