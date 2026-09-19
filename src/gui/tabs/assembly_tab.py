@@ -14,6 +14,9 @@ from PySide6.QtWidgets import (
     QPushButton,
     QListWidget,
     QListWidgetItem,
+    QScrollArea,
+    QFrame,
+    QSizePolicy,
 )
 from .base_tab import BaseTab
 from ..widgets.assembly_viz import AssemblyVisualizationWidget
@@ -27,14 +30,23 @@ class AssemblyTab(BaseTab):
         """Build the builder panels and create the initial optical system."""
         layout = QHBoxLayout(self)
 
-        # Left: Available lenses + System builder
+        # Left: Available lenses + System builder. Minimum width keeps
+        # the editors readable when the visualization pane expands; the
+        # scroll area keeps every group reachable on short windows.
         left_panel = QWidget()
+        left_panel.setMinimumWidth(300)
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.NoFrame)
+        left_scroll.setWidget(left_panel)
+        left_scroll.setMinimumWidth(320)
         left_layout = QVBoxLayout(left_panel)
 
         # Lens selection
         lens_sel_group = QGroupBox("Lens Selection")
         lens_sel_layout = QVBoxLayout(lens_sel_group)
         self._assembly_lens_list = QListWidget()
+        self._assembly_lens_list.setMinimumHeight(90)
         lens_sel_layout.addWidget(self._assembly_lens_list)
 
         add_btn = QPushButton("Add to System")
@@ -47,6 +59,7 @@ class AssemblyTab(BaseTab):
         sys_group = QGroupBox("System Builder")
         sys_layout = QVBoxLayout(sys_group)
         self._system_list = QListWidget()
+        self._system_list.setMinimumHeight(90)
         self._system_list.currentRowChanged.connect(self._on_system_item_selected)
         sys_layout.addWidget(self._system_list)
 
@@ -54,6 +67,7 @@ class AssemblyTab(BaseTab):
         self._air_gap_group = QGroupBox("Air Gap (Before Selected Element)")
         self._air_gap_group.setEnabled(False)
         ag_layout = QFormLayout(self._air_gap_group)
+        ag_layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
 
         input_row = QHBoxLayout()
         self._air_gap_input = QDoubleSpinBox()
@@ -61,6 +75,7 @@ class AssemblyTab(BaseTab):
         self._air_gap_input.setDecimals(3)
         self._air_gap_input.setSingleStep(0.1)
         self._air_gap_input.setSuffix(" mm")
+        self._air_gap_input.setMinimumWidth(110)
         # Removed the direct valueChanged connection to prevent jumping during typing
 
         self._apply_gap_btn = QPushButton("Set")
@@ -91,13 +106,17 @@ class AssemblyTab(BaseTab):
         # 0 diameter = unspecified (position only).
         stop_group = QGroupBox("Aperture Stop")
         stop_layout = QFormLayout(stop_group)
+        stop_layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
         self._stop_gap_combo = QComboBox()
+        self._stop_gap_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._stop_gap_combo.setMinimumWidth(140)
         stop_layout.addRow("Gap:", self._stop_gap_combo)
         self._stop_dia_input = QDoubleSpinBox()
         self._stop_dia_input.setRange(0, 500)
         self._stop_dia_input.setDecimals(3)
         self._stop_dia_input.setSingleStep(0.1)
         self._stop_dia_input.setSuffix(" mm")
+        self._stop_dia_input.setMinimumWidth(110)
         stop_layout.addRow("Diameter (0 = n/a):", self._stop_dia_input)
         stop_btn_row = QHBoxLayout()
         stop_set_btn = QPushButton("Set")
@@ -113,15 +132,18 @@ class AssemblyTab(BaseTab):
         self._align_group = QGroupBox("Element Alignment")
         self._align_group.setEnabled(False)
         align_layout = QFormLayout(self._align_group)
+        align_layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
         self._decenter_y_input = QDoubleSpinBox()
         self._decenter_y_input.setRange(-10, 10)
         self._decenter_y_input.setDecimals(3)
         self._decenter_y_input.setSuffix(" mm")
+        self._decenter_y_input.setMinimumWidth(110)
         align_layout.addRow("Decenter Y:", self._decenter_y_input)
         self._decenter_z_input = QDoubleSpinBox()
         self._decenter_z_input.setRange(-10, 10)
         self._decenter_z_input.setDecimals(3)
         self._decenter_z_input.setSuffix(" mm")
+        self._decenter_z_input.setMinimumWidth(110)
         align_layout.addRow("Decenter Z:", self._decenter_z_input)
         self._tilt_inputs = []
         for axis in ("X", "Y", "Z"):
@@ -129,6 +151,7 @@ class AssemblyTab(BaseTab):
             spin.setRange(-5, 5)
             spin.setDecimals(3)
             spin.setSuffix(" deg")
+            spin.setMinimumWidth(110)
             align_layout.addRow(f"Tilt {axis}:", spin)
             self._tilt_inputs.append(spin)
         align_apply_btn = QPushButton("Apply to selected element")
@@ -136,7 +159,7 @@ class AssemblyTab(BaseTab):
         align_layout.addRow(align_apply_btn)
         left_layout.addWidget(self._align_group)
 
-        layout.addWidget(left_panel, 1)
+        layout.addWidget(left_scroll, 1)
 
         # Right: 2D visualization
         self._assembly_viz = AssemblyVisualizationWidget()
