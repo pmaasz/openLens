@@ -63,22 +63,38 @@ def _load_lenses(db):
 class TestDatabaseManagerInit(unittest.TestCase):
 
     def test_fresh_db_is_v2_with_parabolic_columns(self):
-        """New databases are created at user_version=2 directly."""
+        """New databases are created at user_version=5 directly."""
         import sqlite3
 
         db, path = _make_db()
         try:
             conn = sqlite3.connect(path)
             try:
-                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 2)
+                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 5)
                 columns = {r[1] for r in conn.execute("PRAGMA table_info(lenses)").fetchall()}
                 for col in (
                     "is_parabolic_1",
                     "parabolic_sag_1",
                     "is_parabolic_2",
                     "parabolic_sag_2",
+                    "clear_aperture_1",
+                    "clear_aperture_2",
+                    "bevel_1",
+                    "bevel_2",
+                    "coating_1",
+                    "coating_2",
                 ):
                     self.assertIn(col, columns)
+                asm_columns = {
+                    r[1] for r in conn.execute("PRAGMA table_info(assemblies)").fetchall()
+                }
+                self.assertIn("aperture_stop_gap", asm_columns)
+                self.assertIn("aperture_stop_diameter", asm_columns)
+                elem_columns = {
+                    r[1] for r in conn.execute("PRAGMA table_info(assembly_elements)").fetchall()
+                }
+                for col in ("decenter_y", "decenter_z", "tilt_x", "tilt_y", "tilt_z"):
+                    self.assertIn(col, elem_columns)
             finally:
                 conn.close()
         finally:
@@ -392,15 +408,28 @@ class TestMigrationV1ToV2(unittest.TestCase):
         conn = sqlite3.connect(self._path)
         try:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            self.assertEqual(version, 2)
+            self.assertEqual(version, 5)
             columns = {r[1] for r in conn.execute("PRAGMA table_info(lenses)").fetchall()}
             for col in (
                 "is_parabolic_1",
                 "parabolic_sag_1",
                 "is_parabolic_2",
                 "parabolic_sag_2",
+                "clear_aperture_1",
+                "clear_aperture_2",
+                "bevel_1",
+                "bevel_2",
+                "coating_1",
+                "coating_2",
             ):
                 self.assertIn(col, columns)
+            asm_columns = {r[1] for r in conn.execute("PRAGMA table_info(assemblies)").fetchall()}
+            self.assertIn("aperture_stop_gap", asm_columns)
+            elem_columns = {
+                r[1] for r in conn.execute("PRAGMA table_info(assembly_elements)").fetchall()
+            }
+            self.assertIn("decenter_y", elem_columns)
+            self.assertIn("tilt_x", elem_columns)
         finally:
             conn.close()
 

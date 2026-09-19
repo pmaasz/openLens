@@ -26,9 +26,10 @@ class GhostAnalyzer:
     Focuses on 2nd order ghosts (2 reflections).
 
     Known limits (deliberate, documented here rather than hidden):
-    - Reflection strength uses bulk Fresnel R from the glass index only.
-      Surfaces carry no coating model, so ghosts in AR-coated systems are
-      overestimated (uncoated R^2 ~ 0.16% per pair instead of coated values).
+    - Reflection strength uses bulk Fresnel R from the glass index, corrected
+      for per-surface coatings at normal incidence (see _coating_correction):
+      ghosts in AR-coated systems use the coated R of the two reflecting
+      surfaces, while transmission losses along the path stay bare-Fresnel.
     - Rays that reflect twice but miss the exit leg are still counted in
       the path intensity: conservative flare estimate, since their energy
       still scatters inside the housing.
@@ -153,10 +154,35 @@ class GhostAnalyzer:
         if not rays:
             return None
 
-        # Calculate average intensity of the ghost path
+        # Calculate average intensity of the ghost path, corrected for any
+        # AR coatings on the two reflecting surfaces (normal-incidence
+        # estimate at the ghost wavelength; see _coating_correction).
         avg_intensity = sum(r.intensity for r in rays) / len(rays)
+        avg_intensity *= self._coating_correction(i, j, wavelength)
 
         return GhostPath(i, j, rays, intensity=avg_intensity)
+
+    def _coating_correction(self, i: int, j: int, wavelength_mm: float) -> float:
+        """Coated-to-bare reflection ratio for two ghost surfaces.
+
+        The traced rays carry bare-Fresnel reflection losses; each coated
+        reflecting surface scales the path by Rc/Rb at normal incidence.
+        Uncoated surfaces contribute 1.0.
+        """
+        factor = 1.0
+        wavelength_nm = wavelength_mm / NM_TO_MM
+        for surf_idx in (i, j):
+            surf = self.surfaces[surf_idx]
+            lens = surf["lens"]
+            surface = 1 if surf["type"] == "front" else 2
+            stack = lens.get_coating_1() if surface == 1 else lens.get_coating_2()
+            if not stack:
+                continue
+            bare = lens.bare_reflectance(wavelength_nm)
+            if bare < 1e-12:
+                continue
+            factor *= lens.coating_reflectance(surface, wavelength_nm) / bare
+        return factor
 
     def _interact(self, ray: Ray3D, surf_idx: int, interaction: str) -> bool:
         """Single surface interaction; True only on the required outcome.

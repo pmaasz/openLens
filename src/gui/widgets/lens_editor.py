@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QComboBox,
     QCheckBox,
+    QPushButton,
 )
 from PySide6.QtCore import Signal
 
@@ -165,6 +166,43 @@ class LensEditorWidget(QWidget):
         self._diameter_input.valueChanged.connect(self._on_property_changed)
         dim_layout.addRow("Diameter:", self._diameter_input)
 
+        # Manufacturing aperture: polished clear aperture per surface.
+        # 0 means "full mechanical diameter".
+        self._ca1_input = QDoubleSpinBox()
+        self._ca1_input.setRange(0, 500)
+        self._ca1_input.setValue(0)
+        self._ca1_input.setSuffix(" mm")
+        self._ca1_input.setToolTip("Clear aperture surface 1 (0 = full diameter)")
+        self._ca1_input.valueChanged.connect(self._on_property_changed)
+        dim_layout.addRow("Clear aperture 1:", self._ca1_input)
+
+        self._ca2_input = QDoubleSpinBox()
+        self._ca2_input.setRange(0, 500)
+        self._ca2_input.setValue(0)
+        self._ca2_input.setSuffix(" mm")
+        self._ca2_input.setToolTip("Clear aperture surface 2 (0 = full diameter)")
+        self._ca2_input.valueChanged.connect(self._on_property_changed)
+        dim_layout.addRow("Clear aperture 2:", self._ca2_input)
+
+        # Protective 45-degree chamfer face width per surface (0 = sharp).
+        self._bevel1_input = QDoubleSpinBox()
+        self._bevel1_input.setRange(0, 20)
+        self._bevel1_input.setValue(0)
+        self._bevel1_input.setDecimals(3)
+        self._bevel1_input.setSingleStep(0.1)
+        self._bevel1_input.setSuffix(" mm")
+        self._bevel1_input.valueChanged.connect(self._on_property_changed)
+        dim_layout.addRow("Bevel 1 (45°):", self._bevel1_input)
+
+        self._bevel2_input = QDoubleSpinBox()
+        self._bevel2_input.setRange(0, 20)
+        self._bevel2_input.setValue(0)
+        self._bevel2_input.setDecimals(3)
+        self._bevel2_input.setSingleStep(0.1)
+        self._bevel2_input.setSuffix(" mm")
+        self._bevel2_input.valueChanged.connect(self._on_property_changed)
+        dim_layout.addRow("Bevel 2 (45°):", self._bevel2_input)
+
         # Edge lock: keep the rim-wall thickness fixed when radii/diameter
         # change by compensating the center thickness (which is what the
         # "Thickness" spinbox stores). Unchecked = classic behavior where
@@ -233,6 +271,41 @@ class LensEditorWidget(QWidget):
         mat_layout.addRow("Refractive Index:", self._n_input)
 
         layout.addWidget(mat_group)
+
+        # Coatings: per-surface AR stack presets + reflectivity readout.
+        coat_group = QGroupBox("Coatings")
+        coat_layout = QFormLayout(coat_group)
+        self._coat_combos = []
+        self._coat_wl_inputs = []
+        self._coat_info_labels = []
+        for surface in (1, 2):
+            combo = QComboBox()
+            combo.addItems(
+                ["Uncoated", "MgF2 single-layer", "Dual-layer AR", "V-coating", "Custom"]
+            )
+            coat_layout.addRow(f"Surface {surface}:", combo)
+            self._coat_combos.append(combo)
+
+            row = QHBoxLayout()
+            wl_spin = QDoubleSpinBox()
+            wl_spin.setRange(380, 1000)
+            wl_spin.setValue(550)
+            wl_spin.setSuffix(" nm")
+            wl_spin.valueChanged.connect(self._on_coating_wl_changed)
+            row.addWidget(wl_spin)
+            self._coat_wl_inputs.append(wl_spin)
+
+            apply_btn = QPushButton("Apply")
+            apply_btn.setFixedWidth(60)
+            apply_btn.clicked.connect(lambda _checked=False, s=surface: self._on_coating_apply(s))
+            row.addWidget(apply_btn)
+            coat_layout.addRow("Design λ:", row)
+
+            info = QLabel("Uncoated")
+            info.setStyleSheet("color: #4fc3f7;")
+            coat_layout.addRow("Coating:", info)
+            self._coat_info_labels.append(info)
+        layout.addWidget(coat_group)
 
         # Fresnel lens
         fresnel_box = QGroupBox("Fresnel Lens")
@@ -360,6 +433,23 @@ class LensEditorWidget(QWidget):
                     self._lens.radius_of_curvature_2 = self._r2_input.value()
                 self._lens.thickness = self._thickness_input.value()
                 self._lens.diameter = self._diameter_input.value()
+            # Manufacturing aperture: 0 in the UI means full diameter.
+            diameter = self._lens.diameter
+            for spin, attr in (
+                (self._ca1_input, "clear_aperture_1"),
+                (self._ca2_input, "clear_aperture_2"),
+            ):
+                raw = spin.value()
+                if raw <= 0:
+                    setattr(self._lens, attr, None)
+                else:
+                    setattr(self._lens, attr, min(raw, diameter))
+                    if raw > diameter:
+                        spin.blockSignals(True)
+                        spin.setValue(diameter)
+                        spin.blockSignals(False)
+            self._lens.bevel_1 = max(0.0, self._bevel1_input.value())
+            self._lens.bevel_2 = max(0.0, self._bevel2_input.value())
             self._lens.refractive_index = self._n_input.value()
             self._touch_lens()
             self._refresh_parabolic_ui()
@@ -486,10 +576,88 @@ class LensEditorWidget(QWidget):
             self._lens.material = material
             self._touch_lens()
             self._update_calculated()
+            self._refresh_coating_ui()
             if self._viz_widget:
                 self._viz_widget.update_lens(self._lens)
             self.lens_modified.emit(self._lens)
             self.lens_updated.emit()
+
+    def _coating_design_wl(self, surface: int) -> float:
+        """Design wavelength (nm) currently dialed for a surface."""
+        return float(self._coat_wl_inputs[surface - 1].value())
+
+    def _on_coating_wl_changed(self, _value: float) -> None:
+        """Design-wavelength tweak: refresh readouts, keep the stack."""
+        self._refresh_coating_ui()
+
+    def _on_coating_apply(self, surface: int) -> None:
+        """Apply the selected coating preset to one surface."""
+        if not self._lens:
+            return
+        from ...coating_designer import COATING_PRESETS, design_preset
+
+        preset = self._coat_combos[surface - 1].currentText()
+        if preset == "Custom":
+            self._refresh_coating_ui()
+            return
+        if preset == "Uncoated" or preset not in COATING_PRESETS:
+            self._lens.set_coating(surface, None)
+        else:
+            wl = self._coating_design_wl(surface)
+            substrate = self._lens._coating_substrate_index(wl)
+            stack = design_preset(preset, substrate, wl)
+            self._lens.set_coating(surface, [layer.to_dict() for layer in stack])
+        self._touch_lens()
+        self._refresh_coating_ui()
+        self._update_calculated()
+        if self._viz_widget:
+            self._viz_widget.update_lens(self._lens)
+        self.lens_modified.emit(self._lens)
+        self.lens_updated.emit()
+
+    def _refresh_coating_ui(self) -> None:
+        """Sync coating combos and reflectivity readouts to the model."""
+        if not self._lens:
+            return
+        from ...coating_designer import COATING_PRESETS, CoatingLayer, design_preset
+
+        for surface in (1, 2):
+            stack_dicts = self._lens.get_coating_1() if surface == 1 else self._lens.get_coating_2()
+            wl = self._coating_design_wl(surface)
+            substrate = self._lens._coating_substrate_index(wl)
+            match = "Custom" if stack_dicts else "Uncoated"
+            if stack_dicts:
+                for preset in COATING_PRESETS:
+                    if preset == "Uncoated":
+                        continue
+                    candidate = design_preset(preset, substrate, wl)
+                    if len(candidate) != len(stack_dicts):
+                        continue
+                    ok = True
+                    for layer, ref in zip(
+                        [CoatingLayer.from_dict(d) for d in stack_dicts], candidate
+                    ):
+                        if (
+                            layer.material != ref.material
+                            or abs(layer.thickness_nm - ref.thickness_nm) > 0.03 * ref.thickness_nm
+                        ):
+                            ok = False
+                            break
+                    if ok:
+                        match = preset
+                        break
+            combo = self._coat_combos[surface - 1]
+            combo.blockSignals(True)
+            combo.setCurrentText(match)
+            combo.blockSignals(False)
+            try:
+                refl = self._lens.coating_reflectance(surface, wl)
+                label = self._lens.coating_label(surface)
+                self._coat_info_labels[surface - 1].setText(
+                    f"{label} · R({wl:.0f})={refl*100:.2f}%"
+                )
+            except Exception:
+                self._coat_info_labels[surface - 1].setText("Uncoated")
 
     def _on_fresnel_changed(self, state: int) -> None:
         """Handle Fresnel checkbox change"""
@@ -638,6 +806,10 @@ class LensEditorWidget(QWidget):
             self._r2_input,
             self._thickness_input,
             self._diameter_input,
+            self._ca1_input,
+            self._ca2_input,
+            self._bevel1_input,
+            self._bevel2_input,
         )
         for spin in dim_inputs:
             spin.blockSignals(True)
@@ -645,6 +817,10 @@ class LensEditorWidget(QWidget):
         self._r2_input.setValue(lens.radius_of_curvature_2)
         self._thickness_input.setValue(lens.thickness)
         self._diameter_input.setValue(lens.diameter)
+        self._ca1_input.setValue(0 if lens.clear_aperture_1 is None else lens.clear_aperture_1)
+        self._ca2_input.setValue(0 if lens.clear_aperture_2 is None else lens.clear_aperture_2)
+        self._bevel1_input.setValue(lens.bevel_1)
+        self._bevel2_input.setValue(lens.bevel_2)
         for spin in dim_inputs:
             spin.blockSignals(False)
         self._n_input.setValue(lens.refractive_index)
@@ -654,6 +830,7 @@ class LensEditorWidget(QWidget):
         # values until the user acts (sync_model=False).
         self._update_sag_ranges(sync_model=False)
         self._refresh_parabolic_ui()
+        self._refresh_coating_ui()
         self._update_calculated()
         self._viz_widget.update_lens(lens)
         self._class_type_label.setText(lens.classify_lens_type())
