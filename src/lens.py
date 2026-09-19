@@ -3,7 +3,7 @@ import math
 import sqlite3
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,30 @@ def _is_flat(r):
     return not r or not math.isfinite(r) or abs(r) > LARGE_NUMBER or abs(r) < EPSILON
 
 
+def _normalize_coating(value) -> Optional[List[Dict[str, Any]]]:
+    """Normalize a coating stack to plain JSON-able layer dicts.
+
+    Accepts None/[] (uncoated -> None), lists of dicts, or CoatingLayer
+    objects (converted). Anything else passes through untouched for
+    validate_coating_stack() to reject.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)) and len(value) == 0:
+        return None
+    if isinstance(value, (list, tuple)):
+        normalized = []
+        for layer in value:
+            if hasattr(layer, "to_dict"):
+                normalized.append(layer.to_dict())
+            elif isinstance(layer, dict):
+                normalized.append(dict(layer))
+            else:
+                return value
+        return normalized
+    return value
+
+
 class Lens:
     """
     Represents an optical lens with its physical and optical properties.
@@ -80,6 +104,8 @@ class Lens:
         clear_aperture_2: Optional[float] = None,
         bevel_1: float = 0.0,
         bevel_2: float = 0.0,
+        coating_1: Optional[List[Dict[str, Any]]] = None,
+        coating_2: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
 
         self.id = uuid.uuid4().hex
@@ -140,6 +166,11 @@ class Lens:
         self.clear_aperture_2 = None if clear_aperture_2 is None else float(clear_aperture_2)
         self.bevel_1 = float(bevel_1 or 0.0)
         self.bevel_2 = float(bevel_2 or 0.0)
+
+        # Per-surface coating stacks (substrate-to-air layer dicts).
+        # None/empty = uncoated (bare Fresnel).
+        self.coating_1 = _normalize_coating(coating_1)
+        self.coating_2 = _normalize_coating(coating_2)
 
         self.created_at = datetime.now().isoformat()
         self.modified_at = datetime.now().isoformat()
@@ -237,6 +268,88 @@ class Lens:
         if self.clear_aperture_2 is None:
             return self.diameter
         return self.clear_aperture_2
+
+    def get_coating_1(self) -> List[Dict[str, Any]]:
+        """Coating stack of surface 1 ([] = uncoated)."""
+        return list(self.coating_1) if self.coating_1 else []
+
+    def get_coating_2(self) -> List[Dict[str, Any]]:
+        """Coating stack of surface 2 ([] = uncoated)."""
+        return list(self.coating_2) if self.coating_2 else []
+
+    def set_coating(self, surface: int, layers) -> None:
+        """Set the coating stack of one surface.
+
+        Args:
+            surface: 1 (front) or 2 (back).
+            layers: None/[] for uncoated, or a list of layer dicts
+                (or CoatingLayer objects) in substrate-to-air order.
+
+        Raises:
+            ValueError: If surface is not 1 or 2.
+        """
+        if surface not in (1, 2):
+            raise ValueError(f"surface must be 1 or 2, got {surface}")
+        normalized = _normalize_coating(layers)
+        if surface == 1:
+            self.coating_1 = normalized
+        else:
+            self.coating_2 = normalized
+        self.modified_at = datetime.now().isoformat()
+
+    def _coating_substrate_index(self, wavelength_nm: float) -> float:
+        """Substrate index for coating math at a wavelength.
+
+        Prefers the wavelength-resolved index, but only when the material
+        actually resolves in the database (unknown materials would silently
+        fall back to BK7 there); otherwise uses the stored index.
+        """
+        if self.model_glass_mode:
+            return self.refractive_index_at(wavelength_nm)
+        if MATERIAL_DB_AVAILABLE:
+            try:
+                db = get_material_database()
+                if db.get_material(self.material) is not None:
+                    return self.refractive_index_at(wavelength_nm)
+            except _MATERIAL_DB_ERRORS as e:
+                logger.debug("Substrate index lookup failed: %s", e)
+        return self.refractive_index
+
+    def coating_reflectance(
+        self, surface: int, wavelength_nm: float, angle_deg: float = 0.0
+    ) -> float:
+        """Reflectivity of one surface including its coating.
+
+        Args:
+            surface: 1 (front) or 2 (back).
+            wavelength_nm: Wavelength in nanometers.
+            angle_deg: Incidence angle in degrees from the normal.
+
+        Returns:
+            Reflectivity in [0, 1] (bare Fresnel when uncoated).
+        """
+        from .coating_designer import CoatingLayer, coated_reflectance
+
+        stack = self.get_coating_1() if surface == 1 else self.get_coating_2()
+        layers = [CoatingLayer.from_dict(d) for d in stack]
+        return coated_reflectance(
+            layers, self._coating_substrate_index(wavelength_nm), wavelength_nm, angle_deg
+        )
+
+    def coating_label(self, surface: int) -> str:
+        """Short human label for one surface's coating."""
+        from .coating_designer import CoatingLayer, coating_label
+
+        stack = self.get_coating_1() if surface == 1 else self.get_coating_2()
+        return coating_label([CoatingLayer.from_dict(d) for d in stack])
+
+    def bare_reflectance(self, wavelength_nm: float) -> float:
+        """Normal-incidence bare Fresnel reflectivity of the substrate."""
+        from .coating_designer import coated_reflectance
+
+        return coated_reflectance(
+            [], self._coating_substrate_index(wavelength_nm), wavelength_nm
+        )
 
     def update_refractive_index(
         self, wavelength_nm: Optional[float] = None, temperature: Optional[float] = None
@@ -373,6 +486,8 @@ class Lens:
             "clear_aperture_2": self.clear_aperture_2,
             "bevel_1": self.bevel_1,
             "bevel_2": self.bevel_2,
+            "coating_1": self.coating_1,
+            "coating_2": self.coating_2,
             "created_at": self.created_at,
             "modified_at": self.modified_at,
         }
@@ -410,6 +525,8 @@ class Lens:
             clear_aperture_2=data.get("clear_aperture_2", None),
             bevel_1=data.get("bevel_1", 0.0),
             bevel_2=data.get("bevel_2", 0.0),
+            coating_1=data.get("coating_1", None),
+            coating_2=data.get("coating_2", None),
         )
 
         lens.id = data.get("id", lens.id)
@@ -683,6 +800,7 @@ Optical Lens Details:
    Diameter: {self.diameter}mm
    Clear Aperture 1/2: {self.clear_aperture_1}mm / {self.clear_aperture_2}mm
    Bevel 1/2: {self.bevel_1}mm / {self.bevel_2}mm
+   Coating 1/2: {self.coating_label(1)} / {self.coating_label(2)}
   Refractive Index: {self.refractive_index}
   Type: {self.lens_type}
   Material: {self.material}

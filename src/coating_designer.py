@@ -6,8 +6,8 @@ Calculate coating thickness and reflectivity for optical coatings
 
 import cmath
 import math
-from typing import List, Tuple
 from dataclasses import dataclass
+from typing import List, Tuple, Dict, Any, Optional
 
 
 @dataclass
@@ -17,6 +17,81 @@ class CoatingLayer:
     material: str
     refractive_index: float
     thickness_nm: float  # Physical thickness in nanometers
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to a JSON-serializable dict (substrate-to-air order kept by caller)."""
+        return {
+            "material": self.material,
+            "refractive_index": self.refractive_index,
+            "thickness_nm": self.thickness_nm,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "CoatingLayer":
+        """Rebuild from a dict produced by :meth:`to_dict`."""
+        return cls(
+            material=str(data["material"]),
+            refractive_index=float(data["refractive_index"]),
+            thickness_nm=float(data["thickness_nm"]),
+        )
+
+
+#: Preset coating designs offered in the GUI (built on demand per substrate).
+COATING_PRESETS = ("Uncoated", "MgF2 single-layer", "Dual-layer AR", "V-coating")
+
+
+def design_preset(
+    preset: str, substrate_index: float, wavelength_nm: float
+) -> List[CoatingLayer]:
+    """Build a preset coating stack (substrate-to-air order).
+
+    Args:
+        preset: One of :data:`COATING_PRESETS`. "Uncoated" yields [].
+        substrate_index: Substrate refractive index at the design wavelength.
+        wavelength_nm: Design wavelength in nanometers.
+
+    Returns:
+        List of CoatingLayer (empty for uncoated/unknown presets).
+    """
+    designer = CoatingDesigner(substrate_index=substrate_index)
+    if preset == "MgF2 single-layer":
+        return [designer.design_single_layer_ar(wavelength_nm)]
+    if preset == "Dual-layer AR":
+        return designer.design_dual_layer_ar(wavelength_nm)
+    if preset == "V-coating":
+        return designer.design_v_coating(wavelength_nm)
+    return []
+
+
+def coating_label(layers: List[CoatingLayer]) -> str:
+    """Short human label for a stack ("Uncoated", "MgF2", "2L AR", ...)."""
+    if not layers:
+        return "Uncoated"
+    if len(layers) == 1:
+        return f"{layers[0].material} SLAR"
+    materials = "+".join(layer.material for layer in layers)
+    return f"{len(layers)}L AR ({materials})"
+
+
+def coated_reflectance(
+    layers: List[CoatingLayer],
+    substrate_index: float,
+    wavelength_nm: float,
+    angle_deg: float = 0.0,
+) -> float:
+    """Reflectivity of a coated surface, or bare Fresnel when uncoated.
+
+    Args:
+        layers: Stack in substrate-to-air order ([] = uncoated).
+        substrate_index: Substrate index at the wavelength.
+        wavelength_nm: Wavelength in nanometers.
+        angle_deg: Incidence angle in degrees from the normal.
+
+    Returns:
+        Reflectivity in [0, 1].
+    """
+    designer = CoatingDesigner(substrate_index=substrate_index)
+    return designer.calculate_reflectivity(layers, wavelength_nm, angle_deg)
 
 
 def _tilted_admittance(n: float, cos_theta: complex, polarization: str) -> complex:

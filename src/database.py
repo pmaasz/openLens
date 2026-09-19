@@ -2,9 +2,31 @@ import sqlite3
 import json
 import logging
 from contextlib import contextmanager
-from typing import List, Dict, Any, Iterator
+from typing import List, Dict, Any, Iterator, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _coating_json(value) -> Optional[str]:
+    """Encode a coating stack for its TEXT column (None = uncoated)."""
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)) and len(value) == 0:
+        return None
+    return json.dumps(list(value))
+
+
+def _coating_parse(raw) -> Optional[list]:
+    """Decode a coating TEXT column back to a layer list (None = uncoated)."""
+    if raw is None:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not parsed:
+        return None
+    return parsed
 
 
 class LensInUseError(RuntimeError):
@@ -92,6 +114,8 @@ class DatabaseManager:
                         clear_aperture_2 REAL,
                         bevel_1 REAL NOT NULL DEFAULT 0.0,
                         bevel_2 REAL NOT NULL DEFAULT 0.0,
+                        coating_1 TEXT,
+                        coating_2 TEXT,
                         metadata TEXT
                     )
                 """)
@@ -140,7 +164,7 @@ class DatabaseManager:
                     )
                 """)
 
-                cursor.execute("PRAGMA user_version = 4")
+                cursor.execute("PRAGMA user_version = 5")
             elif version == 1:
                 # v1 -> v2: promote parabolic surfaces from the metadata
                 # blob to explicit columns. Existing rows keep DEFAULT 0
@@ -201,6 +225,14 @@ class DatabaseManager:
                 )
                 cursor.execute("PRAGMA user_version = 4")
 
+            # v4 -> v5: per-surface coating stacks (JSON arrays of layer
+            # dicts; NULL = uncoated).
+            cursor.execute("PRAGMA user_version")
+            if cursor.fetchone()[0] == 4:
+                cursor.execute("ALTER TABLE lenses ADD COLUMN coating_1 TEXT")
+                cursor.execute("ALTER TABLE lenses ADD COLUMN coating_2 TEXT")
+                cursor.execute("PRAGMA user_version = 5")
+
     def save_lens(self, lens_dict: Dict[str, Any]):
         """Save or update a single lens."""
         with self._connection() as conn:
@@ -214,8 +246,9 @@ class DatabaseManager:
                      created_at, modified_at,
                      is_parabolic_1, parabolic_sag_1, is_parabolic_2, parabolic_sag_2,
                      clear_aperture_1, clear_aperture_2, bevel_1, bevel_2,
+                     coating_1, coating_2,
                      metadata)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
                         lens_dict.get("id"),
@@ -236,6 +269,8 @@ class DatabaseManager:
                         lens_dict.get("clear_aperture_2"),
                         float(lens_dict.get("bevel_1", 0.0) or 0.0),
                         float(lens_dict.get("bevel_2", 0.0) or 0.0),
+                        _coating_json(lens_dict.get("coating_1")),
+                        _coating_json(lens_dict.get("coating_2")),
                         json.dumps(
                             {
                                 k: v
@@ -262,6 +297,8 @@ class DatabaseManager:
                                     "clear_aperture_2",
                                     "bevel_1",
                                     "bevel_2",
+                                    "coating_1",
+                                    "coating_2",
                                 ]
                             }
                         ),
@@ -286,8 +323,9 @@ class DatabaseManager:
              created_at, modified_at,
              is_parabolic_1, parabolic_sag_1, is_parabolic_2, parabolic_sag_2,
              clear_aperture_1, clear_aperture_2, bevel_1, bevel_2,
+             coating_1, coating_2,
              metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 lens_dict.get("id"),
@@ -308,6 +346,8 @@ class DatabaseManager:
                 lens_dict.get("clear_aperture_2"),
                 float(lens_dict.get("bevel_1", 0.0) or 0.0),
                 float(lens_dict.get("bevel_2", 0.0) or 0.0),
+                _coating_json(lens_dict.get("coating_1")),
+                _coating_json(lens_dict.get("coating_2")),
                 json.dumps(
                     {
                         k: v
@@ -334,6 +374,8 @@ class DatabaseManager:
                             "clear_aperture_2",
                             "bevel_1",
                             "bevel_2",
+                            "coating_1",
+                            "coating_2",
                         ]
                     }
                 ),
@@ -458,6 +500,12 @@ class DatabaseManager:
                     meta = json.loads(lens["metadata"])
                     lens.update(meta)
                 del lens["metadata"]
+                # Coating TEXT columns decode to layer lists; an explicit
+                # blob key (hand-written rows) wins, matching the
+                # parabolic convention above.
+                for _ckey in ("coating_1", "coating_2"):
+                    _raw = lens.get(_ckey)
+                    lens[_ckey] = _coating_parse(_raw) if isinstance(_raw, str) else _raw
                 results.append(lens)
                 lenses_lookup[lens["id"]] = lens
 
@@ -497,6 +545,8 @@ class DatabaseManager:
                              l.clear_aperture_2 AS lens_clear_aperture_2,
                              l.bevel_1 AS lens_bevel_1,
                              l.bevel_2 AS lens_bevel_2,
+                             l.coating_1 AS lens_coating_1,
+                             l.coating_2 AS lens_coating_2,
                              l.metadata AS lens_metadata,
                             ae.lens_id,
                             ae.position,
@@ -541,6 +591,8 @@ class DatabaseManager:
                             "clear_aperture_2": e_dict["lens_clear_aperture_2"],
                             "bevel_1": e_dict["lens_bevel_1"],
                             "bevel_2": e_dict["lens_bevel_2"],
+                            "coating_1": _coating_parse(e_dict["lens_coating_1"]),
+                            "coating_2": _coating_parse(e_dict["lens_coating_2"]),
                         }
                         if e_dict["lens_metadata"]:
                             lens_data.update(json.loads(e_dict["lens_metadata"]))

@@ -102,10 +102,10 @@ class ISO10110Generator:
             )
 
         # Draw ISO Table Block
-        table_x = width - 360
+        table_x = width - 430
         table_y = height - 150  # Start near bottom right
         # We don't need to pass height as it's calculated dynamically
-        lines.append(self._generate_iso_table(table_x, table_y, 340, 0))
+        lines.append(self._generate_iso_table(table_x, table_y, 410, 0))
 
         lines.append("</svg>")
         return "\n".join(lines)
@@ -165,8 +165,8 @@ class ISO10110Generator:
         )
 
         # Headers
-        headers = ["Surf", "Radius", "Thick", "Mat", "Diam", "CA"]
-        col_x = [x + 10, x + 50, x + 110, x + 160, x + 210, x + 260]
+        headers = ["Surf", "Radius", "Thick", "Mat", "Diam", "CA", "Coat"]
+        col_x = [x + 10, x + 50, x + 110, x + 160, x + 210, x + 260, x + 310]
 
         # Draw Header Row
         lines.append(
@@ -199,6 +199,9 @@ class ISO10110Generator:
             lines.append(
                 f'<text x="{col_x[5]}" y="{curr_y}" class="text">{lens.get_clear_aperture_1():.2f}</text>'
             )
+            lines.append(
+                f'<text x="{col_x[6]}" y="{curr_y}" class="text">{lens.coating_label(1)}</text>'
+            )
             curr_y += row_h
             surf_idx += 1
 
@@ -216,6 +219,9 @@ class ISO10110Generator:
             )
             lines.append(
                 f'<text x="{col_x[5]}" y="{curr_y}" class="text">{lens.get_clear_aperture_2():.2f}</text>'
+            )
+            lines.append(
+                f'<text x="{col_x[6]}" y="{curr_y}" class="text">{lens.coating_label(2)}</text>'
             )
             curr_y += row_h
             surf_idx += 1

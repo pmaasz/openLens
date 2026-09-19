@@ -217,6 +217,53 @@ def validate_bevel(bevel: float, param_name: str = "bevel") -> float:
     return bevel
 
 
+def validate_coating_stack(value, param_name: str = "coating"):
+    """Validate a per-surface coating stack.
+
+    Args:
+        value: None/empty (uncoated) or a list of layer dicts with
+            ``material``, ``refractive_index`` and ``thickness_nm`` keys
+            (substrate-to-air order).
+        param_name: Parameter name for error messages.
+
+    Returns:
+        Normalized list of layer dicts, or None for uncoated.
+
+    Raises:
+        ValidationError: If the stack is malformed.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, (list, tuple)):
+        raise ValidationError(f"{param_name} must be a list of layers or None")
+    if len(value) == 0:
+        return None
+    normalized = []
+    for i, layer in enumerate(value):
+        if not isinstance(layer, dict):
+            raise ValidationError(f"{param_name} layer {i} must be a dict")
+        for key in ("material", "refractive_index", "thickness_nm"):
+            if key not in layer:
+                raise ValidationError(f"{param_name} layer {i} is missing '{key}'")
+        n = _validate_number(layer["refractive_index"], f"{param_name} layer {i} index")
+        if not MIN_REFRACTIVE_INDEX <= n <= MAX_REFRACTIVE_INDEX:
+            raise ValidationError(
+                f"{param_name} layer {i} index must be within"
+                f" [{MIN_REFRACTIVE_INDEX}, {MAX_REFRACTIVE_INDEX}]"
+            )
+        t = _validate_number(layer["thickness_nm"], f"{param_name} layer {i} thickness")
+        if t <= 0:
+            raise ValidationError(f"{param_name} layer {i} thickness must be positive")
+        normalized.append(
+            {
+                "material": str(layer["material"]),
+                "refractive_index": n,
+                "thickness_nm": t,
+            }
+        )
+    return normalized
+
+
 def validate_refractive_index(n: float, param_name: str = "refractive index") -> float:
     """
     Validate refractive index.

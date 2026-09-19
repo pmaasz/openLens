@@ -370,7 +370,7 @@ class StepExporter:
 
     @staticmethod
     def _solid_label(lens) -> str:
-        """Human-readable solid name with clear-aperture/bevel data."""
+        """Human-readable solid name with clear-aperture/bevel/coating data."""
         name = getattr(lens, "name", "lens")
         diameter = getattr(lens, "diameter", None)
         ca1 = getattr(lens, "clear_aperture_1", None)
@@ -384,6 +384,10 @@ class StepExporter:
             details.append(f"CA {show1}/{show2}")
         if bevel_1 or bevel_2:
             details.append(f"bevel {bevel_1}/{bevel_2}")
+        coat1 = lens.coating_label(1) if hasattr(lens, "coating_label") else "Uncoated"
+        coat2 = lens.coating_label(2) if hasattr(lens, "coating_label") else "Uncoated"
+        if coat1 != "Uncoated" or coat2 != "Uncoated":
+            details.append(f"coat {coat1}/{coat2}")
         if details:
             return f"{name} ({', '.join(details)})"
         return str(name)

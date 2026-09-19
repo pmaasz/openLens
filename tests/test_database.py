@@ -63,14 +63,14 @@ def _load_lenses(db):
 class TestDatabaseManagerInit(unittest.TestCase):
 
     def test_fresh_db_is_v2_with_parabolic_columns(self):
-        """New databases are created at user_version=4 directly."""
+        """New databases are created at user_version=5 directly."""
         import sqlite3
 
         db, path = _make_db()
         try:
             conn = sqlite3.connect(path)
             try:
-                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 4)
+                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 5)
                 columns = {r[1] for r in conn.execute("PRAGMA table_info(lenses)").fetchall()}
                 for col in (
                     "is_parabolic_1",
@@ -81,6 +81,8 @@ class TestDatabaseManagerInit(unittest.TestCase):
                     "clear_aperture_2",
                     "bevel_1",
                     "bevel_2",
+                    "coating_1",
+                    "coating_2",
                 ):
                     self.assertIn(col, columns)
                 asm_columns = {
@@ -407,7 +409,7 @@ class TestMigrationV1ToV2(unittest.TestCase):
         conn = sqlite3.connect(self._path)
         try:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            self.assertEqual(version, 4)
+            self.assertEqual(version, 5)
             columns = {r[1] for r in conn.execute("PRAGMA table_info(lenses)").fetchall()}
             for col in (
                 "is_parabolic_1",
@@ -418,6 +420,8 @@ class TestMigrationV1ToV2(unittest.TestCase):
                 "clear_aperture_2",
                 "bevel_1",
                 "bevel_2",
+                "coating_1",
+                "coating_2",
             ):
                 self.assertIn(col, columns)
             asm_columns = {

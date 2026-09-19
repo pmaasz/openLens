@@ -139,3 +139,14 @@ Each item above is tracked as a prioritized todo in the current session.
   zero. Known pre-existing limits (unchanged): exact on-axis rays can
   terminate at sphere vertices, and the 2D sequential tracer does not
   complete very fast double-Gauss designs at full aperture.
+- Item 3 DONE: per-surface coating stacks (`Lens.coating_1/2`, layer dicts
+  in substrate-to-air order, None = uncoated) with `validate_coating_stack`,
+  `coating_reflectance` (transfer-matrix, wavelength-resolved substrate
+  that never falls back to BK7 for custom glass), `coating_label`, and
+  `bare_reflectance`; DB schema v5 with chained v1→…→v5 migration; GUI
+  coating group (per-surface presets, design wavelength, R readout);
+  ISO Coat column, STEP coat labels, Zemax COAT lines; ghost intensities
+  corrected by the coated/bare ratio of the two reflecting surfaces
+  (normal-incidence estimate; path transmissions stay bare-Fresnel); the
+  Series E seed carries its historic single MgF2 coat on air-glass
+  surfaces (cemented interface bare).

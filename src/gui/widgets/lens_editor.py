@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QComboBox,
     QCheckBox,
+    QPushButton,
 )
 from PySide6.QtCore import Signal
 
@@ -270,6 +271,43 @@ class LensEditorWidget(QWidget):
         mat_layout.addRow("Refractive Index:", self._n_input)
 
         layout.addWidget(mat_group)
+
+        # Coatings: per-surface AR stack presets + reflectivity readout.
+        coat_group = QGroupBox("Coatings")
+        coat_layout = QFormLayout(coat_group)
+        self._coat_combos = []
+        self._coat_wl_inputs = []
+        self._coat_info_labels = []
+        for surface in (1, 2):
+            combo = QComboBox()
+            combo.addItems(
+                ["Uncoated", "MgF2 single-layer", "Dual-layer AR", "V-coating", "Custom"]
+            )
+            coat_layout.addRow(f"Surface {surface}:", combo)
+            self._coat_combos.append(combo)
+
+            row = QHBoxLayout()
+            wl_spin = QDoubleSpinBox()
+            wl_spin.setRange(380, 1000)
+            wl_spin.setValue(550)
+            wl_spin.setSuffix(" nm")
+            wl_spin.valueChanged.connect(self._on_coating_wl_changed)
+            row.addWidget(wl_spin)
+            self._coat_wl_inputs.append(wl_spin)
+
+            apply_btn = QPushButton("Apply")
+            apply_btn.setFixedWidth(60)
+            apply_btn.clicked.connect(
+                lambda _checked=False, s=surface: self._on_coating_apply(s)
+            )
+            row.addWidget(apply_btn)
+            coat_layout.addRow("Design λ:", row)
+
+            info = QLabel("Uncoated")
+            info.setStyleSheet("color: #4fc3f7;")
+            coat_layout.addRow("Coating:", info)
+            self._coat_info_labels.append(info)
+        layout.addWidget(coat_group)
 
         # Fresnel lens
         fresnel_box = QGroupBox("Fresnel Lens")
@@ -540,10 +578,87 @@ class LensEditorWidget(QWidget):
             self._lens.material = material
             self._touch_lens()
             self._update_calculated()
+            self._refresh_coating_ui()
             if self._viz_widget:
                 self._viz_widget.update_lens(self._lens)
             self.lens_modified.emit(self._lens)
             self.lens_updated.emit()
+
+    def _coating_design_wl(self, surface: int) -> float:
+        """Design wavelength (nm) currently dialed for a surface."""
+        return float(self._coat_wl_inputs[surface - 1].value())
+
+    def _on_coating_wl_changed(self, _value: float) -> None:
+        """Design-wavelength tweak: refresh readouts, keep the stack."""
+        self._refresh_coating_ui()
+
+    def _on_coating_apply(self, surface: int) -> None:
+        """Apply the selected coating preset to one surface."""
+        if not self._lens:
+            return
+        from ...coating_designer import COATING_PRESETS, design_preset
+
+        preset = self._coat_combos[surface - 1].currentText()
+        if preset == "Custom":
+            self._refresh_coating_ui()
+            return
+        if preset == "Uncoated" or preset not in COATING_PRESETS:
+            self._lens.set_coating(surface, None)
+        else:
+            wl = self._coating_design_wl(surface)
+            substrate = self._lens._coating_substrate_index(wl)
+            stack = design_preset(preset, substrate, wl)
+            self._lens.set_coating(surface, [layer.to_dict() for layer in stack])
+        self._touch_lens()
+        self._refresh_coating_ui()
+        self._update_calculated()
+        if self._viz_widget:
+            self._viz_widget.update_lens(self._lens)
+        self.lens_modified.emit(self._lens)
+        self.lens_updated.emit()
+
+    def _refresh_coating_ui(self) -> None:
+        """Sync coating combos and reflectivity readouts to the model."""
+        if not self._lens:
+            return
+        from ...coating_designer import COATING_PRESETS, CoatingLayer, design_preset
+
+        for surface in (1, 2):
+            stack_dicts = (
+                self._lens.get_coating_1() if surface == 1 else self._lens.get_coating_2()
+            )
+            wl = self._coating_design_wl(surface)
+            substrate = self._lens._coating_substrate_index(wl)
+            match = "Custom" if stack_dicts else "Uncoated"
+            if stack_dicts:
+                for preset in COATING_PRESETS:
+                    if preset == "Uncoated":
+                        continue
+                    candidate = design_preset(preset, substrate, wl)
+                    if len(candidate) != len(stack_dicts):
+                        continue
+                    ok = True
+                    for layer, ref in zip(
+                        [CoatingLayer.from_dict(d) for d in stack_dicts], candidate
+                    ):
+                        if layer.material != ref.material or abs(
+                            layer.thickness_nm - ref.thickness_nm
+                        ) > 0.03 * ref.thickness_nm:
+                            ok = False
+                            break
+                    if ok:
+                        match = preset
+                        break
+            combo = self._coat_combos[surface - 1]
+            combo.blockSignals(True)
+            combo.setCurrentText(match)
+            combo.blockSignals(False)
+            try:
+                refl = self._lens.coating_reflectance(surface, wl)
+                label = self._lens.coating_label(surface)
+                self._coat_info_labels[surface - 1].setText(f"{label} · R({wl:.0f})={refl*100:.2f}%")
+            except Exception:
+                self._coat_info_labels[surface - 1].setText("Uncoated")
 
     def _on_fresnel_changed(self, state: int) -> None:
         """Handle Fresnel checkbox change"""
@@ -720,6 +835,7 @@ class LensEditorWidget(QWidget):
         # values until the user acts (sync_model=False).
         self._update_sag_ranges(sync_model=False)
         self._refresh_parabolic_ui()
+        self._refresh_coating_ui()
         self._update_calculated()
         self._viz_widget.update_lens(lens)
         self._class_type_label.setText(lens.classify_lens_type())

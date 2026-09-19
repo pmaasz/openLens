@@ -34,6 +34,13 @@ NIKON_SERIES_E_LENS_IDS = [
     "nikon-series-e-50mm-l5",
 ]
 
+#: The real lens is single-coated: one MgF2 layer (99.64 nm = 550 nm
+#: quarter-wave) on every air-glass surface; the cemented L4a-L4b
+#: interface stays bare.
+_MGF2_SINGLE_COAT = [
+    {"material": "MgF2", "refractive_index": 1.38, "thickness_nm": 99.64}
+]
+
 #: Stable assembly ID for the full six-element system.
 NIKON_SERIES_E_ASSEMBLY_ID = "nikon-series-e-50mm-assembly"
 
@@ -52,6 +59,8 @@ _LENS_SPECS = [
         "refractive_index": 1.713,
         "model_nd": 1.713,
         "model_vd": 53.9,
+        "coating_1": _MGF2_SINGLE_COAT,
+        "coating_2": _MGF2_SINGLE_COAT,
     },
     {
         "seed_id": NIKON_SERIES_E_LENS_IDS[1],
@@ -63,6 +72,8 @@ _LENS_SPECS = [
         "refractive_index": 1.713,
         "model_nd": 1.713,
         "model_vd": 53.9,
+        "coating_1": _MGF2_SINGLE_COAT,
+        "coating_2": _MGF2_SINGLE_COAT,
     },
     {
         "seed_id": NIKON_SERIES_E_LENS_IDS[2],
@@ -74,6 +85,8 @@ _LENS_SPECS = [
         "refractive_index": 1.64831,
         "model_nd": 1.64831,
         "model_vd": 33.8,
+        "coating_1": _MGF2_SINGLE_COAT,
+        "coating_2": _MGF2_SINGLE_COAT,
     },
     {
         "seed_id": NIKON_SERIES_E_LENS_IDS[3],
@@ -85,6 +98,7 @@ _LENS_SPECS = [
         "refractive_index": 1.64831,
         "model_nd": 1.64831,
         "model_vd": 33.8,
+        "coating_1": _MGF2_SINGLE_COAT,
     },
     {
         "seed_id": NIKON_SERIES_E_LENS_IDS[4],
@@ -96,6 +110,7 @@ _LENS_SPECS = [
         "refractive_index": 1.713,
         "model_nd": 1.713,
         "model_vd": 53.9,
+        "coating_2": _MGF2_SINGLE_COAT,
     },
     {
         "seed_id": NIKON_SERIES_E_LENS_IDS[5],
@@ -107,6 +122,8 @@ _LENS_SPECS = [
         "refractive_index": 1.713,
         "model_nd": 1.713,
         "model_vd": 53.9,
+        "coating_1": _MGF2_SINGLE_COAT,
+        "coating_2": _MGF2_SINGLE_COAT,
     },
 ]
 
@@ -133,6 +150,8 @@ def _make_lens(spec: Dict[str, Any]) -> Lens:
         model_glass_mode=True,
         model_nd=spec["model_nd"],
         model_vd=spec["model_vd"],
+        coating_1=spec.get("coating_1"),
+        coating_2=spec.get("coating_2"),
     )
     lens.id = spec["seed_id"]
     return lens

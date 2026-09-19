@@ -43,6 +43,9 @@ class ZemaxExporter:
             f.write(f"  DISZ {lens.thickness}\n")
             f.write(f"  DIAM {lens.get_clear_aperture_1()}\n")
             f.write(f"  GLAS {lens.material}\n")
+            coat1 = lens.coating_label(1)
+            if coat1 != "Uncoated":
+                f.write(f"  COAT {coat1}\n")
             f.write("\n")
 
             # Surface 2 (back)
@@ -52,6 +55,9 @@ class ZemaxExporter:
                 f"  CURV {1/lens.radius_of_curvature_2 if lens.radius_of_curvature_2 != 0 else 0}\n"
             )
             f.write(f"  DIAM {lens.get_clear_aperture_2()}\n")
+            coat2 = lens.coating_label(2)
+            if coat2 != "Uncoated":
+                f.write(f"  COAT {coat2}\n")
             f.write("  DISZ 100.0\n")
             f.write("\n")
 
@@ -95,6 +101,7 @@ class OpticStudioExporter:
                 f"{lens.get_clear_aperture_1():.4f} / {lens.get_clear_aperture_2():.4f} mm\n"
             )
             f.write(f"Bevel 1/2 (45 deg): {lens.bevel_1:.4f} / {lens.bevel_2:.4f} mm\n")
+            f.write(f"Coating 1/2: {lens.coating_label(1)} / {lens.coating_label(2)}\n")
 
             focal_length = lens.calculate_focal_length()
             if focal_length:
