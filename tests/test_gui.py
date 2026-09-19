@@ -133,6 +133,17 @@ else:
 
             self.widget = LensEditorWidget()
 
+        def tearDown(self):
+            """Destroy the widget before QApplication teardown.
+
+            Parentless widgets left alive until interpreter shutdown are
+            destroyed after QApplication, corrupting the heap (exit 134).
+            """
+            self.widget.close()
+            self.widget.deleteLater()
+            QApplication.processEvents()
+            self.widget = None
+
         def _load(
             self,
             r1=100.0,
