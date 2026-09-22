@@ -240,6 +240,10 @@ class PresetLibrary:
                 material=lens.material,
                 wavelength=lens.wavelength,
                 temperature=lens.temperature,
+                clear_aperture_1=lens.clear_aperture_1,
+                clear_aperture_2=lens.clear_aperture_2,
+                bevel_1=lens.bevel_1,
+                bevel_2=lens.bevel_2,
             )
         return None
 

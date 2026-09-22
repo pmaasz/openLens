@@ -9,7 +9,7 @@ Supports AP203/AP214 geometry (Manifold Solid B-Rep).
 """
 
 from datetime import datetime
-from typing import List, Any
+from typing import List, Any, Dict, Optional, Tuple
 
 
 class StepWriter:
@@ -98,8 +98,16 @@ class StepExporter:
         self.dir_z = 0
         self.dir_x = 0
 
-    def export(self, filename: str):
-        """Export the current system to a STEP file."""
+    def export(self, filename: str, housing: Optional[list] = None):
+        """Export the current system to a STEP file.
+
+        Args:
+            filename: Output path.
+            housing: Optional iterable of housing-part dicts with keys
+                ``name``, ``z0``, ``z1``, ``r_inner``, ``r_outer`` (all mm)
+                describing annular tube solids (spacers, barrel, retainers).
+                See ``mechanical_designer.suggest_housing``.
+        """
         # Standard setup entities
         self._create_context()
 
@@ -125,6 +133,21 @@ class StepExporter:
                     shape_ids.append(solid_id)
             except (AttributeError, KeyError) as e:
                 logger.debug("STEP solid export skipped: %s", e)
+
+        # Export housing parts (spacers, barrel, retainers) as tube solids.
+        for part in housing or []:
+            try:
+                solid_id = self._export_tube_solid(
+                    str(part.get("name", "part")),
+                    float(part["z0"]),
+                    float(part["z1"]),
+                    float(part["r_inner"]),
+                    float(part["r_outer"]),
+                )
+                if solid_id:
+                    shape_ids.append(solid_id)
+            except (KeyError, TypeError, ValueError) as e:
+                logger.debug("STEP housing part skipped: %s", e)
 
         # Create Root Product Definition if needed
         # For simplicity, we just leave the geometric entities in the file.
@@ -359,9 +382,158 @@ class StepExporter:
         shell = self.writer.add_entity("CLOSED_SHELL", ["'shell'", [face1, face2, face3]])
 
         # --- Solid ---
-        solid = self.writer.add_entity("MANIFOLD_SOLID_BREP", [f"'{lens.name}'", shell])
+        # Carry the manufacturing aperture in the solid name so downstream
+        # CAD keeps it even though the B-rep itself is built on the
+        # mechanical outer diameter (bevel chamfer faces are not modeled).
+        solid = self.writer.add_entity(
+            "MANIFOLD_SOLID_BREP", [f"'{self._solid_label(lens)}'", shell]
+        )
 
         return solid
+
+    def _export_tube_solid(self, name: str, z0: float, z1: float, r_inner: float, r_outer: float):
+        """Create a B-Rep annular tube solid (spacer, barrel, retainer).
+
+        A hollow cylinder from z0 to z1 with inner radius r_inner and
+        outer radius r_outer: two planar ring faces plus inner and outer
+        cylindrical faces. Same hand-written, viewer-lenient style as the
+        lens solids above (no CAD kernel in this environment).
+        """
+        if not (r_outer > r_inner > 0 and z1 > z0):
+            logger.debug("STEP tube export skipped (bad dims): %s", name)
+            return None
+
+        def _circle(label: str, z: float, r: float):
+            pc = self.writer.add_entity("CARTESIAN_POINT", [f"'{label}_c'", (0.0, 0.0, z)])
+            ax = self.writer.add_entity(
+                "AXIS2_PLACEMENT_3D", [f"'{label}_ax'", pc, self.dir_z, self.dir_x]
+            )
+            return self.writer.add_entity("CIRCLE", [f"'{label}'", ax, r])
+
+        def _edge(label: str, circle_id: int, z: float, r: float):
+            pe = self.writer.add_entity("CARTESIAN_POINT", [f"'{label}_p'", (r, 0.0, z)])
+            ve = self.writer.add_entity("VERTEX_POINT", [f"'{label}_v'", pe])
+            return self.writer.add_entity("EDGE_CURVE", [f"'{label}'", ve, ve, circle_id, ".T."])
+
+        def _loop(label: str, edge_id: int):
+            oriented = self.writer.add_entity("ORIENTED_EDGE", ["*", "*", edge_id, ".T."])
+            return self.writer.add_entity("EDGE_LOOP", [f"'{label}'", [oriented]])
+
+        c_top_out = _circle(f"{name}_to", z1, r_outer)
+        c_top_in = _circle(f"{name}_ti", z1, r_inner)
+        c_bot_out = _circle(f"{name}_bo", z0, r_outer)
+        c_bot_in = _circle(f"{name}_bi", z0, r_inner)
+
+        e_top_out = _edge(f"{name}_to", c_top_out, z1, r_outer)
+        e_top_in = _edge(f"{name}_ti", c_top_in, z1, r_inner)
+        e_bot_out = _edge(f"{name}_bo", c_bot_out, z0, r_outer)
+        e_bot_in = _edge(f"{name}_bi", c_bot_in, z0, r_inner)
+
+        loop_top_out = _loop(f"{name}_lto", e_top_out)
+        loop_top_in = _loop(f"{name}_lti", e_top_in)
+        loop_bot_out = _loop(f"{name}_lbo", e_bot_out)
+        loop_bot_in = _loop(f"{name}_lbi", e_bot_in)
+
+        # Planar ring faces (outer bound + inner hole bound each).
+        p_top = self.writer.add_entity("CARTESIAN_POINT", [f"'{name}_pt'", (0.0, 0.0, z1)])
+        ax_top = self.writer.add_entity(
+            "AXIS2_PLACEMENT_3D", [f"'{name}_axt'", p_top, self.dir_z, self.dir_x]
+        )
+        plane_top = self.writer.add_entity("PLANE", [f"'{name}_plt'", ax_top])
+        face_top = self.writer.add_entity(
+            "ADVANCED_FACE",
+            [
+                f"'{name}_ft'",
+                [
+                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bt1'", loop_top_out, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bt2'", loop_top_in, ".T."]),
+                ],
+                plane_top,
+                ".T.",
+            ],
+        )
+
+        p_bot = self.writer.add_entity("CARTESIAN_POINT", [f"'{name}_pb'", (0.0, 0.0, z0)])
+        ax_bot = self.writer.add_entity(
+            "AXIS2_PLACEMENT_3D", [f"'{name}_axb'", p_bot, self.dir_z, self.dir_x]
+        )
+        plane_bot = self.writer.add_entity("PLANE", [f"'{name}_plb'", ax_bot])
+        face_bot = self.writer.add_entity(
+            "ADVANCED_FACE",
+            [
+                f"'{name}_fb'",
+                [
+                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bb1'", loop_bot_out, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bb2'", loop_bot_in, ".T."]),
+                ],
+                plane_bot,
+                ".T.",
+            ],
+        )
+
+        # Cylindrical faces bounded by the ring loops.
+        ax_cyl = self.writer.add_entity(
+            "AXIS2_PLACEMENT_3D", [f"'{name}_axc'", p_bot, self.dir_z, self.dir_x]
+        )
+        surf_outer = self.writer.add_entity(
+            "CYLINDRICAL_SURFACE", [f"'{name}_co'", ax_cyl, r_outer]
+        )
+        face_outer = self.writer.add_entity(
+            "ADVANCED_FACE",
+            [
+                f"'{name}_fo'",
+                [
+                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bo1'", loop_top_out, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bo2'", loop_bot_out, ".T."]),
+                ],
+                surf_outer,
+                ".T.",
+            ],
+        )
+        surf_inner = self.writer.add_entity(
+            "CYLINDRICAL_SURFACE", [f"'{name}_ci'", ax_cyl, r_inner]
+        )
+        face_inner = self.writer.add_entity(
+            "ADVANCED_FACE",
+            [
+                f"'{name}_fi'",
+                [
+                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bi1'", loop_top_in, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bi2'", loop_bot_in, ".T."]),
+                ],
+                surf_inner,
+                ".T.",
+            ],
+        )
+
+        shell = self.writer.add_entity(
+            "CLOSED_SHELL", ["'shell'", [face_top, face_bot, face_outer, face_inner]]
+        )
+        return self.writer.add_entity("MANIFOLD_SOLID_BREP", [f"'{name}'", shell])
+
+    @staticmethod
+    def _solid_label(lens) -> str:
+        """Human-readable solid name with clear-aperture/bevel/coating data."""
+        name = getattr(lens, "name", "lens")
+        diameter = getattr(lens, "diameter", None)
+        ca1 = getattr(lens, "clear_aperture_1", None)
+        ca2 = getattr(lens, "clear_aperture_2", None)
+        bevel_1 = float(getattr(lens, "bevel_1", 0.0) or 0.0)
+        bevel_2 = float(getattr(lens, "bevel_2", 0.0) or 0.0)
+        details = []
+        if ca1 is not None or ca2 is not None:
+            show1 = diameter if ca1 is None else ca1
+            show2 = diameter if ca2 is None else ca2
+            details.append(f"CA {show1}/{show2}")
+        if bevel_1 or bevel_2:
+            details.append(f"bevel {bevel_1}/{bevel_2}")
+        coat1 = lens.coating_label(1) if hasattr(lens, "coating_label") else "Uncoated"
+        coat2 = lens.coating_label(2) if hasattr(lens, "coating_label") else "Uncoated"
+        if coat1 != "Uncoated" or coat2 != "Uncoated":
+            details.append(f"coat {coat1}/{coat2}")
+        if details:
+            return f"{name} ({', '.join(details)})"
+        return str(name)
 
     def _create_product_structure(self, shape_ids):
         """Create high-level product structure."""
