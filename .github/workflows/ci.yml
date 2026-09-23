@@ -60,6 +60,16 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python3 -m unittest discover -s tests -t .
+      - name: Run GUI flow QA (replaces click-through)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python3 -m pytest tests/gui_flows -v
+      - name: Upload QA visual failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-visual-failures
+          path: /tmp/openlens_qa_failures/
 
   coverage:
     name: Coverage

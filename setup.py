@@ -47,6 +47,8 @@ setup(
         'dev': [
             'pytest>=7.0.0',
             'pytest-cov>=3.0.0',
+            'pytest-qt>=4.2.0',
+            'pytest-xdist>=3.0.0',
             'black>=22.0.0',
             'pylint>=2.12.0',
             'flake8>=4.0.0',

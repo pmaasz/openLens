@@ -33,7 +33,7 @@ from src.gui.theme import (
     DARK, LIGHT, get_app_stylesheet, get_menubar_qss,
     get_status_bar_qss, get_tab_widget_qss,
 )
-from src.stl_export import STLExporter
+from src.stl_export import export_lens_stl
 from src.io.step_export import StepExporter
 from src.io.export import ISO10110Generator
 from src.analysis.ghost import GhostAnalyzer
@@ -731,11 +731,8 @@ Ctrl+6         Tolerancing
             return
             
         try:
-            
             system = self._ensure_system(target)
-                
-            exporter = STLExporter(system)
-            exporter.export(filepath)
+            export_lens_stl(system, filepath)
             self._update_status(f"Exported to STL: {os.path.basename(filepath)}")
         except Exception as e:
             logger.error("STL export failed: %s", e)
