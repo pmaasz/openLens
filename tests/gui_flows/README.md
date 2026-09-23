@@ -40,5 +40,9 @@ make qa-gui  # flows only
 ## Visual baselines
 
 First run bootstraps `__snapshots__/*.png` and passes. Commit baselines.
-Later runs fail only on mean_diff > 8/255 or >5% pixels drifted; diffs land in
+Later runs fail only on significant drift; diffs land in
 `/tmp/openlens_qa_failures/` (uploaded as CI artifacts). Blank renders always fail.
+Thresholds are per-target: viz widgets use strict defaults (mean 8/255, 5%
+pixels) since they are mostly vector graphics; full main-window shots use
+lenient thresholds (mean 15/255, 15% pixels) because platform text
+antialiasing differs across Qt/fontconfig versions.
