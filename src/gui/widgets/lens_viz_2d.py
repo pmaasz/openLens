@@ -197,7 +197,7 @@ class LensViz2DWidget(QWidget):
 
         # Shared outline: front (top->bottom) and back (bottom->top) in the
         # vertex frame (front vertex at 0). Same helper as every 2D view.
-        outline = LensGeometry.lens_outline(self._lens, num_points=50)
+        outline = LensGeometry.lens_outline(self._lens, num_points=50, max_points=2000)
         x1_vertex = cx + outline["x1_vertex"] * scale
         x2_vertex = cx + outline["x2_vertex"] * scale
         x1_edge = cx + outline["x1_edge"] * scale
@@ -272,6 +272,27 @@ class LensViz2DWidget(QWidget):
                 path_r2.lineTo(x, y)
         painter.setPen(QPen(self._r2_color if not _infeasible else _bad, 2))
         painter.drawPath(path_r2)
+
+        if bool(getattr(self._lens, "is_fresnel", False)):
+            for surface, vertex, color in (
+                (1, outline["x1_vertex"], self._r1_color),
+                (2, outline["x2_vertex"], self._r2_color),
+            ):
+                for radius, before, after in LensGeometry.groove_steps(
+                    self._lens, surface, max_steps=2000
+                ):
+                    if abs(after - before) <= 1e-12:
+                        continue
+                    for signed_radius in (-radius, radius):
+                        y = cy + signed_radius * scale
+                        before_x = cx + (vertex + before) * scale
+                        after_x = cx + (vertex + after) * scale
+                        if abs(after_x - before_x) < 3.0:
+                            center_x = (before_x + after_x) / 2.0
+                            before_x = center_x - 1.5
+                            after_x = center_x + 1.5
+                        painter.setPen(QPen(color if not _infeasible else _bad, 2))
+                        painter.drawLine(before_x, y, after_x, y)
 
         # Draw handles (spaced out to avoid crowding)
         def draw_handle(p: QPainter, name: str, pos: QPoint, label: str = "") -> None:

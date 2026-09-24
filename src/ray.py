@@ -149,6 +149,7 @@ class Ray:
         self.path: List[Tuple[float, float]] = [(self.x, self.y)]
         self.terminated = False
         self.hit: bool = False
+        self.optical_path_length: float = 0.0
 
     @property
     def angle(self) -> float:
@@ -173,6 +174,7 @@ class Ray:
         self.x += distance_mm * math.cos(self.angle_rad)
         self.y += distance_mm * math.sin(self.angle_rad)
         self.path.append((self.x, self.y))
+        self.optical_path_length += distance_mm * self.n
 
     def refract_or_reflect(
         self, n1: float, n2: float, surface_normal_angle: float = 0.0
