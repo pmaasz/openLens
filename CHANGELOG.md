@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/pmaasz/openLens/compare/openlens-v0.4.0...openlens-v0.5.0) (2026-09-26)
+
+
+### Features
+
+* **qa:** add automated GUI flow suite replacing manual QA ([#288](https://github.com/pmaasz/openLens/issues/288)) ([2e7175b](https://github.com/pmaasz/openLens/commit/2e7175b916d784bd83ca01c28512c3dc94633930))
+
+
+### Bug Fixes
+
+* **fresnel:** render and trace stepped lenses ([#290](https://github.com/pmaasz/openLens/issues/290)) ([f3004bb](https://github.com/pmaasz/openLens/commit/f3004bbb9edc73982702c9a47877581c909f9909))
+
 ## [0.4.0](https://github.com/pmaasz/openLens/compare/openlens-v0.3.0...openlens-v0.4.0) (2026-09-16)
 
 
