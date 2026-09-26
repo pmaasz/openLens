@@ -38,7 +38,7 @@ def draw_system_outline(ax, system: OpticalSystem) -> None:
 
         # Shared outline (same helper as every 2D view), shifted so the
         # front vertex sits at current_z.
-        outline = LensGeometry.lens_outline(lens, num_points=50)
+        outline = LensGeometry.lens_outline(lens, num_points=50, max_points=2000)
         bad = not outline["feasible"]
         z1 = [current_z + x for x, _ in outline["front"]]
         y_front = [y for _, y in outline["front"]]

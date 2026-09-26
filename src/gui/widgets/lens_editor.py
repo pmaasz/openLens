@@ -451,6 +451,9 @@ class LensEditorWidget(QWidget):
             self._lens.bevel_1 = max(0.0, self._bevel1_input.value())
             self._lens.bevel_2 = max(0.0, self._bevel2_input.value())
             self._lens.refractive_index = self._n_input.value()
+            if getattr(self._lens, "is_fresnel", False):
+                self._lens.calculate_num_grooves()
+                self._update_groove_count()
             self._touch_lens()
             self._refresh_parabolic_ui()
             self._update_sag_ranges()
@@ -654,7 +657,7 @@ class LensEditorWidget(QWidget):
                 refl = self._lens.coating_reflectance(surface, wl)
                 label = self._lens.coating_label(surface)
                 self._coat_info_labels[surface - 1].setText(
-                    f"{label} · R({wl:.0f})={refl*100:.2f}%"
+                    f"{label} · R({wl:.0f})={refl * 100:.2f}%"
                 )
             except Exception:
                 self._coat_info_labels[surface - 1].setText("Uncoated")
@@ -674,16 +677,18 @@ class LensEditorWidget(QWidget):
             self._num_grooves_value.hide()
             self._num_grooves_label.hide()
 
-        if enabled and self._lens:
-            self._lens.is_fresnel = True
-            self._lens.groove_pitch = self._groove_pitch_input.value()
+        if self._lens:
+            self._lens.is_fresnel = enabled
+            if enabled:
+                self._lens.groove_pitch = self._groove_pitch_input.value()
+                self._lens.calculate_num_grooves()
+                self._update_groove_count()
+            else:
+                self._lens.num_grooves = 0
+                self._num_grooves_value.setText("0")
             self._touch_lens()
-            self._update_groove_count()
-            self.lens_modified.emit(self._lens)
-            self.lens_updated.emit()
-        elif self._lens:
-            self._lens.is_fresnel = False
-            self._num_grooves_value.setText("0")
+            self._update_calculated()
+            self._viz_widget.update_lens(self._lens)
             self.lens_modified.emit(self._lens)
             self.lens_updated.emit()
 
@@ -691,20 +696,42 @@ class LensEditorWidget(QWidget):
         """Handle groove pitch change"""
         if self._lens and getattr(self._lens, "is_fresnel", False):
             self._lens.groove_pitch = value
+            self._lens.calculate_num_grooves()
             self._touch_lens()
             self._update_groove_count()
+            self._update_calculated()
+            self._viz_widget.update_lens(self._lens)
             self.lens_modified.emit(self._lens)
             self.lens_updated.emit()
 
     def _update_groove_count(self):
-        """Calculate number of grooves"""
-        if not self._lens or not hasattr(self._lens, "is_fresnel") or not self._lens.is_fresnel:
+        """Calculate and display the current groove count."""
+        if not self._lens or not getattr(self._lens, "is_fresnel", False):
+            self._num_grooves_value.setText("0")
             return
-        pitch = self._groove_pitch_input.value()
-        diameter = self._lens.diameter
-        if pitch > 0:
-            grooves = int(diameter / (2 * pitch))
-            self._num_grooves_value.setText(str(grooves))
+        self._lens.calculate_num_grooves()
+        self._num_grooves_value.setText(str(self._lens.num_grooves or 0))
+
+    def _refresh_fresnel_ui(self) -> None:
+        """Synchronize Fresnel controls with the loaded lens model."""
+        if self._lens is None:
+            return
+        enabled = bool(getattr(self._lens, "is_fresnel", False))
+        self._fresnel_check.blockSignals(True)
+        self._fresnel_check.setChecked(enabled)
+        self._fresnel_check.blockSignals(False)
+        self._groove_pitch_input.blockSignals(True)
+        self._groove_pitch_input.setValue(float(self._lens.groove_pitch))
+        self._groove_pitch_input.blockSignals(False)
+        self._groove_pitch_input.setVisible(enabled)
+        self._groove_pitch_label.setVisible(enabled)
+        self._num_grooves_value.setVisible(enabled)
+        self._num_grooves_label.setVisible(enabled)
+        if enabled:
+            self._lens.calculate_num_grooves()
+            self._num_grooves_value.setText(str(self._lens.num_grooves or 0))
+        else:
+            self._num_grooves_value.setText("0")
 
     def _update_calculated(self) -> None:
         """Update calculated properties (delegates to the Lens model)."""
@@ -830,6 +857,7 @@ class LensEditorWidget(QWidget):
         # values until the user acts (sync_model=False).
         self._update_sag_ranges(sync_model=False)
         self._refresh_parabolic_ui()
+        self._refresh_fresnel_ui()
         self._refresh_coating_ui()
         self._update_calculated()
         self._viz_widget.update_lens(lens)

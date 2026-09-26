@@ -176,6 +176,26 @@ else:
                 self.assertAlmostEqual(self.widget._r2_input.value(), -109.97)
                 self.assertAlmostEqual(self.widget._diameter_input.value(), 50.0)
 
+        def test_fresnel_controls_follow_model(self):
+            """Fresnel state, pitch, count, and rendering stay synchronized."""
+            lens = Lens(
+                radius_of_curvature_1=100.0,
+                radius_of_curvature_2=-100.0,
+                thickness=5.0,
+                diameter=40.0,
+                is_fresnel=True,
+                groove_pitch=0.5,
+            )
+            self.widget.load_lens(lens)
+            self.assertTrue(self.widget._fresnel_check.isChecked())
+            self.assertAlmostEqual(self.widget._groove_pitch_input.value(), 0.5)
+            self.assertEqual(self.widget._num_grooves_value.text(), "40")
+            self.widget._diameter_input.setValue(20.0)
+            self.assertEqual(self.widget._num_grooves_value.text(), "20")
+            self.widget._fresnel_check.setChecked(False)
+            self.assertFalse(lens.is_fresnel)
+            self.assertEqual(self.widget._num_grooves_value.text(), "0")
+
         def test_edge_lock_preserves_rim(self):
             """Steepening a radius with the lock on compensates thickness."""
             lens = self._load(lock=True)
@@ -317,6 +337,14 @@ else:
                     is_parabolic_1=True,
                     parabolic_sag_1=2.0,
                 ),
+                Lens(
+                    radius_of_curvature_1=100.0,
+                    radius_of_curvature_2=-100.0,
+                    thickness=5.0,
+                    diameter=40.0,
+                    is_fresnel=True,
+                    groove_pitch=0.5,
+                ),
             ]
 
         def _grab(self, widget):
@@ -361,6 +389,28 @@ else:
             self.assertIn("thickness", widget._handles)
             self.assertIn("diameter", widget._handles)
             widget.close()
+
+        def test_3d_viz_renders_fresnel(self):
+            """The revolved 3D mesh includes the stepped radial profile."""
+            from src.gui.widgets.lens_viz_3d import _3DVisualizationWidget
+
+            lens = Lens(
+                radius_of_curvature_1=100.0,
+                radius_of_curvature_2=-100.0,
+                thickness=5.0,
+                diameter=40.0,
+                is_fresnel=True,
+                groove_pitch=0.5,
+            )
+            widget = _3DVisualizationWidget()
+            if not hasattr(widget, "_ax"):
+                self.skipTest("matplotlib 3D backend unavailable")
+            widget.resize(400, 300)
+            widget.update_lens(lens)
+            if not widget._surface_profiles:
+                self.skipTest("3D numerical backend unavailable")
+            self.assertGreater(len(widget._surface_profiles[1]), 15)
+            self._grab(widget)
 
         def test_simulation_viz_renders(self):
             """Simulation view renders single lenses and systems."""

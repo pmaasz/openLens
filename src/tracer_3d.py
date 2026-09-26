@@ -5,7 +5,7 @@
 import math
 from typing import List, Optional, Tuple, TYPE_CHECKING
 
-from .ray import Ray3D, Ray, RefractionResult, OpticalIntersector, HAS_POLARIZATION
+from .ray import Ray3D, RefractionResult, OpticalIntersector
 from .vector3 import Vector3, vec3
 from .transform import Matrix4x4
 from .constants import (
@@ -19,6 +19,7 @@ from .constants import (
     RAY_EXIT_PROPAGATION_3D_MM,
 )
 from .lens import _is_flat
+from .geometry import LensGeometry
 
 if TYPE_CHECKING:
     from .lens import Lens
@@ -53,6 +54,9 @@ class LensRayTracer3D:
         self.is_parabolic_2 = bool(getattr(lens, "is_parabolic_2", False))
         self.parabolic_sag_1 = float(getattr(lens, "parabolic_sag_1", 0.0))
         self.parabolic_sag_2 = float(getattr(lens, "parabolic_sag_2", 0.0))
+        self.is_fresnel = bool(getattr(lens, "is_fresnel", False))
+        self.fresnel_facets_1 = LensGeometry.fresnel_facets(lens, 1)
+        self.fresnel_facets_2 = LensGeometry.fresnel_facets(lens, 2)
 
         if transform:
             self.transform = transform
@@ -191,6 +195,95 @@ class LensRayTracer3D:
 
         return ray.origin + ray.direction * t
 
+    def _intersect_fresnel_surface(
+        self, ray: Ray3D, surface_type: str
+    ) -> Optional[Tuple[Vector3, Vector3]]:
+        """Intersect a ray with the conical facets of a stepped surface."""
+        facets = self.fresnel_facets_1 if surface_type == "front" else self.fresnel_facets_2
+        if not facets:
+            return None
+
+        vertex = self.front_vertex if surface_type == "front" else self.back_vertex
+        if self._inv is not None:
+            local_vertex = self._inv.multiply_point(vertex)
+            local_origin = self._inv.multiply_point(ray.origin) - local_vertex
+            local_dir = self._to_local_vector(ray.direction).normalize()
+        else:
+            local_vertex = vertex
+            local_origin = ray.origin - vertex
+            local_dir = ray.direction.normalize()
+
+        best = None
+        for facet in facets:
+            slope = facet.slope
+            intercept = facet.z_start - slope * facet.r_start
+            ox = local_origin.x
+            oy = local_origin.y
+            oz = local_origin.z
+            dx = local_dir.x
+            dy = local_dir.y
+            dz = local_dir.z
+
+            if abs(slope) < EPSILON:
+                if abs(dx) < EPSILON:
+                    continue
+                distances = [(intercept - ox) / dx]
+            else:
+                coefficient_a = dx * dx - slope * slope * (dy * dy + dz * dz)
+                coefficient_b = 2.0 * ((ox - intercept) * dx - slope * slope * (oy * dy + oz * dz))
+                coefficient_c = (ox - intercept) ** 2 - slope * slope * (oy * oy + oz * oz)
+                if abs(coefficient_a) < EPSILON:
+                    if abs(coefficient_b) < EPSILON:
+                        continue
+                    distances = [-coefficient_c / coefficient_b]
+                else:
+                    discriminant = coefficient_b**2 - 4.0 * coefficient_a * coefficient_c
+                    if discriminant < -EPSILON:
+                        continue
+                    root = math.sqrt(max(0.0, discriminant))
+                    distances = [
+                        (-coefficient_b - root) / (2.0 * coefficient_a),
+                        (-coefficient_b + root) / (2.0 * coefficient_a),
+                    ]
+
+            for distance in distances:
+                if distance <= EPSILON:
+                    continue
+                hit_y = oy + distance * dy
+                hit_z = oz + distance * dz
+                radial = math.hypot(hit_y, hit_z)
+                if radial < facet.r_start - 1e-6 or radial > facet.r_end + 1e-6:
+                    continue
+                if facet is not facets[-1] and radial >= facet.r_end - 1e-6:
+                    continue
+                axial = ox + distance * dx - intercept
+                if abs(slope) >= EPSILON and axial * slope < -1e-9:
+                    continue
+
+                local_hit = vec3(ox + distance * dx, hit_y, hit_z)
+                if radial < EPSILON:
+                    normal_local = vec3(1.0, 0.0, 0.0)
+                else:
+                    normal_local = vec3(
+                        1.0,
+                        -slope * hit_y / radial,
+                        -slope * hit_z / radial,
+                    ).normalize()
+                if self._inv is not None:
+                    hit = self.transform.multiply_point(local_hit + local_vertex)
+                    geometric = self.transform.multiply_vector(normal_local)
+                else:
+                    hit = ray.origin + ray.direction * distance
+                    geometric = normal_local
+                normal = self._outward_normal(geometric, surface_type)
+                candidate = (distance, hit, normal)
+                if best is None or candidate[0] < best[0] - EPSILON:
+                    best = candidate
+
+        if best is None:
+            return None
+        return best[1], best[2]
+
     def _intersect_paraboloid(
         self, ray: Ray3D, vertex: Vector3, R: float, surface_type: str = "front"
     ) -> Optional[Vector3]:
@@ -281,7 +374,16 @@ class LensRayTracer3D:
         else:
             return RefractionResult.MISSED
 
-        if is_parabolic:
+        fresnel_facets = self.fresnel_facets_1 if surface_type == "front" else self.fresnel_facets_2
+        fresnel_hit = None
+        if fresnel_facets:
+            fresnel_hit = self._intersect_fresnel_surface(ray, surface_type)
+            if fresnel_hit is None:
+                return RefractionResult.MISSED
+            intersection, normal = fresnel_hit
+            is_flat = False
+            is_parabolic = False
+        elif is_parabolic:
             # R is the effective vertex radius (may be negative).
             if abs(R) < EPSILON or abs(R) > 1e10:
                 normal = -self.optical_axis if surface_type == "front" else self.optical_axis
@@ -324,7 +426,7 @@ class LensRayTracer3D:
         ray.origin = intersection
         ray.path.append(intersection)
 
-        if is_parabolic and normal is None:
+        if fresnel_hit is None and is_parabolic and normal is None:
             # Paraboloid normal: gradient of F = x - (y²+z²)/(2R) - vx = 0,
             # i.e. (1, -y/R, -z/R) in the local frame, oriented outward.
             # (Planar fallback keeps the ∓axis normal assigned above.)
@@ -342,12 +444,12 @@ class LensRayTracer3D:
                 normal = -self.optical_axis if surface_type == "front" else self.optical_axis
             else:
                 normal = self._outward_normal(geometric, surface_type)
-        elif is_flat:
+        elif fresnel_hit is None and is_flat:
             if surface_type == "front":
                 normal = -self.optical_axis
             else:
                 normal = self.optical_axis
-        else:
+        elif fresnel_hit is None:
             normal = self._outward_normal(intersection - center, surface_type)
 
         current_n = ray.n

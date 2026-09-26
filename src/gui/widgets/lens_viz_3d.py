@@ -1,6 +1,10 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout
-import numpy as np
 from typing import Optional, TYPE_CHECKING
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 if TYPE_CHECKING:
     from ...lens import Lens
@@ -21,6 +25,10 @@ class _3DVisualizationWidget(QWidget):
         self._lens = None
         self._canvas = None
         self._figure = None
+        self._ax = None
+        self._ax_lens = None
+        self._ax_coords = None
+        self._surface_profiles = {}
 
         self.setMinimumSize(400, 300)
         self.setStyleSheet("background-color: #1e1e1e;")
@@ -85,124 +93,122 @@ class _3DVisualizationWidget(QWidget):
     def update_lens(self, lens: "Lens") -> None:
         """Redraw the 3D lens geometry for the given lens.
 
-        Clears the rotatable lens axis, redraws the surfaces and edge
-        circles, adjusts the axis limits and refreshes the canvas.
+        The radial mesh is built from the same Fresnel-aware profile as the
+        2D outline, including the vertical step at every groove boundary.
 
         Args:
             lens: The lens model to render.
         """
-        if not lens or not self._ax or not self._figure:
+        if not lens or not self._ax or not self._figure or np is None:
             return
 
-        # Clear only lens axis
-        if hasattr(self, "_ax_lens"):
-            self._ax_lens.clear()
-            self._ax_lens.set_axis_off()
-
-            # Keep coordinate system fixed (don't clear/recreate it)
-            # Just set limits from current lens
-            thickness, diameter = lens.thickness, lens.diameter
-            max_dim = max(diameter, thickness) * 0.7
-            if hasattr(self, "_ax_coords"):
-                self._ax_coords.set_xlim([-max_dim, max_dim])
-                self._ax_coords.set_ylim([-max_dim, max_dim])
-                self._ax_coords.set_zlim([-max_dim / 2, thickness + max_dim / 2])
-
-        r1, r2 = lens.radius_of_curvature_1, lens.radius_of_curvature_2
-        r1_abs, r2_abs = abs(r1), abs(r2)
-        thickness, diameter = lens.thickness, lens.diameter
-        max_r = diameter / 2.0
-        is_para1 = bool(getattr(lens, "is_parabolic_1", False))
-        para_sag1 = float(getattr(lens, "parabolic_sag_1", 0.0))
-        is_para2 = bool(getattr(lens, "is_parabolic_2", False))
-        para_sag2 = float(getattr(lens, "parabolic_sag_2", 0.0))
-
-        import numpy as np
+        self._lens = lens
+        self._ax_lens.clear()
+        self._ax_lens.set_axis_off()
 
         from ...constants import COLOR_LENS_BAD, COLOR_LENS_R1, COLOR_LENS_R2, COLOR_LENS_RIM
+        from ...geometry import LensGeometry
 
-        # Single source of truth (Lens.get_sag_1/2), vectorized for grids.
-        _vec_sag1 = np.vectorize(lens.get_sag_1, otypes=[float])
-        _vec_sag2 = np.vectorize(lens.get_sag_2, otypes=[float])
+        thickness = lens.thickness
+        diameter = lens.diameter
+        max_r = abs(diameter) / 2.0
+        facet_count = max(
+            len(LensGeometry.fresnel_facets(lens, 1)),
+            len(LensGeometry.fresnel_facets(lens, 2)),
+        )
+        display_limit = 512 if facet_count <= 256 else 128
+        front_profile = LensGeometry.surface_profile(
+            lens, 1, num_points=14, max_points=display_limit
+        )
+        back_profile = LensGeometry.surface_profile(
+            lens, 2, num_points=14, max_points=display_limit
+        )
+        self._surface_profiles = {1: front_profile, 2: back_profile}
 
-        # Create circles at top and bottom edges
-        theta = np.linspace(0, 2 * np.pi, 36)
-
-        # Calculate geometry (same outline helper as the 2D views):
-        # thickness is CENTER (vertex to vertex) thickness.
-        sag1_edge = float(_vec_sag1(max_r))
-        sag2_edge = float(_vec_sag2(max_r))
-        x1_vertex = 0
-        x2_vertex = x1_vertex + thickness
-        x1_edge = x1_vertex + sag1_edge
-        x2_edge = x2_vertex + sag2_edge
-
-        try:
-            _edge_t = lens.calculate_edge_thickness()
-        except Exception:
-            _edge_t = None
-        _bad = _edge_t is None or _edge_t <= 0
-
+        x1_vertex = 0.0
+        x2_vertex = thickness
+        x1_edge = x1_vertex + front_profile[-1][0]
+        x2_edge = x2_vertex + back_profile[-1][0]
+        outline = LensGeometry.lens_outline(lens, num_points=50, max_points=display_limit)
+        edge_thickness = outline.get("minimum_thickness", outline.get("edge_thickness"))
+        _bad = edge_thickness is None or edge_thickness <= 0
         _c1 = COLOR_LENS_BAD if _bad else COLOR_LENS_R1
         _c2 = COLOR_LENS_BAD if _bad else COLOR_LENS_R2
 
-        # Circle at front edge
+        theta = np.linspace(0, 2 * np.pi, 36)
         x_front = max_r * np.cos(theta)
         y_front = max_r * np.sin(theta)
         z_front = np.full_like(theta, x1_edge)
         self._ax.plot(x_front, y_front, z_front, color=_c1, linewidth=2)
 
-        # Circle at back edge
         x_back = max_r * np.cos(theta)
         y_back = max_r * np.sin(theta)
         z_back = np.full_like(theta, x2_edge)
         self._ax.plot(x_back, y_back, z_back, color=_c2, linewidth=2)
 
-        # Connect edges with vertical lines (cylinder wall)
-        for i in range(0, len(theta), 2):
-            ex = [x_front[i], x_back[i]]
-            ey = [y_front[i], y_back[i]]
-            ez = [z_front[i], z_back[i]]
-            self._ax.plot(ex, ey, ez, color=COLOR_LENS_RIM, linewidth=0.5)
+        for index in range(0, len(theta), 2):
+            self._ax.plot(
+                [x_front[index], x_back[index]],
+                [y_front[index], y_back[index]],
+                [z_front[index], z_back[index]],
+                color=COLOR_LENS_RIM,
+                linewidth=0.5,
+            )
 
-        # Fill surfaces
-        r_vals = np.linspace(0, max_r, 15)
         theta_vals = np.linspace(0, 2 * np.pi, 25)
-        R, THETA = np.meshgrid(r_vals, theta_vals)
-
-        # Front surface (blue)
-        if is_para1 or r1_abs > 0.1:
-            Z_front = x1_vertex + _vec_sag1(R)
+        for profile, offset, color in (
+            (front_profile, x1_vertex, _c1),
+            (back_profile, x2_vertex, _c2),
+        ):
+            radial = np.asarray([point[1] for point in profile], dtype=float)
+            axial = np.asarray([point[0] for point in profile], dtype=float)
+            R, THETA = np.meshgrid(radial, theta_vals)
+            Z = offset + axial[None, :] * np.ones((len(theta_vals), 1))
             X = R * np.cos(THETA)
             Y = R * np.sin(THETA)
-            self._ax.plot_surface(X, Y, Z_front, alpha=0.5, color=_c1, rstride=2, cstride=2)
+            rstride = 1 if getattr(lens, "is_fresnel", False) else 2
+            self._ax.plot_surface(X, Y, Z, alpha=0.5, color=color, rstride=rstride, cstride=2)
 
-        # Back surface (green)
-        if is_para2 or r2_abs > 0.1:
-            Z_back = x2_vertex + _vec_sag2(R)
-            X = R * np.cos(THETA)
-            Y = R * np.sin(THETA)
-            self._ax.plot_surface(X, Y, Z_back, alpha=0.5, color=_c2, rstride=2, cstride=2)
+        for surface, offset, color in (
+            (1, x1_vertex, _c1),
+            (2, x2_vertex, _c2),
+        ):
+            for radius, before, after in LensGeometry.groove_steps(
+                lens, surface, max_steps=display_limit
+            ):
+                if abs(after - before) <= 1e-12:
+                    continue
+                for axial in (offset + before, offset + after):
+                    self._ax.plot(
+                        radius * np.cos(theta),
+                        radius * np.sin(theta),
+                        np.full_like(theta, axial),
+                        color=color,
+                        linewidth=0.7,
+                    )
 
-        # Set axis limits on lens axis only
-        z_min = min(
-            x1_vertex + (sag1_edge if r1 < 0 else 0),
-            x2_vertex + (sag2_edge if r2 > 0 else 0),
-        )
-        z_max = max(
-            x1_vertex + (sag1_edge if r1 > 0 else 0),
-            x2_vertex + (sag2_edge if r2 > 0 else 0),
-        )
+        z_values = [0.0, thickness]
+        z_values.extend(point[0] for point in front_profile)
+        z_values.extend(thickness + point[0] for point in back_profile)
+        z_min = min(z_values)
+        z_max = max(z_values)
         padding = max(diameter, thickness) * 0.3
         limit = max(diameter, thickness) / 2 + padding
         self._ax.set_xlim([-limit, limit])
         self._ax.set_ylim([-limit, limit])
         self._ax.set_zlim([z_min - padding, z_max + padding])
+        if hasattr(self, "_ax_coords"):
+            self._ax_coords.set_xlim([-limit, limit])
+            self._ax_coords.set_ylim([-limit, limit])
+            self._ax_coords.set_zlim([z_min - padding, z_max + padding])
 
         self._ax.view_init(elev=20, azim=45)
 
-        # Add dimension text
         dim_text = f"D={diameter:.0f}mm  t={thickness:.1f}mm"
+        if getattr(lens, "is_fresnel", False):
+            pitch = float(getattr(lens, "groove_pitch", 0.0))
+            grooves = int(max_r / pitch) if pitch > 0 else 0
+            dim_text += f"  Fresnel ({grooves} grooves)"
         if _bad:
             dim_text += "  (infeasible)"
         self._ax.text2D(

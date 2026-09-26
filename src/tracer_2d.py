@@ -19,6 +19,7 @@ from .constants import (
     RAY_EXIT_PROPAGATION_2D_MM,
 )
 from .lens import _is_flat
+from .geometry import FresnelFacet, LensGeometry
 
 if TYPE_CHECKING:
     from .lens import Lens
@@ -60,6 +61,9 @@ class LensRayTracer:
         self.is_parabolic_2 = bool(lens.is_parabolic_2)
         self.parabolic_sag_1 = float(lens.parabolic_sag_1)
         self.parabolic_sag_2 = float(lens.parabolic_sag_2)
+        self.is_fresnel = bool(getattr(lens, "is_fresnel", False))
+        self.fresnel_facets_1 = LensGeometry.fresnel_facets(lens, 1)
+        self.fresnel_facets_2 = LensGeometry.fresnel_facets(lens, 2)
 
         self._calculate_geometry()
 
@@ -98,6 +102,10 @@ class LensRayTracer:
 
     def _get_surface_normal_angle(self, x: float, y: float, surface_type: str) -> float:
         """Calculate surface normal angle at a point."""
+        if self.is_fresnel:
+            facets = self.fresnel_facets_1 if surface_type == "front" else self.fresnel_facets_2
+            if facets:
+                return self._fresnel_normal_angle(y, surface_type)
         if surface_type == "front":
             if self.front_is_flat:
                 return 0
@@ -248,9 +256,76 @@ class LensRayTracer:
             return None
         return (vertex_x + a * y * y, y)
 
+    def _intersect_fresnel_surface(
+        self,
+        ray: Ray,
+        vertex_x: float,
+        facets: List[FresnelFacet],
+        semi_aperture: float,
+    ) -> Optional[Tuple[float, float]]:
+        """Intersect a ray with the linear facets of a stepped surface."""
+        if not facets:
+            return None
+
+        dx = math.cos(ray.angle)
+        dy = math.sin(ray.angle)
+        best = None
+        for facet in facets:
+            for sign in (-1.0, 1.0):
+                y0 = sign * facet.r_start
+                y1 = sign * facet.r_end
+                x0 = vertex_x + facet.z_start
+                x1 = vertex_x + facet.z_end
+                vector_x = x1 - x0
+                vector_y = y1 - y0
+                denominator = dx * vector_y - dy * vector_x
+                if abs(denominator) < EPSILON:
+                    continue
+
+                offset_x = ray.x - x0
+                offset_y = ray.y - y0
+                distance = -(offset_x * vector_y - offset_y * vector_x) / denominator
+                fraction = -(offset_x * dy - offset_y * dx) / denominator
+                if distance <= EPSILON or fraction < -1e-9 or fraction > 1.0 + 1e-9:
+                    continue
+
+                hit_x = ray.x + distance * dx
+                hit_y = ray.y + distance * dy
+                if abs(hit_y) > semi_aperture + 1e-6:
+                    continue
+                if facet is not facets[-1] and abs(hit_y) >= facet.r_end - 1e-6:
+                    continue
+                candidate = (distance, hit_x, hit_y, facet, sign)
+                if best is None or candidate[0] < best[0] - EPSILON:
+                    best = candidate
+
+        if best is None:
+            return None
+        return best[1], best[2]
+
+    def _fresnel_normal_angle(self, y: float, surface_type: str) -> float:
+        """Return the normal angle of the facet containing a radial hit."""
+        facets = self.fresnel_facets_1 if surface_type == "front" else self.fresnel_facets_2
+        if abs(y) <= EPSILON:
+            return 0.0
+        radius = abs(y)
+        facet = None
+        for candidate in facets:
+            if radius < candidate.r_end - EPSILON or candidate is facets[-1]:
+                facet = candidate
+                break
+        if facet is None:
+            return 0.0
+        signed_slope = facet.slope if y >= 0 else -facet.slope
+        return math.atan2(-signed_slope, 1.0)
+
     def _intersect_front_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
         """Find intersection point of ray with front surface."""
         semi = self.CA1 / 2
+        if self.fresnel_facets_1:
+            return self._intersect_fresnel_surface(
+                ray, self.front_vertex_x, self.fresnel_facets_1, semi
+            )
         if self.front_is_parabolic:
             return self._intersect_parabolic_surface(
                 ray, self.front_vertex_x, self.parabolic_sag_1, semi
@@ -264,6 +339,10 @@ class LensRayTracer:
     def _intersect_back_surface(self, ray: Ray) -> Optional[Tuple[float, float]]:
         """Find intersection point of ray with back surface."""
         semi = self.CA2 / 2
+        if self.fresnel_facets_2:
+            return self._intersect_fresnel_surface(
+                ray, self.back_vertex_x, self.fresnel_facets_2, semi
+            )
         if self.back_is_parabolic:
             return self._intersect_parabolic_surface(
                 ray, self.back_vertex_x, self.parabolic_sag_2, semi
@@ -286,12 +365,17 @@ class LensRayTracer:
             return ray
 
         x1, y1 = intersection
+        ray.optical_path_length += math.hypot(x1 - ray.x, y1 - ray.y) * ray.n
         ray.x, ray.y = x1, y1
         if len(ray.path) == 0 or ray.path[-1] != (x1, y1):
             ray.path.append((x1, y1))
         ray.hit = True
 
-        normal_angle = self._get_surface_normal_angle(x1, y1, "front")
+        normal_angle = (
+            self._fresnel_normal_angle(y1, "front")
+            if self.fresnel_facets_1
+            else self._get_surface_normal_angle(x1, y1, "front")
+        )
         if (
             ray.refract_or_reflect(REFRACTIVE_INDEX_AIR, self.n, normal_angle)
             is not RefractionResult.REFRACTED
@@ -308,6 +392,7 @@ class LensRayTracer:
                 t_side = (y_side - ray.y) / dy
                 if t_side > EPSILON:
                     x_side = ray.x + t_side * math.cos(ray.angle)
+                    ray.optical_path_length += math.hypot(x_side - ray.x, y_side - ray.y) * ray.n
                     ray.x, ray.y = x_side, y_side
                     ray.path.append((x_side, y_side))
 
@@ -315,11 +400,16 @@ class LensRayTracer:
             return ray
 
         x2, y2 = intersection
+        ray.optical_path_length += math.hypot(x2 - ray.x, y2 - ray.y) * ray.n
         ray.x, ray.y = x2, y2
         if len(ray.path) == 0 or ray.path[-1] != (x2, y2):
             ray.path.append((x2, y2))
 
-        normal_angle = self._get_surface_normal_angle(x2, y2, "back")
+        normal_angle = (
+            self._fresnel_normal_angle(y2, "back")
+            if self.fresnel_facets_2
+            else self._get_surface_normal_angle(x2, y2, "back")
+        )
         if (
             ray.refract_or_reflect(self.n, REFRACTIVE_INDEX_AIR, normal_angle)
             is not RefractionResult.REFRACTED
@@ -425,45 +515,10 @@ class LensRayTracer:
 
     def get_lens_outline(self, num_points: int = MESH_RESOLUTION_HIGH) -> List[Tuple[float, float]]:
         """Get points defining the lens outline for visualization."""
-        points = []
-        y_max = self.D / 2
-        y_values = [y_max - 2 * y_max * i / (num_points - 1) for i in range(num_points)]
-
-        for y in y_values:
-            if self.front_is_parabolic:
-                a = self.parabolic_sag_1 / (y_max * y_max) if abs(y_max) > EPSILON else 0
-                x = self.lens_offset + a * y * y
-            elif self.front_is_flat:
-                x = self.lens_offset
-            else:
-                R = abs(self.R1)
-                if y * y <= R * R:
-                    if self.R1 > 0:
-                        x = self.lens_offset - R + math.sqrt(R * R - y * y)
-                    else:
-                        x = self.lens_offset + R - math.sqrt(R * R - y * y)
-                else:
-                    continue
-            points.append((x, y))
-
-        for y in reversed(y_values):
-            if self.back_is_parabolic:
-                a = self.parabolic_sag_2 / (y_max * y_max) if abs(y_max) > EPSILON else 0
-                x = self.lens_offset + self.d + a * y * y
-            elif self.back_is_flat:
-                x = self.lens_offset + self.d
-            else:
-                R = abs(self.R2)
-                if y * y <= R * R:
-                    if self.R2 > 0:
-                        x = self.lens_offset + self.d + R - math.sqrt(R * R - y * y)
-                    else:
-                        x = self.lens_offset + self.d - R + math.sqrt(R * R - y * y)
-                else:
-                    continue
-            points.append((x, y))
-
-        return points
+        points = LensGeometry.get_lens_polyline(
+            self.lens, num_points=max(2, num_points - 1), max_points=2000
+        )
+        return [(x + self.lens_offset, y) for x, y in points]
 
 
 class SystemRayTracer:
@@ -593,6 +648,7 @@ class SystemRayTracer:
         y_stop = ray.y if t < 0 else ray.y + t * math.sin(ray.angle)
         if abs(y_stop) > semi:
             if t >= 0:
+                ray.optical_path_length += math.hypot(stop_x - ray.x, y_stop - ray.y) * ray.n
                 ray.x = stop_x
                 ray.y = y_stop
                 ray.path.append((ray.x, ray.y))

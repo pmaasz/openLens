@@ -313,7 +313,7 @@ class SimulationVisualizationWidget(QWidget):
             from ...geometry import LensGeometry
 
             half_d = lens.diameter / 2
-            outline = LensGeometry.lens_outline(lens, num_points=50)
+            outline = LensGeometry.lens_outline(lens, num_points=50, max_points=2000)
             bad = not outline["feasible"]
             bad_color = QColor(COLOR_LENS_BAD)
 
