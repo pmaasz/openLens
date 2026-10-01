@@ -762,7 +762,7 @@ Ctrl+6         Tolerancing
             exporter = STEPExporter(system)
             exporter.export(filepath, housing=housing)
             self._update_status(f"Exported to STEP: {os.path.basename(filepath)}")
-        except ImportError:
+        except ImportError as e:
             logger.error("STEP export failed with ImportError: %s", e)
             QMessageBox.warning(self, "Export Error", "STEP export requires additional dependencies (e.g. pythonocc-core).")
         except Exception as e:
