@@ -32,9 +32,10 @@ class StepWriter:
     """Helper to generate STEP file content."""
 
     # Leading characters that mark a string as already-written STEP syntax:
-    # a reference (#12), a quoted literal ('name'), an enum (.T.), a derived
-    # attribute (*) or an unset value ($). Only genuine text needs quoting.
-    _TOKEN_PREFIXES = ("#", "'", ".", "*", "$")
+    # a reference (#12), an enum (.T.), a derived attribute (*) or an unset
+    # value ($). A single quote is NOT here: string literals are never
+    # pre-quoted at the call site, so quoting and escaping happen here only.
+    _TOKEN_PREFIXES = ("#", ".", "*", "$")
 
     def __init__(self):
         self.lines = []
@@ -46,13 +47,21 @@ class StepWriter:
 
     @classmethod
     def _format_text(cls, text: str) -> str:
-        """Render a string argument, quoting only genuine text."""
+        """Render a string argument as a quoted, escaped STEP literal.
+
+        Apostrophes inside the text are doubled, which is Part 21's only
+        escape inside a literal and what ``step_reader`` expects back. Without
+        it a name like ``Bob's 50mm PCX`` closes its literal early and the
+        rest of the entity - and every entity after it - is malformed.
+        ``&``, ``<`` and ``>`` need no escape: Part 21 text files carry them
+        literally.
+        """
         if text.startswith(cls._TOKEN_PREFIXES):
             return text
         try:
             float(text)
         except ValueError:
-            return f"'{text}'"
+            return "'" + text.replace("'", "''") + "'"
         return text
 
     @classmethod
@@ -183,37 +192,37 @@ class StepExporter:
     def _create_context(self):
         """Create common context entities."""
         # Directions
-        self.dir_z = self.writer.add_entity("DIRECTION", ["'axis_z'", (0.0, 0.0, 1.0)])
-        self.dir_x = self.writer.add_entity("DIRECTION", ["'axis_x'", (1.0, 0.0, 0.0)])
-        self.dir_y = self.writer.add_entity("DIRECTION", ["'axis_y'", (0.0, 1.0, 0.0)])
+        self.dir_z = self.writer.add_entity("DIRECTION", ["axis_z", (0.0, 0.0, 1.0)])
+        self.dir_x = self.writer.add_entity("DIRECTION", ["axis_x", (1.0, 0.0, 0.0)])
+        self.dir_y = self.writer.add_entity("DIRECTION", ["axis_y", (0.0, 1.0, 0.0)])
 
-        self.origin = self.writer.add_entity("CARTESIAN_POINT", ["'origin'", (0.0, 0.0, 0.0)])
+        self.origin = self.writer.add_entity("CARTESIAN_POINT", ["origin", (0.0, 0.0, 0.0)])
 
         self.axis2_placement = self.writer.add_entity(
-            "AXIS2_PLACEMENT_3D", ["'global_axis'", self.origin, self.dir_z, self.dir_x]
+            "AXIS2_PLACEMENT_3D", ["global_axis", self.origin, self.dir_z, self.dir_x]
         )
 
         # Context
         self.context = self.writer.add_entity(
             "MECHANICAL_CONTEXT",
-            ["'3D Mechanical Context'", "'mechanical'", "'assembly'"],
+            ["3D Mechanical Context", "mechanical", "assembly"],
         )
 
         self.uncertainty = self.writer.add_entity(
             "UNCERTAINTY_MEASURE_WITH_UNIT",
-            [1.0e-6, "#unit_mm", "'distance_accuracy_value'", "'confusion accuracy'"],
+            [1.0e-6, "#unit_mm", "distance_accuracy_value", "confusion accuracy"],
         )
 
         self.related_context = self.writer.add_entity(
             "PRODUCT_CONTEXT",
-            ["'part definition'", "#application_context", "'mechanical'"],
+            ["part definition", "#application_context", "mechanical"],
         )
 
         # We cheat a bit and don't link everything perfectly for a minimal valid file
         # But we need Dimensional Units
         # We'll just define the geometric context reference for the solids
         self.geom_context = self.writer.add_entity(
-            "GEOMETRIC_REPRESENTATION_CONTEXT", ["'3D'", "'Geometric Context'", 3]
+            "GEOMETRIC_REPRESENTATION_CONTEXT", ["3D", "Geometric Context", 3]
         )
 
     def _export_lens_solid(self, lens, z_offset):
@@ -234,58 +243,58 @@ class StepExporter:
 
         # --- Points ---
         # Vertex 1 (on axis)
-        p_v1 = self.writer.add_entity("CARTESIAN_POINT", ["'v1'", (0.0, 0.0, z_offset)])
+        p_v1 = self.writer.add_entity("CARTESIAN_POINT", ["v1", (0.0, 0.0, z_offset)])
         # Vertex 2 (on axis)
-        p_v2 = self.writer.add_entity("CARTESIAN_POINT", ["'v2'", (0.0, 0.0, z_offset + thick)])
+        p_v2 = self.writer.add_entity("CARTESIAN_POINT", ["v2", (0.0, 0.0, z_offset + thick)])
 
         # Edge Point 1 (Start of edge loop 1) at (h, 0, z_edge1)
-        p_e1 = self.writer.add_entity("CARTESIAN_POINT", ["'e1'", (h, 0.0, z_edge1)])
+        p_e1 = self.writer.add_entity("CARTESIAN_POINT", ["e1", (h, 0.0, z_edge1)])
         # Edge Point 2 (Start of edge loop 2) at (h, 0, z_edge2)
-        p_e2 = self.writer.add_entity("CARTESIAN_POINT", ["'e2'", (h, 0.0, z_edge2)])
+        p_e2 = self.writer.add_entity("CARTESIAN_POINT", ["e2", (h, 0.0, z_edge2)])
 
         # --- Edge Curves (Circles) ---
         # Edge 1 Circle
         # Center at (0, 0, z_edge1)
-        p_c1 = self.writer.add_entity("CARTESIAN_POINT", ["'c1'", (0.0, 0.0, z_edge1)])
+        p_c1 = self.writer.add_entity("CARTESIAN_POINT", ["c1", (0.0, 0.0, z_edge1)])
         axis_c1 = self.writer.add_entity(
-            "AXIS2_PLACEMENT_3D", ["'axis_c1'", p_c1, self.dir_z, self.dir_x]
+            "AXIS2_PLACEMENT_3D", ["axis_c1", p_c1, self.dir_z, self.dir_x]
         )
-        circle1 = self.writer.add_entity("CIRCLE", ["'circle1'", axis_c1, h])
+        circle1 = self.writer.add_entity("CIRCLE", ["circle1", axis_c1, h])
 
         # Edge 2 Circle
-        p_c2 = self.writer.add_entity("CARTESIAN_POINT", ["'c2'", (0.0, 0.0, z_edge2)])
+        p_c2 = self.writer.add_entity("CARTESIAN_POINT", ["c2", (0.0, 0.0, z_edge2)])
         axis_c2 = self.writer.add_entity(
-            "AXIS2_PLACEMENT_3D", ["'axis_c2'", p_c2, self.dir_z, self.dir_x]
+            "AXIS2_PLACEMENT_3D", ["axis_c2", p_c2, self.dir_z, self.dir_x]
         )
-        circle2 = self.writer.add_entity("CIRCLE", ["'circle2'", axis_c2, h])
+        circle2 = self.writer.add_entity("CIRCLE", ["circle2", axis_c2, h])
 
         # --- Edges ---
         # We need a VERTEX_POINT for the seam (at angle 0)
-        v_e1 = self.writer.add_entity("VERTEX_POINT", ["'v_e1'", p_e1])
-        v_e2 = self.writer.add_entity("VERTEX_POINT", ["'v_e2'", p_e2])
+        v_e1 = self.writer.add_entity("VERTEX_POINT", ["v_e1", p_e1])
+        v_e2 = self.writer.add_entity("VERTEX_POINT", ["v_e2", p_e2])
 
         # EDGE_CURVE for Edge 1 (Full circle)
         # Note: STEP usually requires splitting closed curves into 1 or 2 segments?
         # A single EDGE_CURVE with same start/end vertex on a circle is allowed in some schemas,
         # but robust exporters use 2 semicircles or just declare it as an EDGE_LOOP with one edge.
         # Let's try single edge.
-        edge1 = self.writer.add_entity("EDGE_CURVE", ["'edge1'", v_e1, v_e1, circle1, ".T."])
+        edge1 = self.writer.add_entity("EDGE_CURVE", ["edge1", v_e1, v_e1, circle1, ".T."])
 
         # EDGE_CURVE for Edge 2
-        edge2 = self.writer.add_entity("EDGE_CURVE", ["'edge2'", v_e2, v_e2, circle2, ".T."])
+        edge2 = self.writer.add_entity("EDGE_CURVE", ["edge2", v_e2, v_e2, circle2, ".T."])
 
         # Longitudinal Seam Edge (connecting e1 to e2 along cylinder)
         # Line segment
         line_seam = self.writer.add_entity(
             "LINE",
             [
-                "'seam_line'",
+                "seam_line",
                 p_e1,
-                self.writer.add_entity("VECTOR", ["'dir_z'", self.dir_z, 1.0]),
+                self.writer.add_entity("VECTOR", ["dir_z", self.dir_z, 1.0]),
             ],
         )
         edge_seam = self.writer.add_entity(
-            "EDGE_CURVE", ["'edge_seam'", v_e1, v_e2, line_seam, ".T."]
+            "EDGE_CURVE", ["edge_seam", v_e1, v_e2, line_seam, ".T."]
         )
 
         # --- Loops ---
@@ -296,7 +305,7 @@ class StepExporter:
         loop1 = self.writer.add_entity(
             "EDGE_LOOP",
             [
-                "'loop1'",
+                "loop1",
                 [self.writer.add_entity("ORIENTED_EDGE", ["*", "*", edge1, ".T."])],
             ],
         )
@@ -305,7 +314,7 @@ class StepExporter:
         loop2 = self.writer.add_entity(
             "EDGE_LOOP",
             [
-                "'loop2'",
+                "loop2",
                 [self.writer.add_entity("ORIENTED_EDGE", ["*", "*", edge2, ".T."])],
             ],
         )
@@ -319,7 +328,7 @@ class StepExporter:
         # --- Surfaces ---
         # Surface 1 (Front)
         if is_flat1:
-            plane1 = self.writer.add_entity("PLANE", ["'plane1'", axis_c1])  # Normal +Z
+            plane1 = self.writer.add_entity("PLANE", ["plane1", axis_c1])  # Normal +Z
             surf1 = plane1
         else:
             # Sphere
@@ -329,15 +338,15 @@ class StepExporter:
             else:
                 c_z = z_offset + r1  # r1 is negative
 
-            p_center1 = self.writer.add_entity("CARTESIAN_POINT", ["'center1'", (0.0, 0.0, c_z)])
+            p_center1 = self.writer.add_entity("CARTESIAN_POINT", ["center1", (0.0, 0.0, c_z)])
             axis_s1 = self.writer.add_entity(
-                "AXIS2_PLACEMENT_3D", ["'axis_s1'", p_center1, self.dir_z, self.dir_x]
+                "AXIS2_PLACEMENT_3D", ["axis_s1", p_center1, self.dir_z, self.dir_x]
             )
-            surf1 = self.writer.add_entity("SPHERICAL_SURFACE", ["'sphere1'", axis_s1, abs(r1)])
+            surf1 = self.writer.add_entity("SPHERICAL_SURFACE", ["sphere1", axis_s1, abs(r1)])
 
         # Surface 2 (Back)
         if is_flat2:
-            plane2 = self.writer.add_entity("PLANE", ["'plane2'", axis_c2])
+            plane2 = self.writer.add_entity("PLANE", ["plane2", axis_c2])
             surf2 = plane2
         else:
             if r2 < 0:  # Convex back
@@ -346,17 +355,17 @@ class StepExporter:
             else:  # Concave back
                 c_z = z_offset + thick + r2
 
-            p_center2 = self.writer.add_entity("CARTESIAN_POINT", ["'center2'", (0.0, 0.0, c_z)])
+            p_center2 = self.writer.add_entity("CARTESIAN_POINT", ["center2", (0.0, 0.0, c_z)])
             axis_s2 = self.writer.add_entity(
-                "AXIS2_PLACEMENT_3D", ["'axis_s2'", p_center2, self.dir_z, self.dir_x]
+                "AXIS2_PLACEMENT_3D", ["axis_s2", p_center2, self.dir_z, self.dir_x]
             )
-            surf2 = self.writer.add_entity("SPHERICAL_SURFACE", ["'sphere2'", axis_s2, abs(r2)])
+            surf2 = self.writer.add_entity("SPHERICAL_SURFACE", ["sphere2", axis_s2, abs(r2)])
 
         # Surface 3 (Cylinder)
         axis_cyl = self.writer.add_entity(
-            "AXIS2_PLACEMENT_3D", ["'axis_cyl'", p_c1, self.dir_z, self.dir_x]
+            "AXIS2_PLACEMENT_3D", ["axis_cyl", p_c1, self.dir_z, self.dir_x]
         )
-        surf3 = self.writer.add_entity("CYLINDRICAL_SURFACE", ["'cyl'", axis_cyl, h])
+        surf3 = self.writer.add_entity("CYLINDRICAL_SURFACE", ["cyl", axis_cyl, h])
 
         # --- Faces ---
         # Face 1 (Front)
@@ -365,8 +374,8 @@ class StepExporter:
         face1 = self.writer.add_entity(
             "ADVANCED_FACE",
             [
-                "'face1'",
-                [self.writer.add_entity("FACE_BOUND", ["'b1'", loop1, ".T."])],
+                "face1",
+                [self.writer.add_entity("FACE_BOUND", ["b1", loop1, ".T."])],
                 surf1,
                 ".T.",
             ],
@@ -376,8 +385,8 @@ class StepExporter:
         face2 = self.writer.add_entity(
             "ADVANCED_FACE",
             [
-                "'face2'",
-                [self.writer.add_entity("FACE_BOUND", ["'b2'", loop2, ".T."])],
+                "face2",
+                [self.writer.add_entity("FACE_BOUND", ["b2", loop2, ".T."])],
                 surf2,
                 ".T.",
             ],
@@ -393,21 +402,19 @@ class StepExporter:
         # But let's try just listing the bounds.
         # One bound is the front circle, one is the back.
 
-        b3_1 = self.writer.add_entity("FACE_BOUND", ["'b3_1'", loop1, ".T."])
-        b3_2 = self.writer.add_entity("FACE_BOUND", ["'b3_2'", loop2, ".T."])
+        b3_1 = self.writer.add_entity("FACE_BOUND", ["b3_1", loop1, ".T."])
+        b3_2 = self.writer.add_entity("FACE_BOUND", ["b3_2", loop2, ".T."])
 
-        face3 = self.writer.add_entity("ADVANCED_FACE", ["'face3'", [b3_1, b3_2], surf3, ".T."])
+        face3 = self.writer.add_entity("ADVANCED_FACE", ["face3", [b3_1, b3_2], surf3, ".T."])
 
         # --- Shell ---
-        shell = self.writer.add_entity("CLOSED_SHELL", ["'shell'", [face1, face2, face3]])
+        shell = self.writer.add_entity("CLOSED_SHELL", ["shell", [face1, face2, face3]])
 
         # --- Solid ---
         # Carry the manufacturing aperture in the solid name so downstream
         # CAD keeps it even though the B-rep itself is built on the
         # mechanical outer diameter (bevel chamfer faces are not modeled).
-        solid = self.writer.add_entity(
-            "MANIFOLD_SOLID_BREP", [f"'{self._solid_label(lens)}'", shell]
-        )
+        solid = self.writer.add_entity("MANIFOLD_SOLID_BREP", [f"{self._solid_label(lens)}", shell])
 
         return solid
 
@@ -424,20 +431,20 @@ class StepExporter:
             return None
 
         def _circle(label: str, z: float, r: float):
-            pc = self.writer.add_entity("CARTESIAN_POINT", [f"'{label}_c'", (0.0, 0.0, z)])
+            pc = self.writer.add_entity("CARTESIAN_POINT", [f"{label}_c", (0.0, 0.0, z)])
             ax = self.writer.add_entity(
-                "AXIS2_PLACEMENT_3D", [f"'{label}_ax'", pc, self.dir_z, self.dir_x]
+                "AXIS2_PLACEMENT_3D", [f"{label}_ax", pc, self.dir_z, self.dir_x]
             )
-            return self.writer.add_entity("CIRCLE", [f"'{label}'", ax, r])
+            return self.writer.add_entity("CIRCLE", [f"{label}", ax, r])
 
         def _edge(label: str, circle_id: int, z: float, r: float):
-            pe = self.writer.add_entity("CARTESIAN_POINT", [f"'{label}_p'", (r, 0.0, z)])
-            ve = self.writer.add_entity("VERTEX_POINT", [f"'{label}_v'", pe])
-            return self.writer.add_entity("EDGE_CURVE", [f"'{label}'", ve, ve, circle_id, ".T."])
+            pe = self.writer.add_entity("CARTESIAN_POINT", [f"{label}_p", (r, 0.0, z)])
+            ve = self.writer.add_entity("VERTEX_POINT", [f"{label}_v", pe])
+            return self.writer.add_entity("EDGE_CURVE", [f"{label}", ve, ve, circle_id, ".T."])
 
         def _loop(label: str, edge_id: int):
             oriented = self.writer.add_entity("ORIENTED_EDGE", ["*", "*", edge_id, ".T."])
-            return self.writer.add_entity("EDGE_LOOP", [f"'{label}'", [oriented]])
+            return self.writer.add_entity("EDGE_LOOP", [f"{label}", [oriented]])
 
         c_top_out = _circle(f"{name}_to", z1, r_outer)
         c_top_in = _circle(f"{name}_ti", z1, r_inner)
@@ -455,36 +462,36 @@ class StepExporter:
         loop_bot_in = _loop(f"{name}_lbi", e_bot_in)
 
         # Planar ring faces (outer bound + inner hole bound each).
-        p_top = self.writer.add_entity("CARTESIAN_POINT", [f"'{name}_pt'", (0.0, 0.0, z1)])
+        p_top = self.writer.add_entity("CARTESIAN_POINT", [f"{name}_pt", (0.0, 0.0, z1)])
         ax_top = self.writer.add_entity(
-            "AXIS2_PLACEMENT_3D", [f"'{name}_axt'", p_top, self.dir_z, self.dir_x]
+            "AXIS2_PLACEMENT_3D", [f"{name}_axt", p_top, self.dir_z, self.dir_x]
         )
-        plane_top = self.writer.add_entity("PLANE", [f"'{name}_plt'", ax_top])
+        plane_top = self.writer.add_entity("PLANE", [f"{name}_plt", ax_top])
         face_top = self.writer.add_entity(
             "ADVANCED_FACE",
             [
-                f"'{name}_ft'",
+                f"{name}_ft",
                 [
-                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bt1'", loop_top_out, ".T."]),
-                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bt2'", loop_top_in, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bt1", loop_top_out, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bt2", loop_top_in, ".T."]),
                 ],
                 plane_top,
                 ".T.",
             ],
         )
 
-        p_bot = self.writer.add_entity("CARTESIAN_POINT", [f"'{name}_pb'", (0.0, 0.0, z0)])
+        p_bot = self.writer.add_entity("CARTESIAN_POINT", [f"{name}_pb", (0.0, 0.0, z0)])
         ax_bot = self.writer.add_entity(
-            "AXIS2_PLACEMENT_3D", [f"'{name}_axb'", p_bot, self.dir_z, self.dir_x]
+            "AXIS2_PLACEMENT_3D", [f"{name}_axb", p_bot, self.dir_z, self.dir_x]
         )
-        plane_bot = self.writer.add_entity("PLANE", [f"'{name}_plb'", ax_bot])
+        plane_bot = self.writer.add_entity("PLANE", [f"{name}_plb", ax_bot])
         face_bot = self.writer.add_entity(
             "ADVANCED_FACE",
             [
-                f"'{name}_fb'",
+                f"{name}_fb",
                 [
-                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bb1'", loop_bot_out, ".T."]),
-                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bb2'", loop_bot_in, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bb1", loop_bot_out, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bb2", loop_bot_in, ".T."]),
                 ],
                 plane_bot,
                 ".T.",
@@ -493,33 +500,29 @@ class StepExporter:
 
         # Cylindrical faces bounded by the ring loops.
         ax_cyl = self.writer.add_entity(
-            "AXIS2_PLACEMENT_3D", [f"'{name}_axc'", p_bot, self.dir_z, self.dir_x]
+            "AXIS2_PLACEMENT_3D", [f"{name}_axc", p_bot, self.dir_z, self.dir_x]
         )
-        surf_outer = self.writer.add_entity(
-            "CYLINDRICAL_SURFACE", [f"'{name}_co'", ax_cyl, r_outer]
-        )
+        surf_outer = self.writer.add_entity("CYLINDRICAL_SURFACE", [f"{name}_co", ax_cyl, r_outer])
         face_outer = self.writer.add_entity(
             "ADVANCED_FACE",
             [
-                f"'{name}_fo'",
+                f"{name}_fo",
                 [
-                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bo1'", loop_top_out, ".T."]),
-                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bo2'", loop_bot_out, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bo1", loop_top_out, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bo2", loop_bot_out, ".T."]),
                 ],
                 surf_outer,
                 ".T.",
             ],
         )
-        surf_inner = self.writer.add_entity(
-            "CYLINDRICAL_SURFACE", [f"'{name}_ci'", ax_cyl, r_inner]
-        )
+        surf_inner = self.writer.add_entity("CYLINDRICAL_SURFACE", [f"{name}_ci", ax_cyl, r_inner])
         face_inner = self.writer.add_entity(
             "ADVANCED_FACE",
             [
-                f"'{name}_fi'",
+                f"{name}_fi",
                 [
-                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bi1'", loop_top_in, ".T."]),
-                    self.writer.add_entity("FACE_BOUND", [f"'{name}_bi2'", loop_bot_in, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bi1", loop_top_in, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bi2", loop_bot_in, ".T."]),
                 ],
                 surf_inner,
                 ".T.",
@@ -527,9 +530,9 @@ class StepExporter:
         )
 
         shell = self.writer.add_entity(
-            "CLOSED_SHELL", ["'shell'", [face_top, face_bot, face_outer, face_inner]]
+            "CLOSED_SHELL", ["shell", [face_top, face_bot, face_outer, face_inner]]
         )
-        return self.writer.add_entity("MANIFOLD_SOLID_BREP", [f"'{name}'", shell])
+        return self.writer.add_entity("MANIFOLD_SOLID_BREP", [f"{name}", shell])
 
     @staticmethod
     def _solid_label(lens) -> str:
@@ -567,5 +570,5 @@ class StepExporter:
 
         shape_rep = self.writer.add_entity(
             "ADVANCED_BREP_SHAPE_REPRESENTATION",
-            ["'lens_geom'", tuple(rep_items), self.geom_context],
+            ["lens_geom", tuple(rep_items), self.geom_context],
         )
