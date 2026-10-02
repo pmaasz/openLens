@@ -169,7 +169,10 @@ class LensRayTracer:
             ray: The ray to intersect.
             center_x: X coordinate of the sphere center.
             R: Absolute radius of curvature.
-            is_front: True for front surface, False for back surface.
+            is_front: True for front surface, False for back surface. Also
+                selects which of the two radii the sign convention is read
+                from (``R1`` or ``R2``), which is what identifies the cap that
+                holds the vertex.
             semi_aperture: Lateral half-aperture for clipping (defaults to D/2).
         """
         dx = math.cos(ray.angle)
@@ -184,18 +187,17 @@ class LensRayTracer:
 
         t1, t2 = t_solutions
 
-        valid_ts = [t for t in [t1, t2] if t > EPSILON]
+        # The vertex lies at center_x - R (R > 0) or center_x + |R| (R < 0),
+        # so that pole identifies the cap the surface actually occupies.
+        signed_radius = self.R1 if is_front else self.R2
+        cap_x = center_x - R if signed_radius > 0 else center_x + R
+
+        valid_ts = OpticalIntersector.rank_cap_roots(t1, t2, ray.x, dx, cap_x)
         if not valid_ts:
             return None
 
-        # Mirror tracer_3d: a ray inside the sphere exits (max t), a ray
-        # outside enters (min t). A zero-length "hit" at the current
-        # position is never valid - it fabricates a refraction point and
-        # lets missed rays continue through the system.
-        dist_sq = (ray.x - center_x) ** 2 + ray.y**2
-        inside = dist_sq < R * R - EPSILON
         limit = self.D / 2 if semi_aperture is None else semi_aperture
-        for t in sorted(valid_ts, reverse=inside):
+        for t in valid_ts:
             x = ray.x + t * dx
             y = ray.y + t * dy
             if abs(y) <= limit:

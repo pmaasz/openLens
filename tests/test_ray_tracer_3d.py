@@ -321,5 +321,105 @@ class TestRayTracer3D(unittest.TestCase):
         self.assertFalse(ray.terminated)
 
 
+class TestSphericalCapSelection3D(unittest.TestCase):
+    """The 3D tracer must also hit the cap holding the vertex.
+
+    Same defect as the 2D tracer: the sphere root used to be picked by
+    whether the ray origin was inside the sphere, so a concave surface with
+    |R| below the ray start offset returned the far cap and refracted the ray
+    as though the surface were convex.
+    """
+
+    RAY_START_X = -100.0  # -RAY_START_OFFSET_3D_MM
+    MARGINAL_Y = 15.0
+
+    @staticmethod
+    def _sag(signed_radius, y):
+        radius = abs(signed_radius)
+        return signed_radius - math.copysign(math.sqrt(radius**2 - y**2), signed_radius)
+
+    def _front_hit_x(self, radius_1):
+        lens = Lens(
+            radius_of_curvature_1=radius_1,
+            radius_of_curvature_2=100.0,
+            refractive_index=1.5,
+            thickness=20.0,
+            diameter=30.0,
+        )
+        tracer = LensRayTracer3D(lens)
+        ray = Ray3D(
+            origin=vec3(self.RAY_START_X, self.MARGINAL_Y, 0.0),
+            direction=vec3(1, 0, 0),
+        )
+        tracer.trace_ray(ray, propagate_distance=0)
+        return ray.path[1].x
+
+    def test_front_hit_matches_analytic_sag(self):
+        for radius_1 in (-40.0, -50.0, -51.0, -120.0, 100.0):
+            with self.subTest(radius_1=radius_1):
+                self.assertAlmostEqual(
+                    self._front_hit_x(radius_1),
+                    self._sag(radius_1, self.MARGINAL_Y),
+                    places=9,
+                )
+
+    def test_3d_matches_2d_on_concave_first_surface(self):
+        """Both engines must place the hit at the same point."""
+        for radius_1 in (-40.0, -50.0, -120.0):
+            with self.subTest(radius_1=radius_1):
+                lens = Lens(
+                    radius_of_curvature_1=radius_1,
+                    radius_of_curvature_2=100.0,
+                    refractive_index=1.5,
+                    thickness=20.0,
+                    diameter=30.0,
+                )
+                ray2d = Ray(x=self.RAY_START_X, y=self.MARGINAL_Y, angle_rad=0.0)
+                LensRayTracer(lens).trace_ray(ray2d, propagate_distance=0)
+
+                ray3d = Ray3D(
+                    origin=vec3(self.RAY_START_X, self.MARGINAL_Y, 0.0),
+                    direction=vec3(1, 0, 0),
+                )
+                LensRayTracer3D(lens).trace_ray(ray3d, propagate_distance=0)
+
+                self.assertAlmostEqual(ray2d.path[1][0], ray3d.path[1].x, places=9)
+                self.assertAlmostEqual(ray2d.path[1][1], ray3d.path[1].y, places=9)
+
+    def test_cemented_doublet_still_traces(self):
+        """Touching surfaces refract at t=0; the cap ranking must allow it."""
+        lens1 = Lens(
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=-50.0,
+            thickness=5.0,
+            diameter=20.0,
+            refractive_index=1.5,
+        )
+        lens2 = Lens(
+            radius_of_curvature_1=-50.0,
+            radius_of_curvature_2=50.0,
+            thickness=5.0,
+            diameter=20.0,
+            refractive_index=1.6,
+        )
+        tracer = SystemRayTracer3D(
+            _MockSystem([_MockElement(lens1, 0.0), _MockElement(lens2, 5.0)])
+        )
+        ray = Ray3D(origin=vec3(-10, 0, 0), direction=vec3(1, 0, 0))
+        tracer.trace_ray(ray)
+        self.assertFalse(ray.terminated)
+
+
+class _MockElement:
+    def __init__(self, lens, pos):
+        self.lens = lens
+        self.position = pos
+
+
+class _MockSystem:
+    def __init__(self, elements):
+        self.elements = elements
+
+
 if __name__ == "__main__":
     unittest.main()

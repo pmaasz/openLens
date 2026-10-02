@@ -80,6 +80,56 @@ class OpticalIntersector:
         return (t1, t2)
 
     @staticmethod
+    def rank_cap_roots(
+        t1: float,
+        t2: float,
+        origin_axis: float,
+        dir_axis: float,
+        cap_axis: float,
+        min_t: float = EPSILON,
+    ) -> List[float]:
+        """
+        Order the forward sphere roots by proximity to the vertex-side cap.
+
+        A spherical surface is one cap of its sphere, not the whole sphere:
+        the usable cap is the one containing the surface vertex. Ranking the
+        roots by inside/outside instead only picks that cap while the ray
+        origin happens to sit on the correct side of the sphere, which is
+        never true for a concave surface whose radius is smaller than the
+        vertex-to-ray-start offset (the tracers use a fixed
+        ``RAY_START_OFFSET_MM``): the origin is then outside the sphere and
+        the far cap - a point that is not on the lens - would be returned,
+        refracting the ray as though the surface were convex.
+
+        Args:
+            t1: First parametric root from :meth:`intersect_sphere`.
+            t2: Second parametric root from :meth:`intersect_sphere`.
+            origin_axis: Ray origin coordinate along the optical axis.
+            dir_axis: Ray direction component along the optical axis.
+            cap_axis: Axis coordinate of the vertex-side pole of the sphere,
+                i.e. ``center - radius`` for R > 0 and ``center + |R|`` for
+                R < 0.
+            min_t: Forward tolerance. Callers own this because they disagree
+                on purpose: the 2D tracer rejects any zero-length "hit" (it
+                fabricates a refraction point and lets missed rays continue
+                through the system), while the 3D tracer accepts one so that
+                touching surfaces in a cemented doublet still refract.
+
+        Returns:
+            The roots past ``min_t``, nearest to ``cap_axis`` first. Empty
+            when neither root is a usable forward hit.
+        """
+        roots = []
+        for t in (t1, t2):
+            if t <= min_t:
+                continue
+            hit_axis = origin_axis + t * dir_axis
+            roots.append((abs(hit_axis - cap_axis), t))
+
+        roots.sort(key=lambda root: root[0])
+        return [t for _, t in roots]
+
+    @staticmethod
     def apply_snell(
         incident_dir: Tuple[float, float, float],
         normal: Tuple[float, float, float],
