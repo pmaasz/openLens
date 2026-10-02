@@ -149,7 +149,7 @@ class LensRayTracer3D:
     def _intersect_sphere(
         self, ray: Ray3D, center: Vector3, radius: float, is_convex: bool
     ) -> Optional[Vector3]:
-        """Intersect ray with a sphere."""
+        """Intersect ray with the vertex-side cap of a sphere."""
         t_solutions = OpticalIntersector.intersect_sphere(
             ray.origin.x,
             ray.origin.y,
@@ -168,19 +168,24 @@ class LensRayTracer3D:
 
         t1, t2 = t_solutions
 
-        valid_ts = [t for t in [t1, t2] if t > -EPSILON]
+        # Center and vertex are collinear with the optical axis, so the
+        # vertex-side pole sits at center - radius (R > 0) or center + |R|
+        # (R < 0) along it.
+        axis = self.optical_axis
+        cap_axis = center.dot(axis) + (-radius if is_convex else radius)
+
+        valid_ts = OpticalIntersector.rank_cap_roots(
+            t1,
+            t2,
+            ray.origin.dot(axis),
+            ray.direction.dot(axis),
+            cap_axis,
+            min_t=-EPSILON,
+        )
         if not valid_ts:
             return None
 
-        dist_sq = (ray.origin - center).magnitude_sq()
-        is_inside = dist_sq < radius**2
-
-        if is_inside:
-            t = max(valid_ts)
-        else:
-            t = min(valid_ts)
-
-        return ray.origin + ray.direction * t
+        return ray.origin + ray.direction * valid_ts[0]
 
     def _intersect_plane(
         self, ray: Ray3D, point_on_plane: Vector3, normal: Vector3

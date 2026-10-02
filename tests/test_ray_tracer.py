@@ -373,6 +373,98 @@ class TestLensRayTracer(unittest.TestCase):
         self.assertAlmostEqual(tracer.back_center_x, expected_back_center)
 
 
+class TestSphericalCapSelection(unittest.TestCase):
+    """The tracer must hit the cap that holds the vertex, not the far pole.
+
+    A spherical surface is one cap of its sphere. Picking the root by whether
+    the ray origin is inside or outside the sphere only lands on that cap
+    while the origin happens to sit on the correct side, which fails for a
+    concave surface whose radius is smaller than the ray start offset
+    (RAY_START_OFFSET_MM): the tracer then hits the far cap, a point that is
+    not on the lens, and refracts as though the surface were convex.
+    """
+
+    RAY_START_X = -100.0  # -RAY_START_OFFSET_MM
+    MARGINAL_Y = 15.0
+
+    def _lens(self, radius_1, radius_2=100.0):
+        return Lens(
+            radius_of_curvature_1=radius_1,
+            radius_of_curvature_2=radius_2,
+            refractive_index=1.5,
+            thickness=20.0,
+            diameter=30.0,
+        )
+
+    @staticmethod
+    def _sag(signed_radius, y):
+        """Analytic spherical sag measured from the vertex plane."""
+        radius = abs(signed_radius)
+        return signed_radius - math.copysign(math.sqrt(radius**2 - y**2), signed_radius)
+
+    def _front_hit(self, radius_1, y=None):
+        y = self.MARGINAL_Y if y is None else y
+        tracer = LensRayTracer(self._lens(radius_1))
+        return tracer, tracer._intersect_front_surface(Ray(x=self.RAY_START_X, y=y, angle_rad=0.0))
+
+    def test_concave_front_hit_matches_analytic_sag(self):
+        """Marginal ray must land on the analytic sag for every curvature sign."""
+        for radius_1 in (-40.0, -50.0, -51.0, -120.0, 100.0):
+            with self.subTest(radius_1=radius_1):
+                _, hit = self._front_hit(radius_1)
+                self.assertIsNotNone(hit)
+                self.assertAlmostEqual(hit[0], self._sag(radius_1, self.MARGINAL_Y), places=9)
+                self.assertAlmostEqual(hit[1], self.MARGINAL_Y, places=9)
+
+    def test_concave_front_hit_error_below_one_mm(self):
+        """Regression guard: the far cap was off by up to |R| (~95 mm)."""
+        _, hit = self._front_hit(-50.0)
+        self.assertLess(abs(hit[0] - self._sag(-50.0, self.MARGINAL_Y)), 1.0)
+
+    def test_concave_back_hit_matches_analytic_sag(self):
+        """The back cap is selected by its own radius sign, not the front's."""
+        tracer = LensRayTracer(self._lens(radius_1=-50.0, radius_2=-100.0))
+        ray = Ray(x=tracer.front_vertex_x, y=self.MARGINAL_Y, angle_rad=0.0)
+        hit = tracer._intersect_back_surface(ray)
+        self.assertIsNotNone(hit)
+        expected = tracer.back_vertex_x + self._sag(-100.0, self.MARGINAL_Y)
+        self.assertAlmostEqual(hit[0], expected, places=9)
+
+    def test_concave_first_surface_traces_diverging(self):
+        """A biconcave lens must not trace as a converging lens."""
+        lens = self._lens(radius_1=-50.0, radius_2=100.0)
+        tracer = LensRayTracer(lens)
+        # fill=0.5 keeps the fan clear of the rim, where rays legitimately
+        # clip the aperture edge instead of reaching the back surface.
+        rays = tracer.trace_parallel_rays(num_rays=5, fill=0.5)
+
+        # The exit ray opens away from the axis and stays on the side it
+        # entered, i.e. the back-surface hit is farther out than the entry.
+        for ray in rays:
+            y_in = ray.path[0][1]
+            if abs(y_in) < 1e-9:
+                continue
+            y_back = ray.path[-2][1]
+            self.assertGreater(ray.angle * y_in, 0.0)
+            self.assertGreater(y_back * y_in, 0.0)
+            self.assertGreaterEqual(abs(y_back), abs(y_in))
+
+        self.assertLess(lens.calculate_focal_length(), 0.0)
+
+    def test_paraxial_efl_matches_thick_lensmaker(self):
+        """Traced EFL must match the analytic value, sign included."""
+        for radius_1, radius_2 in ((-50.0, 100.0), (-40.0, 100.0), (100.0, -100.0)):
+            with self.subTest(radius_1=radius_1, radius_2=radius_2):
+                lens = self._lens(radius_1=radius_1, radius_2=radius_2)
+                tracer = LensRayTracer(lens)
+                height = 0.01
+                ray = Ray(x=self.RAY_START_X, y=height, angle_rad=0.0)
+                tracer.trace_ray(ray, propagate_distance=0)
+
+                traced_efl = -height / math.tan(ray.angle)
+                self.assertAlmostEqual(traced_efl, lens.calculate_focal_length(), places=4)
+
+
 class TestRayTracingPhysics(unittest.TestCase):
     """Test physical correctness of ray tracing"""
 
