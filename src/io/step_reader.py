@@ -14,8 +14,14 @@ from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
-_SOLID_RE = re.compile(r"#(\d+)=MANIFOLD_SOLID_BREP\('((?:[^']|'')*)',#?[\d.]+\);")
-_POINT_RE = re.compile(r"#(\d+)=CARTESIAN_POINT\('[^']*',\(([^)]*)\)\);")
+# A Part 21 string literal is '...' with any apostrophe doubled (''), so the
+# body may not contain a lone quote. Matching that here keeps an exported name
+# or label containing an apostrophe from silently dropping its points.
+# Non-capturing, so the group numbers below are unchanged.
+_LITERAL_BODY = r"(?:[^']|'')*"
+
+_SOLID_RE = re.compile(rf"#(\d+)=MANIFOLD_SOLID_BREP\('({_LITERAL_BODY})',#?[\d.]+\);")
+_POINT_RE = re.compile(rf"#(\d+)=CARTESIAN_POINT\('{_LITERAL_BODY}',\(([^)]*)\)\);")
 
 
 def _unescape(name: str) -> str:
