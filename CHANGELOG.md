@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0](https://github.com/pmaasz/openLens/compare/openlens-v0.4.0...openlens-v0.5.0) (2026-10-02)
+
+
+### Features
+
+* **qa:** add automated GUI flow suite replacing manual QA ([#288](https://github.com/pmaasz/openLens/issues/288)) ([2e7175b](https://github.com/pmaasz/openLens/commit/2e7175b916d784bd83ca01c28512c3dc94633930))
+
+
+### Bug Fixes
+
+* capture ImportError as e in STEP export exception handler ([#318](https://github.com/pmaasz/openLens/issues/318)) ([9ea748f](https://github.com/pmaasz/openLens/commit/9ea748fac7bca582a629e09a88b902a960bb1439))
+* except ImportError as e: ([9ea748f](https://github.com/pmaasz/openLens/commit/9ea748fac7bca582a629e09a88b902a960bb1439))
+* **fresnel:** render and trace stepped lenses ([#290](https://github.com/pmaasz/openLens/issues/290)) ([f3004bb](https://github.com/pmaasz/openLens/commit/f3004bbb9edc73982702c9a47877581c909f9909))
+* **step:** escape string literals and quote them in one place ([#363](https://github.com/pmaasz/openLens/issues/363)) ([017259b](https://github.com/pmaasz/openLens/commit/017259bc1d50e7ff071217fe0872adf1376caa8b)), closes [#294](https://github.com/pmaasz/openLens/issues/294)
+* **step:** write entity references as #id, not as reals ([#362](https://github.com/pmaasz/openLens/issues/362)) ([d3a4bb6](https://github.com/pmaasz/openLens/commit/d3a4bb6ff3ca10e030e29d72ed835b470ceed7a3)), closes [#293](https://github.com/pmaasz/openLens/issues/293)
+* **tracer-2d:** trace elements with a concave first surface ([#361](https://github.com/pmaasz/openLens/issues/361)) ([442d3ee](https://github.com/pmaasz/openLens/commit/442d3ee056ffbe99320f4806e4f8411808f08ef0)), closes [#292](https://github.com/pmaasz/openLens/issues/292)
+
 ## [0.4.0](https://github.com/pmaasz/openLens/compare/openlens-v0.3.0...openlens-v0.4.0) (2026-09-16)
 
 
