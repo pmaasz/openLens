@@ -1,9 +1,13 @@
 import unittest
 import math
 
-from src.optical_system import OpticalSystem
+from src.constants import RAY_EXIT_PROPAGATION_2D_MM
+from src.optical_system import OpticalSystem, create_doublet
 from src.lens import Lens
-from src.ray_tracer import SystemRayTracer, Ray
+from src.ray import Ray, Ray3D
+from src.tracer_2d import SystemRayTracer
+from src.tracer_3d import SystemRayTracer3D
+from src.vector3 import vec3
 
 
 class TestSystemRayTracer(unittest.TestCase):
@@ -102,6 +106,129 @@ class TestSystemRayTracer(unittest.TestCase):
         self.assertEqual(after, [25.0, 10])
         # Second element shifted by the new thickness (25 + 20 gap).
         self.assertEqual(self.system.elements[1].position, 45.0)
+
+
+class TestConcaveFirstElement(unittest.TestCase):
+    """Elements with R1 < 0 must trace, not be silently dropped.
+
+    Advancing a ray to the next element's vertex plane overshoots a concave
+    front surface: its sag is negative, so the whole surface sits behind that
+    plane and every sphere root ends up behind the ray. That dropped the
+    second element of every cemented achromat.
+    """
+
+    @staticmethod
+    def _focus(paths):
+        """Axis crossing of a set of traced ray paths."""
+        crossings = []
+        for path in paths:
+            for (x1, y1), (x2, y2) in zip(path, path[1:]):
+                if y1 * y2 <= 0 and abs(y2 - y1) > 1e-12:
+                    crossings.append(x1 + (-y1 / (y2 - y1)) * (x2 - x1))
+        return sum(crossings) / len(crossings) if crossings else None
+
+    def test_cemented_doublet_flint_element_traces(self):
+        """The app's own achromat: flint has R1 = -62 and must be traced."""
+        system = create_doublet(100.0, 25.0)
+        self.assertLess(system.elements[1].lens.radius_of_curvature_1, 0.0)
+
+        rays = SystemRayTracer(system).trace_parallel_rays(num_rays=9)
+
+        for ray in rays:
+            self.assertTrue(ray.hit, f"ray at h={ray.path[0][1]} never hit")
+            self.assertFalse(ray.terminated, f"ray at h={ray.path[0][1]} terminated")
+
+    def test_cemented_doublet_focus_matches_analytic_bfl(self):
+        """Rays must converge where the analytic BFL says, not diverge."""
+        system = create_doublet(100.0, 25.0)
+        rays = SystemRayTracer(system).trace_parallel_rays(num_rays=9)
+
+        focus_x = self._focus([ray.path for ray in rays])
+        expected = system.elements[1].position + system.calculate_back_focal_length()
+
+        self.assertIsNotNone(focus_x)
+        self.assertGreater(focus_x, expected)  # marginal rays focus short of paraxial
+        self.assertLess(focus_x, expected + 5.0)
+
+    def test_negative_first_elements_across_air_gap(self):
+        """Both elements concave-first, separated by an air gap."""
+        system = OpticalSystem(name="Negative first")
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=-40.0,
+                radius_of_curvature_2=-200.0,
+                thickness=5.0,
+                diameter=30.0,
+                refractive_index=1.5,
+            )
+        )
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=-60.0,
+                radius_of_curvature_2=120.0,
+                thickness=4.0,
+                diameter=30.0,
+                refractive_index=1.6,
+            ),
+            air_gap_before=3.0,
+        )
+
+        rays = SystemRayTracer(system).trace_parallel_rays(num_rays=7, fill=0.8)
+        for ray in rays:
+            self.assertTrue(ray.hit)
+            self.assertFalse(ray.terminated)
+            # start, 2 surfaces per element, exit draw
+            self.assertGreaterEqual(len(ray.path), 6)
+
+    def test_air_gap_credited_to_optical_path_length(self):
+        """No explicit hop between elements, but the air must still count."""
+        system = OpticalSystem(name="OPL")
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=100.0,
+                radius_of_curvature_2=-100.0,
+                thickness=5.0,
+                diameter=30.0,
+                refractive_index=1.5,
+            )
+        )
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=100.0,
+                radius_of_curvature_2=-100.0,
+                thickness=5.0,
+                diameter=30.0,
+                refractive_index=1.5,
+            ),
+            air_gap_before=10.0,
+        )
+        ray = Ray(x=-100.0, y=0.0, angle_rad=0.0)
+        SystemRayTracer(system).trace_ray(ray)
+
+        # Straight through: 100mm of air to the first surface, 5mm of glass,
+        # 10mm of air, 5mm of glass, then 150mm of exit draw - all at n=1
+        # except the two glass legs at n=1.5. The air gap between the
+        # elements must be present.
+        expected = 100.0 + 5.0 * 1.5 + 10.0 + 5.0 * 1.5 + RAY_EXIT_PROPAGATION_2D_MM
+        self.assertAlmostEqual(ray.optical_path_length, expected, places=6)
+
+    def test_cemented_doublet_matches_3d_tracer(self):
+        """2D and 3D must agree on every surface vertex of a negative element."""
+        system = create_doublet(100.0, 25.0)
+        ray2d = Ray(x=-100.0, y=12.5, angle_rad=0.0)
+        SystemRayTracer(system).trace_ray(ray2d)
+
+        ray3d = Ray3D(vec3(-100.0, 12.5, 0.0), vec3(1, 0, 0))
+        SystemRayTracer3D(system).trace_ray(ray3d)
+
+        # Without this the comparison below passes vacuously on a ray that
+        # stopped early: its shorter path is still a subset of the 3D one.
+        self.assertTrue(ray2d.hit)
+        self.assertFalse(ray2d.terminated)
+
+        vertices_3d = sorted({(round(p.x, 9), round(p.y, 9)) for p in ray3d.path})
+        for x, y in ray2d.path[1:-1]:
+            self.assertIn((round(x, 9), round(y, 9)), vertices_3d)
 
 
 if __name__ == "__main__":

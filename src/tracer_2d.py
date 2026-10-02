@@ -192,7 +192,7 @@ class LensRayTracer:
         signed_radius = self.R1 if is_front else self.R2
         cap_x = center_x - R if signed_radius > 0 else center_x + R
 
-        valid_ts = OpticalIntersector.rank_cap_roots(t1, t2, ray.x, dx, cap_x)
+        valid_ts = OpticalIntersector.rank_cap_roots(t1, t2, ray.x, dx, cap_x, min_t=-EPSILON)
         if not valid_ts:
             return None
 
@@ -601,6 +601,19 @@ class SystemRayTracer:
         Elements with decenter/tilt are traced in their local frame (the
         2D trace covers the y-meridian: decenter_y and tilt_z apply;
         decenter_z/tilt_x/tilt_y tip out of plane and are 3D-only).
+
+        Elements are not separated by an explicit hop to the next element's
+        vertex plane; each front surface is intersected from wherever the ray
+        currently is, and ``trace_ray`` credits the intervening air segment
+        to ``optical_path_length``. Hopping first cannot help and breaks
+        concave-first elements: their front surface has negative sag, so it
+        lies entirely *behind* the vertex plane, and landing on that plane
+        overshoots the surface, putting every root behind the ray so the
+        element is silently dropped. This is why a cemented achromat (whose
+        second element follows the shared cemented interface) traced no rays
+        at all. Targeting the surface at the ray's *current* height fails the
+        same way, because the ray bends on the way across the gap and meets
+        the surface at a different height than it did at the hop.
         """
 
         stop = self.system.get_aperture_stop()
@@ -624,14 +637,7 @@ class SystemRayTracer:
                 if not self._apply_stop(ray, stop):
                     break
 
-            if i < len(self._tracers) - 1:
-                next_pos = self.system.elements[i + 1].position
-                if next_pos > ray.x:
-                    dist = next_pos - ray.x
-                    ray.propagate(dist)
-                else:
-                    ray.propagate(EPSILON)
-            else:
+            if i == len(self._tracers) - 1:
                 ray.propagate(RAY_EXIT_PROPAGATION_2D_MM)
 
     def _apply_stop(self, ray: Ray, stop: dict) -> bool:
