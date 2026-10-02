@@ -11,7 +11,7 @@ import re
 import tempfile
 import unittest
 
-from src.io.step_export import StepWriter
+from src.io.step_export import StepExporter, StepWriter
 
 
 class TestStepWriter(unittest.TestCase):
@@ -56,6 +56,103 @@ class TestStepWriter(unittest.TestCase):
         self.assertTrue(args[1].startswith("1.5"))  # floats render 6-decimal
         self.assertEqual(args[2], "#12")
         self.assertEqual(args[3], ".T.")
+
+    def test_entity_id_from_add_entity_written_as_reference(self):
+        """An id returned by add_entity must serialize as ``#id``, not a real.
+
+        Passing the pre-prefixed string "#12" instead of an id hid this: a
+        bare 44 in an argument position is a real number in ISO 10303-21, so
+        it severs the topology-to-geometry link.
+        """
+        target = self.writer.add_entity("CARTESIAN_POINT", ["'origin'", (0.0, 0.0, 0.0)])
+        self.writer.add_entity("VERTEX_POINT", ["'v'", target])
+        line = self.writer.lines[-1]
+        self.assertEqual(line, f"#2=VERTEX_POINT('v',#{int(target)});")
+        self.assertNotIn(".000000", line)
+
+    def test_integer_valued_attribute_stays_integer(self):
+        """An int that is a value, not a reference, must not become ``#int``.
+
+        GEOMETRIC_REPRESENTATION_CONTEXT takes a dimension exponent of 3;
+        treating every int as a reference would emit ``#3``.
+        """
+        self.writer.add_entity("GEOMETRIC_REPRESENTATION_CONTEXT", ["'3D'", "'ctx'", 3])
+        self.assertEqual(
+            self.writer.lines[-1], "#1=GEOMETRIC_REPRESENTATION_CONTEXT('3D','ctx',3);"
+        )
+
+    def test_booleans_render_as_step_logicals(self):
+        """Python bools become .T./.F. rather than 1.000000/0.000000."""
+        self.writer.add_entity("EDGE_CURVE", ["'e'", True, False])
+        self.assertEqual(self.writer.lines[-1], "#1=EDGE_CURVE('e',.T.,.F.);")
+
+    def test_references_inside_aggregate_are_not_quoted(self):
+        """Aggregate elements follow the same rules as top-level args."""
+        ref = self.writer.add_entity("FACE_BOUND", ["'b'", 1])
+        self.writer.add_entity("CLOSED_SHELL", ["'shell'", [ref]])
+        self.assertEqual(self.writer.lines[-1], f"#2=CLOSED_SHELL('shell',(#{int(ref)}));")
+
+    def test_exported_file_has_no_dangling_internal_references(self):
+        """Every #id in a real export must resolve to an entity in the file."""
+        import tempfile as _tempfile
+
+        from src.lens import Lens
+        from src.optical_system import OpticalSystem
+
+        system = OpticalSystem(name="Link check")
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=20.0,
+            )
+        )
+        fd, path = _tempfile.mkstemp(suffix=".step")
+        os.close(fd)
+        self.addCleanup(os.unlink, path)
+        StepExporter(system).export(path)
+
+        with open(path) as f:
+            content = f.read()
+
+        defined = {int(m) for m in re.findall(r"^#(\d+)=", content, re.M)}
+        self.assertTrue(defined)
+        for ref in re.findall(r"#(\d+)", content):
+            self.assertIn(int(ref), defined, f"#{ref} is referenced but never defined")
+
+    def test_exported_solid_references_its_shell(self):
+        """The reported defect: MANIFOLD_SOLID_BREP took a real, not #shell."""
+        import tempfile as _tempfile
+
+        from src.lens import Lens
+        from src.optical_system import OpticalSystem
+
+        system = OpticalSystem(name="Brep")
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=20.0,
+            )
+        )
+        fd, path = _tempfile.mkstemp(suffix=".step")
+        os.close(fd)
+        self.addCleanup(os.unlink, path)
+        StepExporter(system).export(path)
+
+        with open(path) as f:
+            content = f.read()
+
+        brep = re.search(r"^#\d+=MANIFOLD_SOLID_BREP\('[^']*',(.+)\);$", content, re.M)
+        self.assertIsNotNone(brep)
+        self.assertTrue(brep.group(1).startswith("#"))
+        shell = re.search(r"^#(\d+)=CLOSED_SHELL\('[^']*',\((.+)\)\);$", content, re.M)
+        self.assertIsNotNone(shell)
+        # Every face in the shell must itself be an entity reference.
+        for face in shell.group(2).split(","):
+            self.assertTrue(face.strip().startswith("#"), f"shell face {face!r} is not a ref")
 
     def test_special_tokens_pass_through(self):
         """'*' (derived), '$' (unset) are emitted verbatim"""

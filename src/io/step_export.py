@@ -12,8 +12,29 @@ from datetime import datetime
 from typing import List, Any, Dict, Optional, Tuple
 
 
+class StepRef(int):
+    """A STEP entity reference, serialized as ``#id``.
+
+    ISO 10303-21 has no integer type that means "entity id" by itself. A bare
+    ``44`` in an argument position is a real number, so an id written that way
+    severs every topology-to-geometry link and no CAD system can open the
+    file. But several attributes legitimately take integer *values* - a
+    representation context's dimension exponent, for one - so a plain ``int``
+    cannot be treated as a reference without corrupting those.
+
+    ``add_entity`` returns this type, so every id it hands back is written as
+    a reference wherever it is passed on, while integer literals at the call
+    site stay integer literals.
+    """
+
+
 class StepWriter:
     """Helper to generate STEP file content."""
+
+    # Leading characters that mark a string as already-written STEP syntax:
+    # a reference (#12), a quoted literal ('name'), an enum (.T.), a derived
+    # attribute (*) or an unset value ($). Only genuine text needs quoting.
+    _TOKEN_PREFIXES = ("#", "'", ".", "*", "$")
 
     def __init__(self):
         self.lines = []
@@ -23,54 +44,53 @@ class StepWriter:
         """Get next available ID."""
         return self.id_counter
 
-    def add_entity(self, name: str, args: List[Any]) -> int:
-        """Add a STEP entity and return its ID."""
+    @classmethod
+    def _format_text(cls, text: str) -> str:
+        """Render a string argument, quoting only genuine text."""
+        if text.startswith(cls._TOKEN_PREFIXES):
+            return text
+        try:
+            float(text)
+        except ValueError:
+            return f"'{text}'"
+        return text
+
+    @classmethod
+    def _format_scalar(cls, arg: Any) -> str:
+        """Render one argument value in ISO-10303-21 syntax."""
+        if isinstance(arg, StepRef):
+            return f"#{int(arg)}"
+        if isinstance(arg, bool):  # must precede int: bool subclasses it
+            return ".T." if arg else ".F."
+        if isinstance(arg, str):
+            return cls._format_text(arg)
+        if isinstance(arg, int):
+            # Integer-valued attribute, not a reference (a representation
+            # context's dimension exponent, for one). References arrive as
+            # StepRef from add_entity.
+            return str(arg)
+        if isinstance(arg, float):
+            return f"{arg:.6f}"
+        if arg is None:
+            return "$"
+        return str(arg)
+
+    def add_entity(self, name: str, args: List[Any]) -> StepRef:
+        """Add a STEP entity and return its ID as an entity reference."""
         idx = self.id_counter
         self.id_counter += 1
 
         arg_strs = []
         for arg in args:
-            if isinstance(arg, str):
-                if arg.startswith("'"):  # Already quoted string or enum
-                    arg_strs.append(arg)
-                elif arg == "*":  # Derived attribute
-                    arg_strs.append(arg)
-                elif arg == "$":  # Null/Unset
-                    arg_strs.append(arg)
-                elif arg.startswith("#"):  # Reference
-                    arg_strs.append(arg)
-                elif arg.startswith("."):  # Enum
-                    arg_strs.append(arg)
-                else:  # Check if it's a number string
-                    try:
-                        float(arg)
-                        arg_strs.append(arg)
-                    except ValueError:
-                        # Assume it's a string literal needing quotes
-                        arg_strs.append(f"'{arg}'")
-            elif isinstance(arg, (int, float)):
-                arg_strs.append(f"{arg:.6f}")
-            elif isinstance(arg, (list, tuple)):
-                # Recursive formatting for lists
-                sub_args = []
-                for sub in arg:
-                    if isinstance(sub, int):  # Reference ID
-                        sub_args.append(f"#{sub}")
-                    elif isinstance(sub, str):
-                        sub_args.append(f"'{sub}'")
-                    elif isinstance(sub, (float)):
-                        sub_args.append(f"{sub:.6f}")
-                    else:
-                        sub_args.append(str(sub))
-                arg_strs.append(f"({','.join(sub_args)})")
-            elif arg is None:
-                arg_strs.append("$")
+            if isinstance(arg, (list, tuple)):
+                # Aggregate: format each element with the same rules.
+                arg_strs.append(f"({','.join(self._format_scalar(s) for s in arg)})")
             else:
-                arg_strs.append(str(arg))
+                arg_strs.append(self._format_scalar(arg))
 
         line = f"#{idx}={name}({','.join(arg_strs)});"
         self.lines.append(line)
-        return idx
+        return StepRef(idx)
 
     def generate(self) -> str:
         """Generate full STEP file content."""
