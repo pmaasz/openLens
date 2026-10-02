@@ -133,10 +133,11 @@ Development Setup
 
 .. code-block:: bash
 
-   # Create a descriptive branch name
-   git checkout -b feature/my-new-feature
-   # or
-   git checkout -b fix/bug-description
+   # Branch names start with the ticket number they address
+   git checkout -b 223-vertex-collapse
+   git checkout -b 288-automated-gui-flow-suite
+
+   # See "Branch Naming" below for the full convention
 
 How to Contribute
 -----------------
@@ -559,6 +560,44 @@ Current test coverage includes:
 Pull Request Process
 --------------------
 
+Branch Naming
+^^^^^^^^^^^^^
+
+**Every branch name must start with the ticket number** of the issue or ticket
+it addresses, followed by a short kebab-case description:
+
+.. code-block:: text
+
+   <ticket-number>-<short-description>
+
+Rules:
+
+- **Ticket number first**: the GitHub issue (or tracker ticket) number the work
+  addresses, with no prefix and no ``#`` sign
+- **Short description**: lowercase ``kebab-case``, 3-6 words, summarizing the
+  work (not restating the ticket)
+- **One ticket per branch**: if the scope grows to cover another ticket, open a
+  new branch instead of mixing them
+- Keep the whole name short and readable; no dates, initials, or ticket titles
+
+.. code-block:: bash
+
+   # Good
+   git checkout -b 223-vertex-collapse
+   git checkout -b 290-fresnel-stepped-lenses
+   git checkout -b 318-catch-step-export-importerror
+
+   # Bad: missing ticket number
+   git checkout -b feature/my-new-feature
+   git checkout -b fix/bug-description
+
+   # Bad: ticket number not first, or in the wrong form
+   git checkout -b #223-vertex-collapse
+   git checkout -b vertex-collapse-223
+   git checkout -b ticket-223-vertex-collapse
+
+If the change has no ticket yet, open an issue first and branch from its number.
+
 Before Submitting
 ^^^^^^^^^^^^^^^^^
 
@@ -569,6 +608,7 @@ Complete this checklist:
 - Tests pass: All tests run successfully
 - Documentation updated: API docs, user guide, etc.
 - Code reviewed: Self-review for obvious issues
+- Branch name starts with the ticket number
 - Branch updated: Rebased on latest main/master
 - Commits clean: Logical, well-described commits
 
@@ -579,7 +619,7 @@ Creating the PR
 
    .. code-block:: bash
 
-      git push origin feature/my-feature
+      git push origin 223-vertex-collapse
 
 2. **Open PR on GitHub**:
    
@@ -651,7 +691,7 @@ After Merge
    # Delete your feature branch
    git checkout main
    git pull upstream main
-   git branch -d feature/my-feature
+   git branch -d 223-vertex-collapse
 
 Commit Messages
 ^^^^^^^^^^^^^^^

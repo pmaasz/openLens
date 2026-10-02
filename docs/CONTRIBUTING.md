@@ -125,10 +125,11 @@ python3 -m unittest discover -s tests -t .
 ### 5. Create a Branch
 
 ```bash
-# Create a descriptive branch name
-git checkout -b feature/my-new-feature
-# or
-git checkout -b fix/bug-description
+# Branch names start with the ticket number they address
+git checkout -b 223-vertex-collapse
+git checkout -b 288-automated-gui-flow-suite
+
+# See "Branch Naming" under "Pull Request Process" for the full convention
 ```
 
 ---
@@ -614,6 +615,39 @@ For user-facing features, update:
 
 ## Pull Request Process
 
+### Branch Naming
+
+**Every branch name must start with the ticket number** of the issue or ticket it addresses, followed by a short kebab-case description:
+
+```
+<ticket-number>-<short-description>
+```
+
+Rules:
+
+- **Ticket number first**: the GitHub issue (or tracker ticket) number the work addresses, with no prefix and no `#` sign
+- **Short description**: lowercase `kebab-case`, 3-6 words, summarizing the work (not restating the ticket)
+- **One ticket per branch**: if the scope grows to cover another ticket, open a new branch instead of mixing them
+- Keep the whole name short and readable; no dates, initials, or ticket titles
+
+```bash
+# Good
+git checkout -b 223-vertex-collapse
+git checkout -b 290-fresnel-stepped-lenses
+git checkout -b 318-catch-step-export-importerror
+
+# Bad: missing ticket number
+git checkout -b feature/my-new-feature
+git checkout -b fix/bug-description
+
+# Bad: ticket number not first, or in the wrong form
+git checkout -b #223-vertex-collapse
+git checkout -b vertex-collapse-223
+git checkout -b ticket-223-vertex-collapse
+```
+
+If the change has no ticket yet, open an issue first and branch from its number.
+
 ### Before Submitting
 
 Complete this checklist:
@@ -623,6 +657,7 @@ Complete this checklist:
 - [ ] **Tests pass**: All tests run successfully
 - [ ] **Documentation updated**: API docs, user guide, etc.
 - [ ] **Code reviewed**: Self-review for obvious issues
+- [ ] **Branch name starts with the ticket number**
 - [ ] **Branch updated**: Rebased on latest main/master
 - [ ] **Commits clean**: Logical, well-described commits
 
@@ -630,7 +665,7 @@ Complete this checklist:
 
 1. **Push your branch**:
    ```bash
-   git push origin feature/my-feature
+   git push origin 223-vertex-collapse
    ```
 
 2. **Open PR on GitHub**:
@@ -807,8 +842,8 @@ git checkout main
 git pull upstream main
 git push origin main
 
-# 2. Create feature branch
-git checkout -b feature/new-feature
+# 2. Create feature branch (ticket number first)
+git checkout -b 223-vertex-collapse
 
 # 3. Make changes
 # ... edit files ...
@@ -821,7 +856,7 @@ git add .
 git commit -m "Add new feature description"
 
 # 6. Push to your fork
-git push origin feature/new-feature
+git push origin 223-vertex-collapse
 
 # 7. Create PR on GitHub
 
@@ -829,13 +864,13 @@ git push origin feature/new-feature
 # ... make changes ...
 git add .
 git commit -m "Address review comments"
-git push origin feature/new-feature
+git push origin 223-vertex-collapse
 
 # 9. After merge, clean up
 git checkout main
 git pull upstream main
-git branch -d feature/new-feature
-git push origin --delete feature/new-feature
+git branch -d 223-vertex-collapse
+git push origin --delete 223-vertex-collapse
 ```
 
 ### Commit Messages

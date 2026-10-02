@@ -452,8 +452,8 @@ Please read our comprehensive [Contributing Guidelines](docs/CONTRIBUTING.md) fo
 git clone https://github.com/YOUR_USERNAME/openLens.git
 cd openLens
 
-# 3. Create a branch
-git checkout -b feature/my-feature
+# 3. Create a branch (branch names start with the ticket number)
+git checkout -b 223-vertex-collapse
 
 # 4. Make changes and test
 python3 -m unittest discover -s tests -t .
