@@ -457,8 +457,10 @@ class OpenLensWindow(QMainWindow):
     
     def _load_assembly(self, assembly: OpticalSystem) -> None:
         """Load assembly into assembly editor"""
-        if hasattr(self, '_optical_system'):
-            self._optical_system = assembly
+        # Assigned unconditionally: the old hasattr guard meant this attribute
+        # only existed on some paths, so the window and the Assembly Editor
+        # could disagree about which system is current.
+        self._optical_system = assembly
         if hasattr(self, '_assembly_viz'):
             self._assembly_viz.update_system(assembly)
         if hasattr(self, '_system_list'):
@@ -552,10 +554,30 @@ class OpenLensWindow(QMainWindow):
             self._lens_editor.load_lens(self._current_lens)
             self._update_all_tabs()
             self._update_status(f"Deleted. Now editing: {self._current_lens.name}")
-        else:
+        elif self._current_assembly is not None:
             idx = self._assemblies.index(self._current_assembly)
             self._assemblies.pop(idx)
             self._current_assembly = self._assemblies[0] if self._assemblies else None
+            # Mirror the lens branch above. Without re-pointing the editor, the
+            # Assembly Editor keeps displaying the deleted assembly and
+            # _save_to_database reads _assembly_tab_widget._optical_system,
+            # re-adds it to _assemblies and RE-INSERTS the row just deleted
+            # (under a new id, so it appears twice).
+            if self._current_assembly is not None:
+                self._set_current_item(self._current_assembly, is_assembly=True)
+                self._update_all_tabs()
+                self._update_status(f"Deleted. Now editing: {self._current_assembly.name}")
+            else:
+                # Last assembly gone. _update_all_tabs() early-returns when
+                # nothing is current, so the tab's own copy has to be cleared
+                # explicitly.
+                self._show_assembly_editor(False)
+                self._optical_system = None
+                self._assembly_tab_widget._optical_system = None
+                self._update_status("Deleted assembly")
+        else:
+            # Neither a lens nor an assembly is current: nothing to re-point,
+            # and the old .index(None) would have raised ValueError.
             self._update_status("Deleted assembly")
     
     def _on_open(self) -> None:
