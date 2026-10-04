@@ -310,7 +310,7 @@ class TestImageSimulator(unittest.TestCase):
         image = np.zeros((50, 50))
         image[25, 25] = 1.0  # Point source
 
-        blurred = self.simulator._apply_diffraction(image, 587.6)
+        blurred = self.simulator._apply_diffraction(image, 587.6, pixel_pitch_mm=0.0005)
 
         # Should spread energy
         assert blurred[25, 25] < 1.0
@@ -322,8 +322,8 @@ class TestImageSimulator(unittest.TestCase):
         image = np.zeros((50, 50))
         image[25, 25] = 1.0
 
-        blue = self.simulator._apply_diffraction(image, 450.0)
-        red = self.simulator._apply_diffraction(image, 650.0)
+        blue = self.simulator._apply_diffraction(image, 450.0, pixel_pitch_mm=0.0005)
+        red = self.simulator._apply_diffraction(image, 650.0, pixel_pitch_mm=0.0005)
 
         assert red[25, 25] < blue[25, 25]
 
@@ -333,8 +333,8 @@ class TestImageSimulator(unittest.TestCase):
         image = np.zeros((50, 50))
         image[25, 25] = 1.0
 
-        coarse = self.simulator._apply_diffraction(image, 587.6, pixel_pitch_mm=0.02)
-        fine = self.simulator._apply_diffraction(image, 587.6, pixel_pitch_mm=0.005)
+        coarse = self.simulator._apply_diffraction(image, 587.6, pixel_pitch_mm=0.001)
+        fine = self.simulator._apply_diffraction(image, 587.6, pixel_pitch_mm=0.0002)
 
         assert fine[25, 25] < coarse[25, 25]
 
