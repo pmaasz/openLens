@@ -74,6 +74,10 @@ class OptimizationResult:
     variable_history: List[Dict[str, float]] = field(default_factory=list)
     merit_history: List[float] = field(default_factory=list)
     message: str = ""
+    # The design the search settled on. Present so callers that refine with a
+    # second pass (the global optimizers) can report and bounds-check what
+    # they actually return rather than the pre-refinement point.
+    best_values: List[float] = field(default_factory=list)
 
 
 class MeritFunction:
@@ -368,6 +372,59 @@ class LensOptimizer:
         """
         return self.optimize_simplex(max_iterations, tolerance, callback)
 
+    def _finalize(
+        self,
+        best_values: List[float],
+        final_merit: float,
+        initial_merit: float,
+        iterations: int,
+        variable_history: List[Dict],
+        merit_history: List[float],
+        converged_message: str,
+        out_of_bounds_message: str,
+    ) -> OptimizationResult:
+        """Build the result for any optimizer that settled on ``best_values``.
+
+        Shared so success, iteration count and improvement mean the same
+        thing everywhere. A best point outside the variable box is not a
+        success even if the merit converged - the design is unusable - which
+        the global paths previously skipped by hardcoding ``success=True``.
+
+        Args:
+            best_values: The design the search settled on.
+            final_merit: Merit of ``best_values``.
+            initial_merit: Merit of the *starting* design, so ``improvement``
+                is measured against a real baseline.
+            iterations: Iterations actually performed (not evaluations).
+            variable_history: Per-iteration design history.
+            merit_history: Per-iteration merit history.
+            converged_message: Message when the design is inside bounds.
+            out_of_bounds_message: Message when it is not.
+
+        Returns:
+            The assembled :class:`OptimizationResult`.
+        """
+        best_valid = all(var.is_valid(v) for var, v in zip(self.variables, best_values))
+
+        optimized_system = self._apply_variables(best_values)
+
+        improvement = (
+            ((initial_merit - final_merit) / initial_merit * 100) if initial_merit > 0 else 0
+        )
+
+        return OptimizationResult(
+            success=best_valid,
+            iterations=iterations,
+            initial_merit=initial_merit,
+            final_merit=final_merit,
+            improvement=improvement,
+            optimized_system=optimized_system,
+            variable_history=variable_history,
+            merit_history=merit_history,
+            message=converged_message if best_valid else out_of_bounds_message,
+            best_values=list(best_values),
+        )
+
     def optimize_simplex(
         self,
         max_iterations: int = 100,
@@ -452,6 +509,7 @@ class LensOptimizer:
                     optimized_system=self._apply_variables(simplex[0]),
                     variable_history=variable_history,
                     merit_history=merit_history,
+                    best_values=list(simplex[0]),
                     message=(
                         f"Aborted after {iteration + 1} iterations: {n_clamped} of "
                         f"{len(simplex)} simplex vertices stuck outside variable bounds"
@@ -514,28 +572,17 @@ class LensOptimizer:
         # even if the merit range converged: the design is unusable).
         best_values = simplex[0]
         final_merit = merit_values[0]
-        best_valid = all(var.is_valid(v) for var, v in zip(self.variables, best_values))
 
-        # Apply best values to system
-        optimized_system = self._apply_variables(best_values)
-
-        improvement = (
-            ((initial_merit - final_merit) / initial_merit * 100) if initial_merit > 0 else 0
-        )
-
-        return OptimizationResult(
-            success=best_valid,
-            iterations=last_iteration + 1,
-            initial_merit=initial_merit,
+        return self._finalize(
+            best_values=best_values,
             final_merit=final_merit,
-            improvement=improvement,
-            optimized_system=optimized_system,
+            initial_merit=initial_merit,
+            iterations=last_iteration + 1,
             variable_history=variable_history,
             merit_history=merit_history,
-            message=(
-                f"Converged after {last_iteration + 1} iterations"
-                if best_valid
-                else f"Finished after {last_iteration + 1} iterations outside variable bounds"
+            converged_message=f"Converged after {last_iteration + 1} iterations",
+            out_of_bounds_message=(
+                f"Finished after {last_iteration + 1} iterations outside variable bounds"
             ),
         )
 
