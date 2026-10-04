@@ -345,5 +345,116 @@ def run_tests():
     return 0 if result.wasSuccessful() else 1
 
 
+class TestPresetLensCopyFidelity(unittest.TestCase):
+    """get_lens_copy must reproduce the whole lens model.
+
+    The hand-rolled field copy had drifted from Lens.to_dict() and silently
+    dropped coatings, model-glass settings, parabolic sags and Fresnel
+    groove parameters, so instantiating a preset produced a different lens
+    than the preset described.
+    """
+
+    RICH_LENS = dict(
+        name="Rich Fresnel",
+        radius_of_curvature_1=50.0,
+        radius_of_curvature_2=-50.0,
+        thickness=5.0,
+        diameter=20.0,
+        refractive_index=1.5168,
+        material="N-BK7",
+        is_fresnel=True,
+        groove_pitch=2.5,
+        num_grooves=8,
+        is_parabolic_1=True,
+        parabolic_sag_1=1.5,
+        is_parabolic_2=True,
+        parabolic_sag_2=0.75,
+        model_glass_mode=True,
+        model_nd=1.62,
+        model_vd=60.3,
+        coating_1={"name": "MgF2", "thickness": 100.0},
+        coating_2={"name": "AR", "thickness": 0.0},
+        clear_aperture_1=18.0,
+        clear_aperture_2=16.0,
+        bevel_1=0.2,
+        bevel_2=0.3,
+    )
+
+    DROPPED_BEFORE = (
+        "coating_1",
+        "coating_2",
+        "model_glass_mode",
+        "model_nd",
+        "model_vd",
+        "is_parabolic_1",
+        "is_parabolic_2",
+        "parabolic_sag_1",
+        "parabolic_sag_2",
+        "is_fresnel",
+        "groove_pitch",
+        "num_grooves",
+    )
+
+    def _library_with_rich_lens(self):
+        lib = PresetLibrary()
+        lib.add_preset(
+            LensPreset(
+                name="Rich Fresnel",
+                description="Preset exercising every lens field",
+                category="Test",
+                lens=Lens(**self.RICH_LENS),
+            )
+        )
+        return lib
+
+    def test_no_field_is_dropped(self):
+        """Regression: all of these came back at their defaults."""
+        lib = self._library_with_rich_lens()
+        original = lib.get_preset("Rich Fresnel").lens
+        copied = lib.get_lens_copy("Rich Fresnel")
+        for field in self.DROPPED_BEFORE:
+            with self.subTest(field=field):
+                self.assertEqual(
+                    getattr(copied, field),
+                    getattr(original, field),
+                    f"{field} was not copied",
+                )
+
+    def test_round_trips_through_to_dict(self):
+        """A copy must differ from the original only by identity."""
+        lib = self._library_with_rich_lens()
+        original = lib.get_preset("Rich Fresnel").lens
+        copied = lib.get_lens_copy("Rich Fresnel")
+        original_data = {k: v for k, v in original.to_dict().items() if k != "id"}
+        copied_data = {k: v for k, v in copied.to_dict().items() if k != "id"}
+        self.assertEqual(original_data, copied_data)
+
+    def test_copy_gets_a_distinct_id(self):
+        lib = self._library_with_rich_lens()
+        original = lib.get_preset("Rich Fresnel").lens
+        self.assertNotEqual(lib.get_lens_copy("Rich Fresnel").id, original.id)
+
+    def test_original_preset_lens_is_untouched(self):
+        lib = self._library_with_rich_lens()
+        before = lib.get_preset("Rich Fresnel").lens.is_fresnel
+        lib.get_lens_copy("Rich Fresnel")
+        self.assertEqual(lib.get_preset("Rich Fresnel").lens.is_fresnel, before)
+
+    def test_every_shipped_preset_round_trips(self):
+        """No built-in preset may depend on the dropped fields."""
+        lib = PresetLibrary()
+        for name in lib.presets:
+            with self.subTest(preset=name):
+                copied = lib.get_lens_copy(name)
+                self.assertIsNotNone(copied)
+                original = lib.get_preset(name).lens
+                original_data = {k: v for k, v in original.to_dict().items() if k != "id"}
+                copied_data = {k: v for k, v in copied.to_dict().items() if k != "id"}
+                self.assertEqual(original_data, copied_data)
+
+    def test_unknown_preset_returns_none(self):
+        self.assertIsNone(PresetLibrary().get_lens_copy("no such preset"))
+
+
 if __name__ == "__main__":
-    sys.exit(run_tests())
+    unittest.main()

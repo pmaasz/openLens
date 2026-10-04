@@ -708,7 +708,12 @@ class AchromaticDoubletDesigner:
         else:
             R2_flint = 1.0 / inv_R2
 
-        # Create lenses
+        # Create lenses. The refractive index must be the one the radii were
+        # solved with: Lens.__init__ otherwise falls back to
+        # DEFAULT_MATERIAL_INDICES (SF11 -> 1.78), not the catalog nd
+        # (1.78472) used above, leaving the doublet built to a different index
+        # than its geometry assumes. Lens.for_material is no substitute: it
+        # re-evaluates Sellmeier and lands on yet another value (1.785107).
         crown_lens = Lens(
             name=f"{crown_material} Element",
             radius_of_curvature_1=R1_crown,
@@ -716,6 +721,7 @@ class AchromaticDoubletDesigner:
             thickness=diameter * 0.15,  # ~15% of diameter
             diameter=diameter,
             material=crown_material,
+            refractive_index=n1,
             wavelength=WAVELENGTH_D_LINE,
         )
 
@@ -726,6 +732,7 @@ class AchromaticDoubletDesigner:
             thickness=diameter * 0.08,  # Thinner flint
             diameter=diameter,
             material=flint_material,
+            refractive_index=n2,
             wavelength=WAVELENGTH_D_LINE,
         )
 

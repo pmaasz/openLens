@@ -182,7 +182,16 @@ class GlobalOptimizer(LensOptimizer):
         population[0] = current_design
 
         best_overall_merit = float("inf")
-        best_overall_design = None
+        # Seeded with the starting design so it is never None. It used to
+        # start as None and only be replaced when some design beat inf, so a
+        # merit that never beat inf (NaN, or generations=0) left it None and
+        # the elitism copy below raised TypeError.
+        best_overall_design = list(current_design)
+        best_overall_merit = self._evaluate_design(best_overall_design)
+        # Captured separately: best_overall_merit is replaced whenever a
+        # better design is found, so by the end it holds the best merit seen,
+        # not the merit of the starting design.
+        starting_merit = best_overall_merit
 
         history_merit = []
 
@@ -201,7 +210,10 @@ class GlobalOptimizer(LensOptimizer):
             min_merit = min(merits)
             best_idx = merits.index(min_merit)
 
-            if min_merit < best_overall_merit:
+            # isfinite guards the comparison: NaN < x is False for every x, so
+            # a NaN-scored generation would otherwise be skipped silently and
+            # the elite kept unchanged.
+            if math.isfinite(min_merit) and min_merit < best_overall_merit:
                 best_overall_merit = min_merit
                 best_overall_design = list(population[best_idx])
 
@@ -238,14 +250,13 @@ class GlobalOptimizer(LensOptimizer):
 
         local_result = self.optimize_simplex(max_iterations=50)
 
-        # history_merit[0] is the best of generation 0, i.e. after up to 50
-        # random mutations - not the starting design - so improvement was
-        # measured against a fabricated baseline. Re-evaluate the real
-        # starting point. iterations counts generations, not the
-        # generations*population_size evaluations the old code reported, and
-        # success now comes from _finalize's bounds check.
-        starting_merit = self._evaluate_design(current_design)
-
+        # starting_merit is the merit of the design the search began from.
+        # history_merit[0] would be the best of generation 0 - after up to 50
+        # random mutations - and is empty entirely when generations=0, so
+        # neither can serve as the baseline. iterations counts generations,
+        # not the generations*population_size evaluations the old code
+        # reported, and success comes from _finalize's bounds check rather
+        # than a hardcoded True.
         return self._finalize(
             best_values=local_result.best_values,
             final_merit=local_result.final_merit,

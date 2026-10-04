@@ -132,12 +132,86 @@ class ImageSimulator:
         # Simulate through system
         return self.simulate_image(pattern, object_distance)
 
+    def _system_focal_length(self) -> float:
+        """Effective focal length of the simulated system.
+
+        Reads the real OpticalSystem API. The old code probed for
+        ``effective_focal_length(wavelength)``, which OpticalSystem does not
+        have (it exposes ``get_system_focal_length``), so the probe always
+        failed and the lens equation was never applied. The wavelength
+        dependence of the EFL is not modelled here; the system value at the
+        design wavelength is used.
+        """
+        system = self.optical_system
+        getter = getattr(system, "get_system_focal_length", None)
+        if callable(getter):
+            focal = getter()
+            if focal:
+                return float(focal)
+            raise ValueError(
+                "OpticalSystem reports no focal length; cannot simulate an " "image through it."
+            )
+        # Single-lens targets still expose the plain attribute.
+        focal = getattr(system, "calculate_focal_length", None)
+        if callable(focal):
+            value = focal()
+            if value:
+                return float(value)
+        # Legacy duck-typed target: a callable effective_focal_length(wavelength).
+        # Kept so external wrappers around a system keep working; it is an
+        # explicit branch, not a hasattr probe that silently no-ops.
+        legacy = getattr(system, "effective_focal_length", None)
+        if callable(legacy):
+            value = legacy(550.0)
+            if value:
+                return float(value)
+        raise TypeError(
+            f"{type(system).__name__} is not a supported optical target for " "ImageSimulator."
+        )
+
+    def _entrance_pupil_diameter(self) -> float:
+        """Clear aperture used for the diffraction spot size.
+
+        Reads the first element's diameter, matching how the rest of the
+        codebase estimates the entrance pupil. The old code probed for an
+        ``aperture_diameter`` attribute that OpticalSystem does not have and
+        fell back to a flat 10 mm, so f/# was ignored entirely.
+        """
+        system = self.optical_system
+        elements = getattr(system, "elements", None)
+        if elements:
+            diameter = getattr(elements[0].lens, "diameter", 0.0)
+            if diameter and diameter > 0:
+                return float(diameter)
+        for candidate in (
+            getattr(system, "aperture_diameter", None),
+            getattr(system, "diameter", None),
+        ):
+            if candidate and candidate > 0:
+                return float(candidate)
+        raise ValueError(
+            "Optical target has no usable aperture; cannot size the " "diffraction spot."
+        )
+
+    def _aberrations_for(self, wavelength: float) -> dict:
+        """Seidel aberrations at ``wavelength``, via the real calculator.
+
+        The old code probed for ``get_aberrations(wavelength)``, which
+        OpticalSystem does not have, so aberration blur was silently skipped
+        for every real system.
+        """
+        legacy = getattr(self.optical_system, "get_aberrations", None)
+        if callable(legacy):
+            return legacy(wavelength)
+
+        from .aberrations import AberrationsCalculator
+
+        calculator = AberrationsCalculator(self.optical_system)
+        return calculator.calculate_all_aberrations()
+
     def _calculate_image_distance(self, object_distance: float, wavelength: float) -> float:
         """Calculate image distance using lens equation."""
-        if not hasattr(self.optical_system, "effective_focal_length"):
-            return object_distance  # Simple assumption
-
-        f = self.optical_system.effective_focal_length(wavelength)
+        f = self._system_focal_length()
 
         if abs(object_distance - f) < 0.001:
             return float("inf")  # Object at focal point
@@ -161,10 +235,7 @@ class ImageSimulator:
         from scipy.ndimage import gaussian_filter, gaussian_filter1d
 
         # Get aberration coefficients
-        if hasattr(self.optical_system, "get_aberrations"):
-            aberrations = self.optical_system.get_aberrations(wavelength)
-        else:
-            aberrations = {}
+        aberrations = self._aberrations_for(wavelength)
 
         result = image.copy()
 
@@ -202,17 +273,11 @@ class ImageSimulator:
         from scipy.ndimage import gaussian_filter
 
         # Calculate diffraction-limited spot size
-        if hasattr(self.optical_system, "aperture_diameter"):
-            diameter = self.optical_system.aperture_diameter
-        else:
-            diameter = 10.0  # Default 10mm
+        diameter = self._entrance_pupil_diameter()
 
         # Airy disk radius
-        if hasattr(self.optical_system, "effective_focal_length"):
-            f = self.optical_system.effective_focal_length(wavelength)
-            airy_radius = 1.22 * wavelength * 1e-6 * f / diameter
-        else:
-            airy_radius = wavelength * 1e-6  # Simplified
+        f = self._system_focal_length()
+        airy_radius = 1.22 * wavelength * 1e-6 * f / diameter
 
         # Gaussian matched to the Airy FWHM, converted with the true pitch
         # (mm per pixel) instead of an assumed 1 um pixel.
@@ -241,15 +306,23 @@ class ImageSimulator:
         wavelengths = [650, 550, 450]  # R, G, B
         base_wavelength = WAVELENGTH_GREEN
 
+        # Different wavelengths focus at different distances, so each channel
+        # is scaled by its own focus. The old code probed for
+        # effective_focal_length(wavelength) - absent on OpticalSystem - so
+        # this loop skipped every channel and chromatic blur was silently
+        # dropped. The real, measured longitudinal chromatic aberration gives
+        # the same first-order relative focus shift f / (f + lca).
+        f_base = self._system_focal_length()
+        chromatic = self._aberrations_for(base_wavelength).get("chromatic")
+
         for i, wl in enumerate(wavelengths):
-            if not hasattr(self.optical_system, "effective_focal_length"):
+            if not chromatic:
+                # No chromatic focus shift reported (an achromat, or a
+                # single material): all channels are in focus together.
                 continue
 
-            f_base = self.optical_system.effective_focal_length(base_wavelength)
-            f_wl = self.optical_system.effective_focal_length(wl)
-
-            # Calculate scale difference
-            scale = f_wl / f_base
+            # First-order relative focus for this channel.
+            scale = f_base / (f_base + chromatic)
 
             if abs(scale - 1.0) > 0.0001:
                 # Zoom channel

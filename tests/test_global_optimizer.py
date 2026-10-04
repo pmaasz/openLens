@@ -163,5 +163,78 @@ class TestOptimizerResultIntegrity(unittest.TestCase):
         self.assertTrue(hasattr(result, "best_values"))
 
 
+class TestGeneticNoFiniteMerit(unittest.TestCase):
+    """optimize_genetic must survive when nothing beats infinity.
+
+    best_overall_design started as None and was only replaced once some
+    design beat inf, so a merit that never did - NaN, or generations=0 -
+    left it None and the elitism copy raised
+    TypeError: 'NoneType' object is not iterable.
+    """
+
+    def setUp(self):
+        system = OpticalSystem()
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=20.0,
+                refractive_index=1.5,
+            )
+        )
+        self.system = system
+        self.variables = [
+            OptimizationVariable(
+                name="r1",
+                element_index=0,
+                parameter="radius_of_curvature_1",
+                current_value=50.0,
+                min_value=40.0,
+                max_value=60.0,
+            )
+        ]
+        self.targets = [OptimizationTarget("focal_length", 100.0, weight=1.0, target_type="target")]
+
+    def _optimizer(self):
+        return GlobalOptimizer(self.system, self.variables, self.targets)
+
+    def test_zero_generations_does_not_crash(self):
+        """Regression: TypeError from the None elite copy."""
+        result = self._optimizer().optimize_genetic(generations=0, population_size=6)
+        self.assertEqual(result.merit_history, [])
+
+    def test_zero_generations_reports_a_finite_baseline(self):
+        """history_merit is empty, so indexing [0] must be avoided too."""
+        result = self._optimizer().optimize_genetic(generations=0, population_size=6)
+        self.assertTrue(math.isfinite(result.initial_merit))
+
+    def test_nan_merit_does_not_crash(self):
+        """A NaN-scored run is a failure, not an exception."""
+        optimizer = self._optimizer()
+        optimizer.merit_function.evaluate = lambda system: float("nan")
+        result = optimizer.optimize_genetic(generations=2, population_size=6)
+        self.assertTrue(math.isfinite(result.initial_merit))
+        self.assertTrue(math.isfinite(result.final_merit))
+
+    def test_nan_merit_normalises_to_infeasible(self):
+        from src.optimizer import INFEASIBLE_MERIT
+
+        optimizer = self._optimizer()
+        optimizer.merit_function.evaluate = lambda system: float("nan")
+        self.assertEqual(optimizer._evaluate_design([55.0]), INFEASIBLE_MERIT)
+
+    def test_normal_runs_still_improve(self):
+        """Guard: the seeding must not stop the search working."""
+        result = self._optimizer().optimize_genetic(generations=3, population_size=8)
+        self.assertEqual(len(result.merit_history), 3)
+        self.assertTrue(math.isfinite(result.final_merit))
+        self.assertLessEqual(result.final_merit, result.initial_merit)
+
+    def test_simulated_annealing_unaffected(self):
+        result = self._optimizer().optimize_simulated_annealing(max_iterations=20)
+        self.assertTrue(math.isfinite(result.final_merit))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -85,5 +85,152 @@ class TestImageQualityAnalyzer(unittest.TestCase):
         self.assertEqual(res["image"].shape, (32, 32))
 
 
+@unittest.skipUnless(NUMPY_AVAILABLE, "numpy not installed")
+class TestSimulateImageInputs(unittest.TestCase):
+    """simulate_image must accept the shapes and dtypes callers pass it.
+
+    np.zeros_like(image_array) inherited the input dtype, so a uint8 image
+    truncated every float result to 0/1 before np.clip(0, 1), and indexing
+    image_array[:, :, i] raised IndexError on a 2-D grayscale array.
+    """
+
+    def setUp(self):
+        if not NUMPY_AVAILABLE:
+            self.skipTest("Numpy not available")
+        from src.lens import Lens
+        from src.optical_system import OpticalSystem
+        from src.analysis.psf_mtf import ImageQualityAnalyzer
+
+        system = OpticalSystem()
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=25.0,
+                refractive_index=1.5,
+            )
+        )
+        self.analyzer = ImageQualityAnalyzer(system)
+        np.random.seed(1234)
+
+    def test_two_d_input_does_not_raise(self):
+        """Regression: 'too many indices for array: array is 2-dimensional'."""
+        out = self.analyzer.simulate_image(np.random.rand(24, 24), pixel_size_mm=0.01)
+        self.assertEqual(out.shape, (24, 24))
+
+    def test_uint8_input_is_not_truncated_to_binary(self):
+        """Regression: every pixel collapsed to 0 or 1."""
+        image = (np.random.rand(24, 24, 3) * 255).astype(np.uint8)
+        out = self.analyzer.simulate_image(image, pixel_size_mm=0.01)
+        self.assertGreater(len(np.unique(out)), 2)
+        self.assertEqual(out.dtype, np.float64)
+
+    def test_output_dtype_is_float64_whatever_the_input(self):
+        for image in (
+            np.random.rand(16, 16),
+            np.random.rand(16, 16, 3),
+            (np.random.rand(16, 16, 3) * 255).astype(np.uint8),
+            (np.random.rand(16, 16) * 255).astype(np.uint8),
+        ):
+            with self.subTest(dtype=image.dtype, ndim=image.ndim):
+                out = self.analyzer.simulate_image(image, pixel_size_mm=0.01)
+                self.assertEqual(out.dtype, np.float64)
+                self.assertEqual(out.shape, image.shape)
+
+    def test_output_is_normalized(self):
+        image = (np.random.rand(16, 16, 3) * 255).astype(np.uint8)
+        out = self.analyzer.simulate_image(image, pixel_size_mm=0.01)
+        self.assertGreaterEqual(out.min(), 0.0)
+        self.assertLessEqual(out.max(), 1.0)
+
+    def test_uint8_and_float_paths_agree(self):
+        """An integer image must mean the same intensities as its float twin."""
+        base = np.random.rand(16, 16, 3)
+        from_float = self.analyzer.simulate_image(base, pixel_size_mm=0.01)
+        from_uint8 = self.analyzer.simulate_image((base * 255).astype(np.uint8), pixel_size_mm=0.01)
+        self.assertLess(np.abs(from_float - from_uint8).max(), 0.01)
+
+    def test_wrong_channel_count_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.analyzer.simulate_image(np.random.rand(8, 8, 2), pixel_size_mm=0.01)
+
+    def test_wrong_dimensionality_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.analyzer.simulate_image(np.random.rand(4, 4, 4, 4), pixel_size_mm=0.01)
+
+
+@unittest.skipUnless(NUMPY_AVAILABLE, "numpy not installed")
+class TestDiffractionFrequencyScale(unittest.TestCase):
+    """The diffraction MTF frequency axis must be the sample spacing.
+
+    The pupil grid is np.linspace(-max_r, max_r, N): N samples spanning
+    2*max_r in N-1 intervals. Dividing the pupil width by N understated the
+    spacing by N/(N-1) and reported every frequency low by that factor
+    (1.6% at grid_size 64).
+    """
+
+    def setUp(self):
+        if not NUMPY_AVAILABLE:
+            self.skipTest("Numpy not available")
+        from src.lens import Lens
+        from src.optical_system import OpticalSystem
+        from src.analysis.psf_mtf import ImageQualityAnalyzer
+
+        self.system = OpticalSystem()
+        self.system.add_lens(
+            Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=25.0,
+                refractive_index=1.5,
+            )
+        )
+        self.analyzer = ImageQualityAnalyzer(self.system)
+
+    def _expected_df(self, grid_size=64, wavelength_nm=550.0):
+        ep_diam = self.system.elements[0].lens.diameter
+        efl = self.system.get_system_focal_length()
+        return (ep_diam / (grid_size - 1)) / (wavelength_nm * 1e-6 * efl)
+
+    def test_frequency_step_matches_sample_spacing(self):
+        mtf = self.analyzer.calculate_mtf(use_diffraction=True, max_freq=100.0)
+        freqs = np.asarray(mtf["freq"])
+        step = freqs[1] - freqs[0]
+        self.assertAlmostEqual(step, self._expected_df(), places=9)
+
+    def test_frequency_step_is_not_the_n_not_n_minus_1_value(self):
+        """Regression: the old value was low by exactly N/(N-1)."""
+        mtf = self.analyzer.calculate_mtf(use_diffraction=True, max_freq=100.0)
+        freqs = np.asarray(mtf["freq"])
+        step = freqs[1] - freqs[0]
+        ep_diam = self.system.elements[0].lens.diameter
+        efl = self.system.get_system_focal_length()
+        wrong = (ep_diam / 64) / (550e-6 * efl)
+        self.assertNotAlmostEqual(step, wrong, places=6)
+
+    def test_frequency_axis_is_uniform_and_starts_at_zero(self):
+        mtf = self.analyzer.calculate_mtf(use_diffraction=True, max_freq=100.0)
+        freqs = np.asarray(mtf["freq"])
+        self.assertAlmostEqual(freqs[0], 0.0, places=9)
+        diffs = np.diff(freqs)
+        self.assertTrue(np.allclose(diffs, diffs[0]))
+
+    def test_step_matches_the_sensors_actual_grid(self):
+        """Pin the formula to the grid the sensor really builds.
+
+        calculate_mtf passes pupil_grid_size=64 internally, so the closed
+        form must use that same N - the sampling is not caller-tunable.
+        """
+        wavefront = self.analyzer.wavefront_sensor.get_pupil_wavefront(grid_size=64)
+        grid_size = wavefront.W.shape[0]
+        self.assertEqual(grid_size, 64)
+
+        mtf = self.analyzer.calculate_mtf(use_diffraction=True, max_freq=100.0)
+        freqs = np.asarray(mtf["freq"])
+        self.assertAlmostEqual(freqs[1] - freqs[0], self._expected_df(grid_size), places=9)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -41,6 +41,23 @@ from ...tolerancing import (
 logger = logging.getLogger(__name__)
 
 
+def _as_system(target):
+    """Wrap a bare Lens in a throwaway system; pass a system through.
+
+    Both workers need an OpticalSystem to trace. A single lens gets a
+    one-element wrapper; an assembly is already one and must be used as-is,
+    otherwise its elements, gaps and alignment would be discarded and the
+    element indices in the tolerance operands would refer to nothing.
+    """
+    from ...optical_system import OpticalSystem
+
+    if isinstance(target, OpticalSystem):
+        return target
+    system = OpticalSystem(name="Tolerancing")
+    system.add_lens(copy.deepcopy(target))
+    return system
+
+
 class MonteCarloWorker(QThread):
     """Background thread that runs the Monte Carlo tolerance analysis."""
 
@@ -82,8 +99,7 @@ class MonteCarloWorker(QThread):
         from ...tolerancing import ToleranceType as _Type
 
         try:
-            system = OpticalSystem(name="Tolerancing")
-            system.add_lens(copy.deepcopy(self.current_lens))
+            system = _as_system(self.current_lens)
 
             compensators = []
             if self.refocus:
@@ -144,8 +160,7 @@ class InverseSensitivityWorker(QThread):
         from ...optical_system import OpticalSystem
 
         try:
-            system = OpticalSystem(name="Tolerancing")
-            system.add_lens(copy.deepcopy(self.current_lens))
+            system = _as_system(self.current_lens)
 
             analyzer = InverseSensitivityAnalyzer(system, self.tol_operands)
 
@@ -337,13 +352,37 @@ class TolerancingTab(BaseTab):
         if self._parent and hasattr(self._parent, "_tol_operands"):
             self._update_tolerance_operands_display()
 
+    def _resolve_target(self):
+        """The lens or assembly being toleranced, whichever is current.
+
+        The tab used to gate on ``_current_lens`` alone, which is explicitly
+        None whenever an assembly is current - so the entire multi-element
+        workflow, the tab's reason to exist, was unreachable, and "Add
+        Tolerance", "Default Set" and "Load Grade" were silent no-ops.
+        """
+        if not self._parent:
+            return None
+        # getattr rather than attribute access: the tab is also driven by
+        # tests and embedders that supply only part of the parent surface,
+        # and this file already guards parent attributes with hasattr.
+        return getattr(self._parent, "_current_assembly", None) or getattr(
+            self._parent, "_current_lens", None
+        )
+
+    def _require_target(self) -> bool:
+        """Report and return False when nothing is selected."""
+        if self._resolve_target() is None:
+            self._tol_results_text.setPlainText("No lens or assembly selected.")
+            return False
+        return True
+
     def _on_add_tolerance(self) -> None:
         """Add a new tolerance operand.
 
         Shows a dialog to configure the operand, then appends it to the parent
         window's tolerance list.
         """
-        if not self._parent or not self._parent._current_lens:
+        if not self._require_target():
             return
 
         dialog = QDialog(self)
@@ -351,10 +390,10 @@ class TolerancingTab(BaseTab):
         layout = QVBoxLayout(dialog)
         form = QFormLayout()
 
-        # Element selection
-        num_elements = 1
-        if hasattr(self._parent._current_lens, "elements"):
-            num_elements = len(self._parent._current_lens.elements)
+        # Element selection: one entry for a bare lens, one per element for
+        # an assembly.
+        target = self._resolve_target()
+        num_elements = len(getattr(target, "elements", None) or [target])
 
         elem_combo = QComboBox()
         elem_combo.addItems([str(i) for i in range(num_elements)])
@@ -404,12 +443,12 @@ class TolerancingTab(BaseTab):
 
     def _on_add_default_tolerances(self) -> None:
         """Add standard tolerances."""
-        if not self._parent or not self._parent._current_lens:
+        if not self._require_target():
             return
 
         num_elements = 1
-        if hasattr(self._parent._current_lens, "elements"):
-            num_elements = len(self._parent._current_lens.elements)
+        target = self._resolve_target()
+        num_elements = len(getattr(target, "elements", []) or [target])
 
         new_operands = []
         for i in range(num_elements):
@@ -431,9 +470,9 @@ class TolerancingTab(BaseTab):
         from ...tolerancing import tolerances_for_system
         from ...optical_system import OpticalSystem
 
-        if not self._parent or not self._parent._current_lens:
+        if not self._require_target():
             return
-        target = self._parent._current_lens
+        target = self._resolve_target()
         if hasattr(target, "elements"):
             system = target
         else:
@@ -533,8 +572,7 @@ class TolerancingTab(BaseTab):
         Starts a :class:`MonteCarloWorker` thread using the current operands
         and trial settings from the UI.
         """
-        if not self._parent or not self._parent._current_lens:
-            self._tol_results_text.setPlainText("No lens selected.")
+        if not self._require_target():
             return
 
         if not self._parent._tol_operands:
@@ -555,7 +593,7 @@ class TolerancingTab(BaseTab):
         self._tol_progress.setMaximum(0)
 
         self._mc_worker = MonteCarloWorker(
-            self._parent._current_lens,
+            self._resolve_target(),
             self._parent._tol_operands,
             self._tol_num_trials.value(),
             self._tol_criterion.value(),
@@ -572,8 +610,7 @@ class TolerancingTab(BaseTab):
         Starts an :class:`InverseSensitivityWorker` thread to compute RSS
         budgeted tolerance limits for the current operands.
         """
-        if not self._parent or not self._parent._current_lens:
-            self._tol_results_text.setPlainText("No lens selected.")
+        if not self._require_target():
             return
 
         if not self._parent._tol_operands:
@@ -591,7 +628,7 @@ class TolerancingTab(BaseTab):
         self._tol_progress.setMaximum(0)
 
         self._inv_worker = InverseSensitivityWorker(
-            self._parent._current_lens,
+            self._resolve_target(),
             self._parent._tol_operands,
             self._tol_criterion.value(),
         )

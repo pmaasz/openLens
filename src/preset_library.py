@@ -4,6 +4,7 @@ Preset Lens Library
 Common lens designs and industry standard templates
 """
 
+import uuid
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 
@@ -224,28 +225,22 @@ class PresetLibrary:
         return results
 
     def get_lens_copy(self, preset_name: str) -> Optional[Lens]:
-        """Get a copy of the lens from a preset"""
+        """Get a copy of the lens from a preset.
+
+        Round-trips through ``Lens.to_dict``/``from_dict`` rather than
+        re-listing the fields by hand: the hand-rolled copy had drifted and
+        silently dropped coatings, model-glass settings, parabolic sags and
+        Fresnel groove parameters, so instantiating a preset produced a
+        different lens than the one described.
+        """
         preset = self.get_preset(preset_name)
-        if preset:
-            # Create a new lens with the same parameters
-            lens = preset.lens
-            return Lens(
-                name=lens.name,
-                radius_of_curvature_1=lens.radius_of_curvature_1,
-                radius_of_curvature_2=lens.radius_of_curvature_2,
-                thickness=lens.thickness,
-                diameter=lens.diameter,
-                refractive_index=lens.refractive_index,
-                lens_type=lens.lens_type,
-                material=lens.material,
-                wavelength=lens.wavelength,
-                temperature=lens.temperature,
-                clear_aperture_1=lens.clear_aperture_1,
-                clear_aperture_2=lens.clear_aperture_2,
-                bevel_1=lens.bevel_1,
-                bevel_2=lens.bevel_2,
-            )
-        return None
+        if preset is None:
+            return None
+
+        data = preset.lens.to_dict()
+        # A copy is a distinct object: give it its own identity.
+        data["id"] = uuid.uuid4().hex
+        return Lens.from_dict(data)
 
 
 # Singleton instance
