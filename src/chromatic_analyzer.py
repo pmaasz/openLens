@@ -293,12 +293,24 @@ class ChromaticAnalyzer:
         """
         Calculate Abbe number (V_d) from material data
         V_d = (n_d - 1) / (n_F - n_C)
+
+        Raises:
+            ValueError: If the material has no dispersion over F..C, which
+                makes V_d undefined (and infinite).
         """
         n_d = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["d"])
         n_F = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["F"])
         n_C = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["C"])
 
-        return (n_d - 1.0) / (n_F - n_C)
+        dispersion = n_F - n_C
+        if abs(dispersion) < 1e-12:
+            raise ValueError(
+                f"Material {material_name!r} has no dispersion between the F "
+                f"and C lines (n_F - n_C = {dispersion}); its Abbe number is "
+                "undefined."
+            )
+
+        return (n_d - 1.0) / dispersion
 
     def calculate_partial_dispersion(
         self, material_name: str, line1: str = "g", line2: str = "F"
@@ -329,6 +341,10 @@ class ChromaticAnalyzer:
 
         Returns:
             Dictionary with lens parameters for both elements
+
+        Raises:
+            ValueError: If crown and flint have the same Abbe number, which
+                makes the achromat unsolvable.
         """
         # Get Abbe numbers
         V1 = self.calculate_abbe_number(crown_material)
@@ -343,6 +359,18 @@ class ChromaticAnalyzer:
         # φ1 + φ2 = 1/f
 
         phi_total = 1.0 / focal_length
+        # Achromatism splits power by Abbe number, so the split divides by
+        # (V1 - V2). Two glasses with the same Abbe number cannot be
+        # achromatised at any focal length - the condition has no solution -
+        # and the division raised ZeroDivisionError. The sibling designer in
+        # optical_system.AchromaticDoubletDesigner guards this.
+        if abs(V1 - V2) < 1e-12:
+            raise ValueError(
+                f"Cannot design an achromat from {crown_material!r} and "
+                f"{flint_material!r}: both have Abbe number V={V1:.4f}. Two "
+                "different glasses are required to cancel chromatic "
+                "aberration."
+            )
         phi1 = phi_total * V1 / (V1 - V2)
         phi2 = phi_total * V2 / (V2 - V1)
 

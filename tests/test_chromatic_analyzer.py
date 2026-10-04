@@ -411,5 +411,75 @@ class TestMaterialDatabase(unittest.TestCase):
         self.assertIn(mat.acid_resistance, [0, 1, 2, 3, 4])
 
 
+class TestAchromatDegenerateInputs(unittest.TestCase):
+    """Same-glass achromats are unsolvable and must say so.
+
+    The power split divides by (V1 - V2); with one glass twice that is a
+    ZeroDivisionError, while the sibling designer in optical_system already
+    guarded the case.
+    """
+
+    def setUp(self):
+        self.analyzer = ChromaticAnalyzer()
+
+    def test_same_glass_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self.analyzer.design_achromatic_doublet(100.0, "BK7", "BK7")
+
+    def test_same_glass_raises_for_each_catalog_pair(self):
+        for glass in ("BK7", "F2", "N-BK7", "SF11"):
+            with self.subTest(glass=glass):
+                with self.assertRaises(ValueError):
+                    self.analyzer.design_achromatic_doublet(100.0, glass, glass)
+
+    def test_message_names_the_glasses_and_explains(self):
+        with self.assertRaises(ValueError) as ctx:
+            self.analyzer.design_achromatic_doublet(100.0, "BK7", "BK7")
+        message = str(ctx.exception)
+        self.assertIn("BK7", message)
+        self.assertIn("Abbe", message)
+
+    def test_different_glasses_still_design_normally(self):
+        design = self.analyzer.design_achromatic_doublet(100.0, "BK7", "F2")
+        self.assertGreater(design["crown_element"]["power"], 0)
+        self.assertLess(design["flint_element"]["power"], 0)
+        self.assertAlmostEqual(design["total_focal_length"], 100.0, places=6)
+
+    def test_near_equal_abbe_numbers_are_not_rejected(self):
+        """The 1e-12 guard must not fire on genuinely different glasses.
+
+        N-BK7 and BK7 are the same catalog entry with the same V, so a pair
+        with a small but non-zero spread is the real case to check.
+        """
+        abbe_bk7 = self.analyzer.calculate_abbe_number("BK7")
+        abbe_sf11 = self.analyzer.calculate_abbe_number("SF11")
+        self.assertNotAlmostEqual(abbe_bk7, abbe_sf11, places=3)
+        design = self.analyzer.design_achromatic_doublet(100.0, "BK7", "SF11")
+        self.assertIn("crown_element", design)
+
+    def test_alias_glasses_with_identical_abbe_are_rejected(self):
+        """BK7 and N-BK7 share an Abbe number, so they cannot be an achromat."""
+        self.assertAlmostEqual(
+            self.analyzer.calculate_abbe_number("BK7"),
+            self.analyzer.calculate_abbe_number("N-BK7"),
+            places=9,
+        )
+        with self.assertRaises(ValueError):
+            self.analyzer.design_achromatic_doublet(100.0, "BK7", "N-BK7")
+
+    def test_abbe_number_rejects_zero_dispersion(self):
+        """V_d is undefined for a material with no F..C dispersion."""
+        analyzer = self.analyzer
+        original = analyzer.material_db.get_refractive_index
+
+        # A material whose index does not vary with wavelength at all.
+        analyzer.material_db.get_refractive_index = lambda material, wavelength: 1.5
+        try:
+            with self.assertRaises(ValueError):
+                analyzer.calculate_abbe_number("FLAT")
+        finally:
+            analyzer.material_db.get_refractive_index = original
+
+
 if __name__ == "__main__":
     unittest.main()
