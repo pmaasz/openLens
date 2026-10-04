@@ -6,6 +6,7 @@ Tests for lens aberrations calculator
 import unittest
 
 from src.lens import Lens
+from src.optical_system import OpticalSystem
 from src.aberrations import AberrationsCalculator, analyze_lens_quality
 import math
 
@@ -766,6 +767,75 @@ class TestAberrationPhysicsIdentities(unittest.TestCase):
         """NA = D / (2f) for object at infinity"""
         expected = self.lens.diameter / (2.0 * self.results["focal_length"])
         self.assertAlmostEqual(self.results["numerical_aperture"] / expected, 1.0, places=12)
+
+
+class TestAberrationSummaryTargets(unittest.TestCase):
+    """get_aberration_summary must work for both target kinds.
+
+    self.lens is only assigned in the single-lens branch of __init__, so the
+    summary's header raised AttributeError for an OpticalSystem even though
+    calculate_all_aberrations() itself worked fine.
+    """
+
+    def setUp(self):
+        self.lens = Lens(
+            name="Single Biconvex",
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=-50.0,
+            thickness=5.0,
+            diameter=20.0,
+            refractive_index=1.5,
+        )
+        self.system = OpticalSystem(name="Doublet")
+        self.system.add_lens(
+            Lens(
+                name="Crown",
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=20.0,
+                refractive_index=1.5,
+            )
+        )
+        self.system.add_lens(
+            Lens(
+                name="Flint",
+                radius_of_curvature_1=-60.0,
+                radius_of_curvature_2=100.0,
+                thickness=4.0,
+                diameter=20.0,
+                refractive_index=1.6,
+            ),
+            air_gap_before=2.0,
+        )
+
+    def test_summary_for_system_does_not_raise(self):
+        """Regression: 'AberrationsCalculator' object has no attribute 'lens'."""
+        summary = AberrationsCalculator(self.system).get_aberration_summary()
+        self.assertIsInstance(summary, str)
+        self.assertIn("LENS ABERRATIONS ANALYSIS", summary)
+
+    def test_system_header_names_the_system_and_element_count(self):
+        summary = AberrationsCalculator(self.system).get_aberration_summary()
+        self.assertIn("Doublet", summary)
+        self.assertIn("2 elements", summary)
+
+    def test_lens_header_unchanged(self):
+        summary = AberrationsCalculator(self.lens).get_aberration_summary()
+        self.assertIn(self.lens.name, summary)
+        self.assertIn(self.lens.material, summary)
+
+    def test_box_alignment_matches_between_target_kinds(self):
+        """The substituted header must not change the frame's line widths."""
+        box = "║"
+
+        def widths(summary):
+            return sorted(len(line) for line in summary.splitlines() if line.startswith(box))
+
+        self.assertEqual(
+            widths(AberrationsCalculator(self.system).get_aberration_summary()),
+            widths(AberrationsCalculator(self.lens).get_aberration_summary()),
+        )
 
 
 if __name__ == "__main__":
