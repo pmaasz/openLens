@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QDialog,
 )
-from PySide6.QtCore import Signal, Qt, QThread
+from PySide6.QtCore import Signal, Slot, Qt, QThread
 
 from .base_tab import BaseTab
 from ...tolerancing import (
@@ -299,6 +299,10 @@ class TolerancingTab(BaseTab):
         self._tol_results_text.setStyleSheet(
             "background-color: #2b2b2b; color: #e0e0e0; font-family: Courier; font-size: 10px;"
         )
+        self._mc_running = False
+        self._inv_running = False
+        self._tol_last_results = {}
+
         self._tol_results_text.setPlainText(
             "Configure tolerances and click 'Run Monte Carlo' or 'Inverse Sensitivity' to analyze."
         )
@@ -317,6 +321,12 @@ class TolerancingTab(BaseTab):
         scroll.setWidget(content)
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(scroll)
+
+        # One guard per worker: each button starts its own thread, and a
+        # second click while one is in flight would otherwise leave the
+        # previous thread's result racing the new one's.
+        self._mc_running = False
+        self._inv_running = False
 
     def refresh(self) -> None:
         """Update display when parent changes.
@@ -531,6 +541,11 @@ class TolerancingTab(BaseTab):
             self._tol_results_text.setPlainText("No tolerance operands defined.")
             return
 
+        if self._mc_running:
+            self._tol_results_text.setPlainText("Monte Carlo analysis already running.")
+            return
+
+        self._mc_running = True
         self._tol_results_text.setPlainText(
             f"Starting Monte Carlo analysis ({self._tol_num_trials.value()} trials)..."
         )
@@ -565,6 +580,11 @@ class TolerancingTab(BaseTab):
             self._tol_results_text.setPlainText("No tolerance operands defined.")
             return
 
+        if self._inv_running:
+            self._tol_results_text.setPlainText("Inverse Sensitivity analysis already running.")
+            return
+
+        self._inv_running = True
         self._tol_results_text.setPlainText("Starting Inverse Sensitivity analysis...")
         self._tol_progress.setVisible(True)
         self._tol_progress.setMinimum(0)
@@ -578,3 +598,42 @@ class TolerancingTab(BaseTab):
         self._inv_worker.finished.connect(self._on_analysis_finished)
         self._inv_worker.failed.connect(self._on_analysis_failed)
         self._inv_worker.start()
+
+    # ------------------------------------------------------------------
+    # Worker completion slots
+    #
+    # Both run handlers put the progress bar into busy mode (range 0..0, an
+    # indeterminate spinner) before starting their thread, so these two slots
+    # are the only place that takes it back out. They are the sole reset path
+    # for every worker this tab starts.
+    # ------------------------------------------------------------------
+
+    @Slot(str, dict)
+    def _on_analysis_finished(self, text: str, results: dict) -> None:
+        """Display a finished analysis report and clear the busy indicator.
+
+        Args:
+            text: Preformatted report emitted by the worker.
+            results: Raw analyzer payload carried by the signal. Kept for
+                callers that want the numbers; this tab renders only the
+                formatted report.
+        """
+        self._mc_running = False
+        self._inv_running = False
+        self._tol_last_results = results
+        self._tol_progress.setMaximum(100)
+        self._tol_progress.setValue(100)
+        self._tol_results_text.setPlainText(text)
+
+    @Slot(str)
+    def _on_analysis_failed(self, message: str) -> None:
+        """Report a failed analysis and clear the busy indicator.
+
+        Args:
+            message: Error description emitted by the worker.
+        """
+        self._mc_running = False
+        self._inv_running = False
+        self._tol_progress.setMaximum(100)
+        self._tol_progress.setValue(0)
+        self._tol_results_text.setPlainText(message)
