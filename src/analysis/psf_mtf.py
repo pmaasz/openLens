@@ -512,14 +512,22 @@ class ImageQualityAnalyzer:
         Simulate image degradation by convolving with PSF.
 
         Args:
-            image_array: Input image (H, W, 3) normalized 0-1.
+            image_array: Input image, either (H, W) grayscale or (H, W, C)
+                multi-channel, with C matching ``wavelengths_nm``. Float input
+                is taken as normalized 0-1; integer input is scaled by its
+                dtype maximum first.
             pixel_size_mm: Sensor pixel size in mm.
             wavelengths_nm: Tuple of (R, G, B) wavelengths in nm.
             field_angle_deg: Field angle for PSF calculation.
             focus_shift_mm: Defocus in mm.
 
         Returns:
-            Simulated image (H, W, 3) normalized 0-1.
+            Simulated image in the same shape as the input, normalized 0-1
+            and always float64.
+
+        Raises:
+            ValueError: If the array is neither 2-D nor 3-D, or its channel
+                count does not match ``wavelengths_nm``.
         """
         # Handle legacy alias pixel_size
         if "pixel_size" in kwargs:
@@ -540,7 +548,34 @@ class ImageQualityAnalyzer:
             def _convolve(img, kern):
                 return self._numpy_fftconvolve(img, kern)
 
-        output_image = np.zeros_like(image_array)
+        output_image = np.zeros(image_array.shape, dtype=np.float64)
+
+        # Accept 2-D grayscale or 3-D RGB, and integer or float input. The
+        # old np.zeros_like(image_array) inherited the input dtype, so a uint8
+        # image truncated every float result to 0 or 1 before the clip, and
+        # image_array[:, :, i] raised IndexError on a 2-D input.
+        image_array = np.asarray(image_array)
+        if image_array.ndim not in (2, 3):
+            raise ValueError(
+                f"image_array must be 2-D (H, W) or 3-D (H, W, C); got shape "
+                f"{image_array.shape}"
+            )
+        if image_array.ndim == 3 and image_array.shape[2] != len(wavelengths_nm):
+            raise ValueError(
+                f"image_array has {image_array.shape[2]} channels but "
+                f"{len(wavelengths_nm)} wavelengths were given"
+            )
+
+        if np.issubdtype(image_array.dtype, np.integer):
+            # Integer input carries 0..max, not the documented 0..1. Scale it
+            # so the convolution sees real intensities; without this the
+            # np.clip(0, 1) below saturates the whole image to 1.
+            scale = float(np.iinfo(image_array.dtype).max)
+            work = image_array.astype(np.float64) / scale
+        else:
+            work = image_array.astype(np.float64)
+
+        is_grayscale = work.ndim == 2
 
         # PSF physical size (FOV)
         # Should be large enough to contain the spot.
@@ -553,6 +588,7 @@ class ImageQualityAnalyzer:
             psf_pixels += 1
 
         # Process each channel
+        channel_results = []
         for i, wl in enumerate(wavelengths_nm):
             # Calculate PSF for this channel
             # Use Diffraction PSF for realistic results if possible?
@@ -577,11 +613,19 @@ class ImageQualityAnalyzer:
                 kernel /= kernel_sum
 
             # Convolve
-            channel = image_array[:, :, i]
+            channel = work if is_grayscale else work[:, :, i]
             # mode='same' keeps the output size same as input
-            convolved = _convolve(channel, kernel)
+            convolved = np.asarray(_convolve(channel, kernel), dtype=np.float64)
 
-            output_image[:, :, i] = convolved
+            channel_results.append(convolved)
+
+        if is_grayscale:
+            # One plane in, one plane out: combine the per-wavelength results
+            # rather than inventing a third axis the caller did not ask for.
+            output_image[:, :] = np.mean(channel_results, axis=0)
+        else:
+            for i, convolved in enumerate(channel_results):
+                output_image[:, :, i] = convolved
 
         return np.clip(output_image, 0, 1)
 
