@@ -264,6 +264,61 @@ class TestAchromaticDoublet(unittest.TestCase):
         self.assertEqual(doublet.air_gaps[0].thickness, spacing)
 
 
+class TestCementedDoubletMaterialConsistency(unittest.TestCase):
+    """The built lenses must carry the index the radii were solved with.
+
+    design_cemented_doublet solves the radii from the catalog nd (SF11 ->
+    1.78472) but built the lenses without passing a refractive_index, so
+    Lens.__init__ fell back to DEFAULT_MATERIAL_INDICES (SF11 -> 1.78). The
+    geometry and the object then disagreed about the glass.
+    """
+
+    def _catalog(self):
+        from src.material_database import get_material_database
+
+        return get_material_database()
+
+    def test_elements_use_catalog_index(self):
+        doublet = create_doublet(focal_length=100, diameter=50)
+        db = self._catalog()
+        for element in doublet.elements:
+            lens = element.lens
+            nd = db.get_material(lens.material).nd
+            self.assertAlmostEqual(
+                lens.refractive_index,
+                nd,
+                places=9,
+                msg=f"{lens.material} built with n={lens.refractive_index}, "
+                f"radii solved with nd={nd}",
+            )
+
+    def test_flint_is_not_the_static_default(self):
+        """SF11's static default (1.78) differs from its catalog nd."""
+        from src.constants import DEFAULT_MATERIAL_INDICES
+
+        doublet = create_doublet(focal_length=100, diameter=50)
+        flint = doublet.elements[1].lens
+        static_default = DEFAULT_MATERIAL_INDICES[flint.material]
+        self.assertNotAlmostEqual(flint.refractive_index, static_default, places=6)
+
+    def test_custom_material_pair_also_consistent(self):
+        doublet = AchromaticDoubletDesigner.design_cemented_doublet(
+            focal_length=150, diameter=40, crown_material="N-BK7", flint_material="F2"
+        )
+        db = self._catalog()
+        for element in doublet.elements:
+            lens = element.lens
+            self.assertAlmostEqual(
+                lens.refractive_index, db.get_material(lens.material).nd, places=9
+            )
+
+    def test_flint_still_has_negative_power(self):
+        """The correction must not flip the intended power split."""
+        doublet = create_doublet(focal_length=100, diameter=50)
+        self.assertLess(doublet.elements[1].lens.calculate_focal_length(), 0)
+        self.assertGreater(doublet.elements[0].lens.calculate_focal_length(), 0)
+
+
 class TestTriplet(unittest.TestCase):
     """Test triplet system"""
 
