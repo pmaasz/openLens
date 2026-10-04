@@ -10,6 +10,7 @@ Supports AP203/AP214 geometry (Manifold Solid B-Rep).
 
 from datetime import datetime
 from typing import List, Any, Dict, Optional, Tuple
+from ..atomic import atomic_write_text
 
 
 class StepRef(int):
@@ -205,7 +206,7 @@ class StepExporter:
         self._create_product_structure(shape_ids)
 
         # Write file
-        with open(filename, "w") as f:
+        with atomic_write_text(filename) as f:
             f.write(self.writer.generate())
 
     def _create_context(self):

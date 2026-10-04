@@ -30,6 +30,7 @@ except ImportError:
     get_material_database = None
     HAS_MATERIAL_DATABASE = False
 from .vector3 import vec3
+from .atomic import atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -404,7 +405,7 @@ class OpticalSystem:
     def save(self, filename: str) -> bool:
         """Save optical system to JSON file"""
         try:
-            with open(filename, "w") as f:
+            with atomic_write_text(filename) as f:
                 json.dump(self.to_dict(), f, indent=2)
             return True
         except Exception as e:

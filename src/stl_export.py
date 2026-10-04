@@ -9,6 +9,7 @@ import math
 from typing import List, Tuple, Optional, Any
 
 from .vector3 import Vector3
+from .atomic import atomic_write_bytes
 
 
 class STLExporter:
@@ -274,7 +275,7 @@ class STLExporter:
 
     def write_binary_stl(self, filename: str):
         """Write triangles to binary STL file"""
-        with open(filename, "wb") as f:
+        with atomic_write_bytes(filename) as f:
             # Header (80 bytes)
             header = b"openlens STL export" + b" " * (80 - 19)
             f.write(header)

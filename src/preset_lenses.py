@@ -6,6 +6,7 @@ Provides common lens designs, industry standard lenses, and quick-start template
 
 import json
 from typing import Dict, List, Any
+from .atomic import atomic_write_text
 
 
 class PresetLensLibrary:
@@ -243,7 +244,7 @@ class PresetLensLibrary:
         """Export a preset to a JSON file"""
         preset = self.get_preset(preset_id)
         if preset:
-            with open(filepath, "w") as f:
+            with atomic_write_text(filepath) as f:
                 json.dump(preset, f, indent=2)
 
     def import_custom_preset(self, filepath: str) -> str:
