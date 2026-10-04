@@ -190,6 +190,73 @@ class TestPerformanceMetricsWithSystem(unittest.TestCase):
         print(f"✓ System F-number: f/{f_num:.2f}")
 
 
+class TestBackFocalLengthForSystem(unittest.TestCase):
+    """BFL must be the distance from the last surface, not the EFL.
+
+    The system branch returned get_system_focal_length() verbatim, so every
+    reported back focal distance was too long by the whole distance from the
+    last surface to focus (typically 10-50 mm).
+    """
+
+    def setUp(self):
+        self.system = OpticalSystem(name="BFL")
+        self.system.add_lens(
+            Lens(
+                name="Front",
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=20.0,
+                refractive_index=1.5,
+            )
+        )
+        self.system.add_lens(
+            Lens(
+                name="Rear",
+                radius_of_curvature_1=-60.0,
+                radius_of_curvature_2=100.0,
+                thickness=4.0,
+                diameter=20.0,
+                refractive_index=1.6,
+            ),
+            air_gap_before=2.0,
+        )
+
+    def test_bfl_matches_optical_system(self):
+        bfl = PerformanceMetrics(self.system).calculate_back_focal_length()
+        self.assertAlmostEqual(bfl, self.system.calculate_back_focal_length(), places=9)
+
+    def test_bfl_is_not_the_efl(self):
+        efl = self.system.get_system_focal_length()
+        bfl = PerformanceMetrics(self.system).calculate_back_focal_length()
+        self.assertNotAlmostEqual(bfl, efl, places=3)
+        # The error was the whole back focal distance.
+        self.assertGreater(abs(efl - bfl), 1.0)
+
+    def test_bfl_is_measured_from_the_last_surface(self):
+        """BFL shorter than EFL by more than the system length is plausible."""
+        bfl = PerformanceMetrics(self.system).calculate_back_focal_length()
+        length = self.system.get_total_length()
+        self.assertLess(bfl, self.system.get_system_focal_length())
+        self.assertGreater(bfl, 0.0)
+        self.assertLess(length, self.system.get_system_focal_length())
+
+    def test_empty_system_returns_none(self):
+        empty = OpticalSystem(name="Empty")
+        self.assertIsNone(PerformanceMetrics(empty).calculate_back_focal_length())
+
+    def test_single_lens_path_unchanged(self):
+        lens = Lens(
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=-50.0,
+            thickness=5.0,
+            diameter=20.0,
+            refractive_index=1.5,
+        )
+        bfl = PerformanceMetrics(lens).calculate_back_focal_length()
+        self.assertAlmostEqual(bfl, lens.calculate_focal_length() - lens.thickness / 2, places=9)
+
+
 def run_tests():
     """Run all performance metrics tests"""
     print("=" * 70)

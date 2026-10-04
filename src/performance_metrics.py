@@ -108,12 +108,11 @@ class PerformanceMetrics:
             if f:
                 return f - self.lens.thickness / 2
         elif self.system:
-            # For system: focal point distance from last surface
-            f = self.system.get_system_focal_length()
-            if f and self.system.elements:
-                last_elem = self.system.elements[-1]
-                # Approximate: system focal length - distance to last surface
-                return f
+            # Delegate: OpticalSystem already derives the BFL from the system
+            # ABCD matrix (-A/C, measured from the last surface). Returning
+            # the EFL here reported a back focal distance that was too long
+            # by the whole distance from the last surface to focus.
+            return self.system.calculate_back_focal_length()
         return None
 
     def calculate_working_distance(self, magnification: float = 1.0) -> Optional[float]:
