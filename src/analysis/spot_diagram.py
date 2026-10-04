@@ -171,19 +171,27 @@ class SpotDiagram:
                 lens.refractive_index = n
 
             # 3. Calculate Statistics
-            if not spot_points:
-                # Return empty stats instead of raising, but log it
-                # The GUI should handle this gracefully
-                logger.warning("No rays reached the image plane (blocked or TIR)")
-                return {
-                    "rms_radius": 0.0,
-                    "geo_radius": 0.0,
-                    "centroid": (0.0, 0.0),
-                    "points": [],
-                    "valid_rays": 0,
-                    "image_plane_x": target_x,
-                    "error": "No rays reached the image plane",
-                }
+        if valid_rays < 2:
+            # Fewer than two rays cannot define a spot: the RMS radius would be
+            # the distance of a single ray from its own centroid, i.e. exactly
+            # 0.0. Reporting that as a perfect spot lets a fully vignetted
+            # system outscore every physically real design in the optimizer
+            # and score 100% production yield in Monte Carlo. None forces
+            # callers to treat it as a failure instead of a great number.
+            logger.warning(
+                "Only %d ray(s) reached the image plane (blocked or TIR); "
+                "spot statistics are undefined",
+                valid_rays,
+            )
+            return {
+                "rms_radius": None,
+                "geo_radius": None,
+                "centroid": (0.0, 0.0),
+                "points": spot_points,
+                "valid_rays": valid_rays,
+                "image_plane_x": target_x,
+                "error": "Fewer than 2 rays reached the image plane",
+            }
 
         # Centroid
         sum_y = sum(p[0] for p in spot_points)

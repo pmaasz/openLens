@@ -363,10 +363,17 @@ class MonteCarloAnalyzer:
         return perturbations
 
     def _spot_rms(self, focus_shift_mm: float = 0.0) -> float:
-        """RMS spot radius at an optional image-plane shift (inf on failure)."""
+        """RMS spot radius at an optional image-plane shift (inf on failure).
+
+        A vignetted result reports ``rms_radius: None`` rather than 0.0, so it
+        becomes inf here - an unusable design, never a perfect one.
+        """
         try:
             spot = SpotDiagram(self.nominal_system)
-            return float(spot.trace_spot(focus_shift_mm=focus_shift_mm)["rms_radius"])
+            value = spot.trace_spot(focus_shift_mm=focus_shift_mm)["rms_radius"]
+            if value is None:
+                return float("inf")
+            return float(value)
         except Exception as e:
             logger.debug("Spot evaluation failed: %s", e)
             return float("inf")
@@ -446,7 +453,11 @@ class MonteCarloAnalyzer:
         # Analyze nominal system first
         spot_nom = SpotDiagram(self.nominal_system)
         res_nom = spot_nom.trace_spot()
+        # A vignetted nominal reports None; keep that as a failure rather than
+        # letting it coerce into comparisons or statistics below.
         nominal_val = res_nom["rms_radius"]
+        if nominal_val is None:
+            nominal_val = float("inf")
 
         # Save nominal state for restoration instead of deepcopying
         nominal_state = self._get_system_state(self.nominal_system)
@@ -463,6 +474,11 @@ class MonteCarloAnalyzer:
             results = spot.trace_spot(focus_shift_mm=comp_values.get("focus_shift_mm", 0.0))
 
             val = results["rms_radius"]
+            # A vignetted trial has no spot radius. It must fail, and it must
+            # not poison the statistics: inf keeps mean/max honest while
+            # still letting min/percentile reflect the real trials.
+            if val is None:
+                val = float("inf")
             passed = val <= criterion_limit
             if passed:
                 pass_count += 1
@@ -480,21 +496,27 @@ class MonteCarloAnalyzer:
             # Restore nominal state
             self._set_system_state(self.nominal_system, nominal_state)
 
-        # Statistics
+        # Statistics. A vignetted trial contributes inf (an unbounded, and
+        # unmanufacturable, spot radius), which statistics.mean/stdev cannot
+        # reduce - inf - inf is nan. Summarise the finite trials and let max
+        # keep the inf so the failure stays visible instead of being averaged
+        # away or crashing the report.
         values = [r["value"] for r in self.results]
+        finite = [v for v in values if math.isfinite(v)]
         yield_pct = (pass_count / num_trials) * 100
 
         stats = {
             "nominal": nominal_val,
-            "mean": statistics.mean(values) if values else 0,
-            "std_dev": statistics.stdev(values) if len(values) > 1 else 0,
-            "min": min(values) if values else 0,
+            "mean": statistics.mean(finite) if finite else float("inf"),
+            "std_dev": statistics.stdev(finite) if len(finite) > 1 else 0,
+            "min": min(finite) if finite else float("inf"),
             "max": max(values) if values else 0,
             "yield": yield_pct,
             "trials": num_trials,
             "criterion": criterion,
             "limit": criterion_limit,
-            "90th_percentile": _percentile(values, 90.0) if values else 0,
+            "90th_percentile": _percentile(finite, 90.0) if finite else float("inf"),
+            "vignetted_trials": len(values) - len(finite),
         }
 
         return stats
@@ -527,7 +549,11 @@ class InverseSensitivityAnalyzer:
         # Nominal performance
         spot_nom = SpotDiagram(self.system)
         res_nom = spot_nom.trace_spot()
+        # A vignetted nominal reports None; inf keeps the sensitivity
+        # arithmetic below well-defined instead of raising on None.
         nominal_val = res_nom["rms_radius"]
+        if nominal_val is None:
+            nominal_val = float("inf")
 
         for i, tol in enumerate(self.tolerances):
             # Test at max value
@@ -543,13 +569,22 @@ class InverseSensitivityAnalyzer:
             spot = SpotDiagram(self.system)
             res = spot.trace_spot()
             val = res["rms_radius"]
+            if val is None:
+                val = float("inf")
 
             # Restore state
             self._set_system_state(self.system, original_state)
 
             change = val - nominal_val
-            # Sensitivity = change / tolerance_value
+            # Sensitivity = change / tolerance_value. When either end is a
+            # vignetted inf this is inf - inf, i.e. undefined: the operand
+            # never moved the design between two unmanufacturable states, so
+            # there is no sensitivity to report. NaN says "undefined" without
+            # pretending the operand is infinitely sensitive.
             sensitivity = change / delta if delta != 0 else 0
+            if not (math.isfinite(change) and math.isfinite(sensitivity)):
+                change = float("nan")
+                sensitivity = float("nan")
 
             results.append(
                 {
