@@ -104,6 +104,111 @@ class TestGaussianBeam(unittest.TestCase):
         pass
 
 
+class TestGaussianBeamCurvature(unittest.TestCase):
+    """R_y must exist and agree with the analytic radius of curvature.
+
+    propagate_to_image() reads beam.R_y for the sagittal phase term, so a
+    missing property made every beam-synthesis propagation raise
+    AttributeError. The existing tests only ever exercised R_x.
+    """
+
+    @staticmethod
+    def _beam(q_x, q_y, wavelength=0.00055):
+        return GaussianBeam(
+            wavelength=wavelength,
+            q_x=complex(*q_x),
+            q_y=complex(*q_y),
+            ray=Ray3D(vec3(0, 0, 0), vec3(1, 0, 0)),
+        )
+
+    @staticmethod
+    def _analytic_R(q):
+        """R = |q|^2 / Re(q), infinite at the waist."""
+        if q.real == 0:
+            return float("inf")
+        return abs(q) ** 2 / q.real
+
+    def test_ry_exists(self):
+        beam = self._beam((3.0, 5.0), (3.0, 7.0))
+        self.assertTrue(hasattr(beam, "R_y"))
+        self.assertIsInstance(beam.R_y, float)
+
+    def test_ry_matches_analytic_value(self):
+        for real, imag in ((3.0, 5.0), (-2.0, 1.5), (10.0, 0.5), (-7.5, 2.0)):
+            with self.subTest(q=complex(real, imag)):
+                beam = self._beam((real, imag), (real, imag))
+                self.assertAlmostEqual(beam.R_y, self._analytic_R(beam.q_y), places=9)
+
+    def test_ry_at_waist_is_infinite(self):
+        """A planar wavefront has infinite radius, as for R_x."""
+        beam = self._beam((0.0, 5.0), (0.0, 5.0))
+        self.assertEqual(beam.R_y, float("inf"))
+        self.assertEqual(beam.R_x, float("inf"))
+
+    def test_ry_is_independent_of_rx(self):
+        """An astigmatic beam has different curvatures per plane."""
+        beam = self._beam((3.0, 5.0), (3.0, 9.0))
+        self.assertAlmostEqual(beam.R_x, self._analytic_R(beam.q_x), places=9)
+        self.assertAlmostEqual(beam.R_y, self._analytic_R(beam.q_y), places=9)
+        self.assertNotAlmostEqual(beam.R_x, beam.R_y, places=6)
+
+    def test_ry_tracks_propagation_like_rx(self):
+        beam = self._beam((0.0, 5.0), (0.0, 5.0))
+        beam.propagate(5.0)
+        self.assertAlmostEqual(beam.R_y, beam.R_x, places=9)
+        self.assertAlmostEqual(beam.R_y, 10.0, places=6)  # 2*zR
+
+
+@unittest.skipIf(not NUMPY_AVAILABLE, "numpy not installed")
+class TestBeamSynthesisPropagation(unittest.TestCase):
+    """propagate_to_image must run to completion, not raise part-way."""
+
+    @staticmethod
+    def _propagator():
+        from src.analysis.beam_synthesis import BeamSynthesisPropagator
+
+        system = OpticalSystem(name="BSP")
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=20.0,
+                refractive_index=1.5,
+            )
+        )
+        return BeamSynthesisPropagator(system)
+
+    def test_propagate_to_image_returns_finite_intensity(self):
+        """Regression: raised AttributeError on beam.R_y for every beamlet."""
+        DY, DZ, intensity = self._propagator().propagate_to_image(grid_size=8, detector_pixels=16)
+        self.assertEqual(intensity.shape, DY.shape)
+        self.assertEqual(intensity.shape, DZ.shape)
+        self.assertTrue(np.all(np.isfinite(intensity)))
+        self.assertGreater(float(intensity.max()), 0.0)
+
+    def test_propagate_to_image_uses_the_passed_wavelength(self):
+        """The phase term must read wavelength_mm, the actual parameter."""
+        prop = self._propagator()
+        _, _, at_green = prop.propagate_to_image(
+            grid_size=8, detector_pixels=8, wavelength_mm=WAVELENGTH_GREEN * NM_TO_MM
+        )
+        _, _, at_blue = prop.propagate_to_image(
+            grid_size=8, detector_pixels=8, wavelength_mm=450.0 * NM_TO_MM
+        )
+        # Different k, so the interference pattern must differ.
+        self.assertFalse(np.allclose(at_green, at_blue))
+
+    def test_empty_system_returns_empty_arrays(self):
+        from src.analysis.beam_synthesis import BeamSynthesisPropagator
+
+        prop = BeamSynthesisPropagator(OpticalSystem(name="Empty"))
+        result = prop.propagate_to_image(grid_size=4, detector_pixels=4)
+        self.assertEqual(len(result), 3)
+        for arr in result:
+            self.assertEqual(arr.size, 0)
+
+
 class TestPSF(unittest.TestCase):
     @unittest.skipIf(not NUMPY_AVAILABLE, "numpy not installed")
     def test_psf_calculation(self):

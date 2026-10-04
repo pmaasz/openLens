@@ -55,6 +55,14 @@ class GaussianBeam:
             return float("inf")
         return 1.0 / inv_q.real
 
+    @property
+    def R_y(self) -> float:
+        """Radius of curvature of wavefront in Y plane"""
+        inv_q = 1.0 / self.q_y
+        if inv_q.real == 0:
+            return float("inf")
+        return 1.0 / inv_q.real
+
     def propagate(self, distance: float) -> None:
         """Propagate beam by physical distance d."""
         # Assuming q is defined relative to the local medium (q = z + i*zR)
@@ -418,7 +426,7 @@ class BeamSynthesisPropagator:
             amp = (w0 / wx) * np.exp(-(local_y**2) / (wx**2) - (local_z**2) / (wy**2))
 
             # Phase
-            k = 2 * np.pi / wavelength
+            k = 2 * np.pi / wavelength_mm
             phase_curv = k * (local_y**2 / (2 * Rx) + local_z**2 / (2 * Ry))
             phase_opl = k * beam.ray.optical_path_length
 
