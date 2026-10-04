@@ -63,6 +63,15 @@ def _sag_bounds(lens) -> tuple:
 logger = logging.getLogger(__name__)
 
 
+class OptimizationCancelled(Exception):
+    """Raised inside the worker when Stop interrupts an optimization.
+
+    Every optimizer exposes a per-iteration callback, so cancellation is
+    cooperative: the worker unwinds at the next iteration boundary and the
+    partial result is discarded rather than reported as a finished run.
+    """
+
+
 class OptimizationWorker(QThread):
     """Background thread that runs the selected optimizer on a deep copy of
     the active lens/system."""
@@ -94,9 +103,23 @@ class OptimizationWorker(QThread):
         self.constraints = constraints
         self.algorithm = algorithm
 
+    def _check_interrupted(self, iteration, merit, values) -> None:
+        """Per-iteration callback: abort when Stop has requested interruption.
+
+        Raises:
+            OptimizationCancelled: If interruption was requested.
+        """
+        if self.isInterruptionRequested():
+            raise OptimizationCancelled(f"Cancelled at iteration {iteration}")
+
     def run(self) -> None:
         """Execute the optimization in this thread and emit ``finished`` with
-        the result or ``failed`` with an error message."""
+        the result or ``failed`` with an error message.
+
+        Emits nothing when interrupted: the Stop handler has already reset the
+        UI, and reporting a half-converged result as finished would overwrite
+        it with a value that never converged.
+        """
         try:
             from ...optical_system import OpticalSystem
             from ...global_optimizer import GlobalOptimizer
@@ -112,18 +135,26 @@ class OptimizationWorker(QThread):
                 system, self.variables, self.targets, constraints=self.constraints
             )
 
-            # Run optimization based on algorithm selection
+            # Run optimization based on algorithm selection. Every algorithm
+            # takes the same per-iteration callback, so one cooperative
+            # cancellation hook covers all of them.
             if "Simplex" in self.algorithm:
-                result = optimizer.optimize(max_iterations=100)
+                result = optimizer.optimize(max_iterations=100, callback=self._check_interrupted)
             elif "Simulated" in self.algorithm:
-                result = optimizer.optimize_simulated_annealing(max_iterations=500)
+                result = optimizer.optimize_simulated_annealing(
+                    max_iterations=500, callback=self._check_interrupted
+                )
             elif "Genetic" in self.algorithm:
-                result = optimizer.optimize_genetic(population_size=30, generations=30)
+                result = optimizer.optimize_genetic(
+                    population_size=30, generations=30, callback=self._check_interrupted
+                )
             else:
-                result = optimizer.optimize(max_iterations=100)
+                result = optimizer.optimize(max_iterations=100, callback=self._check_interrupted)
 
             self.finished.emit(result, self.variables)
 
+        except OptimizationCancelled:
+            logger.info("Optimization cancelled by user")
         except Exception as e:
             import traceback
 
@@ -283,6 +314,7 @@ class OptimizationTab(BaseTab):
         self._opt_is_running = False
         self._opt_original_target = None
         self._opt_pending_target = None
+        self._opt_worker = None
 
         # Variables map for dynamic checkboxes
         self._opt_check_vars = {}  # key -> QCheckBox
@@ -405,13 +437,35 @@ class OptimizationTab(BaseTab):
         self._opt_vars_layout.addStretch()
 
     def _on_stop_optimization(self) -> None:
-        """Stop the currently running optimization."""
-        if self._opt_is_running:
-            self._opt_is_running = False
-            self._opt_results_text.setPlainText("Optimization stopped by user.")
-            if self._parent:
-                self._parent._update_status("Optimization stopped.")
-            self._opt_apply_btn.setEnabled(False)
+        """Stop the currently running optimization.
+
+        The thread has to actually be stopped, not just flagged: clearing
+        ``_opt_is_running`` alone leaves it running, which lets a later Run
+        overwrite ``_opt_worker``. Dropping the last Python reference to a
+        live QThread makes CPython destroy it, and ``~QThread`` aborts the
+        process.
+        """
+        if not self._opt_is_running:
+            return
+
+        worker = self._opt_worker
+        if worker is not None and worker.isRunning():
+            # Cooperative first: the worker checks this at each iteration and
+            # unwinds on its own.
+            worker.requestInterruption()
+            if not worker.wait(3000):
+                # Only if it ignored the request (e.g. stuck inside a single
+                # long evaluation with no callback boundary).
+                worker.terminate()
+                worker.wait()
+
+        # Safe to drop only now that the thread is known to be finished.
+        self._opt_worker = None
+        self._opt_is_running = False
+        self._opt_results_text.setPlainText("Optimization stopped by user.")
+        if self._parent:
+            self._parent._update_status("Optimization stopped.")
+        self._opt_apply_btn.setEnabled(False)
 
     def _collect_variables(self, active_target) -> List[OptimizationVariable]:
         """Build optimization variables from checkbox state and live flags.
@@ -597,7 +651,7 @@ class OptimizationTab(BaseTab):
             self._opt_results_text.setPlainText("No system selected.")
             return
 
-        if self._opt_is_running:
+        if self._opt_is_running or (self._opt_worker and self._opt_worker.isRunning()):
             self._opt_results_text.setPlainText("Optimization already running.")
             return
 
@@ -661,6 +715,19 @@ class OptimizationTab(BaseTab):
         self._opt_worker.failed.connect(self._on_optimization_failed)
         self._opt_worker.start()
 
+    def _release_finished_worker(self) -> None:
+        """Drop ``_opt_worker`` only once its thread has actually stopped.
+
+        The completion slots run on the GUI thread while the worker may still
+        be returning from ``run()``, so clearing the attribute unconditionally
+        could destroy a live QThread and abort the process - the bug this
+        guards. Holding a reference to an already-finished thread costs
+        nothing, so an inconclusive check simply keeps it.
+        """
+        worker = self._opt_worker
+        if worker is not None and not worker.isRunning():
+            self._opt_worker = None
+
     @Slot(object, list)
     def _on_optimization_finished(self, result, variables: List[OptimizationVariable]) -> None:
         """Callback for finished optimization.
@@ -671,6 +738,7 @@ class OptimizationTab(BaseTab):
                 parameter values.
         """
         self._opt_is_running = False
+        self._release_finished_worker()
         from ...optical_system import OpticalSystem
 
         if result.success:
@@ -719,6 +787,7 @@ class OptimizationTab(BaseTab):
             message: Error description emitted by the worker thread.
         """
         self._opt_is_running = False
+        self._release_finished_worker()
         self._opt_results_text.setPlainText(f"Optimization Error: {message}")
         if self._parent:
             self._parent._update_status(f"Optimization failed: {message}")
