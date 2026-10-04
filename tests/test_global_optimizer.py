@@ -63,5 +63,105 @@ class TestGlobalOptimizer(unittest.TestCase):
         self.assertLessEqual(r1, 150.0 + 1e-6)
 
 
+class TestOptimizerResultIntegrity(unittest.TestCase):
+    """success, iterations and improvement must mean the same everywhere.
+
+    Both global paths hardcoded success=True and reported initial_merit as
+    merit_history[0] - the best of generation 0, after up to 50 random
+    mutations, not the starting design - so improvement was measured against
+    a fabricated baseline. The GA also reported generations * population_size
+    evaluations as "iterations".
+    """
+
+    @staticmethod
+    def _system():
+        system = OpticalSystem()
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=20.0,
+                refractive_index=1.5,
+            )
+        )
+        return system
+
+    def _variables(self):
+        # Fresh objects per call: the global paths assign
+        # variables[i].current_value in place, so a shared list would let one
+        # run move the next run's starting point.
+        return [
+            OptimizationVariable(
+                name="th",
+                element_index=0,
+                parameter="thickness",
+                current_value=5.0,
+                min_value=1.0,
+                max_value=9.0,
+                step_size=0.5,
+            )
+        ]
+
+    def _targets(self):
+        return [OptimizationTarget("focal_length", 95.0, weight=1.0, target_type="target")]
+
+    def _optimizer(self, system=None):
+        # A fresh system per run too: merit evaluation touches the system's own
+        # lenses (wavelength-dependent refractive indices), so reusing one
+        # instance across algorithms would make the baseline drift.
+        return GlobalOptimizer(
+            system if system is not None else self._system(),
+            self._variables(),
+            self._targets(),
+        )
+
+    def _runs(self):
+        return {
+            "simplex": lambda o: o.optimize_simplex(max_iterations=40),
+            "annealing": lambda o: o.optimize_simulated_annealing(max_iterations=40),
+            "genetic": lambda o: o.optimize_genetic(generations=4, population_size=10),
+        }
+
+    def test_all_algorithms_report_the_real_starting_merit(self):
+        self.assertGreater(self._optimizer()._evaluate_design([5.0]), 0.0)
+        for name, run in self._runs().items():
+            with self.subTest(algorithm=name):
+                start = self._optimizer()._evaluate_design([5.0])
+                result = run(self._optimizer())
+                self.assertAlmostEqual(result.initial_merit, start, places=6)
+
+    def test_genetic_iterations_count_generations_not_evaluations(self):
+        """Was generations * population_size + local steps (4*10 + n)."""
+        result = self._optimizer().optimize_genetic(generations=4, population_size=10)
+        self.assertLess(result.iterations, 40)
+
+    def test_out_of_bounds_design_never_reports_success(self):
+        """The global paths used to hardcode success=True regardless."""
+        for name, run in self._runs().items():
+            with self.subTest(algorithm=name):
+                result = run(self._optimizer())
+                in_bounds = all(
+                    var.is_valid(v) for var, v in zip(self._variables(), result.best_values)
+                )
+                if not in_bounds:
+                    self.assertFalse(result.success)
+                    self.assertIn("bounds", result.message)
+
+    def test_every_algorithm_reports_the_settled_design(self):
+        for name, run in self._runs().items():
+            with self.subTest(algorithm=name):
+                result = run(self._optimizer())
+                self.assertEqual(len(result.best_values), len(self._variables()))
+
+    def test_gradient_descent_result_has_best_values_field(self):
+        from src.optimizer import LensOptimizer
+
+        result = LensOptimizer(
+            self._system(), self._variables(), self._targets()
+        ).optimize_gradient_descent(max_iterations=5)
+        self.assertTrue(hasattr(result, "best_values"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -46,6 +46,9 @@ class GlobalOptimizer(LensOptimizer):
         """
         current_values = [var.current_value for var in self.variables]
         current_merit = self._evaluate_design(current_values)
+        # Captured now because the annealing loop reassigns current_merit to
+        # whichever neighbour it is currently sitting on.
+        starting_merit = current_merit
 
         best_values = list(current_values)
         best_merit = current_merit
@@ -128,25 +131,26 @@ class GlobalOptimizer(LensOptimizer):
         # Run local optimization
         local_result = self.optimize_simplex(max_iterations=50)
 
-        # Combine results
-        final_system = local_result.optimized_system
-        final_merit = local_result.final_merit
-        improvement = (
-            ((merit_history[0] - final_merit) / merit_history[0] * 100)
-            if merit_history[0] > 0
-            else 0
-        )
-
-        return OptimizationResult(
-            success=True,
+        # Combine results. initial_merit is the *starting* design's merit:
+        # merit_history[0] is the best of the first step, after a random
+        # perturbation, so it understates the starting point and inflates
+        # improvement. success comes from _finalize, which validates the bounds
+        # instead of asserting True.
+        return self._finalize(
+            best_values=local_result.best_values,
+            final_merit=local_result.final_merit,
+            initial_merit=starting_merit,
             iterations=iteration + 1 + local_result.iterations,
-            initial_merit=merit_history[0],
-            final_merit=final_merit,
-            improvement=improvement,
-            optimized_system=final_system,
             variable_history=variable_history + local_result.variable_history,
             merit_history=merit_history + local_result.merit_history,
-            message=f"SA Converged after {iteration+1} iterations + {local_result.iterations} local steps",
+            converged_message=(
+                f"SA Converged after {iteration + 1} iterations"
+                f" + {local_result.iterations} local steps"
+            ),
+            out_of_bounds_message=(
+                f"SA finished after {iteration + 1} iterations"
+                f" + {local_result.iterations} local steps outside variable bounds"
+            ),
         )
 
     def optimize_genetic(
@@ -234,20 +238,25 @@ class GlobalOptimizer(LensOptimizer):
 
         local_result = self.optimize_simplex(max_iterations=50)
 
-        return OptimizationResult(
-            success=True,
-            iterations=generations * population_size + local_result.iterations,
-            initial_merit=history_merit[0],
+        # history_merit[0] is the best of generation 0, i.e. after up to 50
+        # random mutations - not the starting design - so improvement was
+        # measured against a fabricated baseline. Re-evaluate the real
+        # starting point. iterations counts generations, not the
+        # generations*population_size evaluations the old code reported, and
+        # success now comes from _finalize's bounds check.
+        starting_merit = self._evaluate_design(current_design)
+
+        return self._finalize(
+            best_values=local_result.best_values,
             final_merit=local_result.final_merit,
-            improvement=(
-                ((history_merit[0] - local_result.final_merit) / history_merit[0] * 100)
-                if history_merit[0] > 0
-                else 0
-            ),
-            optimized_system=local_result.optimized_system,
-            variable_history=local_result.variable_history,  # Only keep local history to save space
+            initial_merit=starting_merit,
+            iterations=generations + local_result.iterations,
+            variable_history=local_result.variable_history,
             merit_history=history_merit,
-            message=f"GA Completed {generations} generations",
+            converged_message=f"GA Completed {generations} generations",
+            out_of_bounds_message=(
+                f"GA finished {generations} generations outside variable bounds"
+            ),
         )
 
     def _tournament_select(self, population, merits, k=3):
