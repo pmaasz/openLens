@@ -267,7 +267,11 @@ class ImageQualityAnalyzer:
             # This is consistent.
 
             grid_size = wf.W.shape[0]  # N
-            dx_pupil = L_grid / grid_size
+            # The pupil grid is np.linspace(-max_r, max_r, N): N samples
+            # spanning 2*max_r in N-1 intervals, so the sample spacing is
+            # L_grid/(N-1). Dividing by N understated it by N/(N-1) and
+            # reported every frequency low by that factor.
+            dx_pupil = L_grid / (grid_size - 1) if grid_size > 1 else L_grid
             df = dx_pupil / (wavelength_nm * 1e-6 * efl)
 
             freqs = np.arange(len(mtf_tan)) * df
@@ -456,7 +460,9 @@ class ImageQualityAnalyzer:
             efl = 100.0
 
         N_pupil = wf.W.shape[0]
-        dx_pupil = ep_diam / N_pupil
+        # Same N-1 interval spacing as above; the error inflated dx_psf and
+        # therefore raw_extent, shifting the resample window as well.
+        dx_pupil = ep_diam / (N_pupil - 1) if N_pupil > 1 else ep_diam
         padded_N = psf_raw.shape[0]
 
         dx_psf = (wavelength_nm * 1e-6 * efl) / (padded_N * dx_pupil)
