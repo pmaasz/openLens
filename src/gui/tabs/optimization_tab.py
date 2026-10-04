@@ -329,14 +329,30 @@ class OptimizationTab(BaseTab):
         cb = self._opt_check_vars.get(key)
         return bool(cb is not None and cb.isChecked())
 
-    def refresh(self) -> None:
+    def refresh(self, preserve_selection: bool = True) -> None:
         """Update the variables list based on current selection (Lens or Assembly).
 
         Rebuilds the variable checkboxes and preview visualizations from the
         parent window's current lens/system state. Runs on every lens edit
         (via the main window update hook), so keys always match the live
         parabolic flags; collection still re-checks the flags defensively.
+
+        Args:
+            preserve_selection: Carry the user's ticked/unticked state across
+                the rebuild. Refresh is reached from _update_all_tabs() on
+                *any* model change, and it used to re-apply a hard-coded
+                default every time, so a single keystroke in another field
+                silently undid the user's variable selection. Selection is
+                only carried over while the target is the same object:
+                switching to a different lens or assembly is a deliberate
+                change of subject and gets fresh defaults, and keys that no
+                longer exist are dropped.
         """
+        # Snapshot before the teardown below discards the widgets.
+        previous = {}
+        if preserve_selection and self._opt_check_vars:
+            previous = {key: bool(cb.isChecked()) for key, cb in self._opt_check_vars.items()}
+
         # Clear existing
         while self._opt_vars_layout.count():
             child = self._opt_vars_layout.takeAt(0)
@@ -354,9 +370,17 @@ class OptimizationTab(BaseTab):
         )
         if not active_target:
             self._opt_vars_layout.addWidget(QLabel("No system selected"))
+            self._opt_selection_target = None
             return
 
         from ...optical_system import OpticalSystem
+
+        # A different lens/assembly is a different subject: start from the
+        # defaults rather than carrying ticks across from the previous one.
+        if active_target is not getattr(self, "_opt_selection_target", None):
+            previous = {}
+
+        self._opt_selection_target = active_target
 
         if isinstance(active_target, OpticalSystem):
             self._opt_lens_viz.setVisible(False)
@@ -384,8 +408,12 @@ class OptimizationTab(BaseTab):
                     key = kind.at(i)
                     val = getattr(element.lens, param)
                     cb = QCheckBox(f"{label} ({val:.2f})")
+                    # Default for a brand-new key; an existing key keeps
+                    # whatever the user chose, including unticked.
                     cb.setChecked(
-                        label in ["Radius 1", "Radius 2", "Parabolic Sag 1", "Parabolic Sag 2"]
+                        previous[key]
+                        if key in previous
+                        else label in ["Radius 1", "Radius 2", "Parabolic Sag 1", "Parabolic Sag 2"]
                     )
                     self._opt_check_vars[key] = cb
                     vbox.addWidget(cb)
@@ -427,8 +455,16 @@ class OptimizationTab(BaseTab):
                 val = getattr(active_target, param)
                 cb = QCheckBox(f"{label} ({val:.2f})")
                 cb.setChecked(
-                    label
-                    in ["Radius 1", "Radius 2", "Parabolic Sag 1", "Parabolic Sag 2", "Thickness"]
+                    previous[key]
+                    if key in previous
+                    else label
+                    in [
+                        "Radius 1",
+                        "Radius 2",
+                        "Parabolic Sag 1",
+                        "Parabolic Sag 2",
+                        "Thickness",
+                    ]
                 )
                 self._opt_check_vars[key] = cb
                 vbox.addWidget(cb)
