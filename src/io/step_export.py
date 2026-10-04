@@ -130,6 +130,12 @@ class StepExporter:
     def export(self, filename: str, housing: Optional[list] = None):
         """Export the current system to a STEP file.
 
+        Safe to call repeatedly on one exporter: the entity buffer is reset
+        first. It used to be created only in __init__, so a second export
+        appended a fresh context and a second copy of every solid to the
+        first export's lines - 48 entities after one call, 96 after two, with
+        two MANIFOLD_SOLID_BREPs in one file.
+
         Args:
             filename: Output path.
             housing: Optional iterable of housing-part dicts with keys
@@ -137,6 +143,19 @@ class StepExporter:
                 describing annular tube solids (spacers, barrel, retainers).
                 See ``mechanical_designer.suggest_housing``.
         """
+        # Start from a clean buffer and a clean id sequence.
+        self.writer = StepWriter()
+        self.axis_id = 0
+        self.dir_z = 0
+        self.dir_x = 0
+        self.dir_y = 0
+        self.origin = 0
+        self.axis2_placement = 0
+        self.context = 0
+        self.uncertainty = 0
+        self.related_context = 0
+        self.geom_context = 0
+
         # Standard setup entities
         self._create_context()
 
