@@ -20,7 +20,7 @@ from .constants import (
     WAVELENGTH_GREEN,
     DEFAULT_MATERIAL_INDICES,
 )
-from .optical_node import OpticalElement, OpticalAssembly
+from .optical_node import OpticalElement, OpticalAssembly, OpticalNode
 
 try:
     from .material_database import get_material_database
@@ -320,17 +320,36 @@ class OpticalSystem:
         self.air_gaps = new_gaps
 
     def _update_positions(self) -> None:
-        """Update positions of all elements"""
+        """Update positions of all elements.
+
+        The flat ``elements`` list and the node tree are kept in step, but they
+        are not index-aligned: ``elements`` is flattened (assemblies expanded)
+        while ``root.children`` may hold OpticalAssembly nodes, so element *i*
+        is generally not child *i*. Writing child positions by flat index
+        therefore moved unrelated nodes - a standalone lens was rewritten with
+        a nested element's position, leaving the flat list and the tree
+        disagreeing, and so the 2D/ABCD tracer and the 3D tracer analysing
+        different geometry.
+
+        Nodes are now matched to elements by identity of the lens model they
+        wrap, and only direct children of root take their axial position from
+        the flat layout. Nested positions belong to the enclosing assembly.
+        """
         current_pos = 0.0
+
+        nodes_by_model: Dict[int, OpticalNode] = {}
+        for node, _global_pos in self.root.get_flat_list():
+            model = getattr(node, "element_model", None)
+            if model is not None:
+                nodes_by_model.setdefault(id(model), node)
 
         for i, element in enumerate(self.elements):
             element.position = current_pos
 
-            # Update hierarchical node if it exists as direct child.
             # Preserve lateral offsets: only the axial position is managed
             # here; decenter lives on the node.
-            if i < len(self.root.children):
-                node = self.root.children[i]
+            node = nodes_by_model.get(id(element.lens))
+            if node is not None and node.parent is self.root:
                 node.position = vec3(current_pos, node.position.y, node.position.z)
 
             current_pos += element.thickness
