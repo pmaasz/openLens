@@ -47,6 +47,44 @@ class LensInUseError(RuntimeError):
         )
 
 
+@contextmanager
+def _transaction(cursor: sqlite3.Cursor) -> Iterator[sqlite3.Cursor]:
+    """Run a block as one immediate transaction on an autocommit connection.
+
+    ``BEGIN IMMEDIATE`` takes the write lock up front, so two processes
+    starting at once serialise here instead of interleaving their DDL. On any
+    error the whole block is rolled back, which is what makes a migration
+    all-or-nothing: DDL is transactional in SQLite, so a partial migration
+    cannot survive.
+    """
+    cursor.execute("BEGIN IMMEDIATE")
+    try:
+        yield cursor
+    except Exception:
+        cursor.execute("ROLLBACK")
+        raise
+    cursor.execute("COMMIT")
+
+
+def _table_columns(cursor: sqlite3.Cursor, table: str) -> set:
+    """Column names of ``table`` (empty if it does not exist)."""
+    cursor.execute(f"PRAGMA table_info({table})")
+    return {row[1] for row in cursor.fetchall()}
+
+
+def _add_column(cursor: sqlite3.Cursor, table: str, column: str, decl: str) -> bool:
+    """Add a column if absent. Returns True when it actually added one.
+
+    Makes a migration idempotent: a database left half-migrated by an older
+    build (or by a crash) already has some of the columns, and re-adding one
+    would raise "duplicate column name" on every subsequent launch.
+    """
+    if column in _table_columns(cursor, table):
+        return False
+    cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+    return True
+
+
 class DatabaseManager:
     """Handles SQLite database operations for Lens and OpticalSystem storage."""
 
@@ -80,152 +118,141 @@ class DatabaseManager:
     def _initialize_db(self):
         """Create tables if they don't exist and handle migrations.
 
-        Runs in autocommit mode: each DDL statement is applied as it
-        executes.
+        The whole version-detect-then-migrate sequence runs in one
+        ``BEGIN IMMEDIATE`` transaction. Previously each ALTER and each
+        ``PRAGMA user_version`` write was its own implicit transaction under
+        autocommit, so a process that died between two ALTERs left
+        ``user_version`` at the old value: the next launch replayed the same
+        ALTERs and raised "duplicate column name", and because this runs
+        unguarded from ``__init__`` every later launch failed identically.
+        The app could never be started again without deleting the database.
         """
         with self._connection() as conn:
             cursor = conn.cursor()
+            with _transaction(cursor):
 
-            # Check version
-            cursor.execute("PRAGMA user_version")
-            version = cursor.fetchone()[0]
+                # Check version
+                cursor.execute("PRAGMA user_version")
+                version = cursor.fetchone()[0]
 
-            if version == 0:
-                # Lenses table (v3 schema: parabolic surfaces are explicit
-                # columns, not just metadata-blob passengers; per-surface
-                # clear apertures and bevels likewise).
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS lenses (
-                        id TEXT PRIMARY KEY,
-                        name TEXT NOT NULL,
-                        radius1 REAL NOT NULL,
-                        radius2 REAL NOT NULL,
-                        thickness REAL NOT NULL,
-                        material TEXT NOT NULL,
-                        refractive_index REAL,
-                        diameter REAL,
-                        created_at TEXT,
-                        modified_at TEXT,
-                        is_parabolic_1 INTEGER NOT NULL DEFAULT 0,
-                        parabolic_sag_1 REAL NOT NULL DEFAULT 0.0,
-                        is_parabolic_2 INTEGER NOT NULL DEFAULT 0,
-                        parabolic_sag_2 REAL NOT NULL DEFAULT 0.0,
-                        clear_aperture_1 REAL,
-                        clear_aperture_2 REAL,
-                        bevel_1 REAL NOT NULL DEFAULT 0.0,
-                        bevel_2 REAL NOT NULL DEFAULT 0.0,
-                        coating_1 TEXT,
-                        coating_2 TEXT,
-                        metadata TEXT
-                    )
-                """)
+                if version == 0:
+                    # Lenses table (v3 schema: parabolic surfaces are explicit
+                    # columns, not just metadata-blob passengers; per-surface
+                    # clear apertures and bevels likewise).
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS lenses (
+                            id TEXT PRIMARY KEY,
+                            name TEXT NOT NULL,
+                            radius1 REAL NOT NULL,
+                            radius2 REAL NOT NULL,
+                            thickness REAL NOT NULL,
+                            material TEXT NOT NULL,
+                            refractive_index REAL,
+                            diameter REAL,
+                            created_at TEXT,
+                            modified_at TEXT,
+                            is_parabolic_1 INTEGER NOT NULL DEFAULT 0,
+                            parabolic_sag_1 REAL NOT NULL DEFAULT 0.0,
+                            is_parabolic_2 INTEGER NOT NULL DEFAULT 0,
+                            parabolic_sag_2 REAL NOT NULL DEFAULT 0.0,
+                            clear_aperture_1 REAL,
+                            clear_aperture_2 REAL,
+                            bevel_1 REAL NOT NULL DEFAULT 0.0,
+                            bevel_2 REAL NOT NULL DEFAULT 0.0,
+                            coating_1 TEXT,
+                            coating_2 TEXT,
+                            metadata TEXT
+                        )
+                    """)
 
-                # Assemblies table (v4: aperture stop lives here)
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS assemblies (
-                        id TEXT PRIMARY KEY,
-                        name TEXT NOT NULL,
-                        created_at TEXT,
-                        modified_at TEXT,
-                        aperture_stop_gap INTEGER,
-                        aperture_stop_diameter REAL,
-                        metadata TEXT
-                    )
-                """)
+                    # Assemblies table (v4: aperture stop lives here)
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS assemblies (
+                            id TEXT PRIMARY KEY,
+                            name TEXT NOT NULL,
+                            created_at TEXT,
+                            modified_at TEXT,
+                            aperture_stop_gap INTEGER,
+                            aperture_stop_diameter REAL,
+                            metadata TEXT
+                        )
+                    """)
 
-                # Assembly Elements table (junction table; v4 carries the
-                # per-element decenter/tilt so the tree's alignment survives)
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS assembly_elements (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        assembly_id TEXT NOT NULL,
-                        lens_id TEXT NOT NULL,
-                        position REAL NOT NULL,
-                        order_index INTEGER NOT NULL,
-                        decenter_y REAL NOT NULL DEFAULT 0.0,
-                        decenter_z REAL NOT NULL DEFAULT 0.0,
-                        tilt_x REAL NOT NULL DEFAULT 0.0,
-                        tilt_y REAL NOT NULL DEFAULT 0.0,
-                        tilt_z REAL NOT NULL DEFAULT 0.0,
-                        FOREIGN KEY (assembly_id) REFERENCES assemblies (id) ON DELETE CASCADE,
-                        FOREIGN KEY (lens_id) REFERENCES lenses (id)
-                    )
-                """)
+                    # Assembly Elements table (junction table; v4 carries the
+                    # per-element decenter/tilt so the tree's alignment survives)
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS assembly_elements (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            assembly_id TEXT NOT NULL,
+                            lens_id TEXT NOT NULL,
+                            position REAL NOT NULL,
+                            order_index INTEGER NOT NULL,
+                            decenter_y REAL NOT NULL DEFAULT 0.0,
+                            decenter_z REAL NOT NULL DEFAULT 0.0,
+                            tilt_x REAL NOT NULL DEFAULT 0.0,
+                            tilt_y REAL NOT NULL DEFAULT 0.0,
+                            tilt_z REAL NOT NULL DEFAULT 0.0,
+                            FOREIGN KEY (assembly_id) REFERENCES assemblies (id) ON DELETE CASCADE,
+                            FOREIGN KEY (lens_id) REFERENCES lenses (id)
+                        )
+                    """)
 
-                # Assembly Air Gaps table
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS assembly_air_gaps (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        assembly_id TEXT NOT NULL,
-                        thickness REAL NOT NULL,
-                        position REAL NOT NULL,
-                        order_index INTEGER NOT NULL,
-                        FOREIGN KEY (assembly_id) REFERENCES assemblies (id) ON DELETE CASCADE
-                    )
-                """)
+                    # Assembly Air Gaps table
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS assembly_air_gaps (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            assembly_id TEXT NOT NULL,
+                            thickness REAL NOT NULL,
+                            position REAL NOT NULL,
+                            order_index INTEGER NOT NULL,
+                            FOREIGN KEY (assembly_id) REFERENCES assemblies (id) ON DELETE CASCADE
+                        )
+                    """)
 
-                cursor.execute("PRAGMA user_version = 5")
-            elif version == 1:
-                # v1 -> v2: promote parabolic surfaces from the metadata
-                # blob to explicit columns. Existing rows keep DEFAULT 0
-                # (spherical); rows whose metadata already carries parabolic
-                # keys keep working because load merges metadata over columns.
-                cursor.execute(
-                    "ALTER TABLE lenses ADD COLUMN is_parabolic_1 INTEGER NOT NULL DEFAULT 0"
-                )
-                cursor.execute(
-                    "ALTER TABLE lenses ADD COLUMN parabolic_sag_1 REAL NOT NULL DEFAULT 0.0"
-                )
-                cursor.execute(
-                    "ALTER TABLE lenses ADD COLUMN is_parabolic_2 INTEGER NOT NULL DEFAULT 0"
-                )
-                cursor.execute(
-                    "ALTER TABLE lenses ADD COLUMN parabolic_sag_2 REAL NOT NULL DEFAULT 0.0"
-                )
-                cursor.execute("PRAGMA user_version = 2")
+                    cursor.execute("PRAGMA user_version = 5")
+                elif version == 1:
+                    # v1 -> v2: promote parabolic surfaces from the metadata
+                    # blob to explicit columns. Existing rows keep DEFAULT 0
+                    # (spherical); rows whose metadata already carries parabolic
+                    # keys keep working because load merges metadata over columns.
+                    _add_column(cursor, "lenses", "is_parabolic_1", "INTEGER NOT NULL DEFAULT 0")
+                    _add_column(cursor, "lenses", "parabolic_sag_1", "REAL NOT NULL DEFAULT 0.0")
+                    _add_column(cursor, "lenses", "is_parabolic_2", "INTEGER NOT NULL DEFAULT 0")
+                    _add_column(cursor, "lenses", "parabolic_sag_2", "REAL NOT NULL DEFAULT 0.0")
+                    cursor.execute("PRAGMA user_version = 2")
 
-            # v2 -> v3: per-surface clear apertures (NULL = full diameter)
-            # and 45-degree bevel face widths (0.0 = sharp edge).
-            cursor.execute("PRAGMA user_version")
-            if cursor.fetchone()[0] == 2:
-                cursor.execute("ALTER TABLE lenses ADD COLUMN clear_aperture_1 REAL")
-                cursor.execute("ALTER TABLE lenses ADD COLUMN clear_aperture_2 REAL")
-                cursor.execute("ALTER TABLE lenses ADD COLUMN bevel_1 REAL NOT NULL DEFAULT 0.0")
-                cursor.execute("ALTER TABLE lenses ADD COLUMN bevel_2 REAL NOT NULL DEFAULT 0.0")
-                cursor.execute("PRAGMA user_version = 3")
+                # v2 -> v3: per-surface clear apertures (NULL = full diameter)
+                # and 45-degree bevel face widths (0.0 = sharp edge).
+                cursor.execute("PRAGMA user_version")
+                if cursor.fetchone()[0] == 2:
+                    _add_column(cursor, "lenses", "clear_aperture_1", "REAL")
+                    _add_column(cursor, "lenses", "clear_aperture_2", "REAL")
+                    _add_column(cursor, "lenses", "bevel_1", "REAL NOT NULL DEFAULT 0.0")
+                    _add_column(cursor, "lenses", "bevel_2", "REAL NOT NULL DEFAULT 0.0")
+                    cursor.execute("PRAGMA user_version = 3")
 
-            # v3 -> v4: aperture stop on assemblies, decenter/tilt on
-            # assembly elements.
-            cursor.execute("PRAGMA user_version")
-            if cursor.fetchone()[0] == 3:
-                cursor.execute("ALTER TABLE assemblies ADD COLUMN aperture_stop_gap INTEGER")
-                cursor.execute("ALTER TABLE assemblies ADD COLUMN aperture_stop_diameter REAL")
-                cursor.execute(
-                    "ALTER TABLE assembly_elements "
-                    "ADD COLUMN decenter_y REAL NOT NULL DEFAULT 0.0"
-                )
-                cursor.execute(
-                    "ALTER TABLE assembly_elements "
-                    "ADD COLUMN decenter_z REAL NOT NULL DEFAULT 0.0"
-                )
-                cursor.execute(
-                    "ALTER TABLE assembly_elements ADD COLUMN tilt_x REAL NOT NULL DEFAULT 0.0"
-                )
-                cursor.execute(
-                    "ALTER TABLE assembly_elements ADD COLUMN tilt_y REAL NOT NULL DEFAULT 0.0"
-                )
-                cursor.execute(
-                    "ALTER TABLE assembly_elements ADD COLUMN tilt_z REAL NOT NULL DEFAULT 0.0"
-                )
-                cursor.execute("PRAGMA user_version = 4")
+                # v3 -> v4: aperture stop on assemblies, decenter/tilt on
+                # assembly elements.
+                cursor.execute("PRAGMA user_version")
+                if cursor.fetchone()[0] == 3:
+                    _add_column(cursor, "assemblies", "aperture_stop_gap", "INTEGER")
+                    _add_column(cursor, "assemblies", "aperture_stop_diameter", "REAL")
+                    for axis in ("decenter_y", "decenter_z", "tilt_x", "tilt_y", "tilt_z"):
+                        _add_column(
+                            cursor,
+                            "assembly_elements",
+                            axis,
+                            "REAL NOT NULL DEFAULT 0.0",
+                        )
+                    cursor.execute("PRAGMA user_version = 4")
 
-            # v4 -> v5: per-surface coating stacks (JSON arrays of layer
-            # dicts; NULL = uncoated).
-            cursor.execute("PRAGMA user_version")
-            if cursor.fetchone()[0] == 4:
-                cursor.execute("ALTER TABLE lenses ADD COLUMN coating_1 TEXT")
-                cursor.execute("ALTER TABLE lenses ADD COLUMN coating_2 TEXT")
-                cursor.execute("PRAGMA user_version = 5")
+                # v4 -> v5: per-surface coating stacks (JSON arrays of layer
+                # dicts; NULL = uncoated).
+                cursor.execute("PRAGMA user_version")
+                if cursor.fetchone()[0] == 4:
+                    _add_column(cursor, "lenses", "coating_1", "TEXT")
+                    _add_column(cursor, "lenses", "coating_2", "TEXT")
+                    cursor.execute("PRAGMA user_version = 5")
 
     def save_lens(self, lens_dict: Dict[str, Any]):
         """Save or update a single lens."""

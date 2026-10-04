@@ -87,6 +87,11 @@ class SpotDiagram:
             lens.update_refractive_index(wavelength_nm=wavelength_nm)
 
         target_x = 0.0
+        # Hoisted above the try: the statistics block below reads them, and
+        # leaving the initialisation inside the try made any failure before
+        # that point surface as UnboundLocalError instead of its real cause.
+        spot_points = []
+        valid_rays = 0
 
         try:
             # Determine image plane position
@@ -137,9 +142,6 @@ class SpotDiagram:
             # Start rays before first element
             start_x = self.system.elements[0].position - 50.0
 
-            spot_points = []
-            valid_rays = 0
-
             first_lens_x = self.system.elements[0].position
 
             for py, pz in pupil_points:
@@ -170,20 +172,32 @@ class SpotDiagram:
                 lens.wavelength = wl
                 lens.refractive_index = n
 
-            # 3. Calculate Statistics
-            if not spot_points:
-                # Return empty stats instead of raising, but log it
-                # The GUI should handle this gracefully
-                logger.warning("No rays reached the image plane (blocked or TIR)")
-                return {
-                    "rms_radius": 0.0,
-                    "geo_radius": 0.0,
-                    "centroid": (0.0, 0.0),
-                    "points": [],
-                    "valid_rays": 0,
-                    "image_plane_x": target_x,
-                    "error": "No rays reached the image plane",
-                }
+        # Reached only when the try body completed without raising. This check
+        # must NOT live in finally: a return there discards any in-flight
+        # exception, so a tracer failure that happened before the first spot
+        # point landed was reported as a clean rms_radius of 0.0 - a tracer bug
+        # masquerading as an optical result - instead of propagating.
+        if valid_rays < 2:
+            # Fewer than two rays cannot define a spot: the RMS radius would be
+            # the distance of a single ray from its own centroid, i.e. exactly
+            # 0.0. Reporting that as a perfect spot lets a fully vignetted
+            # system outscore every physically real design in the optimizer
+            # and score 100% production yield in Monte Carlo. None forces
+            # callers to treat it as a failure instead of a great number.
+            logger.warning(
+                "Only %d ray(s) reached the image plane (blocked or TIR); "
+                "spot statistics are undefined",
+                valid_rays,
+            )
+            return {
+                "rms_radius": None,
+                "geo_radius": None,
+                "centroid": (0.0, 0.0),
+                "points": spot_points,
+                "valid_rays": valid_rays,
+                "image_plane_x": target_x,
+                "error": "Fewer than 2 rays reached the image plane",
+            }
 
         # Centroid
         sum_y = sum(p[0] for p in spot_points)

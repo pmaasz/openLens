@@ -897,12 +897,22 @@ class AberrationsCalculator:
 
         f = results["focal_length"]
 
+        # self.lens only exists for a single-lens target; a system target
+        # sets is_system instead, so reading it here raised AttributeError.
+        if self.is_system:
+            element_count = len(getattr(self.target, "elements", []) or [])
+            name = f"{self.target.name} ({element_count} elements)"
+            material = "-"
+        else:
+            name = self.lens.name
+            material = self.lens.material
+
         summary = f"""
 ╔═══════════════════════════════════════════════════════════════╗
 ║              LENS ABERRATIONS ANALYSIS                        ║
 ╠═══════════════════════════════════════════════════════════════╣
-║ Lens: {self.lens.name:<52} ║
-║ Material: {self.lens.material:<48} ║
+║ Lens: {name:<52} ║
+║ Material: {material:<48} ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║ BASIC PARAMETERS                                              ║
 ╠═══════════════════════════════════════════════════════════════╣

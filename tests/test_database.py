@@ -477,5 +477,150 @@ class TestMigrationV1ToV2(unittest.TestCase):
             conn.close()
 
 
+class TestMigrationIsAtomicAndIdempotent(unittest.TestCase):
+    """A migration must be all-or-nothing and safe to replay.
+
+    Each ALTER and each user_version write used to be its own implicit
+    transaction, so a process dying between two ALTERs left user_version at
+    the old value. The next launch replayed them, raised "duplicate column
+    name", and because _initialize_db runs unguarded from __init__ every
+    later launch failed identically - the app could not be started again
+    without deleting the database.
+    """
+
+    def setUp(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        self._path = tmp.name
+
+    def tearDown(self):
+        for suffix in ("", "-wal", "-shm"):
+            if os.path.exists(self._path + suffix):
+                os.unlink(self._path + suffix)
+
+    def _version_and_columns(self):
+        import sqlite3
+
+        conn = sqlite3.connect(self._path)
+        try:
+            return (
+                conn.execute("PRAGMA user_version").fetchone()[0],
+                len(conn.execute("PRAGMA table_info(lenses)").fetchall()),
+            )
+        finally:
+            conn.close()
+
+    def test_half_migrated_database_self_heals(self):
+        """Regression: 'duplicate column name: is_parabolic_1', forever."""
+        import sqlite3
+
+        _make_v1_db(self._path)
+        # Simulate a crash after the first v1->v2 ALTER, version still 1.
+        conn = sqlite3.connect(self._path)
+        conn.execute("ALTER TABLE lenses ADD COLUMN is_parabolic_1 INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+        conn.close()
+
+        DatabaseManager(self._path)  # must not raise
+
+        version, _ = self._version_and_columns()
+        self.assertEqual(version, 5)
+
+    def test_migration_is_idempotent_across_repeated_opens(self):
+        _make_v1_db(self._path)
+        DatabaseManager(self._path)
+        first = self._version_and_columns()
+        for _ in range(3):
+            DatabaseManager(self._path)
+        self.assertEqual(self._version_and_columns(), first)
+
+    def test_crash_mid_migration_rolls_back_completely(self):
+        """Nothing partial may survive a failure inside the migration."""
+        from src import database as database_module
+
+        _make_v1_db(self._path)
+        before = self._version_and_columns()
+
+        real_add_column = database_module._add_column
+        calls = {"n": 0}
+
+        def exploding(cursor, table, column, decl):
+            calls["n"] += 1
+            if calls["n"] > 2:
+                raise RuntimeError("simulated crash mid-migration")
+            return real_add_column(cursor, table, column, decl)
+
+        database_module._add_column = exploding
+        try:
+            with self.assertRaises(RuntimeError):
+                DatabaseManager(self._path)
+        finally:
+            database_module._add_column = real_add_column
+
+        # The ALTERs that did run must have been rolled back with the version.
+        self.assertEqual(self._version_and_columns(), before)
+        self.assertEqual(before[0], 1)
+
+    def test_database_recovers_after_a_rolled_back_migration(self):
+        """A rolled-back migration must not leave the app unusable."""
+        from src import database as database_module
+
+        _make_v1_db(self._path)
+        real_add_column = database_module._add_column
+        calls = {"n": 0}
+
+        def exploding(cursor, table, column, decl):
+            calls["n"] += 1
+            if calls["n"] > 2:
+                raise RuntimeError("simulated crash mid-migration")
+            return real_add_column(cursor, table, column, decl)
+
+        database_module._add_column = exploding
+        try:
+            with self.assertRaises(RuntimeError):
+                DatabaseManager(self._path)
+        finally:
+            database_module._add_column = real_add_column
+
+        DatabaseManager(self._path)
+        version, _ = self._version_and_columns()
+        self.assertEqual(version, 5)
+
+    def test_add_column_helper_is_idempotent(self):
+        import sqlite3
+
+        from src.database import _add_column
+
+        _make_v1_db(self._path)
+        conn = sqlite3.connect(self._path)
+        conn.isolation_level = None
+        cursor = conn.cursor()
+        try:
+            first = _add_column(cursor, "lenses", "is_parabolic_1", "INTEGER DEFAULT 0")
+            second = _add_column(cursor, "lenses", "is_parabolic_1", "INTEGER DEFAULT 0")
+            self.assertTrue(first)
+            self.assertFalse(second)
+        finally:
+            conn.close()
+
+    def test_add_column_helper_on_missing_table_still_raises(self):
+        """Self-healing must not mask a genuinely missing table."""
+        import sqlite3
+
+        from src.database import _add_column
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        try:
+            conn = sqlite3.connect(tmp.name)
+            conn.isolation_level = None
+            cursor = conn.cursor()
+            with self.assertRaises(sqlite3.OperationalError):
+                _add_column(cursor, "no_such_table", "x", "REAL")
+            conn.close()
+        finally:
+            os.unlink(tmp.name)
+
+
 if __name__ == "__main__":
     unittest.main()

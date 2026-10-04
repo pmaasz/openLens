@@ -133,6 +133,110 @@ else:
             ]
             self.assertIn("assembly", kinds)
 
+    class TestAssemblyDeletionRepointsEditor(unittest.TestCase):
+        """Deleting the current assembly must re-point the editor.
+
+        The lens branch calls _set_current_item()/_update_all_tabs() after a
+        delete; the assembly branch did neither. The Assembly Editor kept
+        displaying the deleted assembly and self._optical_system still pointed
+        at it, so the next edit there fired _on_assembly_changed ->
+        _save_to_database and RE-INSERTED the row just deleted (under a new id,
+        so it appeared twice).
+        """
+
+        def setUp(self):
+            self.h = _Harness()
+            self.addCleanup(self.h.close)
+            self.w = self.h.window
+
+        def _two_assemblies(self):
+            w = self.w
+            for name in ("Assembly 1", "Second"):
+                system = OpticalSystem(name=name)
+                system.add_lens(
+                    Lens(
+                        name=f"{name} lens",
+                        radius_of_curvature_1=50.0,
+                        radius_of_curvature_2=-50.0,
+                        thickness=5.0,
+                        diameter=20.0,
+                    )
+                )
+                w._assemblies.append(system)
+                w._save_to_database()
+            w._set_current_item(w._assemblies[0], is_assembly=True)
+
+        def test_editor_is_repointed_after_delete(self):
+            self._two_assemblies()
+            self.w._on_delete_lens()
+
+            self.assertEqual(self.w._current_assembly.name, "Second")
+            # The Assembly Editor's own copy is what _save_to_database reads.
+            self.assertIs(
+                self.w._assembly_tab_widget._optical_system,
+                self.w._current_assembly,
+                "assembly editor still bound to the deleted assembly",
+            )
+            self.assertIs(self.w._optical_system, self.w._current_assembly, "window is stale")
+
+        def test_deleted_assembly_is_not_reinserted_by_a_later_edit(self):
+            """The user-visible failure: the row comes back, duplicated."""
+            self._two_assemblies()
+            self.w._on_delete_lens()
+
+            # Simulate the user editing the Assembly Editor tab.
+            self.w._assembly_tab_widget._optical_system.name = "Second (edited)"
+            self.w._assembly_tab_widget._on_assembly_changed()
+            self.w._save_to_database()
+
+            fresh = LensStorage(self.h.db_path)
+            names = sorted(o.name for o in fresh.load_lenses() if hasattr(o, "name"))
+            self.assertNotIn("Assembly 1", names)
+            self.assertEqual(names.count("Second (edited)"), 1)
+
+        def test_deleting_last_assembly_clears_the_editor(self):
+            w = self.w
+            system = OpticalSystem(name="Only One")
+            system.add_lens(
+                Lens(
+                    name="Only lens",
+                    radius_of_curvature_1=50.0,
+                    radius_of_curvature_2=-50.0,
+                    thickness=5.0,
+                    diameter=20.0,
+                )
+            )
+            w._assemblies.append(system)
+            w._save_to_database()
+            w._set_current_item(system, is_assembly=True)
+
+            w._on_delete_lens()
+
+            self.assertIsNone(w._current_assembly)
+            self.assertIsNone(w._optical_system)
+            self.assertIsNone(w._assembly_tab_widget._optical_system)
+
+    class TestLensDeletionRepointsEditor(unittest.TestCase):
+        """The lens branch already did this; keep it pinned."""
+
+        def setUp(self):
+            self.h = _Harness()
+            self.addCleanup(self.h.close)
+            self.w = self.h.window
+
+        def test_deleting_current_lens_selects_another(self):
+            w = self.w
+            w._on_new_lens()
+            w._on_new_lens()
+            w._save_to_database()
+            w._current_lens = w._lenses[0]
+            w._on_delete_lens()
+
+            self.assertIsNotNone(w._current_lens)
+            remaining = [lens.name for lens in w._lenses]
+            self.assertEqual(len(remaining), 1)
+            self.assertIn(w._current_lens.name, remaining)
+
 
 if __name__ == "__main__":
     unittest.main()
