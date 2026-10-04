@@ -7,6 +7,7 @@ Automatically optimize lens parameters to minimize aberrations and improve perfo
 from typing import List, Dict, Tuple, Callable, Optional
 from dataclasses import dataclass, field
 import copy
+import math
 from concurrent.futures import ProcessPoolExecutor
 
 import logging
@@ -650,12 +651,19 @@ class LensOptimizer:
         # Create a cache key from the values (rounded to avoid precision issues)
         cache_key = tuple(round(v, 10) for v in values)
         if cache_key in self._merit_cache:
-            return self._merit_cache[cache_key]
+            merit = self._merit_cache[cache_key]
+        else:
+            system = self._apply_variables(values)
+            merit = self.merit_function.evaluate(system) + self._bound_penalty(values)
+            self._merit_cache[cache_key] = merit
 
-        system = self._apply_variables(values)
-        merit = self.merit_function.evaluate(system) + self._bound_penalty(values)
-
-        self._merit_cache[cache_key] = merit
+        # A NaN merit is not "infinitely good": it poisons every comparison it
+        # takes part in (min(), <, sorting). _eval_mtf already sums a
+        # PSF-derived array and can produce NaN, so normalise here where every
+        # algorithm is guaranteed to pass through. Search code can then treat
+        # INFEASIBLE_MERIT as the ordinary worst case.
+        if math.isnan(merit):
+            return INFEASIBLE_MERIT
         return merit
 
     def _apply_variables(self, values: List[float]) -> OpticalSystem:
