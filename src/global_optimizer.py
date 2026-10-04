@@ -178,7 +178,12 @@ class GlobalOptimizer(LensOptimizer):
         population[0] = current_design
 
         best_overall_merit = float("inf")
-        best_overall_design = None
+        # Seeded with the starting design so it is never None. It used to
+        # start as None and only be replaced when some design beat inf, so a
+        # merit that never beat inf (NaN, or generations=0) left it None and
+        # the elitism copy below raised TypeError.
+        best_overall_design = list(current_design)
+        best_overall_merit = self._evaluate_design(best_overall_design)
 
         history_merit = []
 
@@ -197,7 +202,10 @@ class GlobalOptimizer(LensOptimizer):
             min_merit = min(merits)
             best_idx = merits.index(min_merit)
 
-            if min_merit < best_overall_merit:
+            # isfinite guards the comparison: NaN < x is False for every x, so
+            # a NaN-scored generation would otherwise be skipped silently and
+            # the elite kept unchanged.
+            if math.isfinite(min_merit) and min_merit < best_overall_merit:
                 best_overall_merit = min_merit
                 best_overall_design = list(population[best_idx])
 
@@ -234,15 +242,17 @@ class GlobalOptimizer(LensOptimizer):
 
         local_result = self.optimize_simplex(max_iterations=50)
 
+        # history_merit is empty when generations=0, so fall back to the
+        # seeded starting merit instead of indexing past the end.
+        baseline = history_merit[0] if history_merit else best_overall_merit
+
         return OptimizationResult(
             success=True,
             iterations=generations * population_size + local_result.iterations,
-            initial_merit=history_merit[0],
+            initial_merit=baseline,
             final_merit=local_result.final_merit,
             improvement=(
-                ((history_merit[0] - local_result.final_merit) / history_merit[0] * 100)
-                if history_merit[0] > 0
-                else 0
+                ((baseline - local_result.final_merit) / baseline * 100) if baseline > 0 else 0
             ),
             optimized_system=local_result.optimized_system,
             variable_history=local_result.variable_history,  # Only keep local history to save space
