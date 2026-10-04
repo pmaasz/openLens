@@ -165,7 +165,12 @@ class MeritFunction:
             if "SpotDiagram" in globals():
                 spot = globals()["SpotDiagram"](system)
                 results = spot.trace_spot(field_angle_x_deg=0, field_angle_y_deg=0)
-                value = results.get("rms_radius", 0.0)
+                value = results.get("rms_radius")
+                # Never default a missing spot to 0.0: a vignetted system
+                # would then score as a perfect design and win every
+                # comparison. Fewer than two rays means undefined, not zero.
+                if value is None or results.get("valid_rays", 0) < 2:
+                    return INFEASIBLE_MERIT
                 return MeritFunction._apply_target(target, value)
         except Exception:
             pass

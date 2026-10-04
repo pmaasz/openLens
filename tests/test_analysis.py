@@ -157,7 +157,12 @@ class TestSpotDiagramFailureModes(unittest.TestCase):
         self.assertAlmostEqual(self.lens.refractive_index, 1.52238)
 
     def test_genuine_no_rays_still_returns_empty_stats(self):
-        """The legitimate blocked/TIR outcome keeps its graceful result."""
+        """The legitimate blocked/TIR outcome keeps its graceful result.
+
+        Reported as rms_radius None rather than 0.0: with no ray at all a
+        radius of 0.0 would be indistinguishable from a perfect spot, which
+        is what let a fully vignetted system win every comparison.
+        """
         spot = SpotDiagram(self.system)
 
         def terminating(ray):
@@ -168,10 +173,10 @@ class TestSpotDiagramFailureModes(unittest.TestCase):
         result = spot.trace_spot(num_rings=2)
 
         self.assertEqual(result["valid_rays"], 0)
-        self.assertEqual(result["rms_radius"], 0.0)
+        self.assertIsNone(result["rms_radius"])
         self.assertEqual(result["points"], [])
         self.assertEqual(result["centroid"], (0.0, 0.0))
-        self.assertIn("No rays", result["error"])
+        self.assertIn("error", result)
 
     def test_normal_run_unaffected(self):
         """Sanity: a real system still produces real statistics."""

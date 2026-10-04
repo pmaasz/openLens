@@ -177,18 +177,26 @@ class SpotDiagram:
         # exception, so a tracer failure that happened before the first spot
         # point landed was reported as a clean rms_radius of 0.0 - a tracer bug
         # masquerading as an optical result - instead of propagating.
-        if not spot_points:
-            # A genuine "no rays arrived" outcome, not an error. Return empty
-            # stats and log it; the GUI handles this gracefully.
-            logger.warning("No rays reached the image plane (blocked or TIR)")
+        if valid_rays < 2:
+            # Fewer than two rays cannot define a spot: the RMS radius would be
+            # the distance of a single ray from its own centroid, i.e. exactly
+            # 0.0. Reporting that as a perfect spot lets a fully vignetted
+            # system outscore every physically real design in the optimizer
+            # and score 100% production yield in Monte Carlo. None forces
+            # callers to treat it as a failure instead of a great number.
+            logger.warning(
+                "Only %d ray(s) reached the image plane (blocked or TIR); "
+                "spot statistics are undefined",
+                valid_rays,
+            )
             return {
-                "rms_radius": 0.0,
-                "geo_radius": 0.0,
+                "rms_radius": None,
+                "geo_radius": None,
                 "centroid": (0.0, 0.0),
-                "points": [],
-                "valid_rays": 0,
+                "points": spot_points,
+                "valid_rays": valid_rays,
                 "image_plane_x": target_x,
-                "error": "No rays reached the image plane",
+                "error": "Fewer than 2 rays reached the image plane",
             }
 
         # Centroid
