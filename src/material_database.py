@@ -277,15 +277,57 @@ class MaterialDatabase:
         )
 
     def _load_database(self) -> None:
-        """Load materials from JSON file"""
-        if os.path.exists(self.db_path):
+        """Load materials from JSON file.
+
+        Each entry is validated on its own. A single malformed entry used to
+        abort the whole loop, so one unknown key (from_dict is cls(**data)
+        with no filtering) silently discarded every material after it - and
+        because the defaults are loaded first, the user was left with a short
+        list and one warning, with no indication which entry was at fault.
+        """
+        if not os.path.exists(self.db_path):
+            return
+
+        try:
+            with open(self.db_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError) as e:
+            logger.warning("Could not read material database %s: %s", self.db_path, e)
+            return
+
+        if not isinstance(data, dict):
+            logger.warning(
+                "Material database %s is not a JSON object; ignoring it",
+                self.db_path,
+            )
+            return
+
+        skipped = 0
+        for name, mat_data in data.items():
+            if not isinstance(mat_data, dict):
+                logger.warning(
+                    "Skipping material %r in %s: expected an object, got %s",
+                    name,
+                    self.db_path,
+                    type(mat_data).__name__,
+                )
+                skipped += 1
+                continue
             try:
-                with open(self.db_path, "r") as f:
-                    data = json.load(f)
-                    for name, mat_data in data.items():
-                        self.materials[name] = MaterialProperties.from_dict(mat_data)
+                self.materials[name] = MaterialProperties.from_dict(mat_data)
             except Exception as e:
-                logger.warning("Could not load material database: %s", e)
+                # One bad entry must not cost the rest of the catalog.
+                logger.warning("Skipping material %r in %s: %s", name, self.db_path, e)
+                skipped += 1
+
+        if skipped:
+            logger.warning(
+                "Loaded %d material(s) from %s; skipped %d unusable entr%s",
+                len(self.materials),
+                self.db_path,
+                skipped,
+                "y" if skipped == 1 else "ies",
+            )
 
     def save_database(self) -> None:
         """Save materials to JSON file"""
