@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from .lens import Lens
 from .optical_system import OpticalSystem
+from .atomic import atomic_write_text
 
 
 class ZemaxExporter:
@@ -21,7 +22,7 @@ class ZemaxExporter:
     @staticmethod
     def export_lens(lens: Lens, filename: str):
         """Export single lens to Zemax format"""
-        with open(filename, "w") as f:
+        with atomic_write_text(filename) as f:
             f.write("! OpenLens Export\n")
             f.write(f"! {lens.name}\n")
             f.write("VERS 140000\n")
@@ -77,7 +78,7 @@ class OpticStudioExporter:
         Export single lens to OpticStudio text prescription format.
         This is a human-readable format that can be imported into OpticStudio.
         """
-        with open(filename, "w") as f:
+        with atomic_write_text(filename) as f:
             # Header
             f.write("# OpenLens Export - OpticStudio Format\n")
             f.write(f"# Lens: {lens.name}\n")
@@ -156,7 +157,7 @@ class OpticStudioExporter:
     @staticmethod
     def export_system(system: OpticalSystem, filename: str):
         """Export optical system to OpticStudio format"""
-        with open(filename, "w") as f:
+        with atomic_write_text(filename) as f:
             # Header
             f.write("# OpenLens Export - OpticStudio Format\n")
             f.write(f"# System: {system.name}\n")
@@ -347,7 +348,7 @@ class SVGExporter:
         front_x = cx - thickness / 2
         back_x = cx + thickness / 2
 
-        with open(filename, "w") as f:
+        with atomic_write_text(filename) as f:
             # SVG header
             f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
             f.write(
@@ -514,7 +515,7 @@ class SVGExporter:
         """Export optical system as SVG diagram"""
         margin = 40
 
-        with open(filename, "w") as f:
+        with atomic_write_text(filename) as f:
             # SVG header
             f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
             f.write(f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">\n')
@@ -587,7 +588,7 @@ class PrescriptionExporter:
     @staticmethod
     def export_prescription(lens: Lens, filename: str):
         """Export lens prescription (industry standard format)"""
-        with open(filename, "w") as f:
+        with atomic_write_text(filename) as f:
             f.write("LENS PRESCRIPTION\n")
             f.write("=" * 60 + "\n\n")
             f.write(f"Lens Name: {lens.name}\n")
@@ -633,7 +634,7 @@ class ZemaxSystemExporter:
         stop_gap = stop["gap_index"] if stop is not None else None
         stop_dia = stop.get("diameter") if stop is not None else None
 
-        with open(filename, "w") as f:
+        with atomic_write_text(filename) as f:
             f.write("! OpenLens System Export\n")
             f.write(f"! {system.name}\n")
             f.write("VERS 140000\n")

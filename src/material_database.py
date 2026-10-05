@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 import math
 from functools import lru_cache
+from .atomic import atomic_write_json
 
 # Setup module logger
 logger = logging.getLogger(__name__)
@@ -290,8 +291,7 @@ class MaterialDatabase:
         """Save materials to JSON file"""
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         data = {name: mat.to_dict() for name, mat in self.materials.items()}
-        with open(self.db_path, "w") as f:
-            json.dump(data, f, indent=2)
+        atomic_write_json(self.db_path, data)
 
     def get_material(self, name: str) -> Optional[MaterialProperties]:
         """Get material by name"""
@@ -611,8 +611,7 @@ class MaterialDatabase:
         """Export material data to file"""
         mat = self.get_material(material_name)
         if mat:
-            with open(output_file, "w") as f:
-                json.dump(mat.to_dict(), f, indent=2)
+            atomic_write_json(output_file, mat.to_dict())
 
     @staticmethod
     def calculate_model_index(nd: float, vd: float, wavelength_nm: float) -> float:

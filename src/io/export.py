@@ -8,6 +8,7 @@ from datetime import datetime
 from ..optical_system import OpticalSystem
 from ..lens import Lens
 from ..geometry import LensGeometry
+from ..atomic import atomic_write_text
 
 
 class ISO10110Generator:
@@ -19,7 +20,7 @@ class ISO10110Generator:
     def generate_svg(self, filename: str, width: int = 800, height: int = 600):
         """Generate SVG file."""
         svg_content = self._render_svg(width, height)
-        with open(filename, "w") as f:
+        with atomic_write_text(filename) as f:
             f.write(svg_content)
 
     def _render_svg(self, width: int, height: int) -> str:
