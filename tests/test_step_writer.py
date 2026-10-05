@@ -228,5 +228,61 @@ class TestStepWriter(unittest.TestCase):
                 self.assertEqual(body.count("'") % 2, 0, f"unbalanced quotes: {line}")
 
 
+class TestStepExporterReuse(unittest.TestCase):
+    """export() must be safe to call more than once on one exporter.
+
+    The entity buffer was created only in __init__, so a second export
+    appended a fresh context and a second copy of every solid to the first
+    export's lines: 48 entities after one call, 96 after two.
+    """
+
+    def setUp(self):
+        from src.lens import Lens
+        from src.optical_system import OpticalSystem
+
+        self.system = OpticalSystem(name="Reuse")
+        self.system.add_lens(
+            Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=20.0,
+                refractive_index=1.5,
+            )
+        )
+        self.exporter = StepExporter(self.system)
+
+    def _export_once(self):
+        fd, path = tempfile.mkstemp(suffix=".step")
+        os.close(fd)
+        self.addCleanup(lambda: os.path.exists(path) and os.unlink(path))
+        self.exporter.export(path)
+        with open(path) as f:
+            return [line for line in f.read().splitlines() if line.startswith("#")]
+
+    def test_repeated_exports_are_identical(self):
+        first = self._export_once()
+        second = self._export_once()
+        self.assertEqual(len(first), len(second))
+
+    def test_entity_count_does_not_grow(self):
+        counts = [len(self._export_once()) for _ in range(3)]
+        self.assertEqual(len(set(counts)), 1, f"entity count grew: {counts}")
+
+    def test_solids_are_not_duplicated(self):
+        lines = self._export_once()
+        self.assertEqual(sum("MANIFOLD_SOLID_BREP" in line for line in lines), 1)
+        self.assertEqual(sum("CLOSED_SHELL" in line for line in lines), 1)
+
+    def test_context_entities_are_not_duplicated(self):
+        lines = self._export_once()
+        self.assertEqual(sum("DIRECTION" in line for line in lines), 3)
+
+    def test_ids_are_sequential_and_unique(self):
+        lines = self._export_once()
+        ids = [int(line[1 : line.index("=")]) for line in lines]
+        self.assertEqual(ids, list(range(1, len(ids) + 1)))
+
+
 if __name__ == "__main__":
     unittest.main()
