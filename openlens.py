@@ -371,6 +371,10 @@ class OpenLensWindow(QMainWindow):
         self._status_bar.addWidget(self._status_label)
         self.setStatusBar(self._status_bar)
         
+        # Analysis dialogs awaiting/lacking an in-flight worker. Held so a
+        # live QThread is never garbage-collected (see _open_analysis_dialog).
+        self._analysis_dialogs = []
+
         # Initialize tolerance operands list
         self._tol_operands = []
         # Which model the working tolerance set belongs to. The set is a
@@ -915,6 +919,53 @@ Ctrl+6         Tolerancing
             logger.error("Report export failed: %s", e)
             QMessageBox.critical(self, "Export Error", f"Failed to export report: {e}")
 
+    def _open_analysis_dialog(self, title, compute, plot) -> None:
+        """Open an analysis dialog that computes off the GUI thread.
+
+        The heavy work (wavefront sampling, PSF/MTF synthesis, ghost tracing)
+        used to run *before* the dialog was constructed, so a multi-second
+        compute ran with no window on screen and the app looked hung. The
+        dialog now paints a status line first and the analysis runs in a
+        worker, painting on completion.
+
+        Args:
+            title: Dialog window title.
+            compute: Zero-argument callable doing the analysis.
+            plot: Callable receiving (axes, payload) to paint the result.
+
+        Raises:
+            ImportError: If matplotlib is unavailable. Resolved through
+                ``require_analysis_plot_dialog`` rather than a module-scope
+                import, so a plain ``pip install PySide6`` can still start the
+                app; every caller turns this into a "Dependency Missing"
+                warning.
+        """
+        dialog_cls = require_analysis_plot_dialog()
+        dialog = dialog_cls(title, self)
+
+        # Hold a reference for as long as the worker lives: dropping the last
+        # Python reference to a live QThread makes CPython destroy it, and
+        # ~QThread aborts the process.
+        self._analysis_dialogs.append(dialog)
+        dialog.finished.connect(lambda _code=0: self._on_analysis_dialog_closed(dialog))
+
+        dialog.plot_async(compute, plot)
+
+    def _on_analysis_dialog_closed(self, dialog) -> None:
+        """Release a closed dialog, but only once its worker has stopped."""
+        worker = dialog._pending_worker
+        if worker is not None and worker.isRunning():
+            # Still computing: keep the dialog alive so the thread survives,
+            # and retire it when it finishes.
+            worker.finished.connect(lambda d=dialog: self._retire_analysis_dialog(d))
+            return
+        self._retire_analysis_dialog(dialog)
+
+    def _retire_analysis_dialog(self, dialog) -> None:
+        """Drop a dialog that is closed and no longer computing."""
+        if dialog in self._analysis_dialogs:
+            self._analysis_dialogs.remove(dialog)
+
     def _on_show_ghost_analysis(self) -> None:
         """Show Ghost Reflection Analysis"""
         target = self._current_assembly if self._current_assembly else self._current_lens
@@ -924,15 +975,17 @@ Ctrl+6         Tolerancing
         try:
             system = self._ensure_system(target)
 
-            analyzer = GhostAnalyzer(system)
-            ghosts = analyzer.trace_ghosts(num_rays=5)
+            def _compute_ghosts():
+                analyzer = GhostAnalyzer(system)
+                return (system, analyzer.trace_ghosts(num_rays=5))
 
-            dialog_cls = require_analysis_plot_dialog()
-            dialog = dialog_cls("Ghost Analysis", self)
-            ax = dialog.get_axes()
-            plot_ghost_analysis(ax, system, ghosts)
-            dialog.exec()
-            
+            def _draw_ghosts(ax, payload):
+                # plot_ghost_analysis wants the system and the ghosts
+                # separately; the worker returns them as one payload.
+                plot_ghost_analysis(ax, payload[0], payload[1])
+
+            self._open_analysis_dialog("Ghost Analysis", _compute_ghosts, _draw_ghosts)
+
         except ImportError as e:
             _report_missing_plot_dependency(self, e)
         except Exception as e:
@@ -948,19 +1001,16 @@ Ctrl+6         Tolerancing
         try:
             system = self._ensure_system(target)
 
-            analyzer = ImageQualityAnalyzer(system)
-            psf_data = analyzer.calculate_psf(pixels=64)
+            def _compute_psf():
+                return ImageQualityAnalyzer(system).calculate_psf(pixels=64)
 
-            dialog_cls = require_analysis_plot_dialog()
-            dialog = dialog_cls("PSF Analysis", self)
-            ax = dialog.get_axes()
+            def _draw_psf(ax, psf_data):
+                # Apply dark theme to axes if needed
+                if getattr(self, '_theme', 'dark') == 'dark':
+                    apply_dark_axis_theme(ax)
+                plot_psf(ax, psf_data)
 
-            # Apply dark theme to axes if needed
-            if getattr(self, '_theme', 'dark') == 'dark':
-                apply_dark_axis_theme(ax)
-
-            plot_psf(ax, psf_data)
-            dialog.exec()
+            self._open_analysis_dialog("PSF Analysis", _compute_psf, _draw_psf)
         except ImportError as e:
             _report_missing_plot_dependency(self, e)
         except Exception as e:
@@ -976,14 +1026,10 @@ Ctrl+6         Tolerancing
         try:
             system = self._ensure_system(target)
 
-            analyzer = ImageQualityAnalyzer(system)
-            mtf_data = analyzer.calculate_mtf(max_freq=100)
+            def _compute_mtf():
+                return ImageQualityAnalyzer(system).calculate_mtf(max_freq=100)
 
-            dialog_cls = require_analysis_plot_dialog()
-            dialog = dialog_cls("MTF Analysis", self)
-            ax = dialog.get_axes()
-            plot_mtf(ax, mtf_data)
-            dialog.exec()
+            self._open_analysis_dialog("MTF Analysis", _compute_mtf, plot_mtf)
         except ImportError as e:
             _report_missing_plot_dependency(self, e)
         except Exception as e:
@@ -999,14 +1045,15 @@ Ctrl+6         Tolerancing
         try:
             system = self._ensure_system(target)
 
-            sensor = WavefrontSensor(system)
-            wf = sensor.get_pupil_wavefront(grid_size=64)
+            def _compute_wavefront():
+                return WavefrontSensor(system).get_pupil_wavefront(grid_size=64)
 
-            dialog_cls = require_analysis_plot_dialog()
-            dialog = dialog_cls("Wavefront Analysis", self)
-            ax = dialog.get_axes()
-            plot_wavefront(ax, wf.W)
-            dialog.exec()
+            def _draw_wavefront(ax, wf):
+                plot_wavefront(ax, wf.W)
+
+            self._open_analysis_dialog(
+                "Wavefront Analysis", _compute_wavefront, _draw_wavefront
+            )
         except ImportError as e:
             _report_missing_plot_dependency(self, e)
         except Exception as e:
