@@ -532,22 +532,52 @@ class Lens:
         lens.modified_at = data.get("modified_at", lens.modified_at)
         return lens
 
+    def get_manufacturing_radius(self) -> float:
+        """Half-height at which the lens is actually polished.
+
+        ``diameter`` is the *mechanical* diameter - the blank. A lens with a
+        smaller clear aperture is never polished out to the blank, so judging
+        its material at ``diameter / 2`` assesses a radius that does not exist
+        on the finished part.
+
+        Returns the clear semi-aperture when both clear apertures are set and
+        smaller than the mechanical one, and the mechanical semi-aperture
+        otherwise (including when a clear aperture is unset or not smaller).
+        """
+        half_diameter = self.diameter / 2.0
+        clear = [
+            value
+            for value in (self.get_clear_aperture_1(), self.get_clear_aperture_2())
+            if value is not None and math.isfinite(value) and value > 0
+        ]
+        if not clear:
+            return half_diameter
+        return min(min(clear) / 2.0, half_diameter)
+
     def calculate_edge_thickness(self) -> Optional[float]:
         """
         Calculate the rim (edge) thickness at the clear aperture.
 
         Canonical convention: ``self.thickness`` is the CENTER (vertex to
         vertex) thickness. The edge thickness is derived as
-        ``thickness - sag1 + sag2`` evaluated at ``diameter / 2``, where
-        sag1/sag2 are the vertex-referenced surface sags (parabolic-aware).
+        ``thickness - sag1 + sag2`` evaluated at the semi-aperture the lens is
+        actually polished to, where sag1/sag2 are the vertex-referenced
+        surface sags (parabolic-aware).
+
+        The evaluation radius is :meth:`get_manufacturing_radius` - the
+        smaller of the clear apertures and the mechanical radius - not
+        ``diameter / 2``. Using the mechanical radius judged material at a
+        height the part never reaches, which could reject a perfectly
+        manufacturable lens: R=40, t=2.0, D=30, clear aperture 8 evaluates to
+        -3.84 mm at h=15 and is fine (1.60 mm) at the real h=4.
 
         Returns:
             Edge thickness in mm, or None if the geometry is undefined
-            (a spherical surface with |R| < D/2 has no real sag there) or
+            (a spherical surface with |R| < h has no real sag there) or
             non-finite. A value <= 0 means the surfaces intersect within
             the clear aperture (unrealizable lens).
         """
-        h = self.diameter / 2
+        h = self.get_manufacturing_radius()
         if not math.isfinite(h):
             return None
         for surface in (1, 2):

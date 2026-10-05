@@ -223,7 +223,11 @@ class LensGeometry:
             if not facets_1 and not facets_2:
                 return lens.calculate_edge_thickness()
 
-            half_d = abs(float(lens.diameter)) / 2.0
+            # Sample out to the radius the lens is actually polished to, not
+            # the mechanical blank: a Fresnel lens with a smaller clear
+            # aperture has no material beyond it. See
+            # Lens.get_manufacturing_radius.
+            half_d = abs(lens.get_manufacturing_radius())
             radii = {0.0, half_d}
             for facet in facets_1 + facets_2:
                 radii.add(facet.r_start)
