@@ -65,7 +65,16 @@ class TestNoGlobalsLookup(unittest.TestCase):
         self.assertNotIn("globals()", code)
 
     def test_dependencies_are_module_level_names(self):
-        for name in ("SpotDiagram", "PSFCalculator", "WavefrontSensor", "NUMPY_AVAILABLE"):
+        # PSFCalculator was renamed DiffractionPSFCalculator when the
+        # wavefront/PSF pair was consolidated onto analysis.diffraction_psf.
+        # The point of the test is that these are plain module-level imports,
+        # not runtime globals() lookups - the name change does not affect it.
+        for name in (
+            "SpotDiagram",
+            "DiffractionPSFCalculator",
+            "WavefrontSensor",
+            "NUMPY_AVAILABLE",
+        ):
             with self.subTest(name=name):
                 self.assertTrue(hasattr(optimizer_module, name))
 

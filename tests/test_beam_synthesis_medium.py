@@ -199,16 +199,18 @@ class TestGracefulDegradationWithoutNumpy(unittest.TestCase):
         self.assertIn("FLAG False", result.stdout)
 
     def test_empty_wavefront_path_returns_instead_of_raising(self):
+        # The wavefront/PSF pair now lives in analysis.diffraction_psf (the
+        # single implementation); beam_synthesis no longer duplicates it.
         result = self._without_numpy("""
-            import src.analysis.beam_synthesis as b
+            import src.analysis.diffraction_psf as b
 
             class _P:
                 elements = None
 
             sensor = b.WavefrontSensor.__new__(b.WavefrontSensor)
             sensor.system = _P()
-            y, z, w = sensor.get_pupil_wavefront(grid_size=8)
-            assert (y, z, w) == ([], [], []), (y, z, w)
+            wavefront = sensor.get_pupil_wavefront(grid_size=8)
+            assert wavefront.W == [], wavefront.W
             print('OK')
             """)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -216,8 +218,8 @@ class TestGracefulDegradationWithoutNumpy(unittest.TestCase):
 
     def test_mtf_path_returns_instead_of_raising(self):
         result = self._without_numpy("""
-            import src.analysis.beam_synthesis as b
-            print('OK', b.PSFCalculator.calculate_mtf(None))
+            import src.analysis.diffraction_psf as b
+            print('OK', b.DiffractionPSFCalculator.calculate_mtf(None))
             """)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("OK", result.stdout)

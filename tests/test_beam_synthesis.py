@@ -10,7 +10,7 @@ except ImportError:
     np = None
     NUMPY_AVAILABLE = False
 
-from src.analysis.beam_synthesis import GaussianBeam, WavefrontSensor, PSFCalculator
+from src.analysis.beam_synthesis import GaussianBeam, NUMPY_AVAILABLE
 from src.vector3 import vec3
 from src.ray_tracer import Ray3D
 from src.optical_system import OpticalSystem, Lens
@@ -207,30 +207,6 @@ class TestBeamSynthesisPropagation(unittest.TestCase):
         self.assertEqual(len(result), 3)
         for arr in result:
             self.assertEqual(arr.size, 0)
-
-
-class TestPSF(unittest.TestCase):
-    @unittest.skipIf(not NUMPY_AVAILABLE, "numpy not installed")
-    def test_psf_calculation(self):
-        # Create a dummy perfect wavefront (flat)
-        N = 64
-        Y, Z = np.meshgrid(np.linspace(-1, 1, N), np.linspace(-1, 1, N))
-        W = np.zeros_like(Y)
-
-        # Mask circle
-        mask = Y**2 + Z**2 > 1
-        W[mask] = np.nan
-
-        psf = PSFCalculator.calculate_psf(Y, Z, W)
-
-        self.assertEqual(psf.shape[0], N * 2)  # padded
-
-        # Peak should be at center
-        center = N  # padded size is 2*N, center at N
-        self.assertAlmostEqual(psf[center, center], 1.0, places=5)
-
-        # Should be symmetric (Airy disk like)
-        self.assertAlmostEqual(psf[center + 1, center], psf[center - 1, center], places=5)
 
 
 if __name__ == "__main__":
