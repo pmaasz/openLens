@@ -201,6 +201,28 @@ class TestCooperativeCancellation(_OptimizationTabFixture):
 
     def test_cancelled_worker_emits_no_result(self):
         """Stop must not be overwritten by a half-converged 'success'."""
+        # This is a test of OptimizationWorker's emit-on-interrupt contract, not
+        # of simplex convergence, so the optimizer is replaced with a long loop
+        # that honours the per-iteration callback. With the real 2-variable
+        # singlet the whole run is ~15 ms, so _start() (which returns as soon as
+        # isRunning() is true) followed by requestInterruption() was a race that
+        # a loaded CI runner lost often enough to make this fail intermittently.
+        # The worker only consults isInterruptionRequested() inside that
+        # callback, so a run that keeps calling it is guaranteed to observe the
+        # request.
+        from src.global_optimizer import GlobalOptimizer
+
+        original = GlobalOptimizer.optimize
+
+        def _slow_optimize(self, max_iterations=100, tolerance=1e-6, callback=None, **_kwargs):
+            for i in range(200000):
+                if callback is not None:
+                    callback(i, 0.0, [])
+            return original(self, max_iterations=max_iterations, tolerance=tolerance)
+
+        GlobalOptimizer.optimize = _slow_optimize
+        self.addCleanup(setattr, GlobalOptimizer, "optimize", original)
+
         emitted = []
 
         worker = self._start()

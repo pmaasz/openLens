@@ -61,6 +61,10 @@ def _report_missing_plot_dependency(parent, exc) -> None:
         f"{exc}\n\nThe rest of OpenLens works without it.",
     )
 
+#: Quiet period (ms) after the last edit before a burst is committed. Long
+#: enough to coalesce a typed word, short enough to still feel immediate.
+EDIT_COMMIT_DELAY_MS = 400
+
 
 class OpenLensWindow(QMainWindow):
     """Main application window.
@@ -114,6 +118,9 @@ class OpenLensWindow(QMainWindow):
     
     def _load_from_database(self) -> None:
         """Load lenses and assemblies from SQLite database"""
+        # A pending edit must reach disk before the library is read back, or
+        # reopening the app would show the pre-edit state.
+        self._flush_pending_edit()
         
         self._update_status("Loading library...")
         try:
@@ -229,8 +236,15 @@ class OpenLensWindow(QMainWindow):
         )
         self._tol_operands_target = target
 
-    def _save_to_database(self) -> None:
-        """Save all lenses and assemblies to SQLite database"""
+    def _save_to_database(self, reconcile: bool = True) -> None:
+        """Save all lenses and assemblies to SQLite database.
+
+        Args:
+            reconcile: Also reconcile the stored library against the saved
+                rows, removing anything no longer in memory. Needed for an
+                explicit save or open, but far too expensive for the
+                per-keystroke edit path.
+        """
         
         try:
             # Sync tolerances to current target metadata before saving
@@ -245,7 +259,7 @@ class OpenLensWindow(QMainWindow):
                     unique_items[item.id] = item
 
             self._storage.save_lenses(list(unique_items.values()),
-                                   reconcile=True)
+                                   reconcile=reconcile)
             logger.info("Saved %d unique items to database", len(unique_items))
         except Exception as e:
             logger.error("Failed to save to database: %s", e)
@@ -375,6 +389,12 @@ class OpenLensWindow(QMainWindow):
         # live QThread is never garbage-collected (see _open_analysis_dialog).
         self._analysis_dialogs = []
 
+        # Debounced edit commit. _edit_timer is created lazily by
+        # _schedule_edit_commit; see that method for why a burst of edits is
+        # collapsed before it reaches the database.
+        self._edit_timer = None
+        self._pending_edit_status = None
+
         # Initialize tolerance operands list
         self._tol_operands = []
         # Which model the working tolerance set belongs to. The set is a
@@ -418,9 +438,54 @@ class OpenLensWindow(QMainWindow):
     
     def _on_lens_modified(self, lens: Lens) -> None:
         """Handle lens modification from editor widget"""
-        self._save_to_database()
-        self._update_all_tabs()
-        self._update_status(f"Updated: {lens.name}")
+        self._schedule_edit_commit(f"Updated: {lens.name}")
+
+    def _schedule_edit_commit(self, status: str) -> None:
+        """Coalesce a burst of edits into one save and one refresh.
+
+        Every spinbox ``valueChanged`` and **every name keystroke** used to
+        call ``_save_to_database()`` and ``_update_all_tabs()`` directly, so
+        each keystroke paid a full SQLite write plus a tab refresh that
+        re-ran the aberration and chromatic ray traces - measured at ~96 ms
+        per character, roughly two seconds of stuttering to type a
+        20-character name. A restartable single-shot timer collapses a burst
+        into a single commit once typing pauses.
+
+        Args:
+            status: Status line to show when the deferred commit runs.
+        """
+        self._pending_edit_status = status
+        if getattr(self, '_edit_timer', None) is None:
+            self._edit_timer = QTimer(self)
+            self._edit_timer.setSingleShot(True)
+            self._edit_timer.timeout.connect(self._commit_pending_edit)
+        # Restart rather than start, so only the last of a burst fires.
+        self._edit_timer.start(EDIT_COMMIT_DELAY_MS)
+
+    def _commit_pending_edit(self) -> None:
+        """Flush a debounced edit: persist, then refresh the tabs."""
+        status = getattr(self, '_pending_edit_status', None)
+        self._pending_edit_status = None
+        try:
+            # reconcile=False: the periodic full reconcile is the expensive
+            # part, and it is not what keeps a single edit safe.
+            self._save_to_database(reconcile=False)
+        finally:
+            # Refresh even if the save failed: the in-memory model changed and
+            # the tabs must still show it.
+            self._update_all_tabs()
+        if status:
+            self._update_status(status)
+
+    def _flush_pending_edit(self) -> None:
+        """Apply any debounced edit immediately.
+
+        Called before actions that read what is on disk (File > Open, New) so
+        a pending save is never silently dropped.
+        """
+        if getattr(self, '_edit_timer', None) is not None and self._edit_timer.isActive():
+            self._edit_timer.stop()
+            self._commit_pending_edit()
 
     def _on_assembly_modified(self) -> None:
         """Handle assembly modification from assembly tab"""
@@ -434,9 +499,9 @@ class OpenLensWindow(QMainWindow):
                 self._assemblies[i] = modified_system
                 break
                 
-        self._save_to_database()
-        self._update_all_tabs()
-        self._update_status(f"Assembly updated: {self._current_assembly.name if self._current_assembly else 'Unknown'}")
+        self._schedule_edit_commit(
+            f"Assembly updated: {self._current_assembly.name if self._current_assembly else 'Unknown'}"
+        )
 
     def _show_assembly_editor(self, show: bool = True) -> None:
         """Show/hide assembly editor tab"""
@@ -551,6 +616,9 @@ class OpenLensWindow(QMainWindow):
     
     def _on_new_lens(self) -> None:
         """Create new lens"""
+        # Don't let a debounced edit lose the current target out from under
+        # the new one.
+        self._flush_pending_edit()
         lens = Lens(name=f"Lens {len(self._lenses) + 1}")
         self._lenses.append(lens)
         self._current_lens = lens
@@ -651,6 +719,9 @@ class OpenLensWindow(QMainWindow):
     
     def _on_save(self) -> None:
         """Save to database"""
+        # Settle any debounced edit first, so the explicit save does not race a
+        # pending commit that would land after the user reopened the library.
+        self._flush_pending_edit()
         if self._editor_tabs.currentIndex() == 0:  # Lens Editor Tab
             # Sync data from Lens Editor widget back to the lens object
             self._lens_editor._on_property_changed()

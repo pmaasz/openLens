@@ -482,15 +482,29 @@ else:
             self.assertIsNotNone(lens)
             self.assertIn(lens.id, [x.id for x in self.window._lenses])
             self.window._lens_editor._r1_input.setValue(60.0)
+            # Edits are debounced (#299): settle the pending commit rather
+            # than assuming the write already happened.
+            self.window._flush_pending_edit()
             rows = self._rows_for(lens.id)
             self.assertEqual(len(rows), 1)
             self.assertAlmostEqual(rows[0].radius_of_curvature_1, 60.0)
+
+        def test_spinbox_edit_is_debounced_not_written_per_keystroke(self):
+            """A burst of edits must not write once per value change."""
+            QApplication.processEvents()
+            lens = self.window._current_lens
+            self.window._lens_editor._r1_input.setValue(60.0)
+            # Nothing on disk yet: the commit is waiting on the quiet period.
+            self.assertEqual(self._rows_for(lens.id), [])
+            self.window._flush_pending_edit()
+            self.assertEqual(len(self._rows_for(lens.id)), 1)
 
         def test_spinbox_edit_persists(self):
             """Editing radius/diameter writes through to the database row."""
             lens = self.window._current_lens
             self.window._lens_editor._r1_input.setValue(60.0)
             self.window._lens_editor._diameter_input.setValue(30.0)
+            self.window._flush_pending_edit()
 
             rows = self._rows_for(lens.id)
             self.assertEqual(len(rows), 1)

@@ -74,6 +74,11 @@ class PerformanceTab(BaseTab):
         )
         metrics_layout.addWidget(self._perf_metrics_text, 1)
 
+        # Last computed metrics, so refresh() can repaint without recomputing.
+        self._cached_metrics_text = None
+        self._cached_metrics = None
+        self._cached_metrics_for = None
+
         # Add the visualization widget
         from ..widgets import PerformanceVisualizationWidget
 
@@ -322,6 +327,11 @@ Spot Size (RMS): {_fmt(results.get('spot_rms'), '.3f')} µm
 Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
 {validity_note}"""
             self._perf_metrics_text.setPlainText(text)
+
+            # Remember the result so refresh() can repaint without recomputing.
+            self._cached_metrics_text = text
+            self._cached_metrics = results
+            self._cached_metrics_for = active_system
 
             # Update visualization widget
             if hasattr(self, "_perf_viz"):
@@ -578,20 +588,47 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
     def refresh(self) -> None:
         """Refresh performance tab state.
 
-        Reloads from the parent window's current lens/system state,
-        recalculating the displayed metrics when a system is active.
+        Repaints from the last computed metrics; it does **not** recompute.
+        ``refresh()`` runs on every edit keystroke via
+        ``OpenLensWindow._update_all_tabs``, and computing here meant a full
+        ``calculate_all_aberrations()`` plus ``calculate_chromatic_aberration()``
+        ray trace ran on the GUI thread per keystroke - ~96 ms each, so typing
+        a 20-character name took about two seconds of stuttering. Calculation
+        belongs to the explicit "Calculate Metrics" button, which already
+        exists.
         """
-        # Re-calculate metrics if there's an active lens/assembly
         active_system = (
             self._parent._current_assembly
             if self._parent._current_assembly
             else self._parent._current_lens
         )
-        if active_system:
-            self._on_calculate_performance_metrics()
-        else:
+        if not active_system:
+            self._cached_metrics_text = None
+            self._cached_metrics_for = None
             self._perf_metrics_text.setPlainText(
                 "Select a lens or assembly and click 'Calculate Metrics' to view performance data."
             )
             if hasattr(self, "_perf_viz"):
                 self._perf_viz.update_lens(None)
+            return
+
+        # Metrics are cached per model, so switching targets shows that
+        # target's own last result rather than the previous one's.
+        if self._cached_metrics_for is not active_system:
+            self._cached_metrics_text = None
+            self._cached_metrics_for = active_system
+
+        if self._cached_metrics_text is None:
+            self._perf_metrics_text.setPlainText(
+                f"Metrics not yet calculated for {active_system.name}.\n"
+                "Click 'Calculate Metrics' to run the analysis."
+            )
+            if hasattr(self, "_perf_viz"):
+                self._perf_viz.update_lens(active_system)
+            return
+
+        self._perf_metrics_text.setPlainText(self._cached_metrics_text)
+        if hasattr(self, "_perf_viz"):
+            self._perf_viz.update_lens(active_system)
+            if self._cached_metrics is not None:
+                self._perf_viz.update_metrics(self._cached_metrics)
