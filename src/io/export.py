@@ -4,6 +4,7 @@ Generates SVG drawings of optical components and systems.
 """
 
 from datetime import datetime
+from xml.sax.saxutils import escape
 
 from ..optical_system import OpticalSystem
 from ..lens import Lens
@@ -42,7 +43,8 @@ class ISO10110Generator:
             f"</style>",
             f"</defs>",
             f'<rect width="100%" height="100%" fill="white"/>',
-            f'<text x="20" y="30" class="title">ISO 10110 Drawing: {self.system.name}</text>',
+            f'<text x="20" y="30" class="title">ISO 10110 Drawing: '
+            f"{escape(str(self.system.name))}</text>",
             f'<text x="20" y="50" class="text">Date: {datetime.now().strftime("%Y-%m-%d")}</text>',
         ]
         stop_getter = getattr(self.system, "get_aperture_stop", None)
@@ -184,7 +186,9 @@ class ISO10110Generator:
                 f' stroke="black" stroke-width="0.5"/>'
             )
             parts.append(f'<text x="{x + 8}" y="{ry + 12}" class="text">{key}:</text>')
-            parts.append(f'<text x="{x + 110}" y="{ry + 12}" class="text">{value}</text>')
+            parts.append(
+                f'<text x="{x + 110}" y="{ry + 12}" class="text">' f"{escape(str(value))}</text>"
+            )
         return "\n".join(parts)
 
     def _generate_iso_notes(self, x: float, y: float) -> list:
@@ -316,7 +320,10 @@ class ISO10110Generator:
             lines.append(
                 f'<text x="{col_x[2]}" y="{curr_y}" class="text">{lens.thickness:.2f}</text>'
             )
-            lines.append(f'<text x="{col_x[3]}" y="{curr_y}" class="text">{lens.material}</text>')
+            lines.append(
+                f'<text x="{col_x[3]}" y="{curr_y}" class="text">'
+                f"{escape(str(lens.material))}</text>"
+            )
             lines.append(
                 f'<text x="{col_x[4]}" y="{curr_y}" class="text">{lens.diameter:.2f}</text>'
             )
@@ -324,7 +331,8 @@ class ISO10110Generator:
                 f'<text x="{col_x[5]}" y="{curr_y}" class="text">{lens.get_clear_aperture_1():.2f}</text>'
             )
             lines.append(
-                f'<text x="{col_x[6]}" y="{curr_y}" class="text">{lens.coating_label(1)}</text>'
+                f'<text x="{col_x[6]}" y="{curr_y}" class="text">'
+                f"{escape(str(lens.coating_label(1)))}</text>"
             )
             lines.append(
                 f'<text x="{col_x[7]}" y="{curr_y}" class="text">{lens.bevel_1:.2f}</text>'
@@ -348,7 +356,8 @@ class ISO10110Generator:
                 f'<text x="{col_x[5]}" y="{curr_y}" class="text">{lens.get_clear_aperture_2():.2f}</text>'
             )
             lines.append(
-                f'<text x="{col_x[6]}" y="{curr_y}" class="text">{lens.coating_label(2)}</text>'
+                f'<text x="{col_x[6]}" y="{curr_y}" class="text">'
+                f"{escape(str(lens.coating_label(2)))}</text>"
             )
             lines.append(
                 f'<text x="{col_x[7]}" y="{curr_y}" class="text">{lens.bevel_2:.2f}</text>'

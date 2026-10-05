@@ -10,6 +10,7 @@ Zemax, OpticStudio, SVG technical drawings
 
 import math
 from typing import Any, Dict, List, Optional
+from xml.sax.saxutils import escape
 
 from .lens import Lens
 from .optical_system import OpticalSystem
@@ -386,7 +387,8 @@ class SVGExporter:
 
             # Title
             f.write(
-                f'  <text x="{width/2}" y="25" class="title" text-anchor="middle">{lens.name}</text>\n'
+                f'  <text x="{width/2}" y="25" class="title" text-anchor="middle">'
+                f"{escape(str(lens.name))}</text>\n"
             )
             f.write("\n")
 
@@ -507,7 +509,9 @@ class SVGExporter:
 
                 # Material label
                 f.write(
-                    f'  <text x="{cx}" y="{height - 15}" class="label" text-anchor="middle">{lens.material} (n={lens.refractive_index:.4f})</text>\n'
+                    f'  <text x="{cx}" y="{height - 15}" class="label" text-anchor="middle">'
+                    f"{escape(str(lens.material))} "
+                    f"(n={lens.refractive_index:.4f})</text>\n"
                 )
 
                 # Focal length
@@ -545,7 +549,8 @@ class SVGExporter:
 
             # Title
             f.write(
-                f'  <text x="{width/2}" y="25" class="title" text-anchor="middle">{system.name}</text>\n'
+                f'  <text x="{width/2}" y="25" class="title" text-anchor="middle">'
+                f"{escape(str(system.name))}</text>\n"
             )
 
             # Optical axis
