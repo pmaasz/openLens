@@ -43,6 +43,7 @@ from src.analysis.plots import (
     apply_dark_axis_theme, plot_ghost_analysis,
     plot_mtf, plot_psf, plot_wavefront,
 )
+from src.tolerancing import deserialize_operands, serialize_operands
 
 
 class OpenLensWindow(QMainWindow):
@@ -163,24 +164,61 @@ class OpenLensWindow(QMainWindow):
             self._current_lens = None
             self._current_assembly = None
     
+    def _sync_tolerances_to_metadata(self, target=None) -> None:
+        """Persist the working tolerance set onto the model that owns it.
+
+        ``_tol_operands`` is a single list on the window, so it must only ever
+        be written onto the target it was actually built for. Stamping it onto
+        "whichever model is current" is what leaked one lens's tolerance set
+        into every other lens's metadata.
+
+        Args:
+            target: Model to stamp. Defaults to the owning target, falling
+                back to the current lens/assembly when ownership is not yet
+                established.
+        """
+        if target is None:
+            target = self._tol_operands_target
+        if target is None:
+            target = self._current_assembly if self._current_assembly else self._current_lens
+        if target is None:
+            return
+        if not hasattr(target, 'metadata') or target.metadata is None:
+            target.metadata = {}
+        target.metadata['tolerances'] = serialize_operands(self._tol_operands)
+
+    def _use_tolerances_for(self, target) -> None:
+        """Point the working tolerance set at ``target``.
+
+        The read half that the old save-only path never had: without it a
+        saved tolerance set vanished on reopen while the table showed an empty
+        list as though nothing had been configured.
+
+        Ownership is tracked so that re-refreshing the *same* model (which
+        happens on every ``_update_all_tabs``) leaves in-memory edits alone,
+        while switching models first stamps the outgoing model's own set back
+        into its metadata.
+
+        Args:
+            target: The lens/assembly now being worked on, or None.
+        """
+        if target is None:
+            return
+        if target is self._tol_operands_target:
+            return
+        if self._tol_operands_target is not None:
+            self._sync_tolerances_to_metadata(self._tol_operands_target)
+        self._tol_operands = deserialize_operands(
+            (getattr(target, 'metadata', None) or {}).get('tolerances')
+        )
+        self._tol_operands_target = target
+
     def _save_to_database(self) -> None:
         """Save all lenses and assemblies to SQLite database"""
         
         try:
             # Sync tolerances to current target metadata before saving
-            target = self._current_assembly if self._current_assembly else self._current_lens
-            if target:
-                if not hasattr(target, 'metadata'):
-                    target.metadata = {}
-                target.metadata['tolerances'] = [
-                    {
-                        'element_index': op.element_index,
-                        'type': op.param_type.value,
-                        'min_val': op.min_val,
-                        'max_val': op.max_val,
-                        'distribution': getattr(op, 'distribution', 'uniform')
-                    } for op in self._tol_operands
-                ]
+            self._sync_tolerances_to_metadata()
 
             all_items = self._lenses + self._assemblies
 
@@ -319,6 +357,10 @@ class OpenLensWindow(QMainWindow):
         
         # Initialize tolerance operands list
         self._tol_operands = []
+        # Which model the working tolerance set belongs to. The set is a
+        # single list on the window, so it must only ever be stamped onto the
+        # model it was built for - see _use_tolerances_for.
+        self._tol_operands_target = None
         
         self._update_status("Welcome to OpenLens")
 
