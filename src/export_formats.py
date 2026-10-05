@@ -27,6 +27,25 @@ from .validation import (
 )
 
 
+def _gap_before(system: OpticalSystem, index: int) -> float:
+    """Return the air gap preceding element ``index``, in mm.
+
+    ``LensElement`` has no ``air_gap_before`` field - gaps live on the system
+    as ``system.air_gaps``, rebuilt by ``_rebuild_from_tree``. Both the
+    OpticStudio and SVG system exporters read ``elem.air_gap_before``, so
+    every system export raised::
+
+        AttributeError: 'LensElement' object has no attribute 'air_gap_before'
+
+    ``air_gaps[i]`` is the gap *after* element i, so the gap before element i
+    is ``air_gaps[i - 1]``. Returns 0.0 for the first element, which has
+    nothing in front of it.
+    """
+    if index <= 0 or index - 1 >= len(system.air_gaps):
+        return 0.0
+    return system.air_gaps[index - 1].thickness
+
+
 class ZemaxExporter:
     """Export to Zemax format (.zmx)"""
 
@@ -206,9 +225,10 @@ class OpticStudioExporter:
                 lens = elem.lens
 
                 # Air gap before lens
-                if elem.air_gap_before > 0:
+                gap_before = _gap_before(system, i)
+                if gap_before > 0:
                     f.write(
-                        f"{surf_num:<10} {'STANDARD':<12} {'Infinity':<14} {elem.air_gap_before:<12.4f} {'':<10}\n"
+                        f"{surf_num:<10} {'STANDARD':<12} {'Infinity':<14} {gap_before:<12.4f} {'':<10}\n"
                     )
                     surf_num += 1
 
@@ -578,7 +598,7 @@ class SVGExporter:
                 lens = elem.lens
 
                 # Add air gap
-                x_pos += elem.air_gap_before * scale
+                x_pos += _gap_before(system, i) * scale
 
                 # Lens dimensions
                 t = lens.thickness * scale
