@@ -1,6 +1,9 @@
+import logging
 import math
 from typing import Tuple, Optional, Any
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 try:
     import numpy as np
@@ -218,6 +221,21 @@ class WavefrontSensor:
         self.tracer.trace_ray(ref_ray)
         ref_opl = ref_ray.optical_path_length
 
+        # Is the chief ray usable as the OPD reference? The old check was
+        # `if not ref_ray.path`, which is never true: Ray3D.__init__ seeds
+        # path with [origin] and nothing clears it. So a chief ray that was
+        # blocked, or that traced nothing beyond its start, was accepted as the
+        # reference - and ref_end became the ray's own origin, giving a
+        # reference plane at the wrong x for every grid point.
+        ref_usable = len(ref_ray.path) >= 2 and not ref_ray.terminated
+        if not ref_usable:
+            logger.warning(
+                "Chief ray is unusable as an OPD reference (path=%d point(s), "
+                "terminated=%s); marking the whole in-aperture wavefront invalid",
+                len(ref_ray.path),
+                ref_ray.terminated,
+            )
+
         # 3. Trace Grid
         W = np.zeros_like(Y)
         valid_mask = np.zeros_like(Y, dtype=bool)
@@ -244,6 +262,16 @@ class WavefrontSensor:
                     W[i, j] = float("nan")
                     continue
 
+                if not ref_usable:
+                    # Every in-aperture sample depends on the reference plane.
+                    # Leaving them at 0.0 would hand PSFCalculator a perfect
+                    # zero-phase pupil over the whole clear aperture, whose PSF
+                    # is the ideal Airy pattern and whose MTF merit is the
+                    # textbook maximum - so the optimizer would drive toward
+                    # exactly the vignetted designs that produced the failure.
+                    W[i, j] = float("nan")
+                    continue
+
                 # Calculate start point
                 # Ray should hit (pupil_x, py, pz)
                 origin = vec3(pupil_x, py, pz) - direction * (dist / dx)
@@ -257,19 +285,28 @@ class WavefrontSensor:
                     # comparing its length to the element count is almost
                     # always false and would leak terminated rays into W.)
                     W[i, j] = float("nan")
+                elif abs(ray.direction.x) <= 1e-6:
+                    # The ray is too steep to be projected onto the reference
+                    # plane, so no OPD can be formed. This used to fall through
+                    # with W left at its np.zeros initialisation - a zero OPD,
+                    # which PSFCalculator reads as a perfect phase and so admits
+                    # at full pupil amplitude.
+                    W[i, j] = float("nan")
                 else:
                     # Calculate OPD
-                    if not ref_ray.path:
-                        continue
                     ref_end = ref_ray.path[-1]
 
                     # Extend ray to plane X = ref_end.x
-                    if abs(ray.direction.x) > 1e-6:
-                        t = (ref_end.x - ray.origin.x) / ray.direction.x
-                        ray.propagate(t)  # Updates OPL
+                    t = (ref_end.x - ray.origin.x) / ray.direction.x
+                    ray.propagate(t)  # Updates OPL
 
-                        W[i, j] = (ray.optical_path_length - ref_opl) / wavelength
-                        valid_mask[i, j] = True
+                    W[i, j] = (ray.optical_path_length - ref_opl) / wavelength
+                    valid_mask[i, j] = True
+
+        # Every sample that is not valid must read as NaN, because
+        # PSFCalculator builds its pupil amplitude from np.isnan(W). Enforce it
+        # rather than trusting each branch above to have remembered.
+        W[~valid_mask] = np.where(np.isnan(W[~valid_mask]), W[~valid_mask], np.nan)
 
         # Remove Piston (mean)
         valid_W = W[valid_mask]
