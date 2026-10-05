@@ -528,13 +528,22 @@ def safe_float_conversion(
 
     Returns:
         Tuple[bool, float]: (success, converted_value)
+
+    Note:
+        This function's contract is that it never raises. ``float()`` on a
+        large int raises OverflowError rather than returning inf, so a JSON
+        integer literal such as ``10**400`` used to escape - as did anything
+        TypeError could reach.
     """
     # Reject booleans explicitly (bool is subclass of int in Python)
     if isinstance(value, bool):
         return False, default
 
     if isinstance(value, (int, float)):
-        result = float(value)
+        try:
+            result = float(value)
+        except (ValueError, OverflowError, TypeError):
+            return False, default
         if math.isnan(result) or math.isinf(result):
             return False, default
         return True, result
@@ -542,11 +551,11 @@ def safe_float_conversion(
     if isinstance(value, str):
         try:
             result = float(value)
-            if math.isnan(result) or math.isinf(result):
-                return False, default
-            return True, result
-        except ValueError:
+        except (ValueError, OverflowError, TypeError):
             return False, default
+        if math.isnan(result) or math.isinf(result):
+            return False, default
+        return True, result
 
     return False, default
 
