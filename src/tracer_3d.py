@@ -428,8 +428,21 @@ class LensRayTracer3D:
         segment = intersection - ray.origin
         ray.optical_path_length += segment.magnitude() * ray.n
 
+        # A zero-length hit (t ~ 0) is legitimate and must still refract: in a
+        # cemented doublet the two surfaces share a vertex, so the ray has to
+        # change index at the point it is already standing on. This is why
+        # _intersect_sphere passes min_t=-EPSILON here while the 2D tracer
+        # rejects such hits outright.
+        #
+        # What must not happen is *recording* it. Appending unconditionally
+        # left consecutive identical path points separated by zero length, so
+        # anything deriving a direction or a segment length from consecutive
+        # path points divides by zero. A cemented doublet produced three such
+        # repeats. The refraction below is unaffected.
+        previous_origin = ray.origin
         ray.origin = intersection
-        ray.path.append(intersection)
+        if not ray.path or (intersection - previous_origin).magnitude() > EPSILON:
+            ray.path.append(intersection)
 
         if fresnel_hit is None and is_parabolic and normal is None:
             # Paraboloid normal: gradient of F = x - (y²+z²)/(2R) - vx = 0,
@@ -561,8 +574,12 @@ class SystemRayTracer3D:
         hit = ray.origin + ray.direction * t if t >= 0 else ray.origin
         if hit.y * hit.y + hit.z * hit.z > (semi + 1e-9) ** 2:
             if t >= 0:
+                # Same rule as the surface hit: never append a point that
+                # repeats the current origin.
+                moved = (hit - ray.origin).magnitude() > EPSILON
                 ray.origin = hit
-                ray.path.append(hit)
+                if not ray.path or moved:
+                    ray.path.append(hit)
                 ray.optical_path_length += t * ray.n
             ray.terminated = True
             return False
