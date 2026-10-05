@@ -81,20 +81,29 @@ class ToleranceOperand:
     )
     surface: int = 1  # Surface the operand acts on where applicable (1 or 2)
 
-    def generate_value(self) -> float:
-        """Generate a random deviation value based on distribution."""
+    def generate_value(self, rng: Optional["random.Random"] = None) -> float:
+        """Generate a random deviation value based on distribution.
+
+        Args:
+            rng: Source of randomness. Defaults to the module-level ``random``
+                when not supplied, so a standalone caller keeps working - but
+                MonteCarloAnalyzer always passes its own generator, so a seeded
+                run is reproducible and cannot be perturbed by unrelated
+                ``random`` calls elsewhere in the process.
+        """
+        source = rng if rng is not None else random
         if self.distribution == "gaussian":
             # If std_dev is not provided, assume range is +/- 3 sigma
             sigma = self.std_dev
             if sigma == 0:
                 sigma = (self.max_val - self.min_val) / 6.0
 
-            val = random.gauss(0, sigma)
+            val = source.gauss(0, sigma)
             # Clamp to limits? Typically yes for manufacturing
             return max(self.min_val, min(self.max_val, val))
         else:
             # Uniform
-            return random.uniform(self.min_val, self.max_val)
+            return source.uniform(self.min_val, self.max_val)
 
 
 def serialize_operands(operands: List[ToleranceOperand]) -> List[Dict[str, Any]]:
@@ -455,8 +464,12 @@ class MonteCarloAnalyzer:
         self.compensators = list(compensators) if compensators else []
         self.comp_sweeps = max(1, comp_sweeps)
         self.results: List[Dict[str, Any]] = []
-        if seed is not None:
-            random.seed(seed)
+        # A private generator, not random.seed(). Seeding the module-level RNG
+        # rewrote process-global state: constructing an analyzer inside a
+        # QThread reseeded the stream any other thread was drawing from, and
+        # `seed=` still was not reproducible because every draw came from that
+        # one shared stream.
+        self._rng = random.Random(seed)
 
     def _get_system_state(self, system: OpticalSystem) -> Dict[str, Any]:
         """Get a capture of the current system parameters for restoration."""
@@ -473,7 +486,7 @@ class MonteCarloAnalyzer:
         perturbations = {}
 
         for tol in self.tolerances:
-            delta = tol.generate_value()
+            delta = tol.generate_value(self._rng)
             perturbations[f"El_{tol.element_index}_{tol.param_type.name}"] = delta
             _apply_value(system, tol.param_type, tol.element_index, delta, surface=tol.surface)
 
