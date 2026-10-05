@@ -8,7 +8,22 @@ import uuid
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 
-from .lens import Lens
+from .constants import LARGE_NUMBER
+from .lens import Lens, _is_flat
+
+#: Radius marking a flat surface.
+#:
+#: lens._is_flat treats a surface as flat when it is zero, non-finite, or
+#: |r| > LARGE_NUMBER - a *strict* inequality. So LARGE_NUMBER itself is NOT
+#: flat, and the bare 1e10 this module used to write for the plano-convex
+#: preset sat exactly on that boundary: flat to the eye, curved to every
+#: code path that branches on _is_flat. Non-finite is unambiguous and is what
+#: the retired preset_lenses.py used.
+#:
+#: Note that validate_radius cannot express "flat" at all - it caps |r| at
+#: 10000 mm and rejects non-finite values - so a flat radius is internal-only
+#: and must not be round-tripped through that validator.
+FLAT_RADIUS = float("inf")
 
 
 @dataclass
@@ -24,12 +39,165 @@ class LensPreset:
     typical_use: Optional[str] = None
 
 
+# ---------------------------------------------------------------------------
+# Catalogue presets migrated from the retired src/preset_lenses.py.
+#
+# That module exported a second get_preset_library() with the same name and
+# the same intent but the opposite shape: a factory returning a fresh
+# PresetLensLibrary whose search_presets() handed back raw dicts, against this
+# module's singleton returning typed LensPreset objects. import_custom_preset
+# on the factory version was a no-op - the imported preset was discarded on
+# the next call - and the two test suites encoded contradictory contracts.
+#
+# This module is the survivor: it owns the singleton, the typed preset object,
+# the category listing, and get_lens_copy()'s to_dict/from_dict round-trip
+# (the hand-rolled copy had drifted and dropped coatings, model-glass
+# settings, parabolic sags and Fresnel grooves).
+#
+# The optical data below is preserved verbatim; only the representation
+# changed. `applications` became typical_use, `vendor` became manufacturer,
+# and the flat-surface radius now uses the module's FLAT_RADIUS constant,
+# which _is_flat actually recognises - see its docstring for why 1e10 and
+# LARGE_NUMBER both sit on the wrong side of the boundary.
+#
+# Entries already represented above under a different name (the Plossl
+# eyepiece, the 10x objective, the Abbe condenser, the laser focusing lens
+# and the 50 mm camera element) are not duplicated here.
+# ---------------------------------------------------------------------------
+
+_CATALOG_PRESETS = (
+    {
+        "name": "Symmetric Biconvex",
+        "category": "Educational",
+        "description": "Equal curvature on both sides",
+        "radius1": 50.0,
+        "radius2": -50.0,
+        "thickness": 6.0,
+        "diameter": 25.4,
+        "material": "BK7",
+        "applications": ["Learning", "Demonstrations"],
+    },
+    {
+        "name": "Kellner Eyepiece",
+        "category": "Eyepieces",
+        "description": "Popular eyepiece design with good field of view",
+        "radius1": 15.0,
+        "radius2": -30.0,
+        "thickness": 4.0,
+        "diameter": 20.0,
+        "material": "BK7",
+        "applications": ["Telescopes", "Microscopes"],
+    },
+    {
+        "name": "4x Microscope Objective",
+        "category": "Objectives",
+        "description": "Low magnification microscope objective",
+        "radius1": 12.0,
+        "radius2": -25.0,
+        "thickness": 8.0,
+        "diameter": 15.0,
+        "material": "BK7",
+        "applications": ["Microscopy", "Teaching"],
+    },
+    {
+        "name": "Telescope Objective",
+        "category": "Objectives",
+        "description": "Long focal length for astronomical viewing",
+        "radius1": 200.0,
+        "radius2": -250.0,
+        "thickness": 10.0,
+        "diameter": 50.0,
+        "material": "BK7",
+        "applications": ["Astronomy", "Long distance viewing"],
+    },
+    {
+        "name": "Beam Expander Element",
+        "category": "Laser Optics",
+        "description": "Expanding divergent laser beams",
+        "radius1": -20.0,
+        "radius2": 40.0,
+        "thickness": 4.0,
+        "diameter": 25.4,
+        "material": "UVFS",
+        "applications": ["Laser beam expansion", "Collimation"],
+    },
+    {
+        "name": "Edmund #45-166 (25mm PCX)",
+        "category": "Industry Standard",
+        "description": "Popular plano-convex lens, 25mm dia, 50mm FL",
+        "radius1": 25.8,
+        "radius2": None,  # flat
+        "thickness": 4.8,
+        "diameter": 25.0,
+        "material": "N-BK7",
+        "vendor": "Edmund Optics",
+        "part_number": "45-166",
+        "applications": ["Laser focusing", "Beam shaping"],
+    },
+    {
+        "name": "Edmund #45-168 (25mm PCX)",
+        "category": "Industry Standard",
+        "description": "Plano-convex lens, 25mm dia, 100mm FL",
+        "radius1": 51.5,
+        "radius2": None,  # flat
+        "thickness": 3.8,
+        "diameter": 25.0,
+        "material": "N-BK7",
+        "vendor": "Edmund Optics",
+        "part_number": "45-168",
+        "applications": ["Laser focusing", "Collimation"],
+    },
+    {
+        "name": "Thorlabs LA1509 (25mm PCX)",
+        "category": "Industry Standard",
+        "description": "Plano-convex lens, 25mm dia, 100mm FL",
+        "radius1": 51.5,
+        "radius2": None,  # flat
+        "thickness": 3.3,
+        "diameter": 25.4,
+        "material": "N-BK7",
+        "vendor": "Thorlabs",
+        "part_number": "LA1509",
+        "applications": ["Laser focusing", "Collimation"],
+    },
+)
+
+
+def _radius_or_flat(value):
+    """Translate the catalogue's flat marker into FLAT_RADIUS."""
+    return FLAT_RADIUS if value is None else float(value)
+
+
 class PresetLibrary:
     """Library of preset lens designs"""
 
     def __init__(self):
         self.presets: Dict[str, LensPreset] = {}
         self._load_common_presets()
+        self._load_catalog_presets()
+
+    def _load_catalog_presets(self):
+        """Load the migrated catalogue entries as typed LensPreset objects."""
+        for entry in _CATALOG_PRESETS:
+            applications = entry.get("applications") or []
+            self.add_preset(
+                LensPreset(
+                    name=entry["name"],
+                    category=entry["category"],
+                    description=entry["description"],
+                    lens=Lens(
+                        name=entry["name"],
+                        radius_of_curvature_1=_radius_or_flat(entry["radius1"]),
+                        radius_of_curvature_2=_radius_or_flat(entry["radius2"]),
+                        thickness=entry["thickness"],
+                        diameter=entry["diameter"],
+                        material=entry["material"],
+                    ),
+                    manufacturer=entry.get("vendor"),
+                    part_number=entry.get("part_number"),
+                    typical_use=", ".join(applications) or None,
+                )
+            )
 
     def _load_common_presets(self):
         """Load common preset lenses"""
@@ -60,7 +228,7 @@ class PresetLibrary:
                 lens=Lens(
                     name="100mm Plano-Convex",
                     radius_of_curvature_1=51.5,
-                    radius_of_curvature_2=1e10,  # Flat
+                    radius_of_curvature_2=FLAT_RADIUS,  # Flat
                     thickness=4.0,
                     diameter=25.4,
                     material="BK7",

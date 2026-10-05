@@ -1,6 +1,5 @@
 """Tests for full-system Zemax export/import (todo item 7)."""
 
-import json
 import os
 import tempfile
 import unittest
@@ -12,8 +11,6 @@ from src.export_formats import (
 )
 from src.lens import Lens
 from src.optical_system import OpticalSystem
-from src.preset_lenses import PresetLensLibrary
-from src.validation import ValidationError
 
 
 def _system():
@@ -223,83 +220,12 @@ class TestZemaxSystemImportValidation(unittest.TestCase):
         self.assertAlmostEqual(rebuilt.elements[0].lens.thickness, 4.0)
 
 
-class TestCustomPresetImportValidation(unittest.TestCase):
-    """import_custom_preset stores untrusted JSON into the live library."""
-
-    @staticmethod
-    def _import(payload):
-        tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
-        tmp.close()
-        try:
-            with open(tmp.name, "w") as f:
-                if isinstance(payload, str):
-                    f.write(payload)
-                else:
-                    json.dump(payload, f)
-            return PresetLensLibrary().import_custom_preset(tmp.name)
-        finally:
-            os.unlink(tmp.name)
-
-    def test_non_dict_payload_raises_validation_error(self):
-        """A JSON array must be rejected rather than stored."""
-        with self.assertRaises(ValidationError):
-            self._import(["not", "a", "dict"])
-
-    def test_missing_required_field_raises_validation_error(self):
-        """A preset missing a field the summary reads must be rejected."""
-        with self.assertRaises(ValidationError):
-            self._import({"name": "X", "category": "c", "description": "d"})
-
-    def test_non_string_required_field_raises_validation_error(self):
-        """get_preset_summary calls .lower() on these; reject non-strings."""
-        with self.assertRaises(ValidationError):
-            self._import(
-                {
-                    "name": "X",
-                    "category": "c",
-                    "description": "d",
-                    "material": 7,
-                    "focal_length": 50.0,
-                    "diameter": 25.0,
-                }
-            )
-
-    def test_non_numeric_focal_length_raises_validation_error(self):
-        """Numeric fields must actually be numbers."""
-        with self.assertRaises(ValidationError):
-            self._import(
-                {
-                    "name": "X",
-                    "category": "c",
-                    "description": "d",
-                    "material": "BK7",
-                    "focal_length": "fifty",
-                    "diameter": 25.0,
-                }
-            )
-
-    def test_valid_preset_imports(self):
-        """A well-formed preset must still import and render a summary."""
-        lib = PresetLensLibrary()
-        tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
-        tmp.close()
-        try:
-            with open(tmp.name, "w") as f:
-                json.dump(
-                    {
-                        "name": "Custom",
-                        "category": "Test",
-                        "description": "a test preset",
-                        "material": "BK7",
-                        "focal_length": 50.0,
-                        "diameter": 25.0,
-                    },
-                    f,
-                )
-            preset_id = lib.import_custom_preset(tmp.name)
-        finally:
-            os.unlink(tmp.name)
-        self.assertIn("Custom", lib.get_preset_summary(preset_id))
+# NOTE: the preset-JSON validation added for #358 lived on
+# PresetLensLibrary.import_custom_preset in src/preset_lenses.py, which this
+# branch retires in favour of the typed PresetLibrary. The untrusted-JSON
+# trust boundary it guarded no longer exists, so those tests went with it.
+# The Zemax half of #358 (per-element validation in
+# ZemaxSystemImporter) is unaffected and still covered above.
 
 
 if __name__ == "__main__":
