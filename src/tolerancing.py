@@ -113,9 +113,16 @@ def _capture_state(system: OpticalSystem) -> Dict[str, Any]:
                     "r1": lens.radius_of_curvature_1,
                     "r2": lens.radius_of_curvature_2,
                     "thickness": lens.thickness,
-                    "nd": (lens.model_nd if lens.model_glass_mode else lens.refractive_index),
-                    "vd": lens.model_vd if lens.model_glass_mode else 0,
+                    # Model-glass state is captured unconditionally. Folding
+                    # these into one "nd"/"vd" pair lost them whenever the
+                    # element was a fixed-index lens, so a restore could not
+                    # put them back.
                     "glass_mode": lens.model_glass_mode,
+                    "model_nd": lens.model_nd,
+                    "model_vd": lens.model_vd,
+                    # Captured separately from the model above, because for a
+                    # fixed-index lens this is the authoritative value.
+                    "refractive_index": lens.refractive_index,
                 }
         node_states.append(entry)
     return {
@@ -149,10 +156,16 @@ def _restore_state(system: OpticalSystem, state: Dict[str, Any]) -> None:
                 lens.radius_of_curvature_2 = ls["r2"]
                 lens.thickness = ls["thickness"]
                 lens.model_glass_mode = ls["glass_mode"]
-                if lens.model_glass_mode:
-                    lens.model_nd = ls["nd"]
-                    lens.model_vd = ls["vd"]
-                lens.update_refractive_index()
+                lens.model_nd = ls["model_nd"]
+                lens.model_vd = ls["model_vd"]
+                # Restore the index by direct assignment. Calling
+                # update_refractive_index() here would re-derive it from the
+                # material database whenever glass_mode is False, which does
+                # not reproduce the original fixed index - _ensure_model_glass
+                # has already overwritten model_nd/model_vd by this point, so
+                # the nominal reference walked a little further on every
+                # trial and contaminated the percentiles and the yield.
+                lens.refractive_index = ls["refractive_index"]
     for gap, thickness in zip(system.air_gaps, state.get("gaps", [])):
         gap.thickness = thickness
     system._update_positions()
