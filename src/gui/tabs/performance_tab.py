@@ -24,6 +24,22 @@ from .base_tab import BaseTab
 logger = logging.getLogger(__name__)
 
 
+def _fmt(value, spec: str = ".4f", scale: float = 1.0) -> str:
+    """Format a possibly-missing metric for the report.
+
+    Aberration helpers return None when a value could not be measured. These
+    used to be published as 0.0 - indistinguishable from a perfect design - so
+    the report never had to cope with a gap. It now does, and says so rather
+    than showing a fictional number.
+    """
+    if value is None:
+        return "N/A"
+    try:
+        return format(value * scale, spec)
+    except (TypeError, ValueError):
+        return "N/A"
+
+
 class PerformanceTab(BaseTab):
     """Optical performance metrics and analysis plots"""
 
@@ -261,6 +277,19 @@ class PerformanceTab(BaseTab):
                         bfl_C = chromatic.get("bfl_C")
                         chromatic_text += f"  BFL (C=656nm): {f'{bfl_C:.3f}' if bfl_C is not None else 'N/A'} mm\n"
 
+            # Surface the calculator's own validity verdict, so a value that
+            # could not be measured is visibly absent rather than silently 0.
+            if results.get("error"):
+                validity_note = f"\n--- WARNING ---\n{results['error']}\n"
+            elif results.get("valid") is False:
+                validity_note = (
+                    "\n--- WARNING ---\nSome metrics could not be evaluated "
+                    "(ray trace failed or the design is vignetted). "
+                    "They are reported as N/A, not as zero.\n"
+                )
+            else:
+                validity_note = ""
+
             # Build metrics text
             text = f"""=== OPTICAL PERFORMANCE METRICS ===
 System: {system.name}
@@ -279,19 +308,19 @@ Object Distance: {object_distance} mm
 Max Field Angle: {field_angle:.2f} deg (derived from {sensor_size}mm sensor)
 
 --- Primary Aberrations ---
-Spherical Aberration: {results.get('spherical', 0):.4f} mm (longitudinal)
-Coma: {results.get('coma', 0):.4f} mm (transverse)
-Astigmatism: {results.get('astigmatism', 0):.4f} mm
-Distortion: {results.get('distortion', 0):.2f} %
-Chromatic Aberration: {results.get('chromatic', 0):.4f} mm
+Spherical Aberration: {_fmt(results.get('spherical'))} mm (longitudinal)
+Coma: {_fmt(results.get('coma'))} mm (transverse)
+Astigmatism: {_fmt(results.get('astigmatism'))} mm
+Distortion: {_fmt(results.get('distortion'), '.2f')} %
+Chromatic Aberration: {_fmt(results.get('chromatic'))} mm
 
 --- Image Quality Metrics ---
-MTF Cutoff: {results.get('mtf_cutoff', 0):.1f} lp/mm
-Strehl Ratio: {results.get('strehl', 0):.3f} (from traced RMS wavefront error)
-RMS Wavefront Error: {results.get('wfe_rms_waves', 0):.3f} waves
-Spot Size (RMS): {results.get('spot_rms', 0):.3f} µm
-Airy Disk (Dia): {results.get('airy_disk_diameter', 0)*1000:.2f} µm
-"""
+MTF Cutoff: {_fmt(results.get('mtf_cutoff'), '.1f')} lp/mm
+Strehl Ratio: {_fmt(results.get('strehl'), '.3f')} (from traced RMS wavefront error)
+RMS Wavefront Error: {_fmt(results.get('wfe_rms_waves'), '.3f')} waves
+Spot Size (RMS): {_fmt(results.get('spot_rms'), '.3f')} µm
+Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
+{validity_note}"""
             self._perf_metrics_text.setPlainText(text)
 
             # Update visualization widget
