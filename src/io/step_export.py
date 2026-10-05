@@ -128,7 +128,7 @@ class StepExporter:
         self.dir_z = 0
         self.dir_x = 0
 
-    def export(self, filename: str, housing: Optional[list] = None):
+    def export(self, filename: str, housing: Optional[list] = None) -> dict:
         """Export the current system to a STEP file.
 
         Safe to call repeatedly on one exporter: the entity buffer is reset
@@ -143,6 +143,14 @@ class StepExporter:
                 ``name``, ``z0``, ``z1``, ``r_inner``, ``r_outer`` (all mm)
                 describing annular tube solids (spacers, barrel, retainers).
                 See ``mechanical_designer.suggest_housing``.
+
+        Returns:
+            A summary dict: ``shapes`` (solids written), ``skipped`` (count of
+            parts that could not be exported) and ``skipped_parts`` (their
+            names). Previously this returned None, so callers ignoring the
+            result are unaffected. A malformed part used to be logged at
+            DEBUG, which is invisible at default verbosity - the drawing came
+            out with silently missing solids and nothing said so.
         """
         # Start from a clean buffer and a clean id sequence.
         self.writer = StepWriter()
@@ -161,6 +169,7 @@ class StepExporter:
         self._create_context()
 
         shape_ids = []
+        skipped: list = []
 
         # Export each lens
         if hasattr(self.system, "elements") and hasattr(self.system, "air_gaps"):
@@ -181,13 +190,19 @@ class StepExporter:
                 if solid_id:
                     shape_ids.append(solid_id)
             except (AttributeError, KeyError) as e:
-                logger.debug("STEP solid export skipped: %s", e)
+                skipped.append("system")
+                logger.warning(
+                    "STEP solid export skipped - object exposes neither a lens "
+                    "nor elements/air_gaps: %s",
+                    e,
+                )
 
         # Export housing parts (spacers, barrel, retainers) as tube solids.
         for part in housing or []:
+            name = str(part.get("name", "part")) if isinstance(part, dict) else "part"
             try:
                 solid_id = self._export_tube_solid(
-                    str(part.get("name", "part")),
+                    name,
                     float(part["z0"]),
                     float(part["z1"]),
                     float(part["r_inner"]),
@@ -195,8 +210,18 @@ class StepExporter:
                 )
                 if solid_id:
                     shape_ids.append(solid_id)
+                else:
+                    # _export_tube_solid rejected the dimensions; it has already
+                    # logged, but the part still has to be counted.
+                    skipped.append(name)
             except (KeyError, TypeError, ValueError) as e:
-                logger.debug("STEP housing part skipped: %s", e)
+                skipped.append(name)
+                logger.warning(
+                    "STEP housing part %r skipped - malformed or missing "
+                    "z0/z1/r_inner/r_outer: %s",
+                    name,
+                    e,
+                )
 
         # Create Root Product Definition if needed
         # For simplicity, we just leave the geometric entities in the file.
@@ -208,6 +233,17 @@ class StepExporter:
         # Write file
         with atomic_write_text(filename) as f:
             f.write(self.writer.generate())
+
+        # Surface the omissions. A mechanical drawing that silently lost its
+        # barrel and spacers is worse than one that says so.
+        if skipped:
+            logger.warning(
+                "STEP export wrote %d solid(s) but skipped %d part(s): %s",
+                len(shape_ids),
+                len(skipped),
+                ", ".join(skipped),
+            )
+        return {"shapes": len(shape_ids), "skipped": len(skipped), "skipped_parts": skipped}
 
     def _create_context(self):
         """Create common context entities."""
@@ -447,7 +483,15 @@ class StepExporter:
         lens solids above (no CAD kernel in this environment).
         """
         if not (r_outer > r_inner > 0 and z1 > z0):
-            logger.debug("STEP tube export skipped (bad dims): %s", name)
+            logger.warning(
+                "STEP tube %r skipped - need r_outer > r_inner > 0 and z1 > z0, "
+                "got r_inner=%r r_outer=%r z0=%r z1=%r",
+                name,
+                r_inner,
+                r_outer,
+                z0,
+                z1,
+            )
             return None
 
         def _circle(label: str, z: float, r: float):
