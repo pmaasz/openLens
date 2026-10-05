@@ -28,7 +28,7 @@ from src.gui.storage import LensStorage
 from src.gui.widgets import LensEditorWidget
 from src.gui.tabs import (SimulationTab, PerformanceTab,
                           AssemblyTab, OptimizationTab, TolerancingTab)
-from src.gui.dialogs import StartupDialog, AnalysisPlotDialog
+from src.gui.dialogs import StartupDialog, require_analysis_plot_dialog
 from src.gui.theme import (
     DARK, LIGHT, get_app_stylesheet, get_menubar_qss,
     get_status_bar_qss, get_tab_widget_qss,
@@ -43,6 +43,22 @@ from src.analysis.plots import (
     apply_dark_axis_theme, plot_ghost_analysis,
     plot_mtf, plot_psf, plot_wavefront,
 )
+
+
+def _report_missing_plot_dependency(parent, exc) -> None:
+    """Warn that a plot dialog needs matplotlib, rather than raising.
+
+    The analysis dialogs are the only matplotlib dependency in the app; the
+    lens editor, assembly builder and the QPainter visualisations all work
+    without it. Mirrors the "Dependency Missing" warning used in
+    src/gui/tabs/performance_tab.py.
+    """
+    logger.warning("Analysis plots unavailable: %s", exc)
+    QMessageBox.warning(
+        parent,
+        "Dependency Missing",
+        f"{exc}\n\nThe rest of OpenLens works without it.",
+    )
 
 
 class OpenLensWindow(QMainWindow):
@@ -869,11 +885,14 @@ Ctrl+6         Tolerancing
             analyzer = GhostAnalyzer(system)
             ghosts = analyzer.trace_ghosts(num_rays=5)
 
-            dialog = AnalysisPlotDialog("Ghost Analysis", self)
+            dialog_cls = require_analysis_plot_dialog()
+            dialog = dialog_cls("Ghost Analysis", self)
             ax = dialog.get_axes()
             plot_ghost_analysis(ax, system, ghosts)
             dialog.exec()
             
+        except ImportError as e:
+            _report_missing_plot_dependency(self, e)
         except Exception as e:
             logger.error("Ghost analysis failed: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to perform ghost analysis: {e}")
@@ -890,7 +909,8 @@ Ctrl+6         Tolerancing
             analyzer = ImageQualityAnalyzer(system)
             psf_data = analyzer.calculate_psf(pixels=64)
 
-            dialog = AnalysisPlotDialog("PSF Analysis", self)
+            dialog_cls = require_analysis_plot_dialog()
+            dialog = dialog_cls("PSF Analysis", self)
             ax = dialog.get_axes()
 
             # Apply dark theme to axes if needed
@@ -899,6 +919,8 @@ Ctrl+6         Tolerancing
 
             plot_psf(ax, psf_data)
             dialog.exec()
+        except ImportError as e:
+            _report_missing_plot_dependency(self, e)
         except Exception as e:
             logger.error("PSF calculation failed: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to calculate PSF: {e}")
@@ -915,10 +937,13 @@ Ctrl+6         Tolerancing
             analyzer = ImageQualityAnalyzer(system)
             mtf_data = analyzer.calculate_mtf(max_freq=100)
 
-            dialog = AnalysisPlotDialog("MTF Analysis", self)
+            dialog_cls = require_analysis_plot_dialog()
+            dialog = dialog_cls("MTF Analysis", self)
             ax = dialog.get_axes()
             plot_mtf(ax, mtf_data)
             dialog.exec()
+        except ImportError as e:
+            _report_missing_plot_dependency(self, e)
         except Exception as e:
             logger.error("MTF calculation failed: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to calculate MTF: {e}")
@@ -935,10 +960,13 @@ Ctrl+6         Tolerancing
             sensor = WavefrontSensor(system)
             wf = sensor.get_pupil_wavefront(grid_size=64)
 
-            dialog = AnalysisPlotDialog("Wavefront Analysis", self)
+            dialog_cls = require_analysis_plot_dialog()
+            dialog = dialog_cls("Wavefront Analysis", self)
             ax = dialog.get_axes()
             plot_wavefront(ax, wf.W)
             dialog.exec()
+        except ImportError as e:
+            _report_missing_plot_dependency(self, e)
         except Exception as e:
             logger.error("Wavefront analysis failed: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to analyze wavefront: {e}")
