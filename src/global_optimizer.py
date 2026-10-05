@@ -121,15 +121,14 @@ class GlobalOptimizer(LensOptimizer):
             if temperature < 1e-6:
                 break
 
-        # Final refinement: Run local simplex from best point
-        # Apply best values first
-        self._apply_variables(best_values)
-        # Update variable objects to reflect best values for local optimizer
-        for i, val in enumerate(best_values):
-            self.variables[i].current_value = val
-
-        # Run local optimization
-        local_result = self.optimize_simplex(max_iterations=50)
+        # Final refinement: Run local simplex from the best point found.
+        # The start is passed explicitly. It used to be transferred by writing
+        # into self.variables[i].current_value - i.e. by mutating the caller's
+        # OptimizationVariable objects, which the GUI also reads and saves, so
+        # a simulated-annealing run silently overwrote the user's inputs. The
+        # adjacent self._apply_variables(best_values) was dead code: it returns
+        # a deepcopy and never mutates self.system.
+        local_result = self.optimize_simplex(max_iterations=50, start=best_values)
 
         # Combine results. initial_merit is the *starting* design's merit:
         # merit_history[0] is the best of the first step, after a random
@@ -243,12 +242,10 @@ class GlobalOptimizer(LensOptimizer):
 
             population = new_population
 
-        # Final refinement
-        self._apply_variables(best_overall_design)
-        for i, val in enumerate(best_overall_design):
-            self.variables[i].current_value = val
-
-        local_result = self.optimize_simplex(max_iterations=50)
+        # Final refinement. As in the simulated-annealing path: the start is
+        # passed explicitly rather than written into the caller's variable
+        # objects, and the _apply_variables call was dead code.
+        local_result = self.optimize_simplex(max_iterations=50, start=best_overall_design)
 
         # starting_merit is the merit of the design the search began from.
         # history_merit[0] would be the best of generation 0 - after up to 50
