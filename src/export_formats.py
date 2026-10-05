@@ -14,6 +14,16 @@ from typing import Any, Dict, List, Optional
 from .lens import Lens
 from .optical_system import OpticalSystem
 from .atomic import atomic_write_text
+from .constants import (
+    DEFAULT_MATERIAL_INDICES,
+    MAX_RADIUS_OF_CURVATURE,
+    REFRACTIVE_INDEX_BK7,
+)
+from .validation import (
+    ValidationError,
+    validate_clear_aperture,
+    validate_lens_parameters,
+)
 
 
 class ZemaxExporter:
@@ -748,6 +758,86 @@ class ZemaxSystemImporter:
         return surfaces
 
     @staticmethod
+    def _build_validated_lens(
+        index: int,
+        r1: float,
+        r2: float,
+        thickness: float,
+        diameter: float,
+        material: str,
+        ca1: Optional[float],
+        ca2: Optional[float],
+    ) -> Optional[Lens]:
+        """Validate one imported element and build a Lens, or return None.
+
+        A .zmx file is untrusted input: DISZ can be negative and DIAM/CA1 can
+        exceed any sane value. Rather than inject a physically impossible
+        element into the system, reject it with a warning and let the import
+        continue with the remaining surfaces.
+
+        Args:
+            index: 1-based element number, used for the element name.
+            r1: Front radius of curvature (mm); ``inf`` for a plano surface.
+            r2: Back radius of curvature (mm); ``inf`` for a plano surface.
+            thickness: Center thickness (mm).
+            diameter: Mechanical diameter (mm).
+            material: Glass name from the GLAS keyword.
+            ca1: Front clear aperture (mm), or None for full diameter.
+            ca2: Back clear aperture (mm), or None for full diameter.
+
+        Returns:
+            The validated Lens, or None if validation failed.
+        """
+        if ca1 is not None and ca1 > diameter:
+            logger.warning(
+                "Zemax import: element %d dropped, front clear aperture "
+                "(%.3f mm) exceeds diameter (%.3f mm)",
+                index,
+                ca1,
+                diameter,
+            )
+            return None
+
+        # validate_lens_parameters rejects inf radii because a literal 0 is an
+        # upstream mistake. A .zmx CURV of 0.0 legitimately means a plano
+        # surface, so probe with the largest allowed finite radius.
+        probe = min(
+            abs(r) if math.isfinite(r) and r != 0.0 else MAX_RADIUS_OF_CURVATURE for r in (r1, r2)
+        )
+        if probe == 0.0:
+            logger.warning("Zemax import: element %d dropped, zero radius", index)
+            return None
+
+        material_name = (material or "BK7").upper()
+        n = DEFAULT_MATERIAL_INDICES.get(material_name, REFRACTIVE_INDEX_BK7)
+        try:
+            validate_lens_parameters(
+                radius1=probe if not math.isfinite(r1) else r1,
+                radius2=probe if not math.isfinite(r2) else r2,
+                thickness=thickness,
+                diameter=diameter,
+                refractive_index=n,
+            )
+            # Clear apertures are relative to the diameter, so they can only be
+            # checked once the diameter itself has been accepted.
+            validate_clear_aperture(ca1, diameter, "clear aperture 1")
+            validate_clear_aperture(ca2, diameter, "clear aperture 2")
+        except ValidationError as exc:
+            logger.warning("Zemax import: element %d dropped: %s", index, exc)
+            return None
+
+        return Lens(
+            name=f"Element {index}",
+            radius_of_curvature_1=r1,
+            radius_of_curvature_2=r2,
+            thickness=thickness,
+            diameter=diameter,
+            material=material_name,
+            clear_aperture_1=ca1,
+            clear_aperture_2=ca2,
+        )
+
+    @staticmethod
     def import_system(filename: str, name: str = "Imported System") -> OpticalSystem:
         """Read a .zmx file into an OpticalSystem.
 
@@ -796,18 +886,20 @@ class ZemaxSystemImporter:
                 continue
             if pending_front is not None:
                 # Back surface closes the element.
-                lens = Lens(
-                    name=f"Element {len(system.elements) + 1}",
-                    radius_of_curvature_1=pending_front["r1"],
-                    radius_of_curvature_2=_curv_to_radius(surf.get("curv", 0.0)),
+                diameter = surf.get("diam") or pending_front.get("ca1") or 25.0
+                lens = ZemaxSystemImporter._build_validated_lens(
+                    index=len(system.elements) + 1,
+                    r1=pending_front["r1"],
+                    r2=_curv_to_radius(surf.get("curv", 0.0)),
                     thickness=pending_front["thickness"],
-                    diameter=surf.get("diam") or pending_front.get("ca1") or 25.0,
+                    diameter=diameter,
                     material=pending_front["material"],
-                    clear_aperture_1=pending_front.get("ca1"),
-                    clear_aperture_2=surf.get("diam"),
+                    ca1=pending_front.get("ca1"),
+                    ca2=surf.get("diam"),
                 )
-                system.add_lens(lens, air_gap_before=pending_front["gap_before"])
-                last_back_x = cursor_x
+                if lens is not None:
+                    system.add_lens(lens, air_gap_before=pending_front["gap_before"])
+                    last_back_x = cursor_x
                 pending_front = None
                 cursor_x += disz
                 continue
