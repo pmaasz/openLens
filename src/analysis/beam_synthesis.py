@@ -9,9 +9,46 @@ try:
 except ImportError:
     NUMPY_AVAILABLE = False
 
-    # Define minimal dummy for type hints if needed
-    class np:
+    # Minimal stand-in so the graceful-degradation returns below actually work.
+    # The old dummy declared only `ndarray`, so every "return an empty result"
+    # path raised AttributeError: type object 'np' has no attribute 'array' -
+    # the exact opposite of graceful degradation. These return plain Python
+    # lists, which is all an empty-result caller can use anyway.
+    class np:  # noqa: N801 - deliberately mirrors the numpy name
+        """Just enough numpy for the empty/degraded return paths."""
+
         ndarray = Any
+        float64 = float
+        inf = float("inf")
+
+        @staticmethod
+        def array(values, dtype=None):
+            return list(values)
+
+        @staticmethod
+        def zeros(shape, dtype=None):
+            if isinstance(shape, int):
+                return [0.0] * shape
+            rows, cols = shape
+            return [[0.0] * cols for _ in range(rows)]
+
+        @staticmethod
+        def ones(shape, dtype=None):
+            if isinstance(shape, int):
+                return [1.0] * shape
+            rows, cols = shape
+            return [[1.0] * cols for _ in range(rows)]
+
+        @staticmethod
+        def linspace(start, stop, num=50, dtype=None):
+            if num <= 1:
+                return [float(start)]
+            step = (stop - start) / (num - 1)
+            return [start + step * i for i in range(num)]
+
+        @staticmethod
+        def meshgrid(x, y):
+            return [[value for value in x] for _ in y], [[value for _ in x] for value in y]
 
 
 from ..vector3 import vec3
@@ -28,10 +65,11 @@ class GaussianBeam:
     1/q = 1/R - i * lambda / (pi * w^2)
     """
 
-    wavelength: float  # in mm
+    wavelength: float  # LOCAL wavelength in mm (vacuum / n)
     q_x: complex  # Complex beam parameter in X (meridional)
     q_y: complex  # Complex beam parameter in Y (sagittal)
     ray: Ray3D  # Central ray carrying the beam
+    n: float = 1.0  # LOCAL refractive index q is defined against
 
     @property
     def w_x(self) -> float:
@@ -63,12 +101,26 @@ class GaussianBeam:
             return float("inf")
         return 1.0 / inv_q.real
 
+    def advance_q(self, distance: float) -> None:
+        """Advance q by a physical distance d, without moving the ray.
+
+        q is defined against the *local* medium - ``refract`` uses the reduced
+        form ``1/q' = (n1/n2)(1/q) - Phi/n2`` - so the propagation step inside
+        glass is d/n, not d. Advancing by d made w_x jump across an n=1.0->1.5
+        surface (0.1323 -> 0.1621 mm for R=50).
+
+        Kept separate from :meth:`propagate` because the BSP ray tracer has
+        already moved the ray itself and must not move it twice.
+        """
+        step = distance / self.n if self.n else distance
+        self.q_x += step
+        self.q_y += step
+
     def propagate(self, distance: float) -> None:
         """Propagate beam by physical distance d."""
         # Assuming q is defined relative to the local medium (q = z + i*zR)
         # Propagation just adds distance to the real part (curvature radius changes, waist size grows)
-        self.q_x += distance
-        self.q_y += distance
+        self.advance_q(distance)
         self.ray.propagate(distance)
 
     def refract(self, n1: float, n2: float, radius_of_curvature: float) -> None:
@@ -105,6 +157,15 @@ class GaussianBeam:
                 self.q_y = complex(float("inf"), 0)
             else:
                 self.q_y = 1.0 / inv_q_y_new
+
+        # The reduced-q form above only works if the beam also carries the
+        # *local* wavelength and index: w = sqrt(-lambda_local / (pi*Im(1/q))),
+        # and lambda_local = lambda_vacuum / n. self.wavelength was left at its
+        # vacuum value, so every beam radius computed after entering glass was
+        # too large by n. self.wavelength is local to medium n1, so the vacuum
+        # wavelength is n1 * self.wavelength.
+        self.wavelength = (n1 * self.wavelength) / n2 if n2 else self.wavelength
+        self.n = n2
 
         # Ray refraction is handled separately by the tracer calling ray.refract_or_reflect()
         # This method only updates the q parameter.
@@ -344,8 +405,12 @@ class BeamSynthesisPropagator:
         ep_diam = self.system.elements[0].lens.diameter
         max_r = ep_diam / 2.0
 
-        # Beamlet spacing
-        delta = ep_diam / grid_size
+        # Beamlet spacing. The grid is np.linspace(-max_r, max_r, grid_size),
+        # which spans 2*max_r in grid_size-1 intervals, so the spacing is
+        # ep_diam/(grid_size-1). Dividing by grid_size overstated the spacing
+        # by grid_size/(grid_size-1) - 3% at grid_size=32 - and that error went
+        # straight into the beamlet waist below.
+        delta = (2.0 * max_r) / (grid_size - 1) if grid_size > 1 else 2.0 * max_r
         # Beamlet waist w0. Overlap factor ~1.5
         w0 = 1.5 * delta
 
@@ -449,14 +514,17 @@ class BeamSynthesisPropagator:
                 beam.ray.terminated = True
                 return
 
-            # Update q (distance from previous)
+            # Update q (distance from previous). advance_q divides by the local
+            # index; the inline `q_x += dist` this replaces did not, so a beam
+            # crossing a thick element propagated as if it were in air.
             if len(beam.ray.path) >= 2:
                 dist = (beam.ray.path[-1] - beam.ray.path[-2]).magnitude()
-                beam.q_x += dist
-                beam.q_y += dist
+                beam.advance_q(dist)
 
-            # Refract beam q
-            beam.refract(1.0, element.lens.refractive_index, element.lens.radius_of_curvature_1)
+            # Refract beam q. n1 is the medium the beam is actually in, which
+            # is air for the first element and the previous element's glass for
+            # every one after it - not a hardcoded 1.0.
+            beam.refract(beam.n, element.lens.refractive_index, element.lens.radius_of_curvature_1)
 
             # Back
             if tracer.trace_surface(beam.ray, "back", "refract") is not RefractionResult.REFRACTED:
@@ -465,8 +533,7 @@ class BeamSynthesisPropagator:
 
             if len(beam.ray.path) >= 2:
                 dist = (beam.ray.path[-1] - beam.ray.path[-2]).magnitude()
-                beam.q_x += dist
-                beam.q_y += dist
+                beam.advance_q(dist)
 
             # Refract beam q
             beam.refract(element.lens.refractive_index, 1.0, element.lens.radius_of_curvature_2)
