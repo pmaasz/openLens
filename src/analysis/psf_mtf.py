@@ -5,6 +5,9 @@ from ..constants import (
     WAVELENGTH_F_LINE,
 )
 from typing import List, Tuple, Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Optional dependencies
 try:
@@ -19,6 +22,29 @@ except ImportError:
 from ..optical_system import OpticalSystem
 from . import SpotDiagram
 from .diffraction_psf import DiffractionPSFCalculator, WavefrontSensor
+
+
+def _map_to_raw_indices(
+    target: np.ndarray, raw_extent: float, dx_psf: float, padded_N: int
+) -> np.ndarray:
+    """Map target coordinates to nearest-below raw-array indices.
+
+    The raw grid spans [-raw_extent/2, +raw_extent/2], so an index is
+    ``(coord + raw_extent/2) / dx_psf``.
+
+    floor, not truncation. ``astype(int)`` truncates toward zero, which
+    disagrees with floor only for negative values - and negative indices arise
+    whenever the requested sensor window is wider than the raw grid. That is
+    harmless today only because the result is clipped to [0, padded_N - 1]
+    immediately afterwards, which maps every negative index to 0 either way;
+    the tests document that. floor is correct on its own, so the clip is free
+    to change.
+
+    Returns:
+        Clipped int64 indices, same shape as ``target``.
+    """
+    scaled = (target + raw_extent / 2) / dx_psf
+    return np.clip(np.floor(scaled).astype(np.int64), 0, padded_N - 1)
 
 
 class ImageQualityAnalyzer:
@@ -419,6 +445,27 @@ class ImageQualityAnalyzer:
         padded_N = psf_raw.shape[0]
 
         dx_psf = (wavelength_nm * 1e-6 * efl) / (padded_N * dx_pupil)
+        if dx_psf <= 0.0 or not np.isfinite(dx_psf):
+            # An empty system (or a degenerate pupil) leaves no spacing to
+            # divide by. The index arithmetic below would divide by zero,
+            # producing inf and then INT_MIN on the cast to int.
+            logger.warning(
+                "Degenerate PSF spacing (dx_psf=%r) for %s; returning an empty "
+                "PSF rather than resampling garbage",
+                dx_psf,
+                self.system.name,
+            )
+            # Spelled out rather than reusing a helper so this stays
+            # independently mergeable.
+            axis = np.linspace(-sensor_size_mm / 2, sensor_size_mm / 2, pixels)
+            return {
+                "image": np.zeros((pixels, pixels)),
+                "y_axis": axis,
+                "z_axis": axis.copy(),
+                "centroid": (0.0, 0.0),
+                "step_size": sensor_size_mm / pixels,
+                "raw_count": 0,
+            }
 
         raw_extent = padded_N * dx_psf
 
@@ -436,12 +483,8 @@ class ImageQualityAnalyzer:
         # raw_y starts at -raw_extent/2 centered at 0
         # index = (coord - (-raw_extent/2)) / dx_psf
 
-        idx_y = ((Y_target + raw_extent / 2) / dx_psf).astype(int)
-        idx_z = ((Z_target + raw_extent / 2) / dx_psf).astype(int)
-
-        # Clip indices
-        idx_y = np.clip(idx_y, 0, padded_N - 1)
-        idx_z = np.clip(idx_z, 0, padded_N - 1)
+        idx_y = _map_to_raw_indices(Y_target, raw_extent, dx_psf, padded_N)
+        idx_z = _map_to_raw_indices(Z_target, raw_extent, dx_psf, padded_N)
 
         psf_resampled = psf_raw[idx_y, idx_z]
 
