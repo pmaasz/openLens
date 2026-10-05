@@ -17,22 +17,15 @@ class TestMaterialCache(unittest.TestCase):
         self.db.add_material(self.test_mat)
 
     def test_cache_hits(self):
-        """Test that repeated calls hit the cache"""
-
-        # First call - should calculate
+        """Repeated calls are served from the per-instance cache"""
         n1 = self.db.get_refractive_index("TEST_GLASS", 550.0)
+        self.assertEqual(len(self.db._index_cache), 1)
 
-        # Check cache info
-        info1 = self.db.get_refractive_index.cache_info()
-        # hits might be > 0 if used elsewhere, but hits should increase
-
-        # Second call - should be cached
         n2 = self.db.get_refractive_index("TEST_GLASS", 550.0)
 
-        info2 = self.db.get_refractive_index.cache_info()
-
         self.assertEqual(n1, n2)
-        self.assertGreater(info2.hits, info1.hits, "Cache hits should increase on second call")
+        # Still one entry: the second call added nothing.
+        self.assertEqual(len(self.db._index_cache), 1)
 
     def test_cache_invalidation_on_update(self):
         """Test that updating a material clears the cache"""
@@ -62,12 +55,11 @@ class TestMaterialCache(unittest.TestCase):
     def test_cache_clear_method(self):
         """Test explicit cache clearing"""
         self.db.get_refractive_index("TEST_GLASS", 550.0)
-        info1 = self.db.get_refractive_index.cache_info()
+        self.assertGreater(len(self.db._index_cache), 0)
 
         self.db.clear_cache()
-        info2 = self.db.get_refractive_index.cache_info()
 
-        self.assertEqual(info2.currsize, 0, "Cache size should be 0 after clear")
+        self.assertEqual(len(self.db._index_cache), 0, "Cache size should be 0 after clear")
 
 
 if __name__ == "__main__":
