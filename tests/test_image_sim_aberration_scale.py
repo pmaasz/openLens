@@ -31,7 +31,7 @@ import unittest
 
 import numpy as np
 
-from src.image_simulator import ImageSimulator
+from src.image_simulator import ImageSimulator, SCIPY_AVAILABLE
 from src.lens import Lens
 from src.optical_system import OpticalSystem
 
@@ -57,6 +57,7 @@ def _delta(n=64):
     return image
 
 
+@unittest.skipUnless(SCIPY_AVAILABLE, "requires scipy")
 class TestSigmaScalesWithPixelPitch(unittest.TestCase):
     """Regression: sigma ignored pixel_pitch_mm entirely."""
 
@@ -113,6 +114,7 @@ class TestSigmaScalesWithPixelPitch(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(SCIPY_AVAILABLE, "requires scipy")
 class TestKeyNames(unittest.TestCase):
     def setUp(self):
         self.sim = _simulator()
@@ -154,6 +156,7 @@ class TestKeyNames(unittest.TestCase):
         np.testing.assert_array_equal(out, self.image)
 
 
+@unittest.skipUnless(SCIPY_AVAILABLE, "requires scipy")
 class TestAstigmatismIsTwoMeridians(unittest.TestCase):
     """Regression: only axis 0 was blurred, leaving the other sharp."""
 
@@ -179,6 +182,7 @@ class TestAstigmatismIsTwoMeridians(unittest.TestCase):
         self.assertEqual(self.out.shape, self.image.shape)
 
 
+@unittest.skipUnless(SCIPY_AVAILABLE, "requires scipy")
 class TestDiffractionPathUnchanged(unittest.TestCase):
     """_apply_diffraction already scaled by pitch; it must stay that way."""
 
