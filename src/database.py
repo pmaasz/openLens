@@ -29,6 +29,34 @@ def _coating_parse(raw) -> Optional[list]:
     return parsed
 
 
+def _metadata_merge(target: Dict[str, Any], raw: Any, what: str) -> None:
+    """Merge a metadata JSON blob into ``target``, tolerating a bad blob.
+
+    Mirrors :func:`_coating_parse`. A truncated or hand-edited blob used to
+    raise JSONDecodeError straight out of load_all, and LensStorage.load_lenses
+    catches broad Exception and returns [] - so one corrupt row left the user
+    looking at an entirely empty library with only a log line to explain it.
+    A blob that is valid JSON but not an object raises TypeError/ValueError
+    from dict.update, so that is caught too.
+    """
+    if not raw:
+        return
+    if isinstance(raw, (dict, list)):
+        meta = raw
+    else:
+        try:
+            meta = json.loads(raw)
+        except (ValueError, TypeError) as e:
+            logger.warning("Ignoring unparseable %s metadata: %s", what, e)
+            return
+    if not isinstance(meta, dict):
+        logger.warning(
+            "Ignoring %s metadata: expected an object, got %s", what, type(meta).__name__
+        )
+        return
+    target.update(meta)
+
+
 class LensInUseError(RuntimeError):
     """Raised when deleting a lens that is still used by assemblies.
 
@@ -517,9 +545,7 @@ class DatabaseManager:
                 lens["radius_of_curvature_2"] = lens["radius2"]
                 del lens["radius1"]
                 del lens["radius2"]
-                if lens["metadata"]:
-                    meta = json.loads(lens["metadata"])
-                    lens.update(meta)
+                _metadata_merge(lens, lens["metadata"], f"lens {lens['id']}")
                 del lens["metadata"]
                 # Coating TEXT columns decode to layer lists; an explicit
                 # blob key (hand-written rows) wins, matching the
@@ -538,9 +564,7 @@ class DatabaseManager:
                 assembly["type"] = "OpticalSystem"
 
                 # Load metadata
-                if assembly["metadata"]:
-                    meta = json.loads(assembly["metadata"])
-                    assembly.update(meta)
+                _metadata_merge(assembly, assembly["metadata"], f"assembly {assembly_id}")
                 del assembly["metadata"]
 
                 # Load elements. Named columns only: both tables define an
@@ -615,8 +639,7 @@ class DatabaseManager:
                             "coating_1": _coating_parse(e_dict["lens_coating_1"]),
                             "coating_2": _coating_parse(e_dict["lens_coating_2"]),
                         }
-                        if e_dict["lens_metadata"]:
-                            lens_data.update(json.loads(e_dict["lens_metadata"]))
+                        _metadata_merge(lens_data, e_dict["lens_metadata"], f"lens {lens_id}")
 
                     elements.append(
                         {
