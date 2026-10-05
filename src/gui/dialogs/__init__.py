@@ -36,8 +36,7 @@ def require_analysis_plot_dialog():
     if AnalysisPlotDialog is not None:
         return AnalysisPlotDialog
     raise ImportError(
-        "The analysis plots require 'matplotlib'. Install it with "
-        "'pip install matplotlib'."
+        "The analysis plots require 'matplotlib'. Install it with 'pip install matplotlib'."
     ) from _ANALYSIS_PLOTS_IMPORT_ERROR
 
 
