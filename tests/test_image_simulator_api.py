@@ -19,7 +19,7 @@ import numpy as np
 
 from src.lens import Lens
 from src.optical_system import OpticalSystem
-from src.image_simulator import ImageSimulator
+from src.image_simulator import ImageSimulator, SCIPY_AVAILABLE
 
 
 def _system(r1=50.0, r2=-50.0, diameter=20.0, thickness=5.0, n=1.5):
@@ -84,6 +84,7 @@ class TestImageSimulatorRealAPI(unittest.TestCase):
             places=3,
         )
 
+    @unittest.skipUnless(SCIPY_AVAILABLE, "requires scipy")
     def test_magnification_is_not_always_minus_one(self):
         result = self.sim.simulate_image(np.random.rand(32, 32, 3), 1000.0)
         self.assertNotAlmostEqual(result["magnification"], -1.0, places=3)
@@ -101,6 +102,7 @@ class TestImageSimulatorRealAPI(unittest.TestCase):
         self.assertIn("coma", aberrations)
         self.assertIn("astigmatism", aberrations)
 
+    @unittest.skipUnless(SCIPY_AVAILABLE, "requires scipy")
     def test_aberration_blur_is_applied(self):
         img = _point()
         self.assertFalse(
@@ -108,6 +110,7 @@ class TestImageSimulatorRealAPI(unittest.TestCase):
             "aberration blur was silently skipped",
         )
 
+    @unittest.skipUnless(SCIPY_AVAILABLE, "requires scipy")
     def test_diffraction_spot_scales_with_f_number(self):
         """A high f-number system must produce a wider spot than a fast one."""
         fast = ImageSimulator(_system(r1=50.0, r2=-50.0, diameter=20.0))
