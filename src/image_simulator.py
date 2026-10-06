@@ -10,6 +10,8 @@ Requires:
 """
 
 import logging
+import math
+
 import numpy as np
 from typing import Tuple, Optional, Dict, Any
 
@@ -83,7 +85,11 @@ class ImageSimulator:
 
         # Apply aberrations
         aberrated_image = self._apply_aberrations(
-            input_image, object_distance, image_distance, wavelength
+            input_image,
+            object_distance,
+            image_distance,
+            wavelength,
+            pixel_pitch_mm=pixel_pitch_mm,
         )
 
         # Apply diffraction
@@ -226,39 +232,78 @@ class ImageSimulator:
         object_distance: float,
         image_distance: float,
         wavelength: float,
+        pixel_pitch_mm: float = 0.01,
     ) -> np.ndarray:
-        """Apply optical aberrations to image."""
+        """Apply optical aberrations to the image.
+
+        The Seidel values from calculate_all_aberrations are geometric
+        quantities - millimetres (or, for a wavefront coefficient, waves of
+        aberration at the pupil) - while ``gaussian_filter``'s ``sigma`` is in
+        **pixels**. The old code fed ``coeff * 2.0`` straight in, so the blur was
+        completely independent of ``pixel_pitch_mm`` and the ``* 2.0`` was an
+        unexplained magic scale.
+
+        Each term is now converted to millimetres at the image plane and then
+        to pixels with the real pitch, the same conversion
+        :meth:`_apply_diffraction` already uses for the Airy disk. Sigma is
+        floored at 0 rather than guarded by ``if coeff > 0``, so a zero
+        aberration is a no-op and a missing one is skipped instead of raising.
+
+        Astigmatism blurs *both* meridians, by different amounts: the tangential
+        and sagittal foci are separated, which is the whole signature of the
+        aberration. The old single ``gaussian_filter1d(..., axis=0)`` left the
+        orthogonal axis untouched, which is rank-deficient - a line blur in one
+        direction only.
+        """
         if not SCIPY_AVAILABLE:
             # Fallback: return image without aberration simulation
             return image
 
         from scipy.ndimage import gaussian_filter, gaussian_filter1d
 
-        # Get aberration coefficients
         aberrations = self._aberrations_for(wavelength)
-
         result = image.copy()
+        pitch = pixel_pitch_mm if pixel_pitch_mm > 0 else 0.0
 
-        # Spherical aberration (blur increasing with radius)
-        if "spherical" in aberrations:
-            coeff = abs(aberrations["spherical"])
-            if coeff > 0:
-                # Simple uniform blur (simplified)
-                sigma = coeff * 2.0
-                result = gaussian_filter(result, sigma=sigma)
+        def sigma_pixels(value_mm):
+            """Millimetres at the image plane -> gaussian sigma in pixels."""
+            if value_mm is None or pitch <= 0:
+                return 0.0
+            try:
+                magnitude = abs(float(value_mm))
+            except (TypeError, ValueError):
+                return 0.0
+            return max(0.0, magnitude / pitch)
 
-        # Coma (asymmetric blur)
-        if "coma" in aberrations:
-            coeff = abs(aberrations["coma"])
-            if coeff > 0:
-                result = gaussian_filter(result, sigma=coeff * 2)
+        # calculate_all_aberrations exposes two documented alias keys per value
+        # ('spherical'/'spherical_aberration'); read either, and skip a term
+        # whose value is None (an unmeasurable aberration) rather than raising.
+        def pick(*names):
+            for name in names:
+                if name in aberrations:
+                    return aberrations[name]
+            return None
 
-        # Astigmatism
-        if "astigmatism" in aberrations:
-            coeff = abs(aberrations["astigmatism"])
-            if coeff > 0:
-                # Blur more in one direction
-                result = gaussian_filter1d(result, sigma=coeff * 2, axis=0)
+        # Spherical: symmetric defocus, equal in both meridians.
+        sigma = sigma_pixels(pick("spherical_aberration", "spherical"))
+        if sigma > 0.0:
+            result = gaussian_filter(result, sigma=sigma)
+
+        # Coma: also symmetric in this simplified model, but a separate term.
+        sigma = sigma_pixels(pick("coma"))
+        if sigma > 0.0:
+            result = gaussian_filter(result, sigma=sigma)
+
+        # Astigmatism: tangential and sagittal foci differ, so blur each
+        # meridian by its own amount. Half the astigmatic interval each side
+        # keeps the combined blur centred on the mean.
+        astig_mm = pick("astigmatism")
+        half = sigma_pixels(astig_mm)
+        if half > 0.0:
+            tangential = half * math.sqrt(2.0)
+            sagittal = half / math.sqrt(2.0)
+            result = gaussian_filter1d(result, sigma=tangential, axis=0)
+            result = gaussian_filter1d(result, sigma=sagittal, axis=1)
 
         return result
 
