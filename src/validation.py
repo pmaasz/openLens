@@ -12,7 +12,7 @@ semantics on top of it.
 import math
 import os
 from pathlib import Path
-from typing import Union, Tuple, Optional
+from typing import Any, Union, Tuple, Optional
 
 from .constants import (
     MIN_RADIUS_OF_CURVATURE,
@@ -868,6 +868,46 @@ def validate_json_file_path(
     return path
 
 
+def reject_non_finite_numbers(data: Any, param_name: str = "data") -> Any:
+    """Reject NaN and Infinity anywhere in a parsed JSON payload.
+
+    Python's ``json.load`` accepts the bare ``NaN``, ``Infinity`` and
+    ``-Infinity`` literals, which are not valid JSON but parse happily. They
+    then propagate into focal length, ray tracing and the database, and a NaN
+    compares false against every threshold, so it slips past every downstream
+    sanity check.
+
+    The per-field schema check in :func:`validate_lens_data_schema` covers a
+    lens dict's declared fields; this walks nested structures too, which is
+    what an assembly payload needs and what no schema validator here covers.
+
+    Args:
+        data: Any value decoded from JSON.
+        param_name: Base name for error messages.
+
+    Returns:
+        ``data``, unchanged, so the call can wrap a decode.
+
+    Raises:
+        ValidationError: If any float in the structure is NaN or infinite.
+    """
+    if isinstance(data, bool):
+        return data
+    if isinstance(data, float):
+        if not math.isfinite(data):
+            raise ValidationError(f"{param_name} contains a non-finite number: {data}")
+        return data
+    if isinstance(data, dict):
+        for key, value in data.items():
+            reject_non_finite_numbers(value, f"{param_name}[{key!r}]")
+        return data
+    if isinstance(data, (list, tuple)):
+        for index, value in enumerate(data):
+            reject_non_finite_numbers(value, f"{param_name}[{index}]")
+        return data
+    return data
+
+
 def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> dict:
     """
     Validate that a lens data dictionary has the expected schema.
@@ -919,13 +959,33 @@ def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> d
                 f"Field '{field}'{idx_str} must be {type_name}, got {type(data[field]).__name__}"
             )
 
+        # A float field that merely passes isinstance can still be NaN or
+        # infinite: Python's json.load accepts the bare NaN and Infinity
+        # literals, so a hand-edited or generated file can carry them. Those
+        # propagated into focal length, ray tracing and the database - a NaN
+        # radius yields a NaN focal length, which compares false against every
+        # threshold and so passes every downstream check. _validate_number
+        # already does this finiteness test; route numeric fields through it.
+        if expected_type is not int and isinstance(data[field], float):
+            if not math.isfinite(data[field]):
+                raise ValidationError(
+                    f"Field '{field}'{idx_str} must be a finite number, " f"got {data[field]}"
+                )
+
     # Check optional fields have correct type if present
     for field, expected_type in optional_fields.items():
-        if field in data and not isinstance(data[field], expected_type):
+        if field not in data:
+            continue
+        if not isinstance(data[field], expected_type):
             type_name = expected_type.__name__ if isinstance(expected_type, type) else "number"
             raise ValidationError(
                 f"Field '{field}'{idx_str} must be {type_name}, got {type(data[field]).__name__}"
             )
+        if expected_type is not int and isinstance(data[field], float):
+            if not math.isfinite(data[field]):
+                raise ValidationError(
+                    f"Field '{field}'{idx_str} must be a finite number, " f"got {data[field]}"
+                )
 
     return data
 

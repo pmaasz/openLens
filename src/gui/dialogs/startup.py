@@ -356,14 +356,27 @@ class StartupDialog(QDialog):
             try:
                 import json
 
-                with open(filename, "r") as f:
+                from ...validation import (
+                    reject_non_finite_numbers,
+                    validate_json_file_path,
+                    validate_lens_data_schema,
+                )
+
+                with open(validate_json_file_path(filename, must_exist=True), "r") as f:
                     data = json.load(f)
+
+                # json.load accepts the bare NaN and Infinity literals, which
+                # are not valid JSON. Without this a hand-edited file installs a
+                # lens with a NaN radius, whose focal length is NaN - and NaN
+                # compares false against every threshold, so it passes every
+                # downstream check silently.
+                reject_non_finite_numbers(data, "imported file")
 
                 from ...lens import Lens
                 from ...optical_system import OpticalSystem
 
                 if list_type == "lens":
-                    imported = Lens.from_dict(data)
+                    imported = Lens.from_dict(validate_lens_data_schema(data))
                 else:
                     imported = OpticalSystem.from_dict(data)
 
