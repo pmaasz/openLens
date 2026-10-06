@@ -211,11 +211,29 @@ class LensRayTracer:
         sag: float,
         semi_aperture: Optional[float] = None,
     ) -> Optional[Tuple[float, float]]:
-        """Intersect ray with a parabolic surface x = vertex + a*y^2, a=sag/r_max^2."""
-        r_max = self.D / 2 if semi_aperture is None else semi_aperture
-        if abs(r_max) < EPSILON or abs(sag) < EPSILON:
+        """Intersect ray with a parabolic surface x = vertex + a*y^2.
+
+        ``a`` is fixed by ``parabolic_sag_N``, which is documented as the sag
+        at the *mechanical* radius D/2 - so the conic is ``a = sag / (D/2)^2``,
+        which is what :meth:`_surface_normal_angle` and
+        ``Lens.get_effective_radius_N`` both use.
+
+        ``semi_aperture`` is the clear-aperture *bound* and must not redefine
+        the parabola. It used to: the hit point was computed on a conic built
+        from CA/2 while the normal came from one built from D/2, so any lens
+        with ``is_parabolic_N`` and ``clear_aperture_N != diameter`` was
+        refracted with a normal from a different conic than the one it hit.
+        (The issue suggests using ``get_effective_radius_N() / 2`` instead;
+        that does not reconcile them either - for D=25, CA=10, sag=2 it gives
+        a = 0.005243 against the normal's 0.012800.) This matches how
+        :meth:`_intersect_sphere_surface` treats its own semi_aperture: a
+        vignetting limit, not a curvature reference.
+        """
+        r_def = self.D / 2
+        limit = r_def if semi_aperture is None else semi_aperture
+        if abs(r_def) < EPSILON or abs(sag) < EPSILON:
             return self._intersect_flat_surface(ray, vertex_x)
-        a = sag / (r_max * r_max)
+        a = sag / (r_def * r_def)
         # Ray: x = ray.x + t*cos, y = ray.y + t*sin
         cos_a = math.cos(ray.angle)
         sin_a = math.sin(ray.angle)
@@ -232,7 +250,7 @@ class LensRayTracer:
             if t < EPSILON:
                 return None
             y = ray.y + t * sin_a
-            if abs(y) > r_max + 1e-6:
+            if abs(y) > limit + 1e-6:
                 return None
             return (vertex_x + a * y * y, y)
         disc = B * B - 4 * A * C
@@ -248,12 +266,12 @@ class LensRayTracer:
         # Choose smallest positive t (first intersection)
         t = min(valid)
         y = ray.y + t * sin_a
-        if abs(y) > r_max + 1e-6:
-            # Try other if first is outside aperture but second inside
+        if abs(y) > limit + 1e-6:
+            # Try other if first is outside the aperture but second inside
             if len(valid) > 1:
                 t_other = max(valid)
                 y_other = ray.y + t_other * sin_a
-                if abs(y_other) <= r_max:
+                if abs(y_other) <= limit:
                     return (vertex_x + a * y_other * y_other, y_other)
             return None
         return (vertex_x + a * y * y, y)
