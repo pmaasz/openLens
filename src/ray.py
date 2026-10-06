@@ -288,7 +288,15 @@ class Ray3D:
                 self.polarization_vector = np.array(self.polarization_vector, dtype=complex)
 
     def propagate(self, distance: float) -> None:
-        """Propagate ray in current direction"""
+        """Propagate ray in current direction.
+
+        A zero (or negligible) distance is a no-op rather than a recorded
+        step: appending would leave consecutive identical path points, which
+        breaks any consumer that derives a direction or a segment length from
+        consecutive path points.
+        """
+        if abs(distance) <= EPSILON:
+            return
         self.origin = self.origin + self.direction * distance
         self.path.append(self.origin)
         self.optical_path_length += distance * self.n
