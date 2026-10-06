@@ -375,13 +375,42 @@ class MaterialDatabase:
         lambda_sq = wavelength_um**2
 
         # Sellmeier equation
+        #
+        # Coefficients arrive from materials.json, import_csv_catalog or
+        # import_agf_catalog with no validation, and two things can go wrong:
+        #   * lambda_sq == C  -> ZeroDivisionError
+        #   * n_sq < 0        -> math domain error in sqrt
+        # Neither was caught, so a bad catalog entry raised straight through
+        # lens.py into ray tracing and the GUI. A term that cannot contribute
+        # is skipped instead, degrading to a less accurate index rather than
+        # taking down the caller.
+        #
+        # Terms are summed as-is, signs included: the third term is
+        # legitimately negative for real glasses (its UV resonance sits far
+        # above the visible, so C3 >> lambda_sq), and dropping it would put
+        # BK7 at n = 1.5223 instead of 1.5168 on the d-line.
         n_sq = 1.0
-        if mat.C1 > 0:
-            n_sq += mat.B1 * lambda_sq / (lambda_sq - mat.C1)
-        if mat.C2 > 0:
-            n_sq += mat.B2 * lambda_sq / (lambda_sq - mat.C2)
-        if mat.C3 > 0:
-            n_sq += mat.B3 * lambda_sq / (lambda_sq - mat.C3)
+        for B, C in ((mat.B1, mat.C1), (mat.B2, mat.C2), (mat.B3, mat.C3)):
+            if B == 0.0 or C <= 0.0:
+                continue
+            denom = lambda_sq - C
+            if abs(denom) < 1e-12:
+                logger.warning(
+                    "Sellmeier resonance for %s at %.1f nm: lambda^2 == C, " "term omitted",
+                    material_name,
+                    wavelength_nm,
+                )
+                continue
+            n_sq += B * lambda_sq / denom
+
+        if n_sq <= 0.0:
+            logger.warning(
+                "Sellmeier gave n^2 = %.4g for %s at %.1f nm; using n = 1.0",
+                n_sq,
+                material_name,
+                wavelength_nm,
+            )
+            return 1.0
 
         n_base = math.sqrt(n_sq)
 
