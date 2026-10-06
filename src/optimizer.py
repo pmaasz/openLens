@@ -366,6 +366,9 @@ class LensOptimizer:
     MAX_BACKTRACKING_STEPS = 12
     #: Below this the step is too small to be worth evaluating.
     MIN_LEARNING_RATE = 1e-12
+    #: Absolute floor on the convergence threshold, so a merit near zero (where
+    #: tolerance * scale underflows to nothing) still has a usable test.
+    MIN_MERIT_RANGE = 1e-12
 
     def __init__(
         self,
@@ -462,6 +465,15 @@ class LensOptimizer:
         """
         n_vars = len(self.variables)
 
+        if n_vars == 0:
+            # With no variables the simplex has a single vertex, merit_range is
+            # identically 0, and the loop "converges" on iteration 1 having
+            # evaluated nothing and changed nothing - reported as success.
+            raise ValueError(
+                "optimize_simplex needs at least one variable; a design with "
+                "nothing to optimise is not an optimisation problem"
+            )
+
         # Initialize simplex (n+1 vertices in n-dimensional space)
         simplex = []
         current_values = [var.current_value for var in self.variables]
@@ -541,8 +553,15 @@ class LensOptimizer:
                     ),
                 )
 
-            # Check convergence
-            if merit_range < tolerance:
+            # Check convergence, relative to the merit's own magnitude.
+            #
+            # An absolute 1e-6 spread is meaningless on a merit carrying a
+            # geometry penalty: at 1e8 the spacing between adjacent floats is
+            # already ~1.5e-8, so merit_range can never fall below 1e-6 and the
+            # run always burns the full iteration budget while the code is
+            # written as though it had converged. Comparing against the merit
+            # itself makes the test scale-blind.
+            if self._merit_range_converged(merit_values, merit_range, tolerance):
                 break
 
             # Calculate centroid of best n points (excluding worst)
@@ -718,6 +737,37 @@ class LensOptimizer:
                 else f"Finished {last_iteration + 1} iterations outside variable bounds"
             ),
         )
+
+    @staticmethod
+    def _merit_range_converged(
+        merit_values: List[float], merit_range: float, tolerance: float
+    ) -> bool:
+        """True when the simplex spread counts as converged.
+
+        ``tolerance`` is a *relative* bound on the spread, measured against the
+        magnitude of the merit itself.
+
+        An absolute 1e-6 test is meaningless once the merit carries a geometry
+        penalty: at 1e8 the spacing between adjacent floats is already ~4e-8, so
+        ``merit_range`` can never fall below 1e-6 and the run burns its whole
+        iteration budget while the code reads as though it had converged.
+        Scaling by the merit restores the test's meaning - at merit 1e8 a spread
+        of 100 *is* convergence - while leaving ordinary merits (order 1)
+        behaving exactly as before.
+
+        Args:
+            merit_values: Merit of every simplex vertex, for the scale.
+            merit_range: Spread between the worst and best vertices.
+            tolerance: Requested relative tolerance.
+
+        Returns:
+            Whether the simplex has collapsed far enough.
+        """
+        if merit_range <= 0.0:
+            return True
+        scale = max(abs(value) for value in merit_values)
+        threshold = max(tolerance * scale, LensOptimizer.MIN_MERIT_RANGE)
+        return merit_range <= threshold
 
     def _calculate_gradient(self, values: List[float]) -> List[float]:
         """Calculate the numerical gradient by forward finite differences.
