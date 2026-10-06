@@ -10,6 +10,28 @@ from typing import Optional, Dict, Any, List, Tuple
 
 logger = logging.getLogger(__name__)
 
+
+def _all_valid(*values) -> bool:
+    """True when no supplied metric is missing.
+
+    Aberration helpers return None when they could not be measured - a failed
+    ray trace, a vignetted design. None used to be published as 0.0, which is
+    indistinguishable from a perfect design and better than diffraction
+    limited. ``calculate_all_aberrations`` now reports ``valid: False`` so a
+    caller can grey the value out instead of showing a fictional zero.
+
+    Mappings are flattened, so a whole field-metrics block can be passed in
+    one call - its individual metrics are what matter.
+    """
+    flat = []
+    for value in values:
+        if isinstance(value, dict):
+            flat.extend(value.values())
+        else:
+            flat.append(value)
+    return all(v is not None for v in flat)
+
+
 # Import ray tracer for exact calculations
 from .ray_tracer import LensRayTracer, Ray
 
@@ -136,6 +158,8 @@ class AberrationsCalculator:
                 "strehl": 0.0,
                 "wfe_rms_waves": 0.0,
                 "mtf_cutoff": 0.0,
+                # Every value above is a placeholder, not a measurement.
+                "valid": False,
                 "error": "Cannot calculate focal length (zero optical power)",
             }
 
@@ -159,11 +183,14 @@ class AberrationsCalculator:
                 field_angle_deg, wavelength_nm=wavelength_nm
             )
             if field_data is None:
+                # Leave the values None rather than substituting zeros: the
+                # caller needs to be able to tell "no coma" from "the trace
+                # failed", and "valid" below is derived from exactly that.
                 field_data = {
-                    "coma": 0.0,
-                    "astigmatism": 0.0,
-                    "field_curvature": 0.0,
-                    "distortion": 0.0,
+                    "coma": None,
+                    "astigmatism": None,
+                    "field_curvature": None,
+                    "distortion": None,
                 }
             return {
                 "focal_length": focal_length,
@@ -182,11 +209,16 @@ class AberrationsCalculator:
                 "strehl": strehl,
                 "wfe_rms_waves": wfe_rms_waves,
                 "mtf_cutoff": mtf_cutoff,
+                "valid": _all_valid(field_data, spherical, chromatic, airy, strehl),
             }
 
-        coma_val, astig_val = self._calculate_singlet_field_estimators(
-            field_angle_deg, wavelength_nm
-        )
+        field_curvature = self._calculate_field_curvature(focal_length)
+        distortion = self._calculate_distortion(focal_length, field_angle_deg)
+        singlet_field = self._calculate_singlet_field_estimators(field_angle_deg, wavelength_nm)
+        if singlet_field is None:
+            coma_val, astig_val = None, None
+        else:
+            coma_val, astig_val = singlet_field
 
         return {
             "focal_length": focal_length,
@@ -196,20 +228,35 @@ class AberrationsCalculator:
             "spherical_aberration": spherical,
             "coma": coma_val,
             "astigmatism": astig_val,
-            "field_curvature": self._calculate_field_curvature(focal_length),
-            "distortion": self._calculate_distortion(focal_length, field_angle_deg),
+            "field_curvature": field_curvature,
+            "distortion": distortion,
             "chromatic": chromatic,
             "chromatic_aberration": chromatic,
             "airy_disk_diameter": airy,
             "strehl": strehl,
             "wfe_rms_waves": wfe_rms_waves,
             "mtf_cutoff": mtf_cutoff,
+            "valid": _all_valid(
+                coma_val,
+                astig_val,
+                field_curvature,
+                distortion,
+                spherical,
+                chromatic,
+                airy,
+                strehl,
+            ),
         }
 
     def _calculate_singlet_field_estimators(
         self, field_angle_deg: float, wavelength_nm: float
-    ) -> Tuple[float, float]:
-        """Single off-axis evaluation feeding both coma and astigmatism."""
+    ) -> Optional[Tuple[float, float]]:
+        """Single off-axis evaluation feeding both coma and astigmatism.
+
+        On-axis is a genuine (0.0, 0.0) - there is no coma or astigmatism at
+        zero field - so that case is distinct from a failed trace, which
+        returns None.
+        """
         if abs(field_angle_deg) < EPSILON:
             return 0.0, 0.0
         return self._calculate_field_estimators(field_angle_deg, wavelength_nm)
@@ -286,7 +333,7 @@ class AberrationsCalculator:
 
     def _calculate_field_estimators(
         self, field_angle_deg: float, wavelength_nm: float = WAVELENGTH_GREEN
-    ) -> Tuple[float, float]:
+    ) -> Optional[Tuple[float, float]]:
         """Ray-traced off-axis estimators: (coma, astigmatism).
 
         Coma is the even part of the tangential ray fan,
@@ -302,7 +349,11 @@ class AberrationsCalculator:
             wavelength_nm: Traced wavelength in nm.
 
         Returns:
-            (coma_mm, astigmatism_mm); (0.0, 0.0) if tracing fails.
+            (coma_mm, astigmatism_mm), or None if tracing fails. Failure used
+            to report (0.0, 0.0) - indistinguishable from a perfect off-axis
+            design, and better than diffraction limited, for exactly the
+            geometries whose trace failed. The 2D tracer returns MISSED rather
+            than raising, so these paths were reached in practice.
         """
         try:
             # Economical sampling shared verbatim with the system path, so
@@ -324,7 +375,7 @@ class AberrationsCalculator:
             return coma, astigmatism
         except Exception as e:
             logger.warning("Field estimators ray trace failed: %s", e)
-            return 0.0, 0.0
+            return None
 
     def _calculate_coma(
         self,
