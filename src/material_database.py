@@ -12,7 +12,6 @@ import csv
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 import math
-from functools import lru_cache
 from .atomic import atomic_write_json
 
 # Setup module logger
@@ -80,11 +79,22 @@ class MaterialProperties:
 class MaterialDatabase:
     """Database of optical materials"""
 
+    #: Cap on the per-instance refractive index cache. Matches the maxsize the
+    #: method-level lru_cache used to declare.
+    INDEX_CACHE_MAX = 1024
+
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or os.path.join(
             os.path.dirname(__file__), "..", "data", "materials.json"
         )
         self.materials: Dict[str, MaterialProperties] = {}
+        # Per-instance index cache. This used to be @lru_cache on the method,
+        # whose key therefore included `self`: a class-wide cache holding every
+        # MaterialDatabase ever used, strongly, forever. chromatic_analyzer.py
+        # constructs a fresh MaterialDatabase per analyzer, so the count grew
+        # without bound and no instance was ever collected. A per-instance dict
+        # dies with the instance and cannot be flushed by another instance.
+        self._index_cache: Dict[Tuple[str, float, float], float] = {}
         self._load_builtin_materials()
         self._load_database()
 
@@ -329,6 +339,11 @@ class MaterialDatabase:
                 "y" if skipped == 1 else "ies",
             )
 
+        # Materials may have just been replaced wholesale, so any cached index
+        # for them is stale. Harmless during __init__ (nothing is cached yet),
+        # but _load_database is reachable again if this ever gains a reload().
+        self.clear_cache()
+
     def save_database(self) -> None:
         """Save materials to JSON file"""
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
@@ -343,7 +358,7 @@ class MaterialDatabase:
         """Add or update material"""
         self.materials[material.name.upper()] = material
         # Clear cache as material properties might have changed
-        self.get_refractive_index.cache_clear()
+        self.clear_cache()
         self.save_database()
 
     def list_materials(self, catalog: Optional[str] = None) -> List[str]:
@@ -356,7 +371,6 @@ class MaterialDatabase:
             ]
         return list(self.materials.keys())
 
-    @lru_cache(maxsize=1024)
     def get_refractive_index(
         self, material_name: str, wavelength_nm: float, temperature_c: float = 20.0
     ) -> float:
@@ -364,8 +378,28 @@ class MaterialDatabase:
         Calculate refractive index at specific wavelength and temperature
         using Sellmeier equation and temperature coefficients.
 
-        Cached for performance (LRU 1024 entries).
+        Cached per instance (bounded at 1024 entries, cleared wholesale when
+        full). Call clear_cache() after mutating ``materials`` directly.
         """
+        key = (material_name, wavelength_nm, temperature_c)
+        cached = self._index_cache.get(key)
+        if cached is not None:
+            return cached
+
+        value = self._compute_refractive_index(material_name, wavelength_nm, temperature_c)
+
+        if len(self._index_cache) >= self.INDEX_CACHE_MAX:
+            # Wholesale reset rather than an LRU: the working set is a handful
+            # of wavelengths per material, so a precise eviction policy buys
+            # nothing here.
+            self._index_cache.clear()
+        self._index_cache[key] = value
+        return value
+
+    def _compute_refractive_index(
+        self, material_name: str, wavelength_nm: float, temperature_c: float
+    ) -> float:
+        """Uncached body of get_refractive_index."""
         mat = self.get_material(material_name)
         if not mat:
             return 1.5168  # Default to BK7
@@ -439,8 +473,13 @@ class MaterialDatabase:
         return n_base
 
     def clear_cache(self):
-        """Clear refractive index cache"""
-        self.get_refractive_index.cache_clear()
+        """Clear this instance's refractive index cache.
+
+        Previously this called cache_clear() on the class-wide lru_cache
+        wrapper, so one instance adding a material wiped every other
+        instance's cache.
+        """
+        self._index_cache.clear()
 
     def get_transmission(
         self, material_name: str, wavelength_nm: float, thickness_mm: float = 10.0
