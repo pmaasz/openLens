@@ -570,6 +570,8 @@ def validate_lens_parameters(
     parabolic_sag_1: float = 0.0,
     is_parabolic_2: bool = False,
     parabolic_sag_2: float = 0.0,
+    clear_aperture_1: Optional[float] = None,
+    clear_aperture_2: Optional[float] = None,
 ) -> dict:
     """
     Validate all lens parameters at once.
@@ -584,6 +586,8 @@ def validate_lens_parameters(
         parabolic_sag_1: Front parabolic sag at D/2 (mm)
         is_parabolic_2: Whether the back surface is parabolic
         parabolic_sag_2: Back parabolic sag at D/2 (mm)
+        clear_aperture_1: Front clear aperture diameter (mm), or None
+        clear_aperture_2: Back clear aperture diameter (mm), or None
 
     Returns:
         dict: Dictionary of validated parameters
@@ -626,6 +630,8 @@ def check_physical_feasibility(
     parabolic_sag_1: float = 0.0,
     is_parabolic_2: bool = False,
     parabolic_sag_2: float = 0.0,
+    clear_aperture_1: Optional[float] = None,
+    clear_aperture_2: Optional[float] = None,
 ) -> Tuple[bool, Optional[str]]:
     """
     Check if lens parameters are physically feasible.
@@ -639,6 +645,10 @@ def check_physical_feasibility(
         parabolic_sag_1: Front parabolic sag at D/2 (mm)
         is_parabolic_2: Whether the back surface is parabolic
         parabolic_sag_2: Back parabolic sag at D/2 (mm)
+        clear_aperture_1: Front clear aperture diameter (mm), or None. Judged
+            at the radius the lens is actually polished to rather than at
+            diameter/2 - see Lens.get_manufacturing_radius.
+        clear_aperture_2: Back clear aperture diameter (mm), or None
 
     Returns:
         Tuple[bool, Optional[str]]: (is_feasible, warning_message)
@@ -664,6 +674,8 @@ def check_physical_feasibility(
             parabolic_sag_1=parabolic_sag_1,
             is_parabolic_2=is_parabolic_2,
             parabolic_sag_2=parabolic_sag_2,
+            clear_aperture_1=clear_aperture_1,
+            clear_aperture_2=clear_aperture_2,
         )
         edge = probe.calculate_edge_thickness()
     except Exception:
