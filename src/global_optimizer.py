@@ -3,6 +3,7 @@ Global Optimization Algorithms for Optical Systems.
 Includes Simulated Annealing and Differential Evolution.
 """
 
+import logging
 import math
 import random
 from typing import List, Dict, Optional, Callable
@@ -14,6 +15,8 @@ from .optimizer import (
     OptimizationTarget,
 )
 from .optical_system import OpticalSystem
+
+logger = logging.getLogger(__name__)
 
 
 class GlobalOptimizer(LensOptimizer):
@@ -59,6 +62,23 @@ class GlobalOptimizer(LensOptimizer):
         merit_history = [current_merit]
 
         n_vars = len(self.variables)
+
+        # temperature / initial_temperature is evaluated every iteration, so a
+        # non-positive initial_temperature raised ZeroDivisionError on the very
+        # first pass. Clamped rather than rejected: a zero *cooling* start is a
+        # reasonable thing for a caller to mean.
+        if initial_temperature <= 0:
+            logger.warning(
+                "initial_temperature=%r is not positive; clamping to a small "
+                "positive value so annealing stays well defined.",
+                initial_temperature,
+            )
+            initial_temperature = 1e-6
+
+        # max_iterations <= 0 leaves the loop body unentered, and `iteration` was
+        # then read below for the iteration count - UnboundLocalError. -1 makes
+        # that read yield 0 iterations.
+        iteration = -1
 
         for iteration in range(max_iterations):
             # Callback
@@ -268,6 +288,15 @@ class GlobalOptimizer(LensOptimizer):
         )
 
     def _tournament_select(self, population, merits, k=3):
+        """Return the best of k random contestants.
+
+        k is clamped to the population size: random.sample raises
+        "Sample larger than population" for population_size < k, which the GUI
+        was one config change away from.
+        """
+        if not population:
+            raise ValueError("cannot select from an empty population")
+        k = max(1, min(k, len(population)))
         selected_indices = random.sample(range(len(population)), k)
         best_idx = min(selected_indices, key=lambda i: merits[i])
         return population[best_idx]
