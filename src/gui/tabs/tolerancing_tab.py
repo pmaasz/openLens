@@ -316,6 +316,8 @@ class TolerancingTab(BaseTab):
         )
         self._mc_running = False
         self._inv_running = False
+        self._mc_worker = None
+        self._inv_worker = None
         self._tol_last_results = {}
 
         self._tol_results_text.setPlainText(
@@ -342,6 +344,8 @@ class TolerancingTab(BaseTab):
         # previous thread's result racing the new one's.
         self._mc_running = False
         self._inv_running = False
+        self._mc_worker = None
+        self._inv_worker = None
 
     def refresh(self) -> None:
         """Update display when parent changes.
@@ -645,6 +649,35 @@ class TolerancingTab(BaseTab):
     # for every worker this tab starts.
     # ------------------------------------------------------------------
 
+    def _release_finished_workers(self) -> None:
+        """Drop finished worker references so their results are not retained.
+
+        Both workers hand back a payload holding a deep copy of the whole
+        optical system. Holding the last reference to the worker keeps that
+        payload alive for the tab's lifetime.
+
+        Drop it only once the thread has actually stopped. These slots run on
+        the GUI thread while the worker may still be returning from ``run()``,
+        and dropping a live QThread's last reference makes CPython destroy it -
+        ``~QThread`` aborts the process. Holding a reference to an
+        already-finished thread costs nothing, so an inconclusive check simply
+        keeps it.         Mirrors OptimizationTab._release_finished_worker.
+        """
+        for name in ("_mc_worker", "_inv_worker"):
+            worker = getattr(self, name, None)
+            if worker is None:
+                continue
+            try:
+                stopped = not worker.isRunning()
+            except Exception as e:
+                # Unknown state: keep the reference rather than guess. This is
+                # called from the middle of a report-rendering handler, so an
+                # exception here would cost the user their results.
+                logger.debug("Could not query %s state, keeping it: %s", name, e)
+                continue
+            if stopped:
+                setattr(self, name, None)
+
     @Slot(str, dict)
     def _on_analysis_finished(self, text: str, results: dict) -> None:
         """Display a finished analysis report and clear the busy indicator.
@@ -657,6 +690,7 @@ class TolerancingTab(BaseTab):
         """
         self._mc_running = False
         self._inv_running = False
+        self._release_finished_workers()
         self._tol_last_results = results
         self._tol_progress.setMaximum(100)
         self._tol_progress.setValue(100)
@@ -671,6 +705,7 @@ class TolerancingTab(BaseTab):
         """
         self._mc_running = False
         self._inv_running = False
+        self._release_finished_workers()
         self._tol_progress.setMaximum(100)
         self._tol_progress.setValue(0)
         self._tol_results_text.setPlainText(message)

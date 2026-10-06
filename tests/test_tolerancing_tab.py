@@ -136,7 +136,9 @@ class TestTolerancingWorkerSlots(unittest.TestCase):
         tab._mc_running = True
         tab._on_run_monte_carlo()
         self.assertIn("already running", tab._tol_results_text.toPlainText())
-        self.assertFalse(hasattr(tab, "_mc_worker") and tab._mc_worker.isRunning())
+        # _mc_worker is initialized to None and released once a run finishes,
+        # so test for "no live thread" rather than for absence of the slot.
+        self.assertFalse(tab._mc_worker is not None and tab._mc_worker.isRunning())
 
         tab._mc_running = False
         tab._inv_running = True
