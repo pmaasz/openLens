@@ -440,6 +440,8 @@ class MonteCarloAnalyzer:
     all other types move the system itself.
     """
 
+    SUPPORTED_CRITERIA = "rms_spot_radius"
+
     def __init__(
         self,
         system: OpticalSystem,
@@ -559,23 +561,34 @@ class MonteCarloAnalyzer:
 
         Args:
             num_trials: Number of systems to simulate.
-            criterion: Metric to evaluate ('rms_spot_radius').
+            criterion: Metric to evaluate. Only ``rms_spot_radius`` is
+                implemented; anything else raises ValueError rather than being
+                echoed back into the results while the RMS statistics were
+                computed regardless.
             criterion_limit: Pass/Fail threshold.
 
         Returns:
             Dictionary with statistics and yield.
+
+        Raises:
+            ValueError: If num_trials is not positive, or criterion is not a
+                supported metric.
         """
+        if num_trials <= 0:
+            raise ValueError(f"num_trials must be positive, got {num_trials}")
+        if criterion != self.SUPPORTED_CRITERIA:
+            # Silently accepting an unimplemented name meant the caller got
+            # results labelled with a metric that was never evaluated.
+            raise ValueError(
+                f"Unsupported criterion {criterion!r}; " f"supported: {self.SUPPORTED_CRITERIA!r}"
+            )
+
         self.results = []
         pass_count = 0
 
-        # Analyze nominal system first
-        spot_nom = SpotDiagram(self.nominal_system)
-        res_nom = spot_nom.trace_spot()
-        # A vignetted nominal reports None; keep that as a failure rather than
-        # letting it coerce into comparisons or statistics below.
-        nominal_val = res_nom["rms_radius"]
-        if nominal_val is None:
-            nominal_val = float("inf")
+        # Analyze nominal system first. Guarded for the same reason as the
+        # trials: a tracer error here used to propagate straight out of run().
+        nominal_val = self._spot_rms()
 
         # Save nominal state for restoration instead of deepcopying
         nominal_state = self._get_system_state(self.nominal_system)
@@ -587,16 +600,12 @@ class MonteCarloAnalyzer:
             # Re-optimize compensators (focus and/or mechanical adjusts).
             comp_values = self._optimize_compensators()
 
-            # Analyze
-            spot = SpotDiagram(self.nominal_system)
-            results = spot.trace_spot(focus_shift_mm=comp_values.get("focus_shift_mm", 0.0))
-
-            val = results["rms_radius"]
-            # A vignetted trial has no spot radius. It must fail, and it must
-            # not poison the statistics: inf keeps mean/max honest while
-            # still letting min/percentile reflect the real trials.
-            if val is None:
-                val = float("inf")
+            # Analyze. Goes through _spot_rms, which already wraps the trace
+            # and maps a vignetted result (rms_radius None) or any exception to
+            # inf. Calling trace_spot directly here meant one TIR or tracer
+            # error aborted the whole run and every accumulated self.results
+            # entry was lost with it.
+            val = self._spot_rms(focus_shift_mm=comp_values.get("focus_shift_mm", 0.0))
             passed = val <= criterion_limit
             if passed:
                 pass_count += 1
