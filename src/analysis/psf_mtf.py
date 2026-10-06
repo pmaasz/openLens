@@ -32,6 +32,19 @@ class ImageQualityAnalyzer:
         self.spot_analyzer = SpotDiagram(system)
         self.wavefront_sensor = WavefrontSensor(system)
 
+    #: Keys every calculate_psf branch must return. The three branches had
+    #: drifted apart (the empty one returned x_axis and no z_axis), so
+    #: plot_psf raised KeyError on a fully blocked design. Asserted in one
+    #: place rather than documented in three.
+    PSF_KEYS = frozenset({"image", "y_axis", "z_axis", "centroid", "step_size", "raw_count"})
+
+    def _psf_result(self, **fields) -> Dict[str, Any]:
+        """Build a PSF payload, asserting the key set every branch owes."""
+        missing = self.PSF_KEYS - set(fields)
+        if missing:
+            raise AssertionError(f"calculate_psf result is missing keys: {sorted(missing)}")
+        return fields
+
     def calculate_spot_diagram(
         self,
         field_angle_deg: float = 0.0,
@@ -96,13 +109,23 @@ class ImageQualityAnalyzer:
 
         points = res["points"]  # List of (y, z) tuples
         if not points:
-            return {
-                "image": np.zeros((pixels, pixels)),
-                "x_axis": np.linspace(-sensor_size_mm / 2, sensor_size_mm / 2, pixels),
-                "y_axis": np.linspace(-sensor_size_mm / 2, sensor_size_mm / 2, pixels),
-                "centroid": (0, 0),
-                "step_size": sensor_size_mm / pixels,
-            }
+            # Same key set as the normal and diffraction branches below.
+            # This one returned x_axis and no z_axis, so plot_psf - which
+            # reads z_axis - raised KeyError, and openlens.py calls
+            # calculate_psf and plot_psf back to back: a fully blocked design
+            # turned the PSF dialog into "Failed to calculate PSF: 'z_axis'".
+            # Axes are built as bin centers exactly as in the normal branch,
+            # so an empty PSF has the same extent as a populated one.
+            empty_bins = np.linspace(-sensor_size_mm / 2, sensor_size_mm / 2, pixels + 1)
+            empty_axis = (empty_bins[:-1] + empty_bins[1:]) / 2
+            return self._psf_result(
+                image=np.zeros((pixels, pixels)),
+                y_axis=empty_axis,
+                z_axis=empty_axis.copy(),
+                centroid=(0.0, 0.0),
+                step_size=sensor_size_mm / pixels,
+                raw_count=0,
+            )
 
         # 2. Centering
         # Find centroid to center the PSF window
@@ -141,14 +164,14 @@ class ImageQualityAnalyzer:
         else:
             psf_norm = H
 
-        return {
-            "image": psf_norm,
-            "y_axis": (y_bins[:-1] + y_bins[1:]) / 2,  # Bin centers
-            "z_axis": (z_bins[:-1] + z_bins[1:]) / 2,
-            "centroid": (centroid_y, centroid_z),
-            "step_size": sensor_size_mm / pixels,
-            "raw_count": len(points),
-        }
+        return self._psf_result(
+            image=psf_norm,
+            y_axis=(y_bins[:-1] + y_bins[1:]) / 2,  # Bin centers
+            z_axis=(z_bins[:-1] + z_bins[1:]) / 2,
+            centroid=(centroid_y, centroid_z),
+            step_size=sensor_size_mm / pixels,
+            raw_count=len(points),
+        )
 
     def calculate_mtf(
         self,
@@ -422,14 +445,14 @@ class ImageQualityAnalyzer:
 
         psf_resampled = psf_raw[idx_y, idx_z]
 
-        return {
-            "image": psf_resampled,
-            "y_axis": target_y,
-            "z_axis": target_z,
-            "centroid": (0, 0),
-            "step_size": sensor_size_mm / pixels,
-            "raw_count": 0,
-        }
+        return self._psf_result(
+            image=psf_resampled,
+            y_axis=target_y,
+            z_axis=target_z,
+            centroid=(0.0, 0.0),
+            step_size=sensor_size_mm / pixels,
+            raw_count=0,
+        )
 
     def simulate_image(
         self,
