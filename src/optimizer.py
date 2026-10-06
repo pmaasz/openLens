@@ -176,45 +176,55 @@ class MeritFunction:
     @staticmethod
     def _eval_rms_spot(system: OpticalSystem, target: OptimizationTarget) -> float:
         try:
-            if "SpotDiagram" in globals():
-                spot = globals()["SpotDiagram"](system)
-                results = spot.trace_spot(field_angle_x_deg=0, field_angle_y_deg=0)
-                value = results.get("rms_radius")
-                # Never default a missing spot to 0.0: a vignetted system
-                # would then score as a perfect design and win every
-                # comparison. Fewer than two rays means undefined, not zero.
-                if value is None or results.get("valid_rays", 0) < 2:
-                    return INFEASIBLE_MERIT
-                return MeritFunction._apply_target(target, value)
-        except Exception:
-            pass
-        return INFEASIBLE_MERIT
+            spot = SpotDiagram(system)
+            results = spot.trace_spot(field_angle_x_deg=0, field_angle_y_deg=0)
+            value = results.get("rms_radius")
+            # Never default a missing spot to 0.0: a vignetted system
+            # would then score as a perfect design and win every
+            # comparison. Fewer than two rays means undefined, not zero.
+            if value is None or results.get("valid_rays", 0) < 2:
+                logger.debug(
+                    "RMS spot merit: no usable spot for the perturbed system "
+                    "(rms_radius=%r, valid_rays=%r)",
+                    value,
+                    results.get("valid_rays"),
+                )
+                return INFEASIBLE_MERIT
+            return MeritFunction._apply_target(target, value)
+        except Exception as e:
+            # Logged rather than discarded. A KeyError from a malformed spot
+            # result and a genuine geometry failure used to be indistinguishable,
+            # both collapsing to the same INFEASIBLE_MERIT with no trace.
+            logger.warning("RMS spot merit evaluation failed: %s", e)
+            return INFEASIBLE_MERIT
 
     @staticmethod
     def _eval_mtf(system: OpticalSystem, target: OptimizationTarget) -> float:
-        try:
-            has_deps = (
-                "PSFCalculator" in globals()
-                and "WavefrontSensor" in globals()
-                and "NUMPY_AVAILABLE" in globals()
-                and globals()["NUMPY_AVAILABLE"]
-            )
-            if not has_deps:
-                return INFEASIBLE_MERIT
+        # NUMPY_AVAILABLE is a module-level name imported from
+        # beam_synthesis, which sets it False when numpy is missing. The old
+        # `"NUMPY_AVAILABLE" in globals() and globals()["NUMPY_AVAILABLE"]`
+        # dance was always true on the first half and hid the dependency from
+        # every reader and linter.
+        if not NUMPY_AVAILABLE:
+            logger.debug("MTF merit unavailable: numpy is not installed.")
+            return INFEASIBLE_MERIT
 
+        try:
             import numpy as np
 
-            sensor = globals()["WavefrontSensor"](system)
+            sensor = WavefrontSensor(system)
             Y, Z, W = sensor.get_pupil_wavefront()
 
             if W.size == 0 or np.all(np.isnan(W)):
+                logger.debug("MTF merit: empty or all-NaN pupil wavefront.")
                 return INFEASIBLE_MERIT
 
-            psf = globals()["PSFCalculator"].calculate_psf(Y, Z, W)
-            mtf = globals()["PSFCalculator"].calculate_mtf(psf)
+            psf = PSFCalculator.calculate_psf(Y, Z, W)
+            mtf = PSFCalculator.calculate_mtf(psf)
             value = float(np.sum(mtf))
             return MeritFunction._apply_target(target, value)
-        except Exception:
+        except Exception as e:
+            logger.warning("MTF merit evaluation failed: %s", e)
             return INFEASIBLE_MERIT
 
     _TARGET_DISPATCH = {
