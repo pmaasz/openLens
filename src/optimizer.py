@@ -8,7 +8,7 @@ from typing import List, Dict, Tuple, Callable, Optional
 from dataclasses import dataclass, field
 import copy
 import math
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 import logging
 
@@ -25,6 +25,15 @@ logger = logging.getLogger(__name__)
 #: trace). Single scale above the hard-geometry penalties (1e8) so "cannot
 #: score" always ranks worse than "scores badly".
 INFEASIBLE_MERIT = 1e9
+
+#: Only spread the finite-difference perturbations across threads once there
+#: are more variables than this; below it the thread hand-off costs more than
+#: the evaluations it saves.
+GRADIENT_PARALLEL_THRESHOLD = 4
+
+#: Upper bound on gradient worker threads. Each evaluation deep-copies the
+#: system, so unbounded fan-out would compete for memory rather than help.
+GRADIENT_MAX_WORKERS = 4
 
 
 @dataclass
@@ -654,7 +663,30 @@ class LensOptimizer:
         )
 
     def _calculate_gradient(self, values: List[float]) -> List[float]:
-        """Calculate numerical gradient using finite differences with optional parallelism"""
+        """Calculate the numerical gradient by forward finite differences.
+
+        The perturbations were previously spread over a
+        ``ProcessPoolExecutor``. That was a poor trade on every axis:
+        ``self._evaluate_design`` is a bound method, so ``executor.map``
+        pickled the entire optimizer - the deep-copied ``OpticalSystem``,
+        the targets and the whole merit cache - once per task, and the
+        children each evaluated against a private copy of the cache, so
+        nothing was reused. Worse, this runs inside a ``QThread`` that
+        owns live Qt state: under the ``spawn`` start method (macOS,
+        Windows, PyInstaller) the child re-imports ``__main__``, which for
+        ``python3 openlens.py`` starts a second Qt application, and
+        forking a process holding Qt/matplotlib state is a known hang
+        source. A pool was also constructed and torn down on every single
+        gradient call, so process startup dominated the work it was
+        meant to parallelise.
+
+        A thread pool sidesteps all of it: no pickling, one shared merit
+        cache, no child processes to re-enter ``__main__``, and threads
+        are created once per gradient call rather than whole processes.
+        The merit function is pure Python ray tracing, so this is a
+        modest win at best - but it is a win that cannot deadlock, and
+        it keeps the many-variable case no worse than serial.
+        """
         epsilon = 1e-5
         n_vars = len(values)
 
@@ -669,10 +701,11 @@ class LensOptimizer:
         # Evaluate f0 (might already be cached)
         f0 = self._evaluate_design(values)
 
-        # Evaluate all perturbations
-        # If we have many variables, use parallel execution
-        if n_vars > 4:
-            with ProcessPoolExecutor() as executor:
+        # Evaluate all perturbations, in parallel only once the serial
+        # overhead would be worth it.
+        if n_vars > GRADIENT_PARALLEL_THRESHOLD:
+            workers = min(n_vars, GRADIENT_MAX_WORKERS)
+            with ThreadPoolExecutor(max_workers=workers) as executor:
                 f_plus_list = list(executor.map(self._evaluate_design, perturbed_designs))
         else:
             f_plus_list = [self._evaluate_design(v) for v in perturbed_designs]
