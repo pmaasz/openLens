@@ -97,6 +97,111 @@ class ToleranceOperand:
             return random.uniform(self.min_val, self.max_val)
 
 
+def serialize_operands(operands: List[ToleranceOperand]) -> List[Dict[str, Any]]:
+    """Convert tolerance operands to a JSON-serialisable list of dicts.
+
+    The inverse of :func:`deserialize_operands`, so a saved tolerance set
+    round-trips exactly instead of being written with no read path.
+
+    Args:
+        operands: The operands to serialise.
+
+    Returns:
+        List of plain dicts safe to store in a model's metadata.
+    """
+    return [
+        {
+            "element_index": op.element_index,
+            "type": op.param_type.value,
+            "min_val": op.min_val,
+            "max_val": op.max_val,
+            "distribution": getattr(op, "distribution", "uniform"),
+            "std_dev": getattr(op, "std_dev", 0.0),
+            "surface": getattr(op, "surface", 1),
+        }
+        for op in operands
+    ]
+
+
+def deserialize_operands(raw: Any) -> List[ToleranceOperand]:
+    """Rebuild tolerance operands from their stored dict form.
+
+    Stored metadata is user- and file-editable, so every field is treated as
+    untrusted: an unknown type, a missing key or a non-numeric bound drops
+    that one operand with a warning rather than failing the whole load or,
+    worse, raising inside a GUI refresh.
+
+    Args:
+        raw: Whatever was found under ``metadata['tolerances']``.
+
+    Returns:
+        The operands that could be reconstructed; unknown/broken entries are
+        skipped.
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        logger.warning("Stored tolerances are %s, not a list; ignoring", type(raw).__name__)
+        return []
+
+    by_value = {t.value: t for t in ToleranceType}
+    operands: List[ToleranceOperand] = []
+
+    for i, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            logger.warning(
+                "Stored tolerance %d is %s, not a dict; skipping", i, type(entry).__name__
+            )
+            continue
+
+        param_type = by_value.get(entry.get("type"))
+        if param_type is None:
+            logger.warning(
+                "Stored tolerance %d has unknown type %r; skipping", i, entry.get("type")
+            )
+            continue
+
+        try:
+            element_index = int(entry["element_index"])
+            min_val = float(entry["min_val"])
+            max_val = float(entry["max_val"])
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.warning("Stored tolerance %d is missing or has a bad field: %s", i, exc)
+            continue
+
+        distribution = entry.get("distribution", "uniform")
+        if distribution not in ("uniform", "gaussian"):
+            logger.warning(
+                "Stored tolerance %d has unknown distribution %r; using uniform",
+                i,
+                distribution,
+            )
+            distribution = "uniform"
+
+        try:
+            std_dev = float(entry.get("std_dev", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            std_dev = 0.0
+        try:
+            surface = int(entry.get("surface", 1) or 1)
+        except (TypeError, ValueError):
+            surface = 1
+
+        operands.append(
+            ToleranceOperand(
+                element_index=element_index,
+                param_type=param_type,
+                min_val=min_val,
+                max_val=max_val,
+                distribution=distribution,
+                std_dev=std_dev,
+                surface=surface,
+            )
+        )
+
+    return operands
+
+
 def _capture_state(system: OpticalSystem) -> Dict[str, Any]:
     """Capture node transforms, lens params, and air-gap thicknesses."""
     nodes = system.root.get_flat_list()

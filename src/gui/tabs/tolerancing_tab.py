@@ -353,8 +353,22 @@ class TolerancingTab(BaseTab):
         Reloads the operand table from the parent window's current lens/system
         state.
         """
-        if self._parent and hasattr(self._parent, "_tol_operands"):
-            self._update_tolerance_operands_display()
+        if not (self._parent and hasattr(self._parent, "_tol_operands")):
+            return
+
+        # The tab's operand list used to be a purely in-memory scratchpad:
+        # the window stamped it into the model's metadata on save, but
+        # nothing ever read it back, so a saved tolerance set vanished on
+        # reopen while the table showed an empty list as if nothing had been
+        # configured. Restore the target's own set here so the write and the
+        # read are the same operation. Ownership tracking lives in the window,
+        # so re-refreshing the same model keeps in-memory edits.
+        target = self._resolve_target()
+        loader = getattr(self._parent, "_use_tolerances_for", None)
+        if target is not None and callable(loader):
+            loader(target)
+
+        self._update_tolerance_operands_display()
 
     def _resolve_target(self):
         """The lens or assembly being toleranced, whichever is current.
