@@ -204,6 +204,62 @@ class TestSafeConversion(unittest.TestCase):
         self.assertFalse(success)
         self.assertEqual(value, 99.9)
 
+    def test_safe_float_from_huge_int_returns_default(self):
+        """Regression: float(10**400) raises OverflowError, not inf.
+
+        A JSON integer literal reaches this path, and the function's contract
+        is that it never raises.
+        """
+        success, value = safe_float_conversion(10**400)
+        self.assertFalse(success)
+        self.assertEqual(value, 0.0)
+
+    def test_safe_float_from_huge_negative_int_returns_default(self):
+        success, value = safe_float_conversion(-(10**400), default=-1.0)
+        self.assertFalse(success)
+        self.assertEqual(value, -1.0)
+
+    def test_safe_float_never_raises_for_any_input(self):
+        """The contract is 'never raises', across every plausible input."""
+        inputs = [
+            10**400,
+            -(10**400),
+            "1e999",
+            "-1e999",
+            "abc",
+            "",
+            None,
+            [1],
+            (1, 2),
+            {"a": 1},
+            object(),
+            float("nan"),
+            float("inf"),
+            True,
+            False,
+        ]
+        for value in inputs:
+            with self.subTest(value=repr(value)[:30]):
+                success, converted = safe_float_conversion(value, default=-7.5)
+                self.assertFalse(success)
+                self.assertEqual(converted, -7.5)
+
+    def test_safe_float_still_converts_valid_values(self):
+        """The guard must not reject values that should succeed."""
+        for value, expected in ((10, 10.0), (5.5, 5.5), ("10.5", 10.5), (0, 0.0)):
+            with self.subTest(value=value):
+                success, converted = safe_float_conversion(value)
+                self.assertTrue(success)
+                self.assertEqual(converted, expected)
+
+    def test_safe_float_rejects_boundary_floats(self):
+        """inf and NaN are still rejected even though conversion succeeds."""
+        for value in (float("inf"), float("-inf"), float("nan"), "nan", "inf"):
+            with self.subTest(value=value):
+                success, converted = safe_float_conversion(value)
+                self.assertFalse(success)
+                self.assertEqual(converted, 0.0)
+
 
 class TestLensValidation(unittest.TestCase):
     """Test lens parameter validation"""
