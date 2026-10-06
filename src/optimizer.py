@@ -461,10 +461,20 @@ class LensOptimizer:
         max_iterations: int = 100,
         tolerance: float = 1e-6,
         callback: Optional[Callable[[int, float, List[float]], None]] = None,
+        start: Optional[List[float]] = None,
     ) -> OptimizationResult:
         """
         Nelder-Mead simplex optimization
         Simple but robust algorithm for lens optimization
+
+        Args:
+            max_iterations: Iteration cap.
+            tolerance: Merit spread below which the simplex is converged.
+            callback: Optional per-iteration progress callback.
+            start: Optional explicit starting point, one value per variable.
+                GlobalOptimizer hands its best design here instead of writing
+                the values into the caller's OptimizationVariable objects.
+                Defaults to each variable's current_value.
         """
         n_vars = len(self.variables)
 
@@ -476,12 +486,16 @@ class LensOptimizer:
                 "optimize_simplex needs at least one variable; a design with "
                 "nothing to optimise is not an optimisation problem"
             )
+        if start is not None and len(start) != n_vars:
+            raise ValueError(f"start has {len(start)} value(s) but there are {n_vars} variable(s)")
 
         # Initialize simplex (n+1 vertices in n-dimensional space)
         simplex = []
-        current_values = [var.current_value for var in self.variables]
+        current_values = (
+            list(start) if start is not None else [var.current_value for var in self.variables]
+        )
 
-        # First vertex is current design
+        # First vertex is the starting design
         simplex.append(current_values.copy())
 
         # Create n additional vertices by perturbing each variable.
