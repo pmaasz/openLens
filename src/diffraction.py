@@ -391,6 +391,9 @@ class DiffractionCalculator:
         """
         airy_r = self.airy_disk_radius(focal_length, aperture_diameter)
         max_radius = 5 * airy_r
+        if not MATPLOTLIB_AVAILABLE:
+            logger.warning("plot_airy_disk unavailable: matplotlib is not installed. Skipping.")
+            return
 
         r, intensity = self.airy_pattern(max_radius, focal_length, aperture_diameter)
 
@@ -435,6 +438,9 @@ class DiffractionCalculator:
         """
         airy_r = self.airy_disk_radius(focal_length, aperture_diameter)
         size = 10 * airy_r
+        if not MATPLOTLIB_AVAILABLE:
+            logger.warning("plot_psf_2d unavailable: matplotlib is not installed. Skipping.")
+            return
 
         psf = self.point_spread_function_2d(size, focal_length, aperture_diameter)
 
@@ -493,6 +499,12 @@ class DiffractionCalculator:
             save_path: Optional path to save the plot
         """
         r, encircled = self.encircled_energy(focal_length, aperture_diameter)
+        if not MATPLOTLIB_AVAILABLE:
+            logger.warning(
+                "plot_encircled_energy unavailable: matplotlib is not installed. Skipping."
+            )
+            return
+
         airy_r = self.airy_disk_radius(focal_length, aperture_diameter)
 
         plt.figure(figsize=(10, 6))
