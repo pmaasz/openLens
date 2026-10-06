@@ -3,6 +3,8 @@ OpenLens PySide6 Assembly Tab
 Multi-element optical system builder
 """
 
+import logging
+
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -22,9 +24,17 @@ from .base_tab import BaseTab
 from ..widgets.assembly_viz import AssemblyVisualizationWidget
 from ...optical_system import OpticalSystem, AirGap
 
+logger = logging.getLogger(__name__)
+
 
 class AssemblyTab(BaseTab):
     """Multi-element optical system builder"""
+
+    #: Retry budget for an empty lens list, and the delay between attempts.
+    #: The database load is asynchronous, so a short wait is legitimate - but
+    #: it must be bounded. See refresh_lens_list.
+    LENS_LIST_RETRY_MS = 100
+    LENS_LIST_MAX_RETRIES = 20
 
     def _setup_ui(self) -> None:
         """Build the builder panels and create the initial optical system."""
@@ -169,23 +179,70 @@ class AssemblyTab(BaseTab):
         self._optical_system = OpticalSystem(name="New Assembly")
         self.refresh_lens_list()
 
+    def _cancel_lens_list_retry(self) -> None:
+        """Stop any pending lens-list retry and reset the counter."""
+        timer = getattr(self, "_lens_list_retry_timer", None)
+        if timer is not None:
+            timer.stop()
+            self._lens_list_retry_timer = None
+        self._lens_list_retries = 0
+
     def refresh_lens_list(self) -> None:
         """Populate the lens selection list from the main window's lens collection.
 
-        Schedules a retry via a short timer while the list is still empty,
-        e.g. when the database load has not finished yet.
+        The database load is asynchronous, so an empty list shortly after
+        startup can just mean "not loaded yet" - hence a short retry. It used
+        to be QTimer.singleShot(100, self.refresh_lens_list) with no cap, no
+        cancellation and no give-up state, so a library that never fills
+        (openlens.py sets _lenses = [] on the database-load failure path) woke
+        the Qt event loop 10x/second for the whole session: measurable
+        constant CPU, and it hid the real problem behind a permanently empty
+        list.
+
+        The retry is now bounded, the timer is held so it can be cancelled,
+        and exhausting the budget shows a placeholder that names the likely
+        cause instead of an unexplained empty list. The counter resets on
+        success, so a later genuine reload is retried normally.
         """
+        if not hasattr(self, "_lens_list_retries"):
+            self._lens_list_retries = 0
+            self._lens_list_retry_timer = None
+
         self._assembly_lens_list.clear()
-        if hasattr(self._parent, "_lenses"):
-            for lens in self._parent._lenses:
-                self._assembly_lens_list.addItem(lens.name)
+        lenses = getattr(self._parent, "_lenses", None) or []
+        for lens in lenses:
+            self._assembly_lens_list.addItem(lens.name)
 
-        # If the list is still empty, try to refresh it again in 100ms
-        # This handles cases where the database load is still in progress
-        if self._assembly_lens_list.count() == 0:
-            from PySide6.QtCore import QTimer
+        if self._assembly_lens_list.count():
+            self._cancel_lens_list_retry()
+            return
 
-            QTimer.singleShot(100, self.refresh_lens_list)
+        if self._lens_list_retries >= self.LENS_LIST_MAX_RETRIES:
+            if self._lens_list_retry_timer is not None:
+                self._lens_list_retry_timer.stop()
+                self._lens_list_retry_timer = None
+            if self._assembly_lens_list.count() == 0:
+                item = QListWidgetItem("(no lenses loaded - check the lens database)")
+                # A hint, not a selectable lens: drop selectability so a
+                # double-click cannot try to add it to the system.
+                selectable = QListWidgetItem.flags(item).ItemIsSelectable
+                item.setFlags(item.flags() & ~selectable)
+                self._assembly_lens_list.addItem(item)
+                logger.warning(
+                    "Lens list still empty after %d retries; showing a "
+                    "placeholder rather than polling indefinitely",
+                    self.LENS_LIST_MAX_RETRIES,
+                )
+            return
+
+        self._lens_list_retries += 1
+        from PySide6.QtCore import QTimer
+
+        if self._lens_list_retry_timer is None:
+            self._lens_list_retry_timer = QTimer(self)
+            self._lens_list_retry_timer.setSingleShot(True)
+            self._lens_list_retry_timer.timeout.connect(self.refresh_lens_list)
+        self._lens_list_retry_timer.start(self.LENS_LIST_RETRY_MS)
 
     def _update_system_list(self) -> None:
         """Update the system list widget from the optical system model."""
