@@ -1,5 +1,6 @@
 """Tests for full-system Zemax export/import (todo item 7)."""
 
+import json
 import os
 import tempfile
 import unittest
@@ -11,6 +12,8 @@ from src.export_formats import (
 )
 from src.lens import Lens
 from src.optical_system import OpticalSystem
+from src.preset_lenses import PresetLensLibrary
+from src.validation import ValidationError
 
 
 def _system():
@@ -146,6 +149,157 @@ class TestZemaxSystemImport(unittest.TestCase):
             os.unlink(tmp.name)
         self.assertEqual(len(rebuilt.elements), 1)
         self.assertAlmostEqual(rebuilt.elements[0].lens.radius_of_curvature_1, 50.0)
+
+
+class TestZemaxSystemImportValidation(unittest.TestCase):
+    """A .zmx file is untrusted input; impossible elements must not be imported."""
+
+    @staticmethod
+    def _import(text):
+        tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+        tmp.close()
+        try:
+            with open(tmp.name, "w") as f:
+                f.write(text)
+            return ZemaxSystemImporter.import_system(tmp.name)
+        finally:
+            os.unlink(tmp.name)
+
+    @staticmethod
+    def _zmx(front_curv="0.02", disz="5.0", front_diam="25.0", back_diam="25.0"):
+        return (
+            "VERS 200000\nMODE SEQ\nUNIT MM\n\n"
+            "SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\n"
+            f"SURF 1\n  TYPE STANDARD\n  CURV {front_curv}\n  DISZ {disz}\n"
+            f"  GLAS BK7\n  DIAM {front_diam}\n\n"
+            f"SURF 2\n  TYPE STANDARD\n  CURV -0.02\n  DIAM {back_diam}\n  DISZ 50.0\n\n"
+            "SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0.0\n"
+        )
+
+    def test_negative_thickness_element_is_skipped(self):
+        """DISZ -5.0 must not produce a negative-thickness lens."""
+        rebuilt = self._import(self._zmx(disz="-5.0"))
+        self.assertEqual(len(rebuilt.elements), 0)
+
+    def test_clear_aperture_exceeding_diameter_is_skipped(self):
+        """A CA1 larger than DIAM must be rejected, not imported."""
+        rebuilt = self._import(self._zmx(front_diam="999.0", back_diam="1.0"))
+        self.assertEqual(len(rebuilt.elements), 0)
+
+    def test_non_positive_diameter_is_skipped(self):
+        """A negative mechanical diameter must be rejected."""
+        rebuilt = self._import(self._zmx(front_diam="-25.0"))
+        self.assertEqual(len(rebuilt.elements), 0)
+
+    def test_plano_surface_still_imports(self):
+        """CURV 0.0 means a legitimate plano surface, not an invalid value."""
+        rebuilt = self._import(self._zmx(front_curv="0.0"))
+        self.assertEqual(len(rebuilt.elements), 1)
+        self.assertEqual(rebuilt.elements[0].lens.radius_of_curvature_1, float("inf"))
+
+    def test_valid_element_still_imports(self):
+        """A well-formed element must survive the new validation."""
+        rebuilt = self._import(self._zmx())
+        self.assertEqual(len(rebuilt.elements), 1)
+        lens = rebuilt.elements[0].lens
+        self.assertAlmostEqual(lens.radius_of_curvature_1, 50.0, places=6)
+        self.assertAlmostEqual(lens.thickness, 5.0)
+        self.assertEqual(lens.material, "BK7")
+
+    def test_one_bad_element_does_not_discard_the_good_one(self):
+        """A rejected element must not take the rest of the system with it."""
+        text = (
+            "VERS 200000\nMODE SEQ\nUNIT MM\n\n"
+            "SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\n"
+            "SURF 1\n  TYPE STANDARD\n  CURV 0.02\n  DISZ -5.0\n"
+            "  GLAS BK7\n  DIAM 25.0\n\n"
+            "SURF 2\n  TYPE STANDARD\n  CURV -0.02\n  DIAM 25.0\n  DISZ 50.0\n\n"
+            "SURF 3\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 4.0\n"
+            "  GLAS BK7\n  DIAM 30.0\n\n"
+            "SURF 4\n  TYPE STANDARD\n  CURV -0.02\n  DIAM 30.0\n  DISZ 0.0\n"
+        )
+        rebuilt = self._import(text)
+        self.assertEqual(len(rebuilt.elements), 1)
+        self.assertAlmostEqual(rebuilt.elements[0].lens.thickness, 4.0)
+
+
+class TestCustomPresetImportValidation(unittest.TestCase):
+    """import_custom_preset stores untrusted JSON into the live library."""
+
+    @staticmethod
+    def _import(payload):
+        tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
+        tmp.close()
+        try:
+            with open(tmp.name, "w") as f:
+                if isinstance(payload, str):
+                    f.write(payload)
+                else:
+                    json.dump(payload, f)
+            return PresetLensLibrary().import_custom_preset(tmp.name)
+        finally:
+            os.unlink(tmp.name)
+
+    def test_non_dict_payload_raises_validation_error(self):
+        """A JSON array must be rejected rather than stored."""
+        with self.assertRaises(ValidationError):
+            self._import(["not", "a", "dict"])
+
+    def test_missing_required_field_raises_validation_error(self):
+        """A preset missing a field the summary reads must be rejected."""
+        with self.assertRaises(ValidationError):
+            self._import({"name": "X", "category": "c", "description": "d"})
+
+    def test_non_string_required_field_raises_validation_error(self):
+        """get_preset_summary calls .lower() on these; reject non-strings."""
+        with self.assertRaises(ValidationError):
+            self._import(
+                {
+                    "name": "X",
+                    "category": "c",
+                    "description": "d",
+                    "material": 7,
+                    "focal_length": 50.0,
+                    "diameter": 25.0,
+                }
+            )
+
+    def test_non_numeric_focal_length_raises_validation_error(self):
+        """Numeric fields must actually be numbers."""
+        with self.assertRaises(ValidationError):
+            self._import(
+                {
+                    "name": "X",
+                    "category": "c",
+                    "description": "d",
+                    "material": "BK7",
+                    "focal_length": "fifty",
+                    "diameter": 25.0,
+                }
+            )
+
+    def test_valid_preset_imports(self):
+        """A well-formed preset must still import and render a summary."""
+        lib = PresetLensLibrary()
+        tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
+        tmp.close()
+        try:
+            with open(tmp.name, "w") as f:
+                json.dump(
+                    {
+                        "name": "Custom",
+                        "category": "Test",
+                        "description": "a test preset",
+                        "material": "BK7",
+                        "focal_length": 50.0,
+                        "diameter": 25.0,
+                    },
+                    f,
+                )
+            preset_id = lib.import_custom_preset(tmp.name)
+        finally:
+            os.unlink(tmp.name)
+        self.assertIn("Custom", lib.get_preset_summary(preset_id))
 
 
 if __name__ == "__main__":

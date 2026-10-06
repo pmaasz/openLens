@@ -7,6 +7,17 @@ Provides common lens designs, industry standard lenses, and quick-start template
 import json
 from typing import Dict, List, Any
 from .atomic import atomic_write_text
+from .validation import ValidationError
+
+# Required string fields every preset summary reads. get_preset_summary()
+# indexes them directly, so a preset missing any of them raises TypeError or
+# KeyError deep in the GUI instead of failing at import time.
+REQUIRED_PRESET_FIELDS = (
+    "name",
+    "category",
+    "description",
+    "material",
+)
 
 
 class PresetLensLibrary:
@@ -248,9 +259,39 @@ class PresetLensLibrary:
                 json.dump(preset, f, indent=2)
 
     def import_custom_preset(self, filepath: str) -> str:
-        """Import a custom preset from a JSON file"""
+        """Import a custom preset from a JSON file.
+
+        Args:
+            filepath: Path to the preset JSON file.
+
+        Returns:
+            The new preset ID.
+
+        Raises:
+            ValidationError: If the file is not a JSON object, is missing a
+                required field, or has a non-numeric numeric field.
+        """
         with open(filepath, "r") as f:
             preset = json.load(f)
+
+        if not isinstance(preset, dict):
+            raise ValidationError(
+                f"Preset file must contain a JSON object, got {type(preset).__name__}"
+            )
+
+        missing = [field for field in REQUIRED_PRESET_FIELDS if field not in preset]
+        if missing:
+            raise ValidationError(
+                "Preset is missing required field(s): " + ", ".join(sorted(missing))
+            )
+        for field in REQUIRED_PRESET_FIELDS:
+            if not isinstance(preset[field], str):
+                raise ValidationError(f"Preset field '{field}' must be a string")
+        for field in ("focal_length", "diameter"):
+            if not isinstance(preset.get(field), (int, float)) or isinstance(
+                preset.get(field), bool
+            ):
+                raise ValidationError(f"Preset field '{field}' must be a number")
 
         # Generate a unique ID
         preset_id = f"custom_{len([k for k in self.presets if k.startswith('custom_')])}"
