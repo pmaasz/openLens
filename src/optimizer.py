@@ -361,6 +361,12 @@ class MeritFunction:
 class LensOptimizer:
     """Optimize optical system parameters"""
 
+    #: Backtracking budget for optimize_gradient_descent: how many times to
+    #: halve the step before declaring the point stationary.
+    MAX_BACKTRACKING_STEPS = 12
+    #: Below this the step is too small to be worth evaluating.
+    MIN_LEARNING_RATE = 1e-12
+
     def __init__(
         self,
         system: OpticalSystem,
@@ -621,36 +627,77 @@ class LensOptimizer:
         merit_history = [initial_merit]
 
         last_iteration = 0
+        # Tracked explicitly rather than read back out of merit_history[-1]: the
+        # history is only appended for accepted steps, so on the iteration that
+        # gives up it no longer describes the current design.
+        current_merit = initial_merit
+        # Backtracking state. Every step used to be accepted unconditionally,
+        # so a merit carrying 1e8-scale geometry penalties diverged and the
+        # improvement it reported was negative.
+        step_size = learning_rate
+        accepted_steps = 0
 
         for iteration in range(max_iterations):
             last_iteration = iteration
-            last_iteration = iteration
+
             # Calculate numerical gradient
             gradient = self._calculate_gradient(current_values)
 
-            # Update variables (unclamped: bounds are penalties, not walls)
-            new_values = []
-            for i, (val, grad) in enumerate(zip(current_values, gradient)):
-                new_val = val - learning_rate * grad
-                new_values.append(new_val)
+            # A step that does not reduce the merit is not taken: halve the step
+            # size and retry from the same point. Variables are not clamped -
+            # bounds stay penalties rather than walls - so an out-of-range trial
+            # simply scores badly and is rejected here.
+            accepted = False
+            for _ in range(self.MAX_BACKTRACKING_STEPS):
+                new_values = [val - step_size * grad for val, grad in zip(current_values, gradient)]
+                new_merit = self._evaluate_design(new_values)
 
-            # Evaluate new design
-            new_merit = self._evaluate_design(new_values)
+                if new_merit <= current_merit:
+                    accepted = True
+                    break
 
-            # Check convergence
-            improvement = initial_merit - new_merit
-            if abs(new_merit - merit_history[-1]) < tolerance:
+                step_size *= 0.5
+                if step_size < self.MIN_LEARNING_RATE:
+                    break
+
+            if not accepted:
+                # No smaller step helps: a stationary point, or a numerical
+                # gradient too small to move against the tolerance. Stop rather
+                # than wander off into a worse design.
+                logger.debug(
+                    "Gradient descent stalled at merit %.6g on iteration %d; "
+                    "smallest step tried was %.3g",
+                    current_merit,
+                    iteration + 1,
+                    step_size,
+                )
                 break
 
-            # Accept new values
+            accepted_steps += 1
+            improvement = current_merit - new_merit
+
             current_values = new_values
+            current_merit = new_merit
             variable_history.append(dict(zip([v.name for v in self.variables], current_values)))
             merit_history.append(new_merit)
 
-            last_iteration = iteration
+            if improvement < tolerance:
+                # Converged: the step no longer buys a meaningful reduction.
+                break
+
+        logger.debug(
+            "Gradient descent: %d accepted step(s) over %d iteration(s), merit %.6g -> %.6g",
+            accepted_steps,
+            last_iteration + 1,
+            initial_merit,
+            current_merit,
+        )
 
         optimized_system = self._apply_variables(current_values)
-        final_merit = merit_history[-1]
+        # current_merit, not merit_history[-1]: the history is only appended for
+        # accepted steps, so on a stalled run its last entry can predate the
+        # design actually returned.
+        final_merit = current_merit
         improvement = (
             ((initial_merit - final_merit) / initial_merit * 100) if initial_merit > 0 else 0
         )
