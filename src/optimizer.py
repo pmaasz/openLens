@@ -369,6 +369,9 @@ class LensOptimizer:
     #: Absolute floor on the convergence threshold, so a merit near zero (where
     #: tolerance * scale underflows to nothing) still has a usable test.
     MIN_MERIT_RANGE = 1e-12
+    #: Cap on the merit cache. Unbounded, it grew for the process lifetime on a
+    #: hit rate too low to be worth much.
+    MERIT_CACHE_MAX = 4096
 
     def __init__(
         self,
@@ -834,14 +837,28 @@ class LensOptimizer:
         return penalty
 
     def _evaluate_design(self, values: List[float]) -> float:
-        """Evaluate merit function for given variable values with caching"""
+        """Evaluate merit function for given variable values, with a bounded cache.
+
+        The cache is capped at ``MERIT_CACHE_MAX`` entries and evicted
+        first-in-first-out. It used to grow without bound for the process
+        lifetime while contributing little: every simplex vertex is a distinct
+        point, so the hit rate there is only ~12%. But it is not zero - gradient
+        descent re-evaluates the same point when it backtracks to a smaller step,
+        and simplex shrink re-evaluates the best vertex - so dropping it
+        outright would cost real evaluations. Bounding it keeps those hits and
+        ends the leak.
+        """
         # Create a cache key from the values (rounded to avoid precision issues)
         cache_key = tuple(round(v, 10) for v in values)
-        if cache_key in self._merit_cache:
-            merit = self._merit_cache[cache_key]
-        else:
+        merit = self._merit_cache.get(cache_key)
+        if merit is None:
             system = self._apply_variables(values)
             merit = self.merit_function.evaluate(system) + self._bound_penalty(values)
+            if len(self._merit_cache) >= self.MERIT_CACHE_MAX:
+                # FIFO. dicts preserve insertion order, so the oldest key is
+                # first. A precise LRU would cost more bookkeeping than it
+                # saves at this hit rate and working-set size.
+                del self._merit_cache[next(iter(self._merit_cache))]
             self._merit_cache[cache_key] = merit
 
         # A NaN merit is not "infinitely good": it poisons every comparison it
