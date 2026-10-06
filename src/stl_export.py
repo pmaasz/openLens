@@ -31,9 +31,39 @@ class STLExporter:
         is_front: bool = True,
         resolution: int = 50,
     ) -> Optional[List[Tuple[float, float]]]:
-        """Calculate points on a spherical surface"""
-        # STL exporter wants half-profile (0 to h).
+        """Calculate points on a spherical surface.
 
+        Args:
+            radius: Signed radius of curvature (mm). The sign alone sets the
+                shape: positive gives a surface curving away from the axis.
+            diameter: Full clear/mechanical diameter (mm).
+            is_front: Accepted for API compatibility and **ignored**. The
+                surface shape is fully determined by the sign of ``radius``,
+                and the back surface is positioned by the caller's
+                ``z_offset`` (= thickness). Front and back profiles are
+                therefore the same function of their own radius.
+            resolution: Number of radial steps from the axis to the rim.
+
+        Returns:
+            Half-profile as (radius_from_axis, z) pairs, or None if the
+            surface is flat.
+        """
+        # STL exporter wants half-profile (0 to h).
+        #
+        # The sag formula already carries the sign: copysign makes the
+        # denominator negative for a negative radius, so z_sag is +sag for
+        # R > 0 and -sag for R < 0. This used to be followed by
+        #
+        #     if is_front:
+        #         if radius < 0: z = -z_sag
+        #     else:
+        #         if radius < 0: z = -z_sag
+        #
+        # whose two branches were byte-identical, so is_front did nothing and
+        # the negation simply inverted every negative radius. For
+        # r1=+50, r2=-50, t=5, D=25 the back rim came out at 6.588 instead of
+        # 3.412, and because both surfaces came out identical the biconvex
+        # solid was a straight cylinder of constant 5 mm.
         half_profile = []
 
         h = diameter / 2.0
@@ -47,16 +77,7 @@ class STLExporter:
                 except (ValueError, ZeroDivisionError):
                     z_sag = 0.0
 
-            # Apply STL exporter's specific sign logic
-            z = z_sag
-            if is_front:
-                if radius < 0:
-                    z = -z_sag
-            else:
-                if radius < 0:
-                    z = -z_sag
-
-            half_profile.append((y, z))
+            half_profile.append((y, z_sag))
 
         return half_profile
 
