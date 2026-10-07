@@ -1,5 +1,83 @@
 # Changelog
 
+## [0.5.0](https://github.com/pmaasz/openLens/compare/openlens-v0.4.0...openlens-v0.5.0) (2026-10-07)
+
+
+### Features
+
+* **qa:** add automated GUI flow suite replacing manual QA ([#288](https://github.com/pmaasz/openLens/issues/288)) ([2e7175b](https://github.com/pmaasz/openLens/commit/2e7175b916d784bd83ca01c28512c3dc94633930))
+
+
+### Bug Fixes
+
+* **aberrations:** report an unmeasurable metric as missing, not as zero ([#398](https://github.com/pmaasz/openLens/issues/398)) ([a75b067](https://github.com/pmaasz/openLens/commit/a75b067b7ea6f11d6c479dad960465fc2e903961))
+* **aberrations:** report the system name in the summary header ([#369](https://github.com/pmaasz/openLens/issues/369)) ([dcb2efb](https://github.com/pmaasz/openLens/commit/dcb2efbbf880be1a347db0fe318f1bcf2c8e1242)), closes [#333](https://github.com/pmaasz/openLens/issues/333)
+* **achromat:** build doublet lenses with the solved refractive index ([#371](https://github.com/pmaasz/openLens/issues/371)) ([4549188](https://github.com/pmaasz/openLens/commit/45491884af98b728896e868d1a4bac2a2046097e)), closes [#332](https://github.com/pmaasz/openLens/issues/332)
+* **analysis:** give every calculate_psf branch the same key set ([#393](https://github.com/pmaasz/openLens/issues/393)) ([e0eed8b](https://github.com/pmaasz/openLens/commit/e0eed8b74f89afafb648198f8809927f4e6b6aef))
+* **analysis:** never score a vignetted design as a perfect spot ([#368](https://github.com/pmaasz/openLens/issues/368)) ([1755785](https://github.com/pmaasz/openLens/commit/17557859860408a98127d2cc4f2097521477b0cb))
+* **analysis:** stop trace_spot masking failures as a zero-radius spot ([#367](https://github.com/pmaasz/openLens/issues/367)) ([03f9fb2](https://github.com/pmaasz/openLens/commit/03f9fb2ef429ea1659b4ae7a85c0115bcb41a559)), closes [#303](https://github.com/pmaasz/openLens/issues/303)
+* **beam:** add the missing GaussianBeam.R_y curvature radius ([#366](https://github.com/pmaasz/openLens/issues/366)) ([767cbb3](https://github.com/pmaasz/openLens/commit/767cbb3203a01715c14bcef6ea2467327710ab62)), closes [#302](https://github.com/pmaasz/openLens/issues/302)
+* **beam:** an unusable wavefront sample must be NaN, never a zero OPD ([#419](https://github.com/pmaasz/openLens/issues/419)) ([23db8c0](https://github.com/pmaasz/openLens/commit/23db8c05eab83c846345ba143d4ca96d632ddc30))
+* **beam:** correct beamlet spacing, track the local medium, degrade honestly ([#415](https://github.com/pmaasz/openLens/issues/415)) ([7cd2cfc](https://github.com/pmaasz/openLens/commit/7cd2cfc916398da3ec1f8e89fc86714c48e0e2b6))
+* capture ImportError as e in STEP export exception handler ([#318](https://github.com/pmaasz/openLens/issues/318)) ([9ea748f](https://github.com/pmaasz/openLens/commit/9ea748fac7bca582a629e09a88b902a960bb1439))
+* **chromatic:** reject unsolvable achromats instead of dividing by zero ([#372](https://github.com/pmaasz/openLens/issues/372)) ([12f22f3](https://github.com/pmaasz/openLens/commit/12f22f3ec92e3903ca91063803704a101e9ce231)), closes [#307](https://github.com/pmaasz/openLens/issues/307)
+* **db:** make schema migration atomic and self-healing ([#376](https://github.com/pmaasz/openLens/issues/376)) ([c3c0282](https://github.com/pmaasz/openLens/commit/c3c02826d2c2cd083159289311648e0728da550c)), closes [#306](https://github.com/pmaasz/openLens/issues/306)
+* **db:** tolerate a corrupt metadata blob instead of emptying the library ([#386](https://github.com/pmaasz/openLens/issues/386)) ([65f9d82](https://github.com/pmaasz/openLens/commit/65f9d82c11d0996543e50ce46a691b1c54e39bd1))
+* **diffraction:** honour the matplotlib flag in all three plot methods ([#404](https://github.com/pmaasz/openLens/issues/404)) ([1794e9e](https://github.com/pmaasz/openLens/commit/1794e9eed3a535022ce31973e462ff76f7fdf359))
+* except ImportError as e: ([9ea748f](https://github.com/pmaasz/openLens/commit/9ea748fac7bca582a629e09a88b902a960bb1439))
+* **export:** derive the air gap from the system, not a missing field ([#397](https://github.com/pmaasz/openLens/issues/397)) ([f1bdf37](https://github.com/pmaasz/openLens/commit/f1bdf37e0e97ff0eda1df091e2c61ec8cc84cb62))
+* **export:** escape names and materials interpolated into SVG ([#395](https://github.com/pmaasz/openLens/issues/395)) ([9fd5080](https://github.com/pmaasz/openLens/commit/9fd5080abe38556fbf752953e9fb1e5e75b7ba61))
+* **fresnel:** render and trace stepped lenses ([#290](https://github.com/pmaasz/openLens/issues/290)) ([f3004bb](https://github.com/pmaasz/openLens/commit/f3004bbb9edc73982702c9a47877581c909f9909))
+* **gui:** bound the assembly tab's empty-lens-list retry ([#402](https://github.com/pmaasz/openLens/issues/402)) ([a7fc637](https://github.com/pmaasz/openLens/commit/a7fc637fad8ab19c9ec4f1fbb4e43f10615fe668))
+* **gui:** compute analyses off-thread behind a visible dialog ([#425](https://github.com/pmaasz/openLens/issues/425)) ([d114f2f](https://github.com/pmaasz/openLens/commit/d114f2fc00dd2cf8c0bfba8913185a7ec568c565))
+* **gui:** implement the tolerancing tab's missing worker slots ([#364](https://github.com/pmaasz/openLens/issues/364)) ([7fce317](https://github.com/pmaasz/openLens/commit/7fce31781676633b41696e72b3539eca3842351b)), closes [#297](https://github.com/pmaasz/openLens/issues/297)
+* **gui:** keep the optimization variable selection across refreshes ([#380](https://github.com/pmaasz/openLens/issues/380)) ([a927497](https://github.com/pmaasz/openLens/commit/a927497510512579f9bfa7c660e12c35eb65a332))
+* **gui:** make optimization Stop actually stop the thread ([#365](https://github.com/pmaasz/openLens/issues/365)) ([e8f88c7](https://github.com/pmaasz/openLens/commit/e8f88c70d1badaf3661e1ffec817a861f1dfadfe)), closes [#298](https://github.com/pmaasz/openLens/issues/298)
+* **gui:** make tolerancing work for assemblies ([#381](https://github.com/pmaasz/openLens/issues/381)) ([6584486](https://github.com/pmaasz/openLens/commit/6584486722417ffc254cfa8236ad81c32ae2d928)), closes [#327](https://github.com/pmaasz/openLens/issues/327)
+* **gui:** re-point the editor after deleting the current assembly ([#379](https://github.com/pmaasz/openLens/issues/379)) ([c269138](https://github.com/pmaasz/openLens/commit/c269138166bc0e57a4f14eead1a6192bc7537fb8))
+* **gui:** release tolerancing workers so results are not retained ([#389](https://github.com/pmaasz/openLens/issues/389)) ([9ed85f1](https://github.com/pmaasz/openLens/commit/9ed85f197fafe14530c493b1405d2b5e407506e6))
+* **gui:** restore a saved tolerance set instead of showing an empty table ([#424](https://github.com/pmaasz/openLens/issues/424)) ([6df12f9](https://github.com/pmaasz/openLens/commit/6df12f9186af6f94d7875f90674c3b9d28631451))
+* **gui:** start without matplotlib ([#388](https://github.com/pmaasz/openLens/issues/388)) ([71644ac](https://github.com/pmaasz/openLens/commit/71644ac2e44d444887b8f2354a9a04e14a5fa780))
+* **image_sim:** scale aberration blur by the pixel pitch ([#416](https://github.com/pmaasz/openLens/issues/416)) ([1d4963a](https://github.com/pmaasz/openLens/commit/1d4963a1ce4391f42bd93662de35533b6b3131f1))
+* **image-sim:** use the real OpticalSystem API, not probed attributes ([#382](https://github.com/pmaasz/openLens/issues/382)) ([79fb92a](https://github.com/pmaasz/openLens/commit/79fb92a717ab871b349d2087fe4a3734374dcf0d))
+* **io:** report skipped STEP parts at WARNING with a skip count ([#403](https://github.com/pmaasz/openLens/issues/403)) ([a6ea306](https://github.com/pmaasz/openLens/commit/a6ea306d97313759cff52d2bb4e612dbc39cb891))
+* **io:** validate elements and presets read from untrusted files ([#422](https://github.com/pmaasz/openLens/issues/422)) ([30ecefd](https://github.com/pmaasz/openLens/commit/30ecefd0c1f6eb17deb0784a989dfce1adfd92f0))
+* **io:** write exports atomically so a crash cannot destroy the last file ([#384](https://github.com/pmaasz/openLens/issues/384)) ([b641472](https://github.com/pmaasz/openLens/commit/b641472d5bfeb31fe53e35da12b492e01cfdf9d4))
+* **lens:** judge edge thickness at the radius the lens is polished to ([#413](https://github.com/pmaasz/openLens/issues/413)) ([fe8282a](https://github.com/pmaasz/openLens/commit/fe8282aca975e596fc42f14d1c40ee0fa56aee32))
+* **materials:** guard the Sellmeier singularities ([#392](https://github.com/pmaasz/openLens/issues/392)) ([2cd343c](https://github.com/pmaasz/openLens/commit/2cd343c86eac905e4460e09a8b1896b1cc1bf3a2))
+* **materials:** load each catalog entry independently ([#385](https://github.com/pmaasz/openLens/issues/385)) ([c29f05e](https://github.com/pmaasz/openLens/commit/c29f05e08fbe7f7fb7f7a9c2e25d20bd8acb5316))
+* **materials:** make the refractive index cache per-instance ([#406](https://github.com/pmaasz/openLens/issues/406)) ([c5c8f8d](https://github.com/pmaasz/openLens/commit/c5c8f8d27c6a2944ab95e9cf658c0e7f1f179276))
+* **optimizer:** bound the merit cache ([#412](https://github.com/pmaasz/openLens/issues/412)) ([f8ff0d1](https://github.com/pmaasz/openLens/commit/f8ff0d185b2e3fa8a89541a281f23138510b57bf))
+* **optimizer:** gradient descent must reject steps that worsen the merit ([#408](https://github.com/pmaasz/openLens/issues/408)) ([0658813](https://github.com/pmaasz/openLens/commit/0658813958a095813ab0227a5978651c908c6304))
+* **optimizer:** guard degenerate global-optimizer configurations ([#410](https://github.com/pmaasz/openLens/issues/410)) ([8c48978](https://github.com/pmaasz/openLens/commit/8c4897815751271f8f95ff320fc3cb46a140d3dd))
+* **optimizer:** make the simplex convergence test scale-blind ([#411](https://github.com/pmaasz/openLens/issues/411)) ([6c58e43](https://github.com/pmaasz/openLens/commit/6c58e43bfa02d8fab424839989e9a4da932707a6))
+* **optimizer:** name the merit function's dependencies instead of globals()ing ([#407](https://github.com/pmaasz/openLens/issues/407)) ([b1f027e](https://github.com/pmaasz/openLens/commit/b1f027e63bb3e96dfd5da1dfb06fa96b36236807))
+* **optimizer:** pass the refinement start explicitly instead of mutating caller state ([#409](https://github.com/pmaasz/openLens/issues/409)) ([32ae378](https://github.com/pmaasz/openLens/commit/32ae37810f16bddd523232b5bfe698b05b09328f))
+* **optimizer:** stop a NaN or empty generation from crashing the GA ([#377](https://github.com/pmaasz/openLens/issues/377)) ([3312d09](https://github.com/pmaasz/openLens/commit/3312d09bf7d4968fa13b31d9f866ea9bef8241fd)), closes [#317](https://github.com/pmaasz/openLens/issues/317)
+* **optimizer:** stop forking worker processes inside the GUI thread ([#423](https://github.com/pmaasz/openLens/issues/423)) ([e35202c](https://github.com/pmaasz/openLens/commit/e35202c9f65d8a30b287466547cbe9b5f6b681ff))
+* **perf:** report the real back focal length for a system ([#370](https://github.com/pmaasz/openLens/issues/370)) ([69f0974](https://github.com/pmaasz/openLens/commit/69f0974ce233f52a0272142104e03b4f7f1345a9)), closes [#322](https://github.com/pmaasz/openLens/issues/322)
+* **preset:** copy the whole lens model out of a preset ([#375](https://github.com/pmaasz/openLens/issues/375)) ([4be5aa0](https://github.com/pmaasz/openLens/commit/4be5aa0b35cfd0b4db468d439801d56dd9be9c4c)), closes [#357](https://github.com/pmaasz/openLens/issues/357)
+* **psf:** accept 2-D and integer images in simulate_image ([#374](https://github.com/pmaasz/openLens/issues/374)) ([b4a0d6a](https://github.com/pmaasz/openLens/commit/b4a0d6a830b91f7aad4c9fae56f4bfcd87d2b46c)), closes [#320](https://github.com/pmaasz/openLens/issues/320)
+* **psf:** floor the resample indices and refuse a degenerate spacing ([#401](https://github.com/pmaasz/openLens/issues/401)) ([b4f54fe](https://github.com/pmaasz/openLens/commit/b4f54fe789c783fdf7328977b48fbf4e4566672e))
+* **psf:** use the pupil sample spacing, not the sample count ([#373](https://github.com/pmaasz/openLens/issues/373)) ([373347b](https://github.com/pmaasz/openLens/commit/373347bf7e853252bb5b937d20a9a53474a9dcda)), closes [#352](https://github.com/pmaasz/openLens/issues/352)
+* **step:** escape string literals and quote them in one place ([#363](https://github.com/pmaasz/openLens/issues/363)) ([017259b](https://github.com/pmaasz/openLens/commit/017259bc1d50e7ff071217fe0872adf1376caa8b)), closes [#294](https://github.com/pmaasz/openLens/issues/294)
+* **step:** reset the entity buffer on every STEP export ([#383](https://github.com/pmaasz/openLens/issues/383)) ([71c27fe](https://github.com/pmaasz/openLens/commit/71c27feb3bb2dc8f15481ea571ff3d326b5a24ee))
+* **step:** write entity references as #id, not as reals ([#362](https://github.com/pmaasz/openLens/issues/362)) ([d3a4bb6](https://github.com/pmaasz/openLens/commit/d3a4bb6ff3ca10e030e29d72ed835b470ceed7a3)), closes [#293](https://github.com/pmaasz/openLens/issues/293)
+* **stl:** stop inverting the sign of a negative radius ([#396](https://github.com/pmaasz/openLens/issues/396)) ([115556a](https://github.com/pmaasz/openLens/commit/115556a99aab608043ba5168c061736d723750a5))
+* **system:** match nodes to elements by identity, not by flat index ([#390](https://github.com/pmaasz/openLens/issues/390)) ([60e07f5](https://github.com/pmaasz/openLens/commit/60e07f5ff8c811c66c603d5f164a1076f229d392))
+* **tolerancing:** restore glass state exactly so MC stops walking the index ([#387](https://github.com/pmaasz/openLens/issues/387)) ([744ba46](https://github.com/pmaasz/openLens/commit/744ba4692982ee0767b287de1e8fa4b569e4d880))
+* **tolerancing:** stop run() dividing by zero and losing runs to one TIR ([#394](https://github.com/pmaasz/openLens/issues/394)) ([36cc9c9](https://github.com/pmaasz/openLens/commit/36cc9c97538cc4b6d6a74773b36a7aa288f475ab))
+* **tracer-2d:** trace elements with a concave first surface ([#361](https://github.com/pmaasz/openLens/issues/361)) ([442d3ee](https://github.com/pmaasz/openLens/commit/442d3ee056ffbe99320f4806e4f8411808f08ef0)), closes [#292](https://github.com/pmaasz/openLens/issues/292)
+* **tracer2d:** intersect the parabolic surface on the conic the normal uses ([#414](https://github.com/pmaasz/openLens/issues/414)) ([c1336e0](https://github.com/pmaasz/openLens/commit/c1336e09fdfb8bc3c0724fa2b13a6c63d3afc450))
+* **tracer3d:** do not record a zero-length hit as a path point ([#399](https://github.com/pmaasz/openLens/issues/399)) ([52b7748](https://github.com/pmaasz/openLens/commit/52b77489438faab9f0f19a9cc2e3a4c878ba26e3))
+* **validation:** honour safe_float_conversion's never-raises contract ([#391](https://github.com/pmaasz/openLens/issues/391)) ([de50097](https://github.com/pmaasz/openLens/commit/de5009777995f4359aefeb68d57ee1f6073936c5))
+* **validation:** reject NaN and Infinity from parsed JSON ([#418](https://github.com/pmaasz/openLens/issues/418)) ([87e1260](https://github.com/pmaasz/openLens/commit/87e126054d1729d7144684231ba40fc3edf3fed6))
+
+
+### Performance Improvements
+
+* **gui:** debounce edits, stop recomputing metrics, defer the 3D redraw ([#426](https://github.com/pmaasz/openLens/issues/426)) ([d971d05](https://github.com/pmaasz/openLens/commit/d971d05aec26a7637216cb7f118cf12da704cffe))
+
 ## [0.4.0](https://github.com/pmaasz/openLens/compare/openlens-v0.3.0...openlens-v0.4.0) (2026-09-16)
 
 
