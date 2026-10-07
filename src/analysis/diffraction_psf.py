@@ -1,8 +1,79 @@
 from ..constants import WAVELENGTH_GREEN
 import math
 import logging
-from typing import Optional
-import numpy as np
+from typing import Any, Optional
+
+try:
+    import numpy as np
+
+    NUMPY_AVAILABLE = True
+except ImportError:  # pragma: no cover - depends on the environment
+    NUMPY_AVAILABLE = False
+
+    # Minimal stand-in so the module still imports and its degraded paths
+    # return something, rather than the whole application failing at startup.
+    # openlens.py imports WavefrontSensor from here at module scope, so an
+    # unguarded `import numpy` above meant the GUI could not start without it -
+    # contradicting AGENTS.md, which classes numpy as optional.
+    class np:  # noqa: N801 - deliberately mirrors the numpy name
+        ndarray = Any
+        float64 = float
+        inf = float("inf")
+
+        @staticmethod
+        def array(values, dtype=None):
+            return list(values)
+
+        @staticmethod
+        def zeros(shape, dtype=None):
+            if isinstance(shape, int):
+                return [0.0] * shape
+            rows, cols = shape
+            return [[0.0] * cols for _ in range(rows)]
+
+        @staticmethod
+        def ones_like(arr, dtype=None):
+            return arr
+
+        @staticmethod
+        def full_like(arr, value, dtype=None):
+            return arr
+
+        @staticmethod
+        def empty(shape, dtype=None):
+            return np.zeros(shape)
+
+        @staticmethod
+        def count_nonzero(arr):
+            return sum(1 for v in arr if v)
+
+        @staticmethod
+        def mean(values):
+            values = list(values)
+            return sum(values) / len(values) if values else 0.0
+
+        @staticmethod
+        def isnan(arr):
+            def _isnan(v):
+                return v != v
+
+            return [_isnan(v) for v in arr]
+
+        @staticmethod
+        def allnan(arr):
+            return all(v != v for v in arr)
+
+        @staticmethod
+        def linspace(start, stop, num=50, dtype=None):
+            if num <= 1:
+                return [float(start)]
+            step = (stop - start) / (num - 1)
+            return [start + step * i for i in range(num)]
+
+        @staticmethod
+        def meshgrid(x, y):
+            return [[value for value in x] for _ in y], [[value for _ in x] for value in y]
+
 
 # Import internal dependencies
 from ..vector3 import vec3
@@ -57,6 +128,10 @@ class WavefrontSensor:
         Returns:
             WavefrontError object containing Y, Z grids (pupil coords) and W (wavefront error in waves)
         """
+        if not NUMPY_AVAILABLE:
+            empty = []
+            return WavefrontError(empty, empty, empty)
+
         # Convert wavelength from nm to mm for OPD scaling
         wavelength_mm = wavelength_nm * 1e-6
 
@@ -109,8 +184,20 @@ class WavefrontSensor:
         chief_origin = vec3(pupil_x, 0.0, 0.0) - direction * (dist / dx)
         chief = Ray3D(chief_origin, direction, wavelength=wavelength_mm)
         self.tracer.trace_ray(chief)
-        if chief.terminated or abs(chief.direction.x) < 1e-9:
-            logger.warning("Chief ray trace failed; cannot reference wavefront")
+        # An untraced chief ray must invalidate the whole map. Without the
+        # path check, a ray that was blocked but never flagged terminated (or
+        # one whose path was cleared) still contributes its origin as the
+        # reference-sphere centre, and every in-aperture sample is then measured
+        # against a reference plane that was never traced - the exact failure
+        # #314 fixed in the implementation this replaced.
+        chief_traced = len(chief.path) >= 2 and not chief.terminated
+        if not chief_traced or abs(chief.direction.x) < 1e-9:
+            logger.warning(
+                "Chief ray trace failed (path=%d point(s), terminated=%s); "
+                "cannot reference wavefront",
+                len(chief.path),
+                chief.terminated,
+            )
             return _nan_map()
         t_q = (x_focus - chief.origin.x) / chief.direction.x
         # t_q may be negative (focus in front of the exit-propagation end):
@@ -223,6 +310,12 @@ class DiffractionPSFCalculator:
         Returns:
             2D PSF array (normalized intensity).
         """
+        if not NUMPY_AVAILABLE:
+            # The beam_synthesis copy this replaced had this guard; without
+            # it the FFT path raises "type object 'np' has no attribute
+            # 'fft'" on a numpy-less install, breaking the optional-dependency
+            # contract in AGENTS.md.
+            return []
         wavefront_map = wavefront.W
         N = wavefront_map.shape[0]
 
@@ -269,6 +362,8 @@ class DiffractionPSFCalculator:
         Returns:
             2D Modulation Transfer Function (normalized magnitude of OTF).
         """
+        if not NUMPY_AVAILABLE:
+            return []
         # OTF is FFT of PSF
         # psf is real, so OTF is Hermitian (but we just want magnitude)
         otf = np.fft.fftshift(np.fft.fft2(np.fft.ifftshift(psf)))

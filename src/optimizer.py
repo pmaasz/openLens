@@ -17,7 +17,11 @@ from .lens import Lens
 from .optical_system import OpticalSystem
 from .aberrations import AberrationsCalculator
 from .analysis import SpotDiagram
-from .analysis.beam_synthesis import PSFCalculator, WavefrontSensor, NUMPY_AVAILABLE
+from .analysis.diffraction_psf import (
+    NUMPY_AVAILABLE,
+    DiffractionPSFCalculator,
+    WavefrontSensor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -210,17 +214,26 @@ class MeritFunction:
             return INFEASIBLE_MERIT
 
         try:
+            # The wavefront/PSF pair comes from analysis.diffraction_psf, the
+            # single implementation: it removes piston *and* tilt and
+            # references a real sphere through the chief ray. The
+            # beam_synthesis copy this replaced removed piston only and
+            # referenced a flat plane, so at any nonzero field the pupil
+            # carried a linear phase ramp, the PSF smeared across the padded
+            # window, and this merit measured field angle rather than
+            # aberration.
             import numpy as np
 
             sensor = WavefrontSensor(system)
-            Y, Z, W = sensor.get_pupil_wavefront()
+            wavefront = sensor.get_pupil_wavefront()
 
-            if W.size == 0 or np.all(np.isnan(W)):
+            W = wavefront.W
+            if getattr(W, "size", 0) == 0 or np.all(np.isnan(W)):
                 logger.debug("MTF merit: empty or all-NaN pupil wavefront.")
                 return INFEASIBLE_MERIT
 
-            psf = PSFCalculator.calculate_psf(Y, Z, W)
-            mtf = PSFCalculator.calculate_mtf(psf)
+            psf = DiffractionPSFCalculator.calculate_psf(wavefront)
+            mtf = DiffractionPSFCalculator.calculate_mtf(psf)
             value = float(np.sum(mtf))
             return MeritFunction._apply_target(target, value)
         except Exception as e:
