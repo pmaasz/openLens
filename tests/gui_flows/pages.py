@@ -82,6 +82,11 @@ class MainWindowPO:
         if diameter is not None:
             ed._diameter_input.setValue(diameter)
         QApplication.processEvents()
+        # Edits are debounced by OpenLensWindow._schedule_edit_commit (a
+        # restartable 400 ms timer) so a burst of keystrokes costs one write.
+        # Callers treat this helper as "edit, and it has landed", so settle the
+        # pending commit rather than assuming a synchronous write.
+        self.w._flush_pending_edit()
         return self.w._current_lens
 
     def click_button(self, parent, text: str):
