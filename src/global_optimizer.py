@@ -33,8 +33,12 @@ class GlobalOptimizer(LensOptimizer):
         seed: Optional[int] = None,
     ):
         super().__init__(system, variables, targets, constraints)
-        if seed is not None:
-            random.seed(seed)
+        # Private generator, not self._rng.seed(). This __init__ runs inside a
+        # QThread (optimization_tab.py), so reseeding the module-level stream
+        # mutated RNG state the Qt thread could be consuming concurrently -
+        # and `seed=` was not reproducible anyway, because every draw came
+        # from that shared stream.
+        self._rng = random.Random(seed)
 
     def optimize_simulated_annealing(
         self,
@@ -94,12 +98,12 @@ class GlobalOptimizer(LensOptimizer):
             scale_factor = max(0.01, min(1.0, temperature / initial_temperature))
 
             # Select random variable to modify
-            idx = random.randint(0, n_vars - 1)
+            idx = self._rng.randint(0, n_vars - 1)
             var = self.variables[idx]
 
             # Random perturbation
             # Range is heuristic: step_size * scale * Gaussian
-            delta = var.step_size * scale_factor * random.gauss(0, 1)
+            delta = var.step_size * scale_factor * self._rng.gauss(0, 1)
             neighbor_values[idx] = var.clamp(neighbor_values[idx] + delta)
 
             # Evaluate neighbor
@@ -119,7 +123,7 @@ class GlobalOptimizer(LensOptimizer):
                 else:
                     prob = math.exp(-delta_E / temperature)
 
-                accept = random.random() < prob
+                accept = self._rng.random() < prob
 
             if accept:
                 current_values = neighbor_values
@@ -192,7 +196,7 @@ class GlobalOptimizer(LensOptimizer):
             individual = []
             for var in self.variables:
                 # Random value in range
-                val = random.uniform(var.min_value, var.max_value)
+                val = self._rng.uniform(var.min_value, var.max_value)
                 individual.append(val)
             population.append(individual)
 
@@ -250,7 +254,7 @@ class GlobalOptimizer(LensOptimizer):
                 parent2 = self._tournament_select(population, merits)
 
                 # Crossover
-                if random.random() < crossover_rate:
+                if self._rng.random() < crossover_rate:
                     child = self._crossover(parent1, parent2)
                 else:
                     child = list(parent1)
@@ -297,13 +301,13 @@ class GlobalOptimizer(LensOptimizer):
         if not population:
             raise ValueError("cannot select from an empty population")
         k = max(1, min(k, len(population)))
-        selected_indices = random.sample(range(len(population)), k)
+        selected_indices = self._rng.sample(range(len(population)), k)
         best_idx = min(selected_indices, key=lambda i: merits[i])
         return population[best_idx]
 
     def _crossover(self, p1, p2):
         # Arithmetic crossover
-        alpha = random.random()
+        alpha = self._rng.random()
         child = []
         for v1, v2 in zip(p1, p2):
             val = alpha * v1 + (1 - alpha) * v2
@@ -312,9 +316,9 @@ class GlobalOptimizer(LensOptimizer):
 
     def _mutate(self, individual, rate):
         for i in range(len(individual)):
-            if random.random() < rate:
+            if self._rng.random() < rate:
                 var = self.variables[i]
                 # Gaussian mutation scaled by range
                 sigma = (var.max_value - var.min_value) * 0.1
-                individual[i] += random.gauss(0, sigma)
+                individual[i] += self._rng.gauss(0, sigma)
                 individual[i] = var.clamp(individual[i])
