@@ -35,7 +35,7 @@ def _coating_parse(raw) -> Optional[list]:
     return parsed
 
 
-def _metadata_merge(target: Dict[str, Any], raw: Any, what: str) -> None:
+def _metadata_merge(target: Dict[str, Any], raw: Any, what: str) -> Dict[str, Any]:
     """Merge a metadata JSON blob into ``target``, tolerating a bad blob.
 
     Mirrors :func:`_coating_parse`. A truncated or hand-edited blob used to
@@ -44,9 +44,16 @@ def _metadata_merge(target: Dict[str, Any], raw: Any, what: str) -> None:
     looking at an entirely empty library with only a log line to explain it.
     A blob that is valid JSON but not an object raises TypeError/ValueError
     from dict.update, so that is caught too.
+
+    Returns the parsed object (empty when absent or unusable). The blob is
+    merged flat into ``target`` so keys written by older builds - ``lens_type``,
+    ``wavelength`` and friends, which never had columns - keep resolving
+    against the row dict. Returning it is also what lets the caller hand it to
+    the model as its own ``metadata`` attribute: a reloaded Lens used to come
+    back with no ``metadata`` at all, so a saved tolerance set vanished.
     """
     if not raw:
-        return
+        return {}
     if isinstance(raw, (dict, list)):
         meta = raw
     else:
@@ -54,13 +61,29 @@ def _metadata_merge(target: Dict[str, Any], raw: Any, what: str) -> None:
             meta = json.loads(raw)
         except (ValueError, TypeError) as e:
             logger.warning("Ignoring unparseable %s metadata: %s", what, e)
-            return
+            return {}
     if not isinstance(meta, dict):
         logger.warning(
             "Ignoring %s metadata: expected an object, got %s", what, type(meta).__name__
         )
-        return
+        return {}
     target.update(meta)
+    return dict(meta)
+
+
+def _metadata_payload(source: Dict[str, Any], column_keys) -> str:
+    """Build the flat metadata blob for a row.
+
+    Anything without a dedicated column goes in the blob, and so does the
+    model's own ``metadata`` dict - flattened into the same level rather than
+    nested. Nesting would write ``{"metadata": {"metadata": ...}}`` and would
+    break every existing reader, which expects the blob to be flat.
+    """
+    blob = {k: v for k, v in source.items() if k not in column_keys}
+    nested = source.get("metadata") or {}
+    if isinstance(nested, dict):
+        blob.update(nested)
+    return json.dumps(blob)
 
 
 class LensInUseError(RuntimeError):
@@ -414,8 +437,13 @@ class DatabaseManager:
                                     "bevel_2",
                                     "coating_1",
                                     "coating_2",
+                                    # The model's own metadata is folded in
+                                    # flat by _metadata_payload; letting it
+                                    # through here would nest it.
+                                    "metadata",
                                 ]
                             }
+                            | dict(lens_dict.get("metadata") or {})
                         ),
                     ),
                 )
@@ -537,8 +565,10 @@ class DatabaseManager:
                                     "aperture_stop_diameter",
                                     "elements",
                                     "air_gaps",
+                                    "metadata",
                                 ]
                             }
+                            | dict(assembly_dict.get("metadata") or {})
                         ),
                     ),
                 )
@@ -611,8 +641,9 @@ class DatabaseManager:
                 lens["radius_of_curvature_2"] = lens["radius2"]
                 del lens["radius1"]
                 del lens["radius2"]
-                _metadata_merge(lens, lens["metadata"], f"lens {lens['id']}")
-                del lens["metadata"]
+                lens["metadata"] = _metadata_merge(
+                    lens, lens.pop("metadata", None), f"lens {lens['id']}"
+                )
                 # Coating TEXT columns decode to layer lists; an explicit
                 # blob key (hand-written rows) wins, matching the
                 # parabolic convention above.
@@ -630,8 +661,9 @@ class DatabaseManager:
                 assembly["type"] = "OpticalSystem"
 
                 # Load metadata
-                _metadata_merge(assembly, assembly["metadata"], f"assembly {assembly_id}")
-                del assembly["metadata"]
+                assembly["metadata"] = _metadata_merge(
+                    assembly, assembly.pop("metadata", None), f"assembly {assembly_id}"
+                )
 
                 # Load elements. Named columns only: both tables define an
                 # 'id' column, so 'l.*' would create a duplicate key whose
@@ -705,7 +737,9 @@ class DatabaseManager:
                             "coating_1": _coating_parse(e_dict["lens_coating_1"]),
                             "coating_2": _coating_parse(e_dict["lens_coating_2"]),
                         }
-                        _metadata_merge(lens_data, e_dict["lens_metadata"], f"lens {lens_id}")
+                        lens_data["metadata"] = _metadata_merge(
+                            lens_data, e_dict["lens_metadata"], f"lens {lens_id}"
+                        )
 
                     elements.append(
                         {
