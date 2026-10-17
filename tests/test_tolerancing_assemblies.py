@@ -173,7 +173,16 @@ class TestTolerancingAssemblies(unittest.TestCase):
         from src.gui.tabs.tolerancing_tab import _as_system
 
         system = self._doublet()
-        self.assertIs(_as_system(system), system)
+        copied = _as_system(system)
+
+        # The copy keeps every element and gap, which is the point of this
+        # test - the element indices in the tolerance operands have to refer
+        # to something. It is a copy rather than the assembly itself on
+        # purpose: the worker perturbs what it is given, in place, from a
+        # thread, while the GUI keeps drawing and saving the live design.
+        self.assertEqual(len(copied.elements), len(system.elements))
+        self.assertEqual(len(copied.air_gaps), len(system.air_gaps))
+        self.assertIsNot(copied, system)
 
         wrapped = _as_system(system.elements[0].lens)
         self.assertIsInstance(wrapped, OpticalSystem)

@@ -607,18 +607,31 @@ class MonteCarloAnalyzer:
         nominal_state = self._get_system_state(self.nominal_system)
 
         for i in range(num_trials):
-            # Apply tolerances directly to the system
-            perturbations = self._apply_tolerances(self.nominal_system)
+            # Every trial perturbs the system in place, so the restore has to
+            # happen even when the trial raises: an exception from
+            # _apply_tolerances, the compensator sweep or the trace used to
+            # leave the design perturbed, and the next save would write that
+            # perturbed design to the database.
+            try:
+                # Apply tolerances directly to the system
+                perturbations = self._apply_tolerances(self.nominal_system)
 
-            # Re-optimize compensators (focus and/or mechanical adjusts).
-            comp_values = self._optimize_compensators()
+                # Re-optimize compensators (focus and/or mechanical adjusts).
+                comp_values = self._optimize_compensators()
 
-            # Analyze. Goes through _spot_rms, which already wraps the trace
-            # and maps a vignetted result (rms_radius None) or any exception to
-            # inf. Calling trace_spot directly here meant one TIR or tracer
-            # error aborted the whole run and every accumulated self.results
-            # entry was lost with it.
-            val = self._spot_rms(focus_shift_mm=comp_values.get("focus_shift_mm", 0.0))
+                # Analyze. Goes through _spot_rms, which already wraps the trace
+                # and maps a vignetted result (rms_radius None) or any exception to
+                # inf. Calling trace_spot directly here meant one TIR or tracer
+                # error aborted the whole run and every accumulated self.results
+                # entry was lost with it.
+                val = self._spot_rms(focus_shift_mm=comp_values.get("focus_shift_mm", 0.0))
+            except Exception as e:
+                logger.warning("Monte Carlo trial %d failed: %s", i, e)
+                continue
+            finally:
+                # Restore nominal state
+                self._set_system_state(self.nominal_system, nominal_state)
+
             passed = val <= criterion_limit
             if passed:
                 pass_count += 1
@@ -632,9 +645,6 @@ class MonteCarloAnalyzer:
                     "passed": passed,
                 }
             )
-
-            # Restore nominal state
-            self._set_system_state(self.nominal_system, nominal_state)
 
         # Statistics. A vignetted trial contributes inf (an unbounded, and
         # unmanufacturable, spot radius), which statistics.mean/stdev cannot
@@ -703,17 +713,25 @@ class InverseSensitivityAnalyzer:
             # Save state
             original_state = self._get_system_state(self.system)
 
-            self._apply_single_tolerance(self.system, tol, delta)
+            # The perturbation is applied in place, so the restore has to
+            # happen even if the apply or the trace raises - otherwise the
+            # design is left perturbed and the next save writes that to the
+            # database.
+            try:
+                self._apply_single_tolerance(self.system, tol, delta)
 
-            # Analyze
-            spot = SpotDiagram(self.system)
-            res = spot.trace_spot()
-            val = res["rms_radius"]
-            if val is None:
+                # Analyze
+                spot = SpotDiagram(self.system)
+                res = spot.trace_spot()
+                val = res["rms_radius"]
+                if val is None:
+                    val = float("inf")
+            except Exception as e:
+                logger.warning("Inverse sensitivity for tolerance %d failed: %s", i, e)
                 val = float("inf")
-
-            # Restore state
-            self._set_system_state(self.system, original_state)
+            finally:
+                # Restore state
+                self._set_system_state(self.system, original_state)
 
             change = val - nominal_val
             # Sensitivity = change / tolerance_value. When either end is a

@@ -42,17 +42,27 @@ logger = logging.getLogger(__name__)
 
 
 def _as_system(target):
-    """Wrap a bare Lens in a throwaway system; pass a system through.
+    """Wrap a bare Lens in a throwaway system; pass a *copy* of a system through.
 
     Both workers need an OpticalSystem to trace. A single lens gets a
     one-element wrapper; an assembly is already one and must be used as-is,
     otherwise its elements, gaps and alignment would be discarded and the
     element indices in the tolerance operands would refer to nothing.
+
+    The copy is the point. MonteCarloAnalyzer applies random tolerance
+    changes *in place* on the system it is given, from a worker thread, while
+    the main thread keeps drawing, refreshing and saving the same object.
+    Handing it the live assembly meant an edit saved during a run could
+    write a perturbed design to SQLite. A bare Lens was already copied here;
+    an assembly now is too.
+
+    copy.deepcopy keeps the tree and the flat element list pointing at the
+    same lens objects, which refresh_references depends on.
     """
     from ...optical_system import OpticalSystem
 
     if isinstance(target, OpticalSystem):
-        return target
+        return copy.deepcopy(target)
     system = OpticalSystem(name="Tolerancing")
     system.add_lens(copy.deepcopy(target))
     return system
