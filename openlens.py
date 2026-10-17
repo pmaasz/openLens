@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QLabel, QTabWidget, QStatusBar, QFileDialog, QMessageBox)
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QKeySequence
 
 from src.lens import Lens
@@ -96,13 +96,22 @@ class OpenLensWindow(QMainWindow):
         self.setWindowTitle("OpenLens - Optical Lens Design")
         self.setMinimumSize(1000, 700)
         
-        # Initialize database
+        # Initialize database. The status callback is what makes a storage-layer
+        # failure visible: LensStorage otherwise reports errors into a no-op
+        # lambda, and the window used to claim "Saved to database" regardless.
         self._db_path = "openlens.db"
-        self._storage = LensStorage(self._db_path)
+        self._storage = LensStorage(self._db_path, self._update_status)
         self._lenses = []
         self._assemblies = []
         self._current_lens = None
         self._current_assembly = None
+        # Whether the "saving is broken" dialog has already been shown for the
+        # current streak of failures. Saving runs on every edit, so a modal
+        # dialog per failed save would be unusable; it is shown once per
+        # failure streak and re-armed by the next successful save.
+        self._save_error_shown = False
+        # Non-modal error boxes, kept referenced so Qt does not lose them.
+        self._problem_boxes = []
         # Ids of startup-created defaults that were never saved. The deferred
         # library load drops (rather than adopts) these when saved members
         # exist, so reopening shows the user's work instead of a blank lens.
@@ -116,6 +125,29 @@ class OpenLensWindow(QMainWindow):
         
         self._handle_startup(action, data)
     
+    def _notify_problem(self, title: str, text: str) -> None:
+        """Raise a non-blocking error box.
+
+        Deliberately not modal, and shown with ``show()`` rather than ``exec()``.
+        Both callers run from places where blocking would be wrong: the library
+        load is fired from a deferred startup timer, and the save runs on the
+        autosave path. ``exec()`` runs a nested event loop, so it freezes the
+        app before the user can act and hangs anything driving the window
+        headlessly (the GUI tests spin the event loop, so a blocking report
+        raised by a deferred load hangs the whole suite). Window modality is
+        cleared too, so the box draws attention without disabling the rest of
+        the UI while the user works out what to do.
+
+        The dialog is kept in ``_problem_boxes`` so it is not garbage collected
+        out from under Qt, and the status bar always carries the same message,
+        so the information survives the box being dismissed.
+        """
+        box = QMessageBox(QMessageBox.Critical, title, text, parent=self)
+        box.setWindowModality(Qt.NonModal)
+        box.setAttribute(Qt.WA_DeleteOnClose, True)
+        box.show()
+        self._problem_boxes.append(box)
+
     def _load_from_database(self) -> None:
         """Load lenses and assemblies from SQLite database"""
         # A pending edit must reach disk before the library is read back, or
@@ -186,6 +218,16 @@ class OpenLensWindow(QMainWindow):
             self._assemblies = []
             self._current_lens = None
             self._current_assembly = None
+            # Resetting the library in silence used to leave the user with an
+            # empty window and no idea why. If the editor still holds a lens,
+            # their edits have nowhere to go, so say so.
+            self._update_status("Failed to load the library: %s" % e)
+            self._notify_problem(
+                "Load failed",
+                f"Could not read the lens library from '{self._db_path}':\n\n{e}\n\n"
+                "The library has been emptied. Edits you make now cannot be "
+                "saved until this is resolved.",
+            )
     
     def _sync_tolerances_to_metadata(self, target=None) -> None:
         """Persist the working tolerance set onto the model that owns it.
@@ -236,7 +278,7 @@ class OpenLensWindow(QMainWindow):
         )
         self._tol_operands_target = target
 
-    def _save_to_database(self, reconcile: bool = True) -> None:
+    def _save_to_database(self, reconcile: bool = True) -> bool:
         """Save all lenses and assemblies to SQLite database.
 
         Args:
@@ -244,8 +286,13 @@ class OpenLensWindow(QMainWindow):
                 rows, removing anything no longer in memory. Needed for an
                 explicit save or open, but far too expensive for the
                 per-keystroke edit path.
+
+        Returns:
+            True when every item reached the database. ``LensStorage.save_lenses``
+            swallows the exception and returns False, so this has to honour the
+            return value: a caller that ignores it cannot tell a failed save
+            from a successful one.
         """
-        
         try:
             # Sync tolerances to current target metadata before saving
             self._sync_tolerances_to_metadata()
@@ -258,11 +305,41 @@ class OpenLensWindow(QMainWindow):
                 if hasattr(item, 'id'):
                     unique_items[item.id] = item
 
-            self._storage.save_lenses(list(unique_items.values()),
-                                   reconcile=reconcile)
+            if not self._storage.save_lenses(list(unique_items.values()),
+                                             reconcile=reconcile):
+                # save_lenses swallowed the exception, so its own report is the
+                # only place the real reason survives.
+                self._report_save_failure(
+                    getattr(self._storage, "last_error", None)
+                    or "the database rejected the save"
+                )
+                return False
+
+            self._save_error_shown = False
             logger.info("Saved %d unique items to database", len(unique_items))
+            return True
         except Exception as e:
             logger.error("Failed to save to database: %s", e)
+            self._report_save_failure(str(e))
+            return False
+
+    def _report_save_failure(self, reason: str) -> None:
+        """Tell the user a save failed, loudly once and quietly thereafter.
+
+        The status bar carries the truth on every failure; the modal dialog is
+        shown for the first failure of a streak only, because saving runs on
+        every edit and one dialog per keystroke would be unusable.
+        """
+        self._update_status(f"Save failed: {reason}")
+        if self._save_error_shown:
+            return
+        self._save_error_shown = True
+        self._notify_problem(
+            "Save failed",
+            f"Could not save to '{self._db_path}':\n\n{reason}\n\n"
+            "Your edits are not being stored. Further attempts will be "
+            "reported in the status bar until a save succeeds.",
+        )
     
     def _handle_startup(self, action: Optional[str], data: Optional[Any]) -> None:
         """Handle startup action"""
@@ -788,8 +865,8 @@ class OpenLensWindow(QMainWindow):
                 else:
                     self._assemblies.append(self._current_assembly)
                     
-        self._save_to_database()
-        self._update_status("Saved to database")
+        if self._save_to_database():
+            self._update_status("Saved to database")
     
     def _on_save_as(self) -> None:
         """Save lens with new filename"""
@@ -1231,8 +1308,34 @@ Ctrl+6         Tolerancing
                         item, is_assembly=True))
 
 
+def _configure_logging() -> None:
+    """Send log records to stderr, so failures are visible to the user.
+
+    Nothing called ``logging.basicConfig``, so every ``logger.error`` in the
+    app - including a save that silently failed - went only to Python's
+    last-resort handler. That is the difference between a user seeing why
+    their library could not be written and seeing nothing at all.
+
+    Idempotent: a second call must not double every message, which is why the
+    marker is our own handler rather than relying on ``basicConfig``.
+    """
+    root = logging.getLogger()
+    if any(getattr(handler, "_openlens_handler", False) for handler in root.handlers):
+        return
+
+    handler = logging.StreamHandler()
+    handler._openlens_handler = True
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s")
+    )
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+
+
 def main() -> None:
     """Run the OpenLens application: startup dialog, then the main window."""
+    _configure_logging()
+
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
 
