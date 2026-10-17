@@ -17,6 +17,13 @@ from .atomic import atomic_write_json
 # Setup module logger
 logger = logging.getLogger(__name__)
 
+# AGF dispersion formulas this importer can map onto MaterialProperties.
+# Both 1 (Schott) and 2 (Sellmeier 1) store their CD coefficients as flat
+# interleaved K/L pairs, so they de-interleave identically; anything else is
+# skipped rather than mis-mapped, because a wrong curve is worse than a
+# missing glass.
+_AGF_SUPPORTED_FORMULAS = frozenset({1, 2})
+
 
 @dataclass
 class MaterialProperties:
@@ -555,23 +562,23 @@ class MaterialDatabase:
 
                 if key == "NM":
                     # Save previous glass if exists
-                    if current_glass:
-                        self._process_agf_glass(current_glass, catalog_name)
+                    if current_glass and self._process_agf_glass(current_glass, catalog_name):
                         count += 1
 
-                    # Start new glass
-                    # NM "NAME" Formula Nd Vd ...
+                    # Start new glass.
+                    # Real AGF layout:
+                    #   NM <name> <formula> <MIL#> <Nd> <Vd> <TCE> <DP> <ignore...>
+                    # The MIL number used to be read as Nd, so an imported
+                    # N-BK7 came out with nd = 517642 and vd = 1.5168.
                     name_raw = parts[1]
                     name = name_raw.strip('"')
 
-                    # Extract basic properties
-                    # Format: NM Name Formula Nd Vd ...
-                    # Formula 1=Schott, 2=Sellmeier1, etc. But standard is consistent for Nd, Vd
                     try:
-                        nd = float(parts[3])
-                        vd = float(parts[4])
-                        tce = float(parts[5]) if len(parts) > 5 else 0.0
-                        density = float(parts[6]) if len(parts) > 6 else 0.0
+                        formula = int(parts[2])
+                        nd = float(parts[4])
+                        vd = float(parts[5])
+                        tce = float(parts[6]) if len(parts) > 6 else 0.0
+                        density = float(parts[7]) if len(parts) > 7 else 0.0
                     except (IndexError, ValueError):
                         logger.warning("Error parsing NM line for %s", name)
                         current_glass = None
@@ -579,9 +586,12 @@ class MaterialDatabase:
 
                     current_glass = {
                         "name": name,
+                        "formula": formula,
+                        # AGF states TCE in units of 1e-6/K; store it in K^-1 so
+                        # nothing downstream has to remember the factor.
+                        "tce": tce * 1e-6,
                         "nd": nd,
                         "vd": vd,
-                        "tce": tce * 1e-6,  # Usually given in 10^-6
                         "density": density,
                         "dispersion": [],
                         "transmission": [],
@@ -589,39 +599,64 @@ class MaterialDatabase:
                     }
 
                 elif key == "CD" and current_glass:
-                    # Dispersion coefficients
-                    # CD C1 C2 C3 ...
+                    # Real AGF layout:
+                    #   CD <K1> <L1> <K2> <L2> <K3> <L3>
+                    # The pairs are interleaved. Reading them as B1 B2 B3 C1 C2
+                    # C3 gave every glass the wrong dispersion.
                     try:
                         coeffs = [float(x) for x in parts[1:]]
                         current_glass["dispersion"] = coeffs
                     except ValueError as e:
                         logger.debug("AGF dispersion parse failed: %s", e)
 
-                elif key == "IT" and current_glass:
-                    # Internal Transmission
-                    # IT Thickness T1 T2 T3 ... (pairs are interleaved? No usually IT Thk W1 T1 W2 T2 ...)
-                    # Zemax AGF: IT <thick> <w1> <t1> <w2> <t2> ...
+                elif key == "ED" and current_glass:
+                    # Real AGF layout:
+                    #   ED <TCE> <dT/dP> <dPg/dT> <DP> <ignore...>
+                    # The NM line often carries a placeholder TCE of 0.0, so
+                    # this is the authoritative value when it is present.
                     try:
-                        thickness = float(parts[1])
-                        current_glass["transmission_thickness"] = thickness
+                        if float(parts[1]):
+                            current_glass["tce"] = float(parts[1]) * 1e-6
+                        if len(parts) > 3 and float(parts[3]):
+                            current_glass["density"] = float(parts[3])
+                    except (IndexError, ValueError) as e:
+                        logger.debug("AGF ED line parse failed: %s", e)
 
-                        # Parse pairs
-                        vals = [float(x) for x in parts[2:]]
-                        pairs = []
-                        for i in range(0, len(vals), 2):
-                            if i + 1 < len(vals):
-                                # Wavelength in AGF is usually micrometers
-                                w_um = vals[i]
-                                t = vals[i + 1]
-                                pairs.append((w_um * 1000.0, t))  # Convert um to nm
-
-                        current_glass["transmission"] = pairs
+                elif key == "IT" and current_glass:
+                    # Real AGF layout - one wavelength per line:
+                    #   IT <lambda_nm> <T> <thickness_mm>
+                    # The old code read a single packed line
+                    # (IT thickness w1 t1 w2 t2 ...), so every subsequent IT
+                    # line overwrote the previous one and only the last
+                    # wavelength survived.
+                    try:
+                        wavelength_nm = float(parts[1])
+                        transmission = float(parts[2])
+                        thickness = float(parts[3]) if len(parts) > 3 else None
                     except (IndexError, ValueError) as e:
                         logger.debug("AGF transmission parse failed: %s", e)
+                        continue
+
+                    # Transmission is a fraction. A catalog carrying a stray
+                    # value (a mis-parsed field, a scaled quantity) must not
+                    # poison the index of refraction: n = 1 - k*ln(T) turns an
+                    # absurd T into an absurd k.
+                    if not 0.0 <= transmission <= 1.0:
+                        logger.warning(
+                            "Ignoring AGF transmission T=%s at %s nm for %s: " "not in [0, 1]",
+                            transmission,
+                            wavelength_nm,
+                            current_glass["name"],
+                        )
+                    else:
+                        current_glass.setdefault("transmission", []).append(
+                            (wavelength_nm, transmission)
+                        )
+                        if thickness is not None:
+                            current_glass["transmission_thickness"] = thickness
 
             # Save last glass
-            if current_glass:
-                self._process_agf_glass(current_glass, catalog_name)
+            if current_glass and self._process_agf_glass(current_glass, catalog_name):
                 count += 1
 
         except Exception as e:
@@ -629,23 +664,40 @@ class MaterialDatabase:
 
         return count
 
-    def _process_agf_glass(self, data: Dict, catalog: str):
-        """Convert raw AGF data to MaterialProperties"""
+    def _process_agf_glass(self, data: Dict, catalog: str) -> bool:
+        """Convert raw AGF data to MaterialProperties.
+
+        The CD line is a flat, interleaved list of K/L pairs:
+        ``K1 L1 K2 L2 K3 L3``. MaterialProperties stores Sellmeier B and C
+        separately, so the pairs have to be de-interleaved; reading the list as
+        ``B1 B2 B3 C1 C2 C3`` gave every glass the wrong dispersion curve.
+
+        Returns:
+            True when the glass was stored. False when it was skipped, so the
+            caller does not report a count that includes glasses it refused.
+        """
         coeffs = data.get("dispersion", [])
-        # Standard AGF coefficients map to Sellmeier 1 (Schott)
-        # K1, K2, K3, L1, L2, L3 -> B1, B2, B3, C1, C2, C3
-        # Usually 6 or 10 coefficients
+        formula = data.get("formula", 2)
 
-        b1, b2, b3 = 0.0, 0.0, 0.0
-        c1, c2, c3 = 0.0, 0.0, 0.0
+        if formula not in _AGF_SUPPORTED_FORMULAS:
+            logger.warning(
+                "Skipping AGF glass %s: dispersion formula %s is not supported",
+                data.get("name"),
+                formula,
+            )
+            return False
 
-        if len(coeffs) >= 6:
-            b1 = coeffs[0]
-            b2 = coeffs[1]
-            b3 = coeffs[2]
-            c1 = coeffs[3]
-            c2 = coeffs[4]
-            c3 = coeffs[5]
+        if len(coeffs) < 6:
+            logger.warning(
+                "Skipping AGF glass %s: need 6 dispersion coefficients, got %d",
+                data.get("name"),
+                len(coeffs),
+            )
+            return False
+
+        # K1 L1 K2 L2 K3 L3 -> (B1, C1), (B2, C2), (B3, C3)
+        pairs = [coeffs[i : i + 2] for i in range(0, 6, 2)]
+        (b1, c1), (b2, c2), (b3, c3) = pairs
 
         mat = MaterialProperties(
             name=data["name"],
@@ -664,6 +716,7 @@ class MaterialDatabase:
             transmission_thickness=data.get("transmission_thickness", 10.0),
         )
         self.add_material(mat)
+        return True
 
     def import_csv_catalog(self, catalog_file: str) -> int:
         """
