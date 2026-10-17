@@ -985,30 +985,37 @@ def create_doublet_optimizer(
             -500.0,
             -20.0,
             10.0,
+            # The crown's back surface *is* the cemented interface, so this
+            # variable also drives the flint's front surface. That link is
+            # what keeps the two tied.
             linked_targets=[(1, "radius_of_curvature_1")],
         ),
-        OptimizationVariable(
-            "R1 Flint",
-            1,
-            "radius_of_curvature_1",
-            system.elements[1].lens.radius_of_curvature_1,
-            -500.0,
-            -20.0,
-            10.0,
-        ),
+        # No separate "R1 Flint" variable: the link above already writes the
+        # flint's front surface, and a second variable writing the same
+        # parameter fought it - the two were applied in order and the later
+        # one won, so the cemented surfaces came apart and the optimiser was
+        # really moving one surface with two unrelated numbers.
         OptimizationVariable(
             "R2 Flint",
             1,
             "radius_of_curvature_2",
             system.elements[1].lens.radius_of_curvature_2,
-            20.0,
-            500.0,
+            # Negative, like every other back surface in a doublet: the flint's
+            # rear surface is concave. The bounds used to be positive while
+            # the doublet starts at about -131 mm, so the optimiser began
+            # outside its own box with a bound penalty of ~2.3e10 and was
+            # pushed to flip the sign of the surface.
+            -500.0,
+            -20.0,
             10.0,
         ),
     ]
     # Keep backward compatibility for tests expecting "Interface Curvature"
     # Add alias if needed: ensure interface variable is present
-    # The above covers 4 variables as expected by tests; the linked target ensures cemented interface
+    # The linked target on "R2 Crown" ensures the cemented interface: the
+    # crown's back surface and the flint's front surface are one surface, so
+    # they are driven by one variable. A separate variable for the flint's
+    # front surface would only duplicate it and break the tie.
 
     targets = [
         OptimizationTarget("chromatic_aberration", 0.0, weight=1.0, target_type="minimize"),

@@ -281,7 +281,10 @@ class TestDoubletOptimizer(unittest.TestCase):
         optimizer = create_doublet_optimizer(doublet, target_focal_length=100.0)
 
         self.assertIsNotNone(optimizer)
-        self.assertEqual(len(optimizer.variables), 4)  # 4 radii
+        # Three radii, not four: the cemented interface is one surface and is
+        # driven by "R2 Crown" through its link, so a separate variable for
+        # the flint's front surface would only duplicate it.
+        self.assertEqual(len(optimizer.variables), 3)
         self.assertEqual(len(optimizer.targets), 2)  # chromatic + focal length
 
     def test_doublet_optimizer_variables(self):
@@ -292,8 +295,10 @@ class TestDoubletOptimizer(unittest.TestCase):
         var_names = [v.name for v in optimizer.variables]
         self.assertIn("R1 Crown", var_names)
         self.assertIn("R2 Crown", var_names)
-        self.assertIn("R1 Flint", var_names)
         self.assertIn("R2 Flint", var_names)
+        # "R1 Flint" is deliberately absent - see test_doublet_optimizer_variables
+        # and the cemented-interface regression test.
+        self.assertNotIn("R1 Flint", var_names)
 
     def test_doublet_optimizer_targets(self):
         """Test doublet optimizer has correct targets"""
