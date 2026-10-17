@@ -13,14 +13,20 @@ n="$1"
 title="${2:-}"
 out=/tmp/pr-body.md
 
-gh issue view "$n" --json number,title,body > /tmp/issue.json 2>/dev/null
+# mktemp for the issue dump: a fixed path would be clobbered by a second
+# concurrent invocation, and the output path is printed so the caller can
+# rewrite it before creating the PR.
+issue_file=$(mktemp)
+trap 'rm -f "$issue_file"' EXIT
+gh issue view "$n" --json number,title,body > "$issue_file" 2>/dev/null
 
-python3 - "$title" "$out" <<'PY'
+ISSUE_FILE="$issue_file" python3 - "$title" "$out" <<'PY'
 import json
+import os
 import sys
 
 title, out = sys.argv[1], sys.argv[2]
-d = json.load(open("/tmp/issue.json"))
+d = json.load(open(os.environ["ISSUE_FILE"]))
 number = d["number"]
 issue_title = d["title"]
 

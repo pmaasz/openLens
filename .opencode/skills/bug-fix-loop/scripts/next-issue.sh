@@ -22,13 +22,19 @@ slug() { # title -> candidate branch slug (lowercase kebab, up to 6 words)
 
 if [[ $# -ge 1 ]]; then
   n="$1"
-  gh issue view "$n" --json number,title,state,url,labels,body > /tmp/issue.json 2>/dev/null
+  # mktemp, not a fixed path: two invocations running at once (the loop
+  # prepares the next issue while a PR's CI runs) would otherwise
+  # interleave writes into the same file and corrupt both reads.
+  issue_file=$(mktemp)
+  trap 'rm -f "$issue_file"' EXIT
+  gh issue view "$n" --json number,title,state,url,labels,body > "$issue_file" 2>/dev/null
   title=$(gh issue view "$n" --json title --jq .title 2>/dev/null)
 
-  python3 - <<'PY'
+  ISSUE_FILE="$issue_file" python3 - <<'PY'
 import json
+import os
 
-d = json.load(open("/tmp/issue.json"))
+d = json.load(open(os.environ["ISSUE_FILE"]))
 labels = [label["name"] for label in d.get("labels", [])]
 print(f"=== issue #{d['number']} ===")
 print(f"title : {d['title']}")
@@ -45,13 +51,16 @@ PY
   exit 0
 fi
 
-gh issue list --label bug --state open --limit 100 --json number,title,labels > /tmp/bugs.json 2>/dev/null
+bugs_file=$(mktemp)
+trap 'rm -f "$bugs_file"' EXIT
+gh issue list --label bug --state open --limit 100 --json number,title,labels > "$bugs_file" 2>/dev/null
 
-python3 - <<'PY'
+BUGS_FILE="$bugs_file" python3 - <<'PY'
 import json
+import os
 
 RANK = {"prio-high": 0, "prio-medium": 1, "prio-low": 2}
-issues = json.load(open("/tmp/bugs.json"))
+issues = json.load(open(os.environ["BUGS_FILE"]))
 
 
 def rank(labels):
