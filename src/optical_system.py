@@ -74,16 +74,39 @@ class AirGap:
         return format(self.thickness, format_spec)
 
 
+# Keys OpticalSystem.to_dict emits; the flat metadata blob carries these
+# alongside the user's own settings, so from_dict subtracts them to keep
+# metadata to what has no home on the model.
+_SYSTEM_SERIALIZED_KEYS = frozenset(
+    {
+        "id",
+        "name",
+        "type",
+        "created_at",
+        "modified_at",
+        "aperture_stop_gap",
+        "aperture_stop_diameter",
+        "elements",
+        "air_gaps",
+        "metadata",
+    }
+)
+
+
 class OpticalSystem:
     """Multi-element optical system"""
 
-    def __init__(self, name: str = "Optical System"):
+    def __init__(self, name: str = "Optical System", metadata: Optional[Dict[str, Any]] = None):
         self.id = uuid.uuid4().hex
         self.created_at = datetime.now().isoformat()
         self.modified_at = datetime.now().isoformat()
         self.name = name
         self.elements: List[LensElement] = []
         self.air_gaps: List[AirGap] = []
+        # Free-form settings with no dedicated column (a system's tolerance
+        # set, for instance). A real attribute so it can be serialized; see
+        # the matching note in Lens.
+        self.metadata: Dict[str, Any] = dict(metadata) if metadata else {}
         # Aperture stop: index into air_gaps where the stop sits, plus its
         # diameter (mm). None gap = no defined stop.
         self.aperture_stop_gap: Optional[int] = None
@@ -455,6 +478,8 @@ class OpticalSystem:
                 for e in self.elements
             ],
             "air_gaps": [{"thickness": g.thickness, "position": g.position} for g in self.air_gaps],
+            # A copy, so the exported dict is not a live handle on the model.
+            "metadata": dict(self.metadata),
         }
 
     @classmethod
@@ -464,7 +489,14 @@ class OpticalSystem:
         If ``lens_lookup`` is provided, elements with a matching ``lens_id``
         reuse the shared Lens instance instead of deserializing a fresh copy.
         """
-        system = cls(name=data.get("name", "Optical System"))
+        system = cls(
+            name=data.get("name", "Optical System"),
+            metadata={
+                k: v
+                for k, v in (data.get("metadata") or {}).items()
+                if k not in _SYSTEM_SERIALIZED_KEYS
+            },
+        )
         system.id = data.get("id", system.id)
         system.created_at = data.get("created_at", system.created_at)
         system.modified_at = data.get("modified_at", system.modified_at)

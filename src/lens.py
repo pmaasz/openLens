@@ -70,6 +70,49 @@ def _normalize_coating(value) -> Optional[List[Dict[str, Any]]]:
     return value
 
 
+# Every key Lens.to_dict emits. The stored metadata blob is flat and contains
+# these alongside the user's own settings, so from_dict subtracts them to keep
+# metadata to what genuinely has no home on the model. Kept beside to_dict and
+# asserted against it in tests, so the two cannot drift apart.
+_LENS_SERIALIZED_KEYS = frozenset(
+    {
+        "id",
+        "name",
+        "radius_of_curvature_1",
+        "radius_of_curvature_2",
+        "thickness",
+        "diameter",
+        "refractive_index",
+        # In the blob "type" holds the lens type (Biconvex, Meniscus, ...),
+        # not the Lens/OpticalSystem row marker.
+        "type",
+        "material",
+        "wavelength",
+        "wavelength_nm",
+        "temperature",
+        "is_fresnel",
+        "groove_pitch",
+        "num_grooves",
+        "model_glass_mode",
+        "model_nd",
+        "model_vd",
+        "is_parabolic_1",
+        "parabolic_sag_1",
+        "is_parabolic_2",
+        "parabolic_sag_2",
+        "clear_aperture_1",
+        "clear_aperture_2",
+        "bevel_1",
+        "bevel_2",
+        "coating_1",
+        "coating_2",
+        "created_at",
+        "modified_at",
+        "metadata",
+    }
+)
+
+
 class Lens:
     """
     Represents an optical lens with its physical and optical properties.
@@ -106,10 +149,17 @@ class Lens:
         bevel_2: float = 0.0,
         coating_1: Optional[List[Dict[str, Any]]] = None,
         coating_2: Optional[List[Dict[str, Any]]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
 
         self.id = uuid.uuid4().hex
         self.name = name
+        # Free-form settings that have no dedicated column: the GUI keeps a
+        # lens's tolerance set here. This has to be a real attribute rather
+        # than one conjured up on demand, or it is never serialized and a
+        # reloaded lens has nowhere to keep it. Copied on the way in so a
+        # caller mutating the dict it passed cannot reach back into the model.
+        self.metadata: Dict[str, Any] = dict(metadata) if metadata else {}
         self.radius_of_curvature_1 = radius_of_curvature_1
         self.radius_of_curvature_2 = radius_of_curvature_2
         self.thickness = thickness
@@ -488,6 +538,9 @@ class Lens:
             "coating_2": self.coating_2,
             "created_at": self.created_at,
             "modified_at": self.modified_at,
+            # A copy: to_dict must not hand out a live reference to the
+            # model's own state, or editing the exported dict edits the lens.
+            "metadata": dict(self.metadata),
         }
 
     @classmethod
@@ -496,6 +549,14 @@ class Lens:
         r1 = data.get("radius_of_curvature_1", DEFAULT_RADIUS_1)
         r2 = data.get("radius_of_curvature_2", DEFAULT_RADIUS_2)
         lens_type = data.get("type", LENS_TYPE_BICONVEX)
+
+        # The stored metadata blob is flat: it carries the fields that have no
+        # column (this is how lens_type, wavelength and the model-glass
+        # numbers have always been persisted) alongside the user's own
+        # settings. Strip the ones to_dict emits so metadata holds only what
+        # has no home on the model, instead of duplicating every attribute.
+        blob = data.get("metadata") or {}
+        metadata = {k: v for k, v in blob.items() if k not in _LENS_SERIALIZED_KEYS}
 
         lens = cls(
             name=data.get("name", "Untitled"),
@@ -525,6 +586,9 @@ class Lens:
             bevel_2=data.get("bevel_2", 0.0),
             coating_1=data.get("coating_1", None),
             coating_2=data.get("coating_2", None),
+            # Only the nested dict counts: load_all flattens the blob into the
+            # row dict as well, and those keys are already mapped above.
+            metadata=metadata,
         )
 
         lens.id = data.get("id", lens.id)
