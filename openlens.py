@@ -537,7 +537,7 @@ class OpenLensWindow(QMainWindow):
         
         # Edit menu
         edit_menu = menubar.addMenu("Edit")
-        edit_menu.addAction("Delete Lens", self._on_delete_lens, QKeySequence("Delete"))
+        edit_menu.addAction("Delete Lens", self._confirm_and_delete_lens, QKeySequence("Ctrl+Delete"))
         edit_menu.addSeparator()
         edit_menu.addAction("Duplicate Lens", self._on_duplicate_lens, QKeySequence("Ctrl+D"))
         
@@ -648,6 +648,47 @@ class OpenLensWindow(QMainWindow):
             "This lens is still used by the following assemblies:\n\n"
             + "\n".join(f"  • {name}" for _, name in error.assemblies)
             + "\n\nRemove it from those assemblies first.")
+
+    def _deletable_item(self):
+        """The item Delete Lens would really remove, or None.
+
+        The last-lens rule is checked here so the confirmation never asks
+        about a deletion that would be refused the moment after.
+        """
+        if not (self._current_lens or self._current_assembly):
+            return None
+        if self._current_lens and len(self._lenses) <= 1:
+            return None
+        return self._current_lens if self._current_lens else self._current_assembly
+
+    def _confirm_and_delete_lens(self) -> None:
+        """Delete the current lens or assembly after asking.
+
+        This is what Edit > Delete Lens and its shortcut are wired to. The
+        prompt lives on the action rather than inside _on_delete_lens so
+        programmatic callers keep deleting without a modal dialog, and so
+        _on_delete_lens stays the single place that decides what is
+        refusable.
+        """
+        item = self._deletable_item()
+        if item is None:
+            # Nothing selected, or the last lens. Let _on_delete_lens report
+            # which of the two it was (or do nothing at all).
+            self._on_delete_lens()
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Delete",
+            f"Delete '{item.name}'?\n\nThis removes it from the library and cannot be undone.",
+            QMessageBox.Yes | QMessageBox.No,
+            defaultButton=QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            self._update_status("Delete cancelled")
+            return
+
+        self._on_delete_lens()
 
     def _on_delete_lens(self) -> None:
         """Delete the current lens or assembly (memory and database).
@@ -799,7 +840,7 @@ Ctrl+Shift+S   Save As
 Ctrl+D         Duplicate Lens
 Ctrl+T         Toggle Theme
 Ctrl+0         Reset Window
-Delete        Delete Lens
+Ctrl+Delete    Delete Lens
 
 Tab Switching:
 Ctrl+1         Lens Editor
