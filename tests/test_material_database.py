@@ -265,11 +265,13 @@ class TestMaterialDatabaseExtended(unittest.TestCase):
         count = self.db.import_agf_catalog(agf_file)
         self.assertTrue(count >= 2, f"Expected at least 2 materials, got {count}")
 
-        # Verify BK7-like material
+        # Verify BK7-like material. The fixture holds real Schott N-BK7 and
+        # SF11 data in the real AGF layout; it used to carry invented numbers
+        # that matched the importer's misreading instead of the format.
         mat = self.db.get_material("TEST_GLASS")
         self.assertIsNotNone(mat)
-        self.assertAlmostEqual(mat.nd, 1.500, places=3)
-        self.assertAlmostEqual(mat.vd, 60.0, places=1)
+        self.assertAlmostEqual(mat.nd, 1.5168, places=3)
+        self.assertAlmostEqual(mat.vd, 64.17, places=1)
 
     def test_import_csv(self):
         csv_file = os.path.join(self.test_data_dir, "test_catalog.csv")
