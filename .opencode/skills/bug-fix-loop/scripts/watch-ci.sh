@@ -5,8 +5,17 @@
 #
 # Exit status: 0 only when every check has passed.
 # Never merge on a non-zero status - fix the branch and push again.
+#
+# Note on gh's exit codes: `gh pr checks` returns 0 for all-passed, 8 for
+# still-pending, and 1 for a failure - but it ALSO returns 1 when it cannot
+# reach api.github.com at all. Treating that as a red build makes the loop
+# abandon a perfectly healthy PR on a network blip, so transport errors are
+# detected and retried separately from a genuine failing check.
 
 set -uo pipefail
+
+RETRY_SECONDS=${RETRY_SECONDS:-45}
+MAX_TRANSPORT_ERRORS=${MAX_TRANSPORT_ERRORS:-20}
 
 pr="${1:-}"
 if [[ -z "$pr" ]]; then
@@ -19,11 +28,27 @@ fi
 
 echo "waiting for CI on PR #${pr} (this takes ~12 min) ..."
 
-result=0
+is_transport_error() {
+  grep -qiE "error connecting|could not resolve host|connection (refused|reset)|i/o timeout|502 Bad Gateway|503 Service Unavailable" <<<"$1"
+}
+
+transport_errors=0
 while true; do
-  # `gh pr checks` exits 8 while checks are pending, non-zero on failure.
   out=$(gh pr checks "$pr" 2>&1)
   code=$?
+
+  if is_transport_error "$out"; then
+    transport_errors=$((transport_errors + 1))
+    if (( transport_errors >= MAX_TRANSPORT_ERRORS )); then
+      echo "VERDICT: could not reach the GitHub API after ${transport_errors} attempts."
+      echo "This is a network problem, not a CI result - check the PR by hand."
+      exit 2
+    fi
+    echo "  (gh could not reach the API, retrying in ${RETRY_SECONDS}s ...)"
+    sleep "$RETRY_SECONDS"
+    continue
+  fi
+
   case "$code" in
     0)
       printf '%s\n' "$out"
@@ -33,25 +58,19 @@ while true; do
       ;;
     8)
       # still pending - poll again
-      sleep 45
+      sleep "$RETRY_SECONDS"
       ;;
     *)
       printf '%s\n' "$out"
       echo
       echo "VERDICT: CI NOT GREEN - fix and push again, do not merge"
-      result=1
-      break
+      echo
+      echo "--- failed job logs ---"
+      for run in $(gh run list --branch "$(git rev-parse --abbrev-ref HEAD)" --limit 1 \
+                     --json databaseId --jq '.[0].databaseId'); do
+        gh run view "$run" --log-failed 2>/dev/null | tail -80
+      done
+      exit 1
       ;;
   esac
 done
-
-if [[ "$result" -ne 0 ]]; then
-  echo
-  echo "--- failed job logs ---"
-  for run in $(gh run list --branch "$(git rev-parse --abbrev-ref HEAD)" --limit 1 \
-                 --json databaseId --jq '.[0].databaseId'); do
-    gh run view "$run" --log-failed 2>/dev/null | tail -80
-  done
-fi
-
-exit "$result"
