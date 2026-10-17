@@ -914,7 +914,7 @@ Ctrl+6         Tolerancing
             from src.mechanical_designer import MechanicalDesigner
 
             housing = MechanicalDesigner(system).suggest_housing()
-            exporter = STEPExporter(system)
+            exporter = StepExporter(system)
             exporter.export(filepath, housing=housing)
             self._update_status(f"Exported to STEP: {os.path.basename(filepath)}")
         except ImportError as e:
