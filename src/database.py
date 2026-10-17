@@ -6,6 +6,12 @@ from typing import List, Dict, Any, Iterator, Optional
 
 logger = logging.getLogger(__name__)
 
+# The schema version this build writes. Deliberately local rather than in
+# src/constants.py: it is meaningless anywhere except the migration ladder in
+# DatabaseManager._initialize_db, and keeping it there keeps this module free
+# of intra-package imports.
+SCHEMA_VERSION = 5
+
 
 def _coating_json(value) -> Optional[str]:
     """Encode a coating stack for its TEXT column (None = uncoated)."""
@@ -75,6 +81,30 @@ class LensInUseError(RuntimeError):
         )
 
 
+class UnsupportedSchemaVersionError(RuntimeError):
+    """Raised when a database was written by a newer OpenLens than this one.
+
+    Migrating downwards would drop columns the newer build relies on and
+    corrupt the library, so the file is refused instead of being opened.
+
+    Attributes:
+        found: ``user_version`` recorded in the database.
+        supported: The highest schema version this build understands.
+        path: The database file that was refused.
+    """
+
+    def __init__(self, found: int, supported: int, path: str):
+        self.found = found
+        self.supported = supported
+        self.path = path
+        super().__init__(
+            f"Database '{path}' has schema version {found}, but this OpenLens "
+            f"only supports up to version {supported}. It was written by a newer "
+            "OpenLens; upgrade OpenLens rather than opening this file with an "
+            "older build, which would downgrade the library and lose data."
+        )
+
+
 @contextmanager
 def _transaction(cursor: sqlite3.Cursor) -> Iterator[sqlite3.Cursor]:
     """Run a block as one immediate transaction on an autocommit connection.
@@ -98,6 +128,12 @@ def _table_columns(cursor: sqlite3.Cursor, table: str) -> set:
     """Column names of ``table`` (empty if it does not exist)."""
     cursor.execute(f"PRAGMA table_info({table})")
     return {row[1] for row in cursor.fetchall()}
+
+
+def _table_exists(cursor: sqlite3.Cursor, table: str) -> bool:
+    """Whether ``table`` is already present in the database."""
+    cursor.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,))
+    return cursor.fetchone() is not None
 
 
 def _add_column(cursor: sqlite3.Cursor, table: str, column: str, decl: str) -> bool:
@@ -163,7 +199,30 @@ class DatabaseManager:
                 cursor.execute("PRAGMA user_version")
                 version = cursor.fetchone()[0]
 
+                if version > SCHEMA_VERSION:
+                    # Written by a newer OpenLens. Refusing beats opening: a
+                    # downgrade would leave the newer build's columns in place
+                    # while stamping an older version over them.
+                    raise UnsupportedSchemaVersionError(version, SCHEMA_VERSION, self.db_path)
+
                 if version == 0:
+                    # A database from before the user_version pragma existed
+                    # also reads 0, but it already has real tables - the
+                    # CREATE TABLE IF NOT EXISTS statements below do nothing,
+                    # and stamping it as current would skip every column added
+                    # since, leaving the file permanently unsaveable. Detect
+                    # that and stamp it 1 so the ladder below adds the columns
+                    # to whatever it already has.
+                    legacy = any(
+                        _table_exists(cursor, table)
+                        for table in (
+                            "lenses",
+                            "assemblies",
+                            "assembly_elements",
+                            "assembly_air_gaps",
+                        )
+                    )
+
                     # Lenses table (v3 schema: parabolic surfaces are explicit
                     # columns, not just metadata-blob passengers; per-surface
                     # clear apertures and bevels likewise).
@@ -237,12 +296,19 @@ class DatabaseManager:
                         )
                     """)
 
-                    cursor.execute("PRAGMA user_version = 5")
-                elif version == 1:
-                    # v1 -> v2: promote parabolic surfaces from the metadata
-                    # blob to explicit columns. Existing rows keep DEFAULT 0
-                    # (spherical); rows whose metadata already carries parabolic
-                    # keys keep working because load merges metadata over columns.
+                    # A legacy file is stamped 1 so the ladder below adds every
+                    # column it is missing; a genuinely new file is already at
+                    # the current version.
+                    cursor.execute(f"PRAGMA user_version = {1 if legacy else SCHEMA_VERSION}")
+
+                # v1 -> v2: promote parabolic surfaces from the metadata blob
+                # to explicit columns. Re-reads the version instead of testing
+                # the value read above, so a legacy file stamped 1 just now
+                # takes this step too. Existing rows keep DEFAULT 0
+                # (spherical); rows whose metadata already carries parabolic keys
+                # keep working because load merges metadata over columns.
+                cursor.execute("PRAGMA user_version")
+                if cursor.fetchone()[0] == 1:
                     _add_column(cursor, "lenses", "is_parabolic_1", "INTEGER NOT NULL DEFAULT 0")
                     _add_column(cursor, "lenses", "parabolic_sag_1", "REAL NOT NULL DEFAULT 0.0")
                     _add_column(cursor, "lenses", "is_parabolic_2", "INTEGER NOT NULL DEFAULT 0")
@@ -280,7 +346,7 @@ class DatabaseManager:
                 if cursor.fetchone()[0] == 4:
                     _add_column(cursor, "lenses", "coating_1", "TEXT")
                     _add_column(cursor, "lenses", "coating_2", "TEXT")
-                    cursor.execute("PRAGMA user_version = 5")
+                    cursor.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     def save_lens(self, lens_dict: Dict[str, Any]):
         """Save or update a single lens."""
