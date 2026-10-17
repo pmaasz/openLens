@@ -306,6 +306,15 @@ class LensRayTracer3D:
         # (cached inverse; translation-only fallback when singular).
         local_origin = self._to_local_point(ray.origin, vertex)
         local_dir = self._to_local_vector(ray.direction)
+        # _to_local_point only shifts by the vertex in its fallback branch. With
+        # a transform it maps into the *lens* frame, whose origin is the lens
+        # origin, not this surface's vertex - so for the back surface the origin
+        # is a whole thickness too far forward. The quadratic below is written
+        # for a vertex at x = 0, so shift it there and shift back before
+        # transforming the hit to world. In the fallback branch vertex_offset is
+        # exactly zero, leaving this a no-op.
+        vertex_offset = self._to_local_point(vertex, vertex)
+        local_origin = local_origin - vertex_offset
         # Paraboloid: x = (y²+z²)/(2R)
         # Ray: x = ox + t*dx, y = oy + t*dy, z = oz + t*dz
         ox, oy, oz = local_origin.x, local_origin.y, local_origin.z
@@ -328,7 +337,7 @@ class LensRayTracer3D:
             # Check aperture in local
             if local_hit.y * local_hit.y + local_hit.z * local_hit.z > aperture_sq:
                 return None
-            return self.transform.multiply_point(local_hit)
+            return self.transform.multiply_point(local_hit + vertex_offset)
         disc = b * b - 4 * a * c
         if disc < -EPSILON:
             return None
@@ -352,9 +361,9 @@ class LensRayTracer3D:
                     local_hit_other.y * local_hit_other.y + local_hit_other.z * local_hit_other.z
                     <= aperture_sq
                 ):
-                    return self.transform.multiply_point(local_hit_other)
+                    return self.transform.multiply_point(local_hit_other + vertex_offset)
             return None
-        return self.transform.multiply_point(local_hit)
+        return self.transform.multiply_point(local_hit + vertex_offset)
 
     def trace_surface(
         self, ray: Ray3D, surface_type: str, interaction: str = "refract"
