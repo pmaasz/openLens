@@ -283,6 +283,20 @@ class OpticalSystem:
         """Update all lens elements with the latest lens references from the lookup table"""
         for element in self.elements:
             element.refresh(lens_lookup)
+        # The tree is the authority for geometry: _rebuild_from_tree reads each
+        # element's lens from its node's element_model, and _update_positions
+        # matches nodes to elements by the identity of the lens model they
+        # wrap. Refreshing only the flat list left the tree pointing at the
+        # old Lens, so the flat/2D calculations and the tree-based 3D tracer
+        # analysed different optics - and the identity match could no longer
+        # pair the two.
+        element_nodes = [
+            node for node, _ in self.root.get_flat_list() if getattr(node, "is_element", False)
+        ]
+        for element, node in zip(self.elements, element_nodes):
+            model = getattr(node, "element_model", None)
+            if model is not None and model is not element.lens:
+                node.element_model = element.lens
         self._update_positions()
 
     def _rebuild_from_tree(self):
