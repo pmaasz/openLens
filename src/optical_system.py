@@ -531,6 +531,24 @@ class OpticalSystem:
                 tilt_z=float(elem_data.get("tilt_z", 0.0) or 0.0),
             )
 
+        # Restore the absolute positions to_dict saved. add_lens places each
+        # element relative to the one before it, so the gaps alone reproduce
+        # the *spacing* but not the offset: a system whose first element sits
+        # at x = 15 came back at x = 0, and an assembly at x = 20 came back
+        # root-level at x = 0. The saved position was ignored data.
+        #
+        # The tree is the authority for positions (_rebuild_from_tree reads
+        # them from it), so set each child's position and rebuild. This format
+        # is flat - it stores a list of elements and cannot represent a nested
+        # assembly tree - so a nested assembly still comes back flattened.
+        saved_positions = [elem_data.get("position") for elem_data in elements_data]
+        if any(position is not None for position in saved_positions):
+            for node, saved in zip(system.root.children, saved_positions):
+                if saved is None:
+                    continue
+                node.position = vec3(float(saved), node.position.y, node.position.z)
+            system._rebuild_from_tree()
+
         return system
 
     @staticmethod
