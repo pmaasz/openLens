@@ -459,7 +459,13 @@ class Lens:
         if MATERIAL_DB_AVAILABLE:
             try:
                 db = get_material_database()
-                return db.get_refractive_index(self.material, wavelength_nm, self.temperature)
+                # Only ask the catalog about a material it actually has. For an
+                # unknown name the lookup falls back to a BK7 default, so a
+                # lens given its own index - "Custom", refractive_index=1.7 -
+                # came back as 1.5168. The tracer uses the stored index, so the
+                # wavelength-dependent numbers and the geometry disagreed.
+                if db.get_material(self.material) is not None:
+                    return db.get_refractive_index(self.material, wavelength_nm, self.temperature)
             except _MATERIAL_DB_ERRORS as e:
                 logger.debug("Material index lookup failed: %s", e)
         return self.refractive_index
