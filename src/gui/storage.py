@@ -38,6 +38,11 @@ class LensStorage:
         """
         self.storage_file = storage_file
         self.status_callback = status_callback or (lambda msg: None)
+        # The message of the most recent failure, or None after a successful
+        # save. save_lenses catches the exception and only returns False, so a
+        # caller that has to explain the failure to a user has no other way to
+        # learn what actually went wrong.
+        self.last_error: Optional[str] = None
 
         if DatabaseManager:
             self.db = DatabaseManager(self.storage_file)
@@ -142,6 +147,7 @@ class LensStorage:
         """
         if not self.db:
             logger.error("DatabaseManager not available")
+            self.last_error = "DatabaseManager not available"
             return False
 
         try:
@@ -156,11 +162,13 @@ class LensStorage:
             if reconcile:
                 self._reconcile(items)
 
+            self.last_error = None
             if show_status:
                 self._update_status(f"Saved {len(items)} item(s) to database")
             return True
 
         except Exception as e:
+            self.last_error = str(e)
             self._update_status(f"Error: Failed to save lenses: {e}")
             logger.error("Failed to save lenses: %s", e)
             return False
