@@ -20,17 +20,26 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 
+from ...database import LensInUseError
+
 
 class StartupDialog(QDialog):
     """Startup dialog for creating or opening lenses"""
 
     result_selected = Signal(str, object)  # action, data
 
-    def __init__(self) -> None:
+    def __init__(self, storage=None) -> None:
         """Initialize the dialog and load stored lenses and assemblies.
 
         Loads all stored items once into ``_all_items``, falling back to an
         empty list when the database cannot be read.
+
+        Args:
+            storage: Optional :class:`~src.gui.storage.LensStorage` to use.
+                Injected rather than constructed here so the dialog operates on
+                the same database as the rest of the app; hard-coding
+                ``"openlens.db"`` meant it deleted from a different file than
+                the one the user was looking at.
         """
         super().__init__()
         self.setWindowTitle("Welcome to OpenLens")
@@ -44,9 +53,11 @@ class StartupDialog(QDialog):
         # Load database items once
         from ..storage import LensStorage
 
+        self._storage = (
+            storage if storage is not None else LensStorage("openlens.db", lambda x: None)
+        )
         try:
-            storage = LensStorage("openlens.db", lambda x: None)
-            self._all_items = storage.load_lenses()
+            self._all_items = self._storage.load_lenses()
         except Exception as e:
             print(f"Error loading database: {e}")
             self._all_items = []
@@ -403,16 +414,26 @@ class StartupDialog(QDialog):
         )
 
         if reply == QMessageBox.Yes:
-            from ..storage import LensStorage
-
+            # delete_item, not save_lenses(remaining): save_lenses defaults to
+            # reconcile=False and only inserts or replaces rows, so nothing was
+            # ever deleted and the item came back on the next start. It is also
+            # the only path that enforces the in-use guard, so an assembly
+            # cannot be left pointing at a deleted lens.
             try:
-                storage = LensStorage("openlens.db", lambda x: None)
-                remaining = [i for i in self._all_items if i != item]
-                storage.save_lenses(remaining)
-                self._all_items = remaining
-                self._show_list(list_type)  # Refresh
+                self._storage.delete_item(item.id)
+            except LensInUseError as e:
+                QMessageBox.warning(
+                    self,
+                    "Cannot delete",
+                    f"'{name}' is still used by an assembly:\n\n{e}",
+                )
+                return
             except Exception as e:
                 QMessageBox.critical(self, "Delete Error", f"Failed to delete: {e}")
+                return
+
+            self._all_items = [i for i in self._all_items if i != item]
+            self._show_list(list_type)  # Refresh
 
     def _create_new_lens(self) -> None:
         """Accept the dialog with the "create_lens" action and no data selected."""

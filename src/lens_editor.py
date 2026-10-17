@@ -318,6 +318,18 @@ class LensManager:
 
             confirm = input(f"Delete '{lens.name}'? (yes/no): ").strip().lower()
             if confirm == "yes":
+                # Delete the row explicitly. Popping the in-memory list and
+                # re-saving does NOT delete anything: save_lenses defaults to
+                # reconcile=False and only inserts or replaces rows, so the
+                # lens came straight back on the next start while the CLI
+                # cheerfully reported success.
+                #
+                # Only drop it from memory once the row is really gone, and
+                # never print success when the database refused.
+                if not self._delete_row(lens):
+                    print("Lens kept in the library.")
+                    return
+
                 self.lenses.pop(idx - 1)
                 self.save_lenses()
                 print(f"✓ Lens deleted successfully!")
@@ -326,6 +338,33 @@ class LensManager:
 
         except (ValueError, IndexError):
             print("Invalid input.")
+
+    def _delete_row(self, lens: Lens) -> bool:
+        """Remove one lens's row from the database.
+
+        Args:
+            lens: The lens to delete.
+
+        Returns:
+            True when the row is gone. False when the database could not be
+            written or refused the deletion, in which case the caller must not
+            claim the lens was deleted.
+        """
+        if not STORAGE_AVAILABLE:
+            return False
+        try:
+            from .gui.storage import LensStorage
+            from .database import LensInUseError
+
+            LensStorage(self.storage_file).delete_item(lens.id)
+            return True
+        except LensInUseError as e:
+            print(f"Cannot delete '{lens.name}': {e}")
+            return False
+        except Exception as e:
+            logger.error("Error deleting lens %s from storage: %s", lens.id, e)
+            print(f"Could not delete '{lens.name}' from the database: {e}")
+            return False
 
 
 def main() -> None:
