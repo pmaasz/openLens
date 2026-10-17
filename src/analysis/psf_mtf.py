@@ -244,6 +244,12 @@ class ImageQualityAnalyzer:
                 grid_size=pupil_grid_size,
             )
 
+            # 1b. Apply the defocus. This branch had its own copy of the
+            # wavefront->PSF chain and dropped focus_shift_mm on the floor, so
+            # the diffraction MTF was the same at every defocus.
+            _, _, na = self._pupil_geometry()
+            self._apply_defocus(wf, focus_shift_mm, wavelength_nm, na)
+
             # 2. Calculate PSF (high res)
             pad_factor = 4
             psf_raw = DiffractionPSFCalculator.calculate_psf(wf, pad_factor=pad_factor)
@@ -404,6 +410,66 @@ class ImageQualityAnalyzer:
             "mtf_sag": pos_mtf_sag[mask],
         }
 
+    def _pupil_geometry(self) -> tuple:
+        """Return (pupil_diameter_mm, effective_focal_length_mm, numerical_aperture).
+
+        The pupil diameter and EFL are approximations - the pupil is taken as
+        the first element's mechanical diameter, and the EFL is used in place
+        of the true distance from the exit pupil to the image plane. That is
+        the same approximation the PSF resampling already uses, so the two
+        stay consistent.
+        """
+        ep_diam = self.system.elements[0].lens.diameter if self.system.elements else 1.0
+        efl = self.system.get_system_focal_length()
+        if efl is None or efl == 0:
+            efl = 100.0
+        na = ep_diam / (2.0 * abs(efl)) if efl else 0.0
+        return ep_diam, efl, na
+
+    @staticmethod
+    def _apply_defocus(wf, focus_shift_mm: float, wavelength_nm: float, na: float):
+        """Add the defocus term to a pupil wavefront, in waves.
+
+        An image-plane defocus of ``dz`` adds a quadratic phase across the
+        pupil:
+
+            W(p) = dz * NA^2 * p^2 / (2 * lambda)
+
+        with ``p`` the pupil coordinate normalised to 1 at the edge and
+        ``lambda`` in mm. Without it the wavefront was identical at every
+        defocus, so the PSF and the diffraction MTF were bit-identical at 0 mm
+        and at 2 mm - the defocus argument did nothing at all.
+
+        The sign of the quadratic does not change the PSF (the intensity is
+        the square of the modulus, and the pupil is symmetric), but its
+        magnitude does, so the scale is what matters here.
+
+        Args:
+            wf: The wavefront to modify in place.
+            focus_shift_mm: Defocus in mm. Zero leaves the wavefront alone.
+            wavelength_nm: Wavelength in nm.
+            na: Numerical aperture.
+
+        Returns:
+            The same wavefront object, for convenience.
+        """
+        if not focus_shift_mm or wf is None or not HAS_NUMPY:
+            return wf
+
+        y = np.asarray(wf.Y)
+        z = np.asarray(wf.Z)
+        if y.size == 0:
+            return wf
+
+        radius = float(np.max(np.sqrt(y * y + z * z)))
+        if radius <= 0.0:
+            return wf
+
+        p_squared = (y * y + z * z) / (radius * radius)
+        wavelength_mm = wavelength_nm * 1e-6
+        wf.W = np.asarray(wf.W) + focus_shift_mm * na * na * p_squared / (2.0 * wavelength_mm)
+        return wf
+
     def _calculate_diffraction_psf(
         self,
         field_angle_deg: float,
@@ -421,6 +487,11 @@ class ImageQualityAnalyzer:
             grid_size=pupil_grid_size,
         )
 
+        # 1b. Apply the defocus. The wavefront is referenced to the Gaussian
+        # focus, so without this the defocus argument had no effect at all.
+        ep_diam, efl, na = self._pupil_geometry()
+        self._apply_defocus(wf, focus_shift_mm, wavelength_nm, na)
+
         # 2. Calculate PSF
         pad_factor = 4
         psf_raw = DiffractionPSFCalculator.calculate_psf(wf, pad_factor=pad_factor)
@@ -430,13 +501,8 @@ class ImageQualityAnalyzer:
         # dx_psf = (lambda * f) / (N_padded * dx_pupil)
         # dx_pupil = L_pupil / N_pupil
 
-        ep_diam = self.system.elements[0].lens.diameter if self.system.elements else 1.0
-        # Use simple EFL approximation or distance to image plane if available
-        # Ideally, we should use the actual distance from exit pupil to image plane
-        # For now, use effective focal length as a reasonable approximation for infinite conjugates
-        efl = self.system.get_system_focal_length()
-        if efl is None or efl == 0:
-            efl = 100.0
+        # ep_diam, efl and na come from _pupil_geometry() above, so the
+        # defocus term and the resampling use the same approximations.
 
         N_pupil = wf.W.shape[0]
         # Same N-1 interval spacing as above; the error inflated dx_psf and
