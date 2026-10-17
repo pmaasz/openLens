@@ -72,10 +72,19 @@ class STLExporter:
             if abs(radius) < 1e-10 or abs(radius) > 1e10:
                 z_sag = 0.0
             else:
-                try:
-                    z_sag = (y**2) / (radius + math.copysign(math.sqrt(radius**2 - y**2), radius))
-                except (ValueError, ZeroDivisionError):
-                    z_sag = 0.0
+                # sqrt(R^2 - y^2) has no real solution once y > |R|: a sphere
+                # of this radius simply does not reach out that far. Swallowing
+                # that and using 0.0 exported a flat disc where a curved surface
+                # should be, with no error anywhere - the geometry was simply
+                # wrong. A flat surface is the |R| ~ 0 case above and is fine.
+                radicand = radius**2 - y**2
+                if radicand < 0.0:
+                    raise ValueError(
+                        f"Surface of radius {radius} mm does not extend to "
+                        f"{y:.4f} mm: |R| must be at least half the diameter "
+                        f"({h:.4f} mm). Widen the radius or reduce the diameter."
+                    )
+                z_sag = (y**2) / (radius + math.copysign(math.sqrt(radicand), radius))
 
             half_profile.append((y, z_sag))
 
@@ -86,8 +95,23 @@ class STLExporter:
         profile_points: List[Tuple[float, float]],
         z_offset: float,
         num_segments: int = 60,
+        is_front: bool = True,
     ):
-        """Generate triangles for a surface of revolution"""
+        """Generate triangles for a surface of revolution.
+
+        Args:
+            profile_points: (radius_from_axis, z) pairs from axis to rim.
+            z_offset: Axial offset for the whole surface (0 for the front,
+                the centre thickness for the back).
+            num_segments: Number of segments around the circumference.
+            is_front: Which way the cap faces. The front surface must have its
+                normals pointing along -Z and the back along +Z, so that both
+                point *out of* the glass. Winding both the same way made every
+                front-surface normal point into the solid.
+
+        Returns:
+            List of triangle vertex tuples, wound so the normals face outward.
+        """
         if not profile_points:
             return []
 
@@ -97,7 +121,13 @@ class STLExporter:
         # Generate points around the circle
         for seg in range(num_segments):
             angle1 = seg * angle_step
-            angle2 = (seg + 1) * angle_step
+            # Wrap the last segment back to 0 exactly. Computing the final
+            # angle as n * step gives 2*pi, and sin(2*pi) is 6.4e-16 rather
+            # than 0, so that vertex was a hair's breadth away from the one
+            # segment 0 starts at. The two were not the same point, leaving a
+            # seam right around the surface: the shell was not watertight and
+            # every consumer that checks for closed meshes rejected the file.
+            angle2 = ((seg + 1) % num_segments) * angle_step
 
             cos1, sin1 = math.cos(angle1), math.sin(angle1)
             cos2, sin2 = math.cos(angle2), math.sin(angle2)
@@ -118,13 +148,18 @@ class STLExporter:
                 if r1 < 1e-9:
                     # Triangle fan at center
                     # p1 and p4 are the same (the center point)
-                    # Only emit one triangle: Center -> Outer1 -> Outer2
-                    # (p1, p2, p3)
-                    triangles.append((p1, p2, p3))
+                    if is_front:
+                        triangles.append((p1, p3, p2))
+                    else:
+                        triangles.append((p1, p2, p3))
                 else:
-                    # Full quad
-                    triangles.append((p1, p2, p3))
-                    triangles.append((p1, p3, p4))
+                    # Full quad. Reversing the vertex order flips the normal.
+                    if is_front:
+                        triangles.append((p1, p3, p2))
+                        triangles.append((p1, p4, p3))
+                    else:
+                        triangles.append((p1, p2, p3))
+                        triangles.append((p1, p3, p4))
 
         return triangles
 
@@ -144,7 +179,10 @@ class STLExporter:
 
         for seg in range(num_segments):
             angle1 = seg * angle_step
-            angle2 = (seg + 1) * angle_step
+            # Wrap to exactly 0 for the last segment - see the note in
+            # generate_surface_triangles: sin(2*pi) is not 0, so without this
+            # the ring does not close on itself.
+            angle2 = ((seg + 1) % num_segments) * angle_step
 
             p1 = (radius * math.cos(angle1), radius * math.sin(angle1), z_offset)
             p2 = (radius * math.cos(angle2), radius * math.sin(angle2), z_offset)
@@ -173,7 +211,9 @@ class STLExporter:
 
         for seg in range(num_segments):
             angle1 = seg * angle_step
-            angle2 = (seg + 1) * angle_step
+            # Wrap to exactly 0 for the last segment; sin(2*pi) is not 0 and
+            # would leave the barrel open. See generate_surface_triangles.
+            angle2 = ((seg + 1) % num_segments) * angle_step
 
             cos1, sin1 = math.cos(angle1), math.sin(angle1)
             cos2, sin2 = math.cos(angle2), math.sin(angle2)
@@ -190,31 +230,17 @@ class STLExporter:
             p3 = (radius * cos2, radius * sin2, zb2)  # Back 2
             p4 = (radius * cos1, radius * sin1, zb1)  # Back 1
 
-            # Edge normals point out (radially)
-            # Winding: p1, p2, p3
-            triangles.append((p1, p3, p2))  # 1-3-2?
-            # Let's check: 1->2 is CCW around Z.
-            # 1 is Front (e.g. z=0), 3 is Back (e.g. z=5).
-            # 1=(1,0,0), 2=(0,1,0). 3=(0,1,5).
-            # v1 = 3-1 = (-1, 1, 5). v2 = 2-1 = (-1, 1, 0).
-            # Cross: (1*0 - 5*1, ...) = -5. Normal points In?
-            # Correct is likely (p1, p4, p3) and (p1, p3, p2) or similar.
-
-            # Use p4 (Back 1), p3 (Back 2), p2 (Front 2), p1 (Front 1)
-            # 1 -> 2 (Front CCW).
-            # Quad 1-2-3-4.
-            # Triangle 1: 1-2-4? (Front1, Front2, Back1).
-            # Normal: (2-1) x (4-1).
-            # (2-1) is Tangential CCW. (4-1) is Axial (+Z).
-            # Tangent x Axial = Radial Out.
-            # So (p1, p2, p4) is correct for outward normal.
+            # Edge normals point radially outward.
+            # Quad p1(front, seg) -> p2(front, seg+1) -> p3(back, seg+1) -> p4(back, seg)
+            #
+            #   Triangle 1: (p1, p2, p4). Normal = (p2-p1) x (p4-p1).
+            #     (p2-p1) is tangential CCW; (p4-p1) is axial (+Z).
+            #     tangent x axial = radial out.
             triangles.append((p1, p2, p4))
 
-            # Triangle 2: 2-3-4? (Front2, Back2, Back1).
-            # Normal: (3-2) x (4-2).
-            # (3-2) is Axial (+Z). (4-2) is Tangential CW (-Tangent).
-            # Axial x (-Tangent) = - (Axial x Tangent) = - (-Radial) = Radial Out.
-            # So (p2, p3, p4) is correct.
+            #   Triangle 2: (p2, p3, p4). Normal = (p3-p2) x (p4-p2).
+            #     (p3-p2) is axial (+Z); (p4-p2) is tangential CW.
+            #     axial x (-tangent) = radial out.
             triangles.append((p2, p3, p4))
 
         return triangles
@@ -251,7 +277,9 @@ class STLExporter:
         )
         if profile1:
             self.triangles.extend(
-                self.generate_surface_triangles(profile1, 0.0, num_segments=resolution * 2)
+                self.generate_surface_triangles(
+                    profile1, 0.0, num_segments=resolution * 2, is_front=True
+                )
             )
             last_z_front = profile1[-1][1]  # Z at the edge
         else:
@@ -270,7 +298,9 @@ class STLExporter:
         )
         if profile2:
             self.triangles.extend(
-                self.generate_surface_triangles(profile2, thickness, num_segments=resolution * 2)
+                self.generate_surface_triangles(
+                    profile2, thickness, num_segments=resolution * 2, is_front=False
+                )
             )
             last_z_back = profile2[-1][1] + thickness  # Add offset
         else:
