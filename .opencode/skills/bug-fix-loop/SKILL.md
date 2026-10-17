@@ -59,11 +59,21 @@ checks and end up costing more than plain serial work.
 
 ## Phase 1 - Branch from a clean master
 
+**Create the branch BEFORE the first edit, not before the first commit.** This
+is not pedantry: three times in one session, work was edited on whatever branch
+happened to be checked out and then lost - once to `gh pr merge --delete-branch`
+removing the branch, and twice to a `git reset --hard` while tidying up master.
+The untracked test file survived; the source change did not, and had to be
+redone from scratch.
+
 ```bash
 git checkout master
 git pull --ff-only origin master
 git checkout -b <number>-<short-kebab-slug>
 ```
+
+Do that first, then read the code, then edit. If you have already edited
+before branching, `git stash` the work, branch, and pop it.
 
 Derive the slug from the issue title: 3-6 lowercase kebab-case words that
 summarise the work, not the ticket title verbatim. Keep it short.
@@ -179,6 +189,12 @@ git pull --ff-only origin master
 git branch -d <branch>
 ```
 
+**`gh pr merge --delete-branch` deletes the local branch too.** If that branch
+carries a commit that is not in the PR - because work was committed to the
+wrong branch - that commit goes with it. Recover it from the reflog
+(`git reflog`, then `git branch <name> <hash>`) before it is garbage
+collected. This is the other reason Phase 1 insists on branching first.
+
 Then **rebase the in-preparation branch for the next issue onto the new
 master** - it was cut from the pre-merge commit and may now be stale or
 conflicting:
@@ -188,6 +204,9 @@ git rebase master          # on the prepared next-issue branch
 ```
 
 Re-run Phase 4 on it after rebasing, because master just gained another fix.
+
+Note that rebasing a branch with an open PR restarts its CI. That is the cost
+of the ordering, and it is why only one PR is open at a time.
 
 `Closes #<n>` closes the issue automatically. Verify:
 
