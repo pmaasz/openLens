@@ -109,6 +109,60 @@ class WavefrontSensor:
         wavelength_nm: float = WAVELENGTH_GREEN,
         grid_size: int = 64,
     ) -> WavefrontError:
+        """Calculate the pupil wavefront at *wavelength_nm*.
+
+        The trace uses the refractive indices the lenses currently carry, and
+        the 3D tracer snapshots each index when it is built. So the lenses
+        have to be set to the requested wavelength and the tracer rebuilt,
+        otherwise the wavefront is the one for whatever wavelength the lenses
+        happened to hold: the R, G and B wavefronts came out identical, and
+        with them the R/G/B PSFs and the C/F MTFs, so there was no chromatic
+        aberration anywhere in the diffraction analysis.
+
+        The lenses are restored afterwards, so asking for a wavefront never
+        changes the system it was asked about.
+
+        Args:
+            field_angle_deg: Field angle in degrees.
+            wavelength_nm: Wavelength to trace at, in nm.
+            grid_size: Number of pupil samples per axis.
+
+        Returns:
+            WavefrontError with the Y, Z pupil grids and W in waves.
+        """
+        saved = []
+        try:
+            # elements is None in the degraded (no-numpy) path, where the
+            # body below returns an empty map.
+            for element in getattr(self.system, "elements", None) or []:
+                lens = element.lens
+                saved.append((lens, lens.refractive_index, lens.wavelength))
+                # refractive_index_at does not mutate the lens, and it returns
+                # the stored index for a material the catalog does not have -
+                # which is the right answer there, since there is no
+                # dispersion data to apply.
+                lens.wavelength = wavelength_nm
+                lens.refractive_index = lens.refractive_index_at(wavelength_nm)
+            # No tracer rebuild is needed: SystemRayTracer3D builds a
+            # LensRayTracer3D per element on every trace, and that reads the
+            # lens's index as it stands. Replacing the tracer would also
+            # discard one a caller had installed deliberately.
+            return self._compute_pupil_wavefront(
+                field_angle_deg=field_angle_deg,
+                wavelength_nm=wavelength_nm,
+                grid_size=grid_size,
+            )
+        finally:
+            for lens, index, wavelength in saved:
+                lens.refractive_index = index
+                lens.wavelength = wavelength
+
+    def _compute_pupil_wavefront(
+        self,
+        field_angle_deg: float = 0.0,
+        wavelength_nm: float = WAVELENGTH_GREEN,
+        grid_size: int = 64,
+    ) -> WavefrontError:
         """
         Calculate wavefront error map at the exit pupil.
 
