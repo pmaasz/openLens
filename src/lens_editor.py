@@ -4,7 +4,6 @@ openlens - Interactive Optical Lens Creation and Modification Tool
 """
 
 import logging
-import os
 from datetime import datetime
 from typing import Optional, List
 
@@ -12,6 +11,7 @@ from typing import Optional, List
 logger = logging.getLogger(__name__)
 
 from .lens import Lens
+from .paths import default_db_path, resolve_db_path
 from .validation import (
     ValidationError,
     validate_radius,
@@ -38,7 +38,8 @@ class LensManager:
         lenses: List of Lens objects
     """
 
-    def __init__(self, storage_file: str = "openlens.db") -> None:
+    def __init__(self, storage_file: Optional[str] = None) -> None:
+        storage_file = resolve_db_path(storage_file)
         if storage_file.endswith(".json"):
             storage_file = storage_file[: -len(".json")] + ".db"
             print(f"note: storage is SQLite; using {storage_file}")
@@ -46,7 +47,9 @@ class LensManager:
         self.storage_file = storage_file
         # Seed the built-in example only for the default app database.
         # Custom/temp paths (unit tests, user exports) stay exactly as stored.
-        if os.path.basename(self.storage_file) == "openlens.db":
+        # Compare resolved paths, not basenames: a temp file that happens to be
+        # called openlens.db is not the app database and must not be seeded.
+        if self.storage_file == str(default_db_path()):
             try:
                 from .seed_data import ensure_nikon_series_e_example
 

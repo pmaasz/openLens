@@ -4,6 +4,8 @@ import logging
 from contextlib import contextmanager
 from typing import List, Dict, Any, Iterator, Optional
 
+from .paths import ensure_parent_dir, resolve_db_path
+
 logger = logging.getLogger(__name__)
 
 # The schema version this build writes. Deliberately local rather than in
@@ -175,8 +177,12 @@ def _add_column(cursor: sqlite3.Cursor, table: str, column: str, decl: str) -> b
 class DatabaseManager:
     """Handles SQLite database operations for Lens and OpticalSystem storage."""
 
-    def __init__(self, db_path: str = "openlens.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: Optional[str] = None):
+        # Resolved at call time, not import time: a default argument is
+        # evaluated once when the module loads, so an explicit path set after
+        # import - by a test, or by $OPENLENS_DB_PATH - would be ignored.
+        self.db_path = resolve_db_path(db_path)
+        ensure_parent_dir(self.db_path)
         self._initialize_db()
 
     def _get_connection(self) -> sqlite3.Connection:

@@ -53,9 +53,7 @@ class StartupDialog(QDialog):
         # Load database items once
         from ..storage import LensStorage
 
-        self._storage = (
-            storage if storage is not None else LensStorage("openlens.db", lambda x: None)
-        )
+        self._storage = storage if storage is not None else LensStorage(None, lambda x: None)
         try:
             self._all_items = self._storage.load_lenses()
         except Exception as e:

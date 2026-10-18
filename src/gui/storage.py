@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 from ..lens import Lens
 from ..optical_system import OpticalSystem
 from ..database import DatabaseManager, LensInUseError
+from ..paths import resolve_db_path
 
 
 class LensStorage:
@@ -21,13 +22,14 @@ class LensStorage:
     This class provides methods to load and save lens data using DatabaseManager.
 
     Args:
-        storage_file: Path to the database file (defaults to openlens.db).
+        storage_file: Path to the database file. None uses the per-user
+            database; see ``src.paths``.
         status_callback: Optional callback function to report status messages.
     """
 
     def __init__(
         self,
-        storage_file: str = "openlens.db",
+        storage_file: Optional[str] = None,
         status_callback: Optional[Callable[[str], None]] = None,
     ) -> None:
         """Initialize the storage handler.
@@ -36,7 +38,9 @@ class LensStorage:
             storage_file: Path to the database file.
             status_callback: Optional callback for status messages.
         """
-        self.storage_file = storage_file
+        # Resolved here so that every later use - including the module-level
+        # helpers that construct their own LensStorage - names the same file.
+        self.storage_file = resolve_db_path(storage_file)
         self.status_callback = status_callback or (lambda msg: None)
         # The message of the most recent failure, or None after a successful
         # save. save_lenses catches the exception and only returns False, so a
@@ -201,12 +205,12 @@ class LensStorage:
             logger.info("Reconciliation removed %d stale row(s)", removed)
 
 
-def delete_item(storage_file: str = "openlens.db", item_id: str = "") -> bool:
+def delete_item(storage_file: Optional[str] = None, item_id: str = "") -> bool:
     """Delete a single lens/assembly from the database (convenience)."""
     return LensStorage(storage_file).delete_item(item_id)
 
 
-def load_lenses(storage_file: str = "openlens.db") -> List[Any]:
+def load_lenses(storage_file: Optional[str] = None) -> List[Any]:
     """Convenience function to load lenses and systems from a database.
 
     Args:
@@ -221,7 +225,7 @@ def load_lenses(storage_file: str = "openlens.db") -> List[Any]:
 
 def save_lenses(
     items: List[Any],
-    storage_file: str = "openlens.db",
+    storage_file: Optional[str] = None,
     status_callback: Optional[Callable[[str], None]] = None,
 ) -> bool:
     """Convenience function to save lenses and systems to a database.
