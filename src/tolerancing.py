@@ -759,14 +759,6 @@ class InverseSensitivityAnalyzer:
         """Helper to apply a single tolerance value."""
         _apply_value(system, tol.param_type, tol.element_index, value, surface=tol.surface)
 
-    def _get_system_state(self, system: OpticalSystem) -> Dict[str, Any]:
-        """Get a capture of the current system parameters for restoration."""
-        return _capture_state(system)
-
-    def _set_system_state(self, system: OpticalSystem, state: Dict[str, Any]):
-        """Restore system to a previously captured state."""
-        _restore_state(system, state)
-
     def optimize_limits(
         self, target_yield_criterion: float, method: str = "rss"
     ) -> List[ToleranceOperand]:
@@ -800,9 +792,37 @@ class InverseSensitivityAnalyzer:
             original_tol = self.tolerances[i]
             s = abs(sens_data["sensitivity"])
 
-            if s < 1e-9:
-                # Insensitive parameter, keep original or even loosen?
-                # For safety, keep original.
+            if not math.isfinite(s) or s < 1e-9:
+                # Two different situations, one safe answer.
+                #
+                # Not finite: calculate_sensitivities reports NaN for a
+                # vignetted operand, meaning "could not be measured". NaN
+                # fails every comparison, so a bare `s < 1e-9` guard sent it
+                # to the else branch and produced budget/NaN = NaN, leaving
+                # the operand with min_val = max_val = NaN. A NaN tolerance
+                # is neither tight nor loose - it propagates silently into
+                # every later trace, comparison and report.
+                #
+                # Infinite: budget/inf = 0, i.e. a zero tolerance, which reads
+                # as "this dimension is infinitely sensitive" and quietly
+                # removes the parameter from the budget entirely.
+                #
+                # Insensitive but finite: the original intent - the parameter
+                # does not affect the result, so there is nothing to trade
+                # away. Keep it as it was.
+                #
+                # In all three cases the operand keeps its original limit: the
+                # optimisation cannot shrink what it could not measure.
+                if not math.isfinite(s):
+                    logger.warning(
+                        "Operand %d (%s) has a non-finite sensitivity (%r); "
+                        "keeping its original limit of %r rather than "
+                        "re-budgeting from a number that is not a measurement.",
+                        original_tol.element_index,
+                        original_tol.param_type,
+                        sens_data.get("sensitivity"),
+                        original_tol.max_val,
+                    )
                 new_limit = original_tol.max_val
             else:
                 # Limit = Budget / Sensitivity
