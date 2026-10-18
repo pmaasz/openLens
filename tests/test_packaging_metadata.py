@@ -20,34 +20,88 @@ import unittest
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SETUP_PY = os.path.join(REPO_ROOT, "setup.py")
 
+#: Directories that are never packaged, and are not part of the source tree.
+_IGNORED_DIRS = {"tests", "build", "dist", "docs", "__pycache__", "venv", ".venv"}
+
+
+def _discover_packages():
+    """Every importable package in the source tree, as dotted names.
+
+    Stands in for ``find_packages()``, which needs setuptools. That import is
+    deliberately avoided: pip builds in an isolated environment, so setuptools
+    is *not* installed alongside the package and a test that needs it fails
+    with ModuleNotFoundError in CI - which is precisely where these tests
+    matter most.
+    """
+    found = []
+    for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in _IGNORED_DIRS
+            and not d.startswith(".")
+            and not d.endswith(".egg-info")
+            and not d.startswith("_")
+        ]
+        if "__init__.py" not in filenames:
+            continue
+        relative = os.path.relpath(dirpath, REPO_ROOT)
+        if relative == ".":
+            continue
+        found.append(relative.replace(os.sep, "."))
+    return sorted(found)
+
+
+def _declared_version():
+    """The version from src/__init__.py, as setup.py's get_version() reads it."""
+    with open(os.path.join(REPO_ROOT, "src", "__init__.py"), encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("__version__"):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return "0.0.0"
+
 
 def _setup_config():
-    """The kwargs setup.py hands to setuptools(), without running a build.
+    """The kwargs setup.py passes to setup(), read without importing setuptools.
 
-    setup.py does ``from setuptools import setup`` at module scope, so patching
-    ``setuptools.setup`` before the exec is enough to capture the call.
+    Parsed statically: every keyword whose value is a literal is taken as-is,
+    and the two that are computed - ``packages`` and ``version`` - are
+    evaluated from the source tree the same way setup.py evaluates them.
+
+    Raises:
+        AssertionError: If setup.py has no ``setup(...)`` call.
     """
-    import setuptools
+    with open(SETUP_PY, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), SETUP_PY)
 
-    captured = {}
-    original = setuptools.setup
-    setuptools.setup = lambda **kwargs: captured.update(kwargs)
-    cwd = os.getcwd()
-    try:
-        os.chdir(REPO_ROOT)
-        with open(SETUP_PY, encoding="utf-8") as handle:
-            source = handle.read()
-        exec(  # noqa: S102 - executing setup.py is the point
-            compile(source, SETUP_PY, "exec"),
-            {"__name__": "__main__", "__file__": SETUP_PY},
-        )
-    finally:
-        os.chdir(cwd)
-        setuptools.setup = original
+    call = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "setup":
+            call = node
+            break
+    if call is None:
+        raise AssertionError("setup.py has no setup(...) call")
 
-    if not captured:
-        raise AssertionError("setup.py did not call setup()")
-    return captured
+    config = {}
+    for keyword in call.keywords:
+        if keyword.arg is None:
+            continue
+        try:
+            config[keyword.arg] = ast.literal_eval(keyword.value)
+        except (ValueError, SyntaxError):
+            # A computed value; handled below.
+            config[keyword.arg] = None
+
+    if config.get("packages") is None:
+        excluded = set(config.get("exclude") or []) if config.get("exclude") else None
+        packages = _discover_packages()
+        if excluded:
+            packages = [p for p in packages if p not in excluded]
+        config["packages"] = packages
+    if config.get("version") is None:
+        config["version"] = _declared_version()
+
+    return config
 
 
 def _entry_point_modules(config):
