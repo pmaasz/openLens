@@ -178,23 +178,28 @@ class Lens:
         # Refractive index resolution (cheap and pure - no I/O here):
         #   1. Explicit refractive_index argument wins (honours caller
         #      intent and keeps serialization round-trips exact).
-        #   2. Static per-material default from constants.
-        #   3. BK7 default constant.
+        #   2. In model-glass mode, the index comes from model_nd/model_vd at
+        #      the design wavelength - not from the material.
+        #   3. Static per-material default from constants.
+        #   4. BK7 default constant.
         # Database-backed resolution is opt-in via update_refractive_index()
         # or the Lens.for_material() factory.
+        #
+        # Step 2 matters: a model-glass lens is defined by its nd/vd pair, and
+        # the material name is only a label. Resolving from the material gave a
+        # BK7-named lens with model_nd=1.7 an index of 1.5168, so it was built
+        # at the wrong focal length (EFL 97.58 mm) and jumped to 72.17 mm the
+        # first time update_refractive_index() was called. Resolving the same
+        # way that method does keeps the constructor and the first update in
+        # agreement.
         if refractive_index is not None:
             self.refractive_index = float(refractive_index)
+        elif model_glass_mode:
+            self.refractive_index = self.refractive_index_at(self.wavelength)
         else:
             self.refractive_index = DEFAULT_MATERIAL_INDICES.get(material, REFRACTIVE_INDEX_BK7)
 
         self.lens_type = lens_type
-
-        # Only overwrite radii when the caller explicitly opts in.
-        # This prevents silently clobbering r1=100, r2=-100 passed for
-        # a Plano-Convex lens just because they happen to match the
-        # Biconvex defaults.
-        if use_type_defaults:
-            self._update_radii_for_type()
 
         # Fresnel properties
         self.is_fresnel = is_fresnel
@@ -208,6 +213,21 @@ class Lens:
         self.parabolic_sag_1 = float(parabolic_sag_1)
         self.is_parabolic_2 = bool(is_parabolic_2)
         self.parabolic_sag_2 = float(parabolic_sag_2)
+
+        # Only overwrite radii when the caller explicitly opts in.
+        # This prevents silently clobbering r1=100, r2=-100 passed for
+        # a Plano-Convex lens just because they happen to match the
+        # Biconvex defaults.
+        #
+        # Applied *after* the parabolic properties are assigned, because
+        # _update_radii_for_type() clears them - a type preset is spherical, so
+        # it cannot be combined with a paraboloid. Applying it earlier meant
+        # the reset had nothing to clear, so the constructor kept a paraboloid
+        # that the same preset applied via set_lens_type() removed. Precedence
+        # is now the same on both paths: use_type_defaults=True means the
+        # spherical preset wins over the parabolic flags.
+        if use_type_defaults:
+            self._update_radii_for_type()
 
         # Manufacturing aperture per surface: the polished clear aperture
         # (optical, mm). None means "full mechanical diameter". Bevels are
