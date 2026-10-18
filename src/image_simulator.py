@@ -44,6 +44,23 @@ except ImportError:
 AIRY_RADIUS_TO_GAUSSIAN_SIGMA = 0.844 / 2.355
 
 
+def _spatial_only(image: np.ndarray, sigma: float) -> tuple:
+    """Sigma tuple that leaves a 3-D (H, W, 3) image's colour axis alone.
+
+    ``gaussian_filter`` with a scalar sigma smooths *every* axis, so a blur
+    applied to an RGB image mixes the channels: a pure red image blurred with
+    sigma=2 came back with a mean green of 0.333 - the blur invented colour that
+    was not in the picture, which is a chromatic aberration the lens never
+    produced.
+
+    Returns ``(sigma, sigma, 0)`` for a 3-D input and the scalar otherwise, so
+    grayscale and single-plane inputs are unaffected.
+    """
+    if getattr(image, "ndim", 0) >= 3:
+        return (sigma, sigma, 0)
+    return sigma
+
+
 class ImageSimulator:
     """Simulates image formation through optical systems."""
 
@@ -213,7 +230,31 @@ class ImageSimulator:
         from .aberrations import AberrationsCalculator
 
         calculator = AberrationsCalculator(self.optical_system)
-        return calculator.calculate_all_aberrations()
+        # The wavelength has to be forwarded. It was accepted and dropped, so
+        # every caller - including the per-channel chromatic step - got the
+        # aberrations at the default wavelength regardless of what it asked
+        # for, which made the value it passed meaningless.
+        return calculator.calculate_all_aberrations(wavelength_nm=wavelength)
+
+    def _system_focal_length_at(self, wavelength: float) -> float:
+        """System focal length at *wavelength*, in mm.
+
+        The system's focal length is a function of the refractive index, and
+        the index is a function of wavelength for a dispersive glass. This
+        sets each lens to the index for the requested wavelength, measures, and
+        restores - the same discipline the wavefront sensor uses, so asking a
+        question never leaves the system changed.
+        """
+        lenses = []
+        try:
+            for element in self.optical_system.elements:
+                lens = element.lens
+                lenses.append((lens, lens.refractive_index))
+                lens.refractive_index = lens.refractive_index_at(wavelength)
+            return self._system_focal_length()
+        finally:
+            for lens, index in lenses:
+                lens.refractive_index = index
 
     def _calculate_image_distance(self, object_distance: float, wavelength: float) -> float:
         """Calculate image distance using lens equation."""
@@ -287,12 +328,12 @@ class ImageSimulator:
         # Spherical: symmetric defocus, equal in both meridians.
         sigma = sigma_pixels(pick("spherical_aberration", "spherical"))
         if sigma > 0.0:
-            result = gaussian_filter(result, sigma=sigma)
+            result = gaussian_filter(result, sigma=_spatial_only(result, sigma))
 
         # Coma: also symmetric in this simplified model, but a separate term.
         sigma = sigma_pixels(pick("coma"))
         if sigma > 0.0:
-            result = gaussian_filter(result, sigma=sigma)
+            result = gaussian_filter(result, sigma=_spatial_only(result, sigma))
 
         # Astigmatism: tangential and sagittal foci differ, so blur each
         # meridian by its own amount. Half the astigmatic interval each side
@@ -329,7 +370,7 @@ class ImageSimulator:
         sigma_mm = airy_radius * AIRY_RADIUS_TO_GAUSSIAN_SIGMA
         sigma_pixels = sigma_mm / pixel_pitch_mm if pixel_pitch_mm > 0 else 0.0
 
-        return gaussian_filter(image, sigma=max(0.1, sigma_pixels))
+        return gaussian_filter(image, sigma=_spatial_only(image, max(0.1, sigma_pixels)))
 
     def _apply_chromatic_aberration(
         self, image: np.ndarray, object_distance: float, image_distance: float
@@ -349,7 +390,6 @@ class ImageSimulator:
         # Different wavelengths focus at different distances
         # Simulate by scaling each channel slightly differently
         wavelengths = [650, 550, 450]  # R, G, B
-        base_wavelength = WAVELENGTH_GREEN
 
         # Different wavelengths focus at different distances, so each channel
         # is scaled by its own focus. The old code probed for
@@ -358,16 +398,24 @@ class ImageSimulator:
         # dropped. The real, measured longitudinal chromatic aberration gives
         # the same first-order relative focus shift f / (f + lca).
         f_base = self._system_focal_length()
-        chromatic = self._aberrations_for(base_wavelength).get("chromatic")
 
         for i, wl in enumerate(wavelengths):
-            if not chromatic:
-                # No chromatic focus shift reported (an achromat, or a
-                # single material): all channels are in focus together.
+            # Each channel is scaled by *its own* focal length. The old code
+            # took a single longitudinal chromatic figure - measured once, at
+            # the base wavelength - and applied it to all three channels, so
+            # every channel got the same scale and the result was a uniform
+            # blur rather than lateral colour fringes.
+            #
+            # The figure itself does not vary with wavelength: chromatic
+            # aberration is a fixed property of the glass (nF - nC), so
+            # re-measuring it per channel cannot separate them either. What
+            # does vary is the focal length, because the refractive index does.
+            f_channel = self._system_focal_length_at(wl)
+            if not f_channel or not f_base:
                 continue
 
-            # First-order relative focus for this channel.
-            scale = f_base / (f_base + chromatic)
+            # Relative magnification of this channel against the base.
+            scale = f_base / f_channel
 
             if abs(scale - 1.0) > 0.0001:
                 # Zoom channel
@@ -614,16 +662,32 @@ class ImageSimulator:
         r = np.sqrt((x - cx) ** 2 + (y - cy) ** 2)
         angle = np.arctan2(y - cy, x - cx)
 
-        pattern = np.sin(num_spokes * angle) > 0
+        pattern = (np.sin(num_spokes * angle) > 0).astype(float)
 
-        # Circular mask
+        # Circular mask. Built as float up front: assigning 0.5 into a bool
+        # array stores True, so the corners came out 1.0 - brighter than the
+        # disc's own white spokes.
         r_max = min(h, w) // 2
         pattern[r > r_max] = 0.5
 
-        return pattern.astype(float)
+        return pattern
 
     def _create_text_pattern(self, size: Tuple[int, int], text: str = "TEST") -> np.ndarray:
-        """Create text pattern."""
+        """Create text pattern.
+
+        Raises:
+            ImportError: If Pillow is not installed. Every other Pillow call
+                site in this module checks ``PIL_AVAILABLE``; this one
+                imported unconditionally and raised a bare ModuleNotFoundError
+                from inside a simulator, which reads like a crash in the
+                optics rather than a missing optional dependency.
+        """
+        if not PIL_AVAILABLE:
+            raise ImportError(
+                "Pillow is required for the text test pattern but is not "
+                "installed. Install it with 'pip install Pillow'."
+            )
+
         from PIL import Image, ImageDraw, ImageFont
 
         img = Image.new("L", size, color=255)
