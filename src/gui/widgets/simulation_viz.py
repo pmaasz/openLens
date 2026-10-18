@@ -1,10 +1,11 @@
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter, QPen, QBrush
+import logging
 import math
 from typing import Optional, TYPE_CHECKING, Union
 
-from ...constants import COLOR_LENS_FILL
+from ...constants import COLOR_LENS_FILL, NM_TO_MM, WAVELENGTH_GREEN
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QKeyEvent, QMouseEvent, QPaintEvent, QWheelEvent
@@ -12,6 +13,8 @@ if TYPE_CHECKING:
     from ...lens import Lens
     from ...optical_system import OpticalSystem
     from ...ray_tracer import SystemRayTracer
+
+logger = logging.getLogger(__name__)
 
 
 class SimulationVisualizationWidget(QWidget):
@@ -27,7 +30,7 @@ class SimulationVisualizationWidget(QWidget):
         self._lens = None
         self._system = None
         self._rays = []
-        self._wavelength = 550  # Default wavelength in nm
+        self._wavelength = WAVELENGTH_GREEN  # Default wavelength in nm
 
         self.setMinimumSize(400, 300)
         self.setStyleSheet("background-color: #1e1e1e; border: 2px solid #888888;")
@@ -43,6 +46,12 @@ class SimulationVisualizationWidget(QWidget):
         self._show_ghosts = False
         self._show_image_sim = False
         self._image_pattern = "Star"
+        # Parameters of the last run, kept so refresh() can re-trace with the
+        # same settings. Without them a refresh would have to invent them, and
+        # "re-trace" would silently mean "re-trace differently".
+        self._last_num_rays = 11
+        self._last_angle = 0.0
+        self._last_source_height = 0.0
 
         # Zoom and pan state
         self._zoom = 1.0
@@ -159,7 +168,7 @@ class SimulationVisualizationWidget(QWidget):
         angle: float = 0,
         source_height: float = 0,
         show_ghosts: bool = False,
-        wavelength: float = 550,
+        wavelength: float = WAVELENGTH_GREEN,
     ) -> None:
         """Run ray tracing simulation
 
@@ -170,7 +179,9 @@ class SimulationVisualizationWidget(QWidget):
             source_height: Vertical offset of the ray fan origin (mm).
             show_ghosts: Whether to trace ghost rays from internal
                 reflections.
-            wavelength: Wavelength in nanometers used for the ray color.
+            wavelength: Wavelength in nanometers. Used for the ray colour
+                *and* passed to the tracer, so a dispersive glass actually
+                disperses at the wavelength the user picked.
         """
         from ...optical_system import OpticalSystem
 
@@ -185,6 +196,9 @@ class SimulationVisualizationWidget(QWidget):
         self._ghost_rays = []
         self._show_ghosts = show_ghosts
         self._wavelength = wavelength
+        self._last_num_rays = num_rays
+        self._last_angle = angle
+        self._last_source_height = source_height
         self._ray_color = self.wavelength_to_color(wavelength)
 
         try:
@@ -209,7 +223,16 @@ class SimulationVisualizationWidget(QWidget):
                 else:
                     h = -diameter / 2 + diameter * i / (num_rays - 1)
 
-                ray = Ray(-100, h + source_height, angle_rad=angle_rad)
+                # wavelength_mm has to be set explicitly. Without it the ray
+                # inherited the Ray default of 550 nm, so the wavelength picker
+                # changed only the ray colour and every trace stayed at green -
+                # dispersion never showed no matter which glass was loaded.
+                ray = Ray(
+                    -100,
+                    h + source_height,
+                    angle_rad=angle_rad,
+                    wavelength_mm=wavelength * NM_TO_MM,
+                )
                 tracer.trace_ray(ray)
                 self._rays.append(ray)
 
@@ -223,7 +246,7 @@ class SimulationVisualizationWidget(QWidget):
                     self._run_ghost_analysis(temp_system, tracer)
 
         except Exception as e:
-            print(f"Simulation error: {e}")
+            logger.error("Simulation failed at %.1f nm: %s", wavelength, e)
 
         self.update()
 
@@ -239,7 +262,7 @@ class SimulationVisualizationWidget(QWidget):
                 if ghost.rays:
                     self._ghost_rays.append(ghost.rays)
         except Exception as e:
-            print(f"Ghost analysis error: {e}")
+            logger.error("Ghost analysis failed: %s", e)
 
     def run_image_simulation(self, lens: "Lens", pattern: str = "Star") -> None:
         """Run image simulation pattern through lens
@@ -259,6 +282,40 @@ class SimulationVisualizationWidget(QWidget):
         self._ghost_rays = []
         self._lens = None
         self._show_image_sim = False
+        self.update()
+
+    def refresh(self) -> None:
+        """Re-trace the current lens or system with the last run's settings.
+
+        The widget holds a *live reference* to the lens, so after an edit the
+        drawn lens is the new one while the drawn rays still belong to the old
+        one - the two disagree, and nothing about the display says so. This
+        re-runs the trace so the rays match what is being drawn.
+
+        A refresh is not a re-configure: the wavelength, ray count, angle,
+        source height and ghost setting are the ones the user last chose, not
+        defaults. Anything else would make "refresh" a second, invisible way of
+        changing the simulation.
+        """
+        if self._show_image_sim:
+            # An image simulation draws from the lens directly and has no rays
+            # to re-trace; repainting picks up the edit on its own.
+            self.update()
+            return
+
+        target = self._system if self._system is not None else self._lens
+        if target is None:
+            self.update()
+            return
+
+        self.run_simulation(
+            target,
+            num_rays=self._last_num_rays,
+            angle=self._last_angle,
+            source_height=self._last_source_height,
+            show_ghosts=self._show_ghosts,
+            wavelength=self._wavelength,
+        )
         self.update()
 
     def paintEvent(self, event: "QPaintEvent") -> None:
