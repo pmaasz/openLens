@@ -136,7 +136,26 @@ class AberrationsCalculator:
         field_angle_deg: float,
         wavelength_nm: float,
     ) -> Dict[str, Any]:
-        """Body of calculate_all_aberrations at one consistent wavelength."""
+        """Body of calculate_all_aberrations at one consistent wavelength.
+
+        Raises:
+            ValueError: If a finite ``object_distance_mm`` is requested. Every
+                Seidel estimator here assumes the object at infinity
+                (conjugate factor C = -1), so a finite conjugate was accepted,
+                forwarded and then ignored - the caller got
+                infinity-conjugate numbers labelled with their own distance.
+                Refusing is better than that: the answer would be wrong, and
+                wrong in a way nothing downstream could detect. Supporting it
+                needs a conjugate factor threaded through each estimator,
+                which is a physics change rather than a guard.
+        """
+        if object_distance_mm is not None:
+            raise ValueError(
+                f"object distance is not supported: got {object_distance_mm!r} mm. "
+                f"Every aberration here is computed for an object at infinity; "
+                f"pass object_distance_mm=None for that case."
+            )
+
         if self.is_system:
             focal_length = self.target.get_system_focal_length()
         else:
@@ -179,6 +198,11 @@ class AberrationsCalculator:
         )
         mtf_cutoff = self._calculate_mtf_cutoff(focal_length, wavelength_nm=wavelength_nm)
 
+        # None means the trace failed, which is not the same as a zero spot.
+        # Published as 0.0 it read as a perfect design - better than
+        # diffraction limited - for a lens that could not be traced.
+        spot_rms = self._calculate_spot_rms()
+
         if self.is_system:
             field_data = self._calculate_field_metrics_system(
                 field_angle_deg, wavelength_nm=wavelength_nm
@@ -206,11 +230,11 @@ class AberrationsCalculator:
                 "chromatic": chromatic,
                 "chromatic_aberration": chromatic,
                 "airy_disk_diameter": airy,
-                "spot_rms": self._calculate_spot_rms() or 0.0,
+                "spot_rms": spot_rms,
                 "strehl": strehl,
                 "wfe_rms_waves": wfe_rms_waves,
                 "mtf_cutoff": mtf_cutoff,
-                "valid": _all_valid(field_data, spherical, chromatic, airy, strehl),
+                "valid": _all_valid(field_data, spherical, chromatic, airy, strehl, spot_rms),
             }
 
         field_curvature = self._calculate_field_curvature(focal_length)
@@ -306,9 +330,17 @@ class AberrationsCalculator:
             analysis = GeometricTraceAnalysis(self.target)
 
             # 1. Field Curvature and Distortion
-            # Sample up to field_angle
+            # Sample out to the requested field. The magnitude is used:
+            # these two are even in field angle, while coma and
+            # astigmatism below are handed the signed value. Sampling to
+            # max(field_angle, 0.1) meant a -10 deg request was evaluated
+            # at +0.1 deg, so one dict mixed two fields - the caller got
+            # the curvature of a different field than the coma beside it.
+            # The 0.1 deg floor stays to avoid a degenerate zero-width
+            # sample at the on-axis case.
+            requested_field = abs(float(field_angle))
             fc_data = analysis.calculate_field_curvature_distortion(
-                max_field_angle_deg=max(field_angle, 0.1),
+                max_field_angle_deg=max(requested_field, 0.1),
                 num_points=10,
                 wavelength_nm=wavelength_nm,
             )
@@ -982,6 +1014,37 @@ class AberrationsCalculator:
 
         f = results["focal_length"]
 
+        def _metric(key: str, spec: str = ".4f", suffix: str = "") -> str:
+            """Format one metric, or say it could not be measured.
+
+            A helper returning None means "not measurable" - a failed trace,
+            a vignetted design. Formatting that with a float specifier raised
+            ``TypeError: unsupported format string passed to NoneType.__format__``
+            and the summary was lost entirely, rather than showing that one
+            number is missing.
+            """
+            value = results.get(key)
+            if value is None or (isinstance(value, float) and not math.isfinite(value)):
+                return f"{'unavailable':>10}{suffix}"
+            return f"{value:>10{spec}}{suffix}"
+
+        def _trend(key: str, low: float, high: float, labels) -> str:
+            """Interpretation label for a magnitude, or 'unavailable'."""
+            value = results.get(key)
+            if value is None or (isinstance(value, float) and not math.isfinite(value)):
+                return "unavailable"
+            magnitude = abs(value)
+            for index, bound in enumerate((low, high)):
+                if magnitude < bound:
+                    return labels[index]
+            return labels[-1]
+
+        def _detail(key: str, spec: str, suffix: str = "") -> str:
+            value = results.get(key)
+            if value is None or (isinstance(value, float) and not math.isfinite(value)):
+                return f"({suffix.strip() or 'value'} unavailable)"
+            return f"({abs(value):{spec}} {suffix})" if suffix else f"({abs(value):{spec}})"
+
         # self.lens only exists for a single-lens target; a system target
         # sets is_system instead, so reading it here raised AttributeError.
         if self.is_system:
@@ -1001,35 +1064,35 @@ class AberrationsCalculator:
 ╠═══════════════════════════════════════════════════════════════╣
 ║ BASIC PARAMETERS                                              ║
 ╠═══════════════════════════════════════════════════════════════╣
-║ Focal Length:          {f:>10.2f} mm                      ║
-║ F-number (f/#):        {results['f_number']:>10.2f}                          ║
-║ Numerical Aperture:    {results['numerical_aperture']:>10.4f}                          ║
-║ Airy Disk Diameter:    {results['airy_disk_diameter']:>10.6f} mm (diffraction limit) ║
+║ Focal Length:          {_metric('focal_length', '.2f', ' mm')}                      ║
+║ F-number (f/#):        {_metric('f_number', '.2f')}                          ║
+║ Numerical Aperture:    {_metric('numerical_aperture', '.4f')}                          ║
+║ Airy Disk Diameter:    {_metric('airy_disk_diameter', '.6f', ' mm (diffraction limit)')} ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║ PRIMARY ABERRATIONS (Seidel)                                  ║
 ╠═══════════════════════════════════════════════════════════════╣
-║ Spherical Aberration:  {results['spherical']:>10.4f} mm (longitudinal)      ║
-║ Coma (@ {field_angle}°):         {results['coma']:>10.4f} (relative)              ║
-║ Astigmatism (@ {field_angle}°):  {results['astigmatism']:>10.4f} mm                       ║
-║ Field Curvature:       {results['field_curvature']:>10.2f} mm (Petzval radius)     ║
-║ Distortion (@ {field_angle}°):   {results['distortion']:>10.4f} %                        ║
+║ Spherical Aberration:  {_metric('spherical', '.4f', ' mm (longitudinal)')}      ║
+║ Coma (@ {field_angle}°):         {_metric('coma', '.4f', ' (relative)')}              ║
+║ Astigmatism (@ {field_angle}°):  {_metric('astigmatism', '.4f', ' mm')}                       ║
+║ Field Curvature:       {_metric('field_curvature', '.2f', ' mm (Petzval radius)')}     ║
+║ Distortion (@ {field_angle}°):   {_metric('distortion', '.4f', ' %')}                        ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║ CHROMATIC ABERRATION                                          ║
 ╠═══════════════════════════════════════════════════════════════╣
-║ Longitudinal CA:       {results['chromatic']:>10.4f} mm (focal shift)        ║
+║ Longitudinal CA:       {_metric('chromatic', '.4f', ' mm (focal shift)')}        ║
 ╚═══════════════════════════════════════════════════════════════╝
 
 INTERPRETATION:
-• Spherical Aberration: {'Negligible' if abs(results['spherical']) < 0.001 else 'Moderate' if abs(results['spherical']) < 0.01 else 'Significant'}
-  ({abs(results['spherical']):.4f} mm - {'rays focus at different points' if results['spherical'] != 0 else 'well corrected'})
+• Spherical Aberration: {_trend('spherical', 0.001, 0.01, ['Negligible', 'Moderate', 'Significant'])}
+  {_detail('spherical', '.4f', 'mm')}
 
-• Chromatic Aberration: {'Negligible' if results['chromatic'] < 0.1 else 'Moderate' if results['chromatic'] < 0.5 else 'Significant'}
-  ({results['chromatic']:.4f} mm - {'color fringing minimal' if results['chromatic'] < 0.1 else 'visible color fringing'})
+• Chromatic Aberration: {_trend('chromatic', 0.1, 0.5, ['Negligible', 'Moderate', 'Significant'])}
+  {_detail('chromatic', '.4f', 'mm')}
 
-• Distortion: {'None' if abs(results['distortion']) < 0.1 else 'Barrel' if results['distortion'] < 0 else 'Pincushion'}
-  ({abs(results['distortion']):.2f}% - {'straight lines appear' + (' curved inward' if results['distortion'] < 0 else ' curved outward') if abs(results['distortion']) > 0.1 else 'minimal'})
+• Distortion: {_trend('distortion', 0.1, 1e9, ['None', 'None', 'Present'])}
+  {_detail('distortion', '.2f', '%')}
 
-• Resolution Limit: {results['airy_disk_diameter']*1000:.2f} μm (diffraction-limited spot size)
+• Resolution Limit: {_detail('airy_disk_diameter', '.2f', 'um')}
 """
 
         return summary
