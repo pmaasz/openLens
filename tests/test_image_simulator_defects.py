@@ -50,6 +50,17 @@ def _red_image(size=32):
     return image
 
 
+#: scipy is optional in this project and the Coverage job does not install it,
+#: so both the blur and the chromatic step return early without it. These
+#: tests exercise those code paths and cannot run without it. Same class of
+#: environment gap as #446: local runs have scipy, the Coverage job does not.
+requires_scipy = unittest.skipUnless(
+    __import__("src.image_simulator", fromlist=["SCIPY_AVAILABLE"]).SCIPY_AVAILABLE,
+    "scipy not installed; the blur and chromatic paths return early without it",
+)
+
+
+@requires_scipy
 class TestBlurDoesNotInventColour(unittest.TestCase):
     """A Gaussian on 3-D input must not smooth across channels."""
 
@@ -111,6 +122,7 @@ class TestBlurDoesNotInventColour(unittest.TestCase):
         self.assertAlmostEqual(ratio_in, ratio_out, places=6)
 
 
+@requires_scipy
 class TestChromaticAberrationVariesByChannel(unittest.TestCase):
     """Each channel must be scaled by its own focal length."""
 
