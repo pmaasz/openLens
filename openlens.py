@@ -1418,8 +1418,51 @@ def _configure_logging() -> None:
     root.setLevel(logging.INFO)
 
 
+def _handle_headless_flags(argv: Optional[list] = None) -> Optional[int]:
+    """Answer the flags that must work without a display, before Qt starts.
+
+    `openlens --version` is how an installed copy is checked. Creating a
+    QApplication first would make the check need a display, an X server and a
+    GPU - so a packaging test could not run headless in CI, and could not
+    distinguish "installed correctly" from "needs a desktop".
+
+    Args:
+        argv: Arguments to inspect, or None for sys.argv[1:].
+
+    Returns:
+        The process exit code when a flag was handled, else None so the caller
+        carries on into the GUI.
+    """
+    args = list(sys.argv[1:] if argv is None else argv)
+
+    if "--version" in args or "-V" in args:
+        # src/__init__.py is the canonical version, and release-please bumps it
+        # (see .github/release-please-config.json). setup.py reads the same
+        # file, so the two cannot report different versions.
+        from src import __version__
+
+        print(f"openlens {__version__}")
+        return 0
+
+    if "--help" in args or "-h" in args:
+        print("usage: openlens [--version] [--help]")
+        print()
+        print("  --version   print the installed version and exit")
+        print("  --help      print this message and exit")
+        print()
+        print("Run with no arguments to open the application.")
+        return 0
+
+    return None
+
+
 def main() -> None:
     """Run the OpenLens application: startup dialog, then the main window."""
+    # Before logging, before Qt, before anything touches the filesystem.
+    exit_code = _handle_headless_flags()
+    if exit_code is not None:
+        raise SystemExit(exit_code)
+
     _configure_logging()
 
     # Relocate a database an older version left in the working directory, before
