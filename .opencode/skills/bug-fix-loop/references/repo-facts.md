@@ -24,6 +24,20 @@ gh issue list --label bug --state open --json number,title,labels
 gh pr view 12 --json number,title,url,mergeable   # same failure without --json
 ```
 
+**`gh pr edit` fails the same way**, because it also requests `projectCards`.
+There is no `--json` escape hatch for a write, so update the PR body over REST:
+
+```bash
+python3 -c "
+import json
+json.dump({'body': open('/tmp/pr-body.md').read()}, open('/tmp/prbody.json','w'))"
+gh api -X PATCH repos/pmaasz/openLens/pulls/510 --input /tmp/prbody.json
+```
+
+Note `gh api` accepts **one** argument after the flag set — `--input file --jq
+.number` parses as two positional args and errors with `accepts 1 arg(s)`.
+Keep the trailing selector inside the same `--jq` value.
+
 ## Interpreting the issue body
 
 Bodies follow a consistent shape:
@@ -54,6 +68,32 @@ ERROR: tests.gui_flows.test_visual_regression ...
 
 Cause: `tests/gui_flows/conftest.py` imports `pytest`, which is not installed
 locally. CI installs pytest and runs those files separately.
+
+### The local suite has a *different set of packages* than CI
+
+Local `python3` has PySide6, numpy, matplotlib, **and setuptools**. The CI
+runner installs the project with `pip install -e .[dev]` into a fresh
+interpreter, and pip builds in an **isolated environment** — so `setuptools` is
+used to build the package but is never installed alongside it. It is
+**not importable** where the tests run.
+
+So a test that imports `setuptools` (to read packaging metadata, say) passes
+locally and errors in CI with `ModuleNotFoundError: No module named
+'setuptools'`.
+
+`build` and `wheel` are absent both locally and in CI, so nothing that wants to
+build a distribution will work without adding it.
+
+**Do not `skipUnless` a dependency just because CI lacks it** — if the test
+exists to check something CI does not otherwise check, skipping it in CI leaves
+the gap open while reporting green. Either avoid the dependency, or add it to
+CI. This is exactly how #470 shipped: nothing built or inspected a real install,
+so a missing console script went unnoticed.
+
+Corollary: because the local suite always reports 6 errors, it is easy to stop
+reading its output. A local error count that is *neither* the 6-error baseline
+nor 0 — CI reported 4 for #470 — is a strong signal that the environments have
+diverged, not that the change is fine.
 
 Baseline on a clean `master`:
 
