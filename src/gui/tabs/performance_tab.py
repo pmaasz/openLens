@@ -24,6 +24,50 @@ from .base_tab import BaseTab
 logger = logging.getLogger(__name__)
 
 
+#: Keys excluded from a metrics fingerprint, because they identify the *record*
+#: or the moment it was written rather than the design it now holds:
+#: `modified_at`/`created_at` change on every touch (including a rename or a
+#: mere re-selection) and `id` is a fresh uuid per object, so including them
+#: would make two identical designs fingerprint differently and throw the cache
+#: away constantly.
+_VOLATILE_MODEL_KEYS = frozenset({"modified_at", "created_at", "id"})
+
+
+def metrics_fingerprint(model) -> str:
+    """A stable fingerprint of a model's optical state.
+
+    The metrics cache was keyed on object identity, and the editor edits the
+    lens in place, so the identity never changed: after a radius edit the tab
+    went on repainting the focal length and aberrations of the lens as it was
+    *before* the edit, with nothing to say they were out of date. Keying on what
+    the model actually contains fixes that, and also catches edits made
+    anywhere rather than only through the editor.
+
+    Every serialized key counts, not a hand-picked list of optical ones, so a
+    newly added field cannot be quietly left out of the cache key. That can
+    cause a needless recompute - never a stale one - which is the right way
+    round to be wrong.
+
+    Args:
+        model: A Lens or OpticalSystem.
+
+    Returns:
+        A string that changes whenever any non-volatile serialized value does.
+    """
+    try:
+        data = model.to_dict()
+    except Exception:  # pragma: no cover - defensive; to_dict is a plain read
+        logger.debug("Could not fingerprint %r for the metrics cache", model, exc_info=True)
+        return ""
+
+    payload = {key: value for key, value in sorted(data.items()) if key not in _VOLATILE_MODEL_KEYS}
+    try:
+        return repr(payload)
+    except Exception:  # pragma: no cover - repr of exotic metadata
+        logger.debug("Could not represent %r for the metrics cache", model, exc_info=True)
+        return ""
+
+
 def _fmt(value, spec: str = ".4f", scale: float = 1.0) -> str:
     """Format a possibly-missing metric for the report.
 
@@ -78,6 +122,10 @@ class PerformanceTab(BaseTab):
         self._cached_metrics_text = None
         self._cached_metrics = None
         self._cached_metrics_for = None
+        # What the cached metrics were computed from. Identity alone is not
+        # enough: the editor edits a lens in place, so the same object can hold
+        # a different design than it did when the metrics were run.
+        self._cached_metrics_stamp = None
 
         # Add the visualization widget
         from ..widgets import PerformanceVisualizationWidget
@@ -329,9 +377,13 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
             self._perf_metrics_text.setPlainText(text)
 
             # Remember the result so refresh() can repaint without recomputing.
+            # Keyed on what the model *contains*, not on which object it is: the
+            # editor edits lenses in place, so identity alone cannot tell an
+            # edited lens from an untouched one.
             self._cached_metrics_text = text
             self._cached_metrics = results
             self._cached_metrics_for = active_system
+            self._cached_metrics_stamp = metrics_fingerprint(active_system)
 
             # Update visualization widget
             if hasattr(self, "_perf_viz"):
@@ -605,6 +657,7 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
         if not active_system:
             self._cached_metrics_text = None
             self._cached_metrics_for = None
+            self._cached_metrics_stamp = None
             self._perf_metrics_text.setPlainText(
                 "Select a lens or assembly and click 'Calculate Metrics' to view performance data."
             )
@@ -613,16 +666,48 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
             return
 
         # Metrics are cached per model, so switching targets shows that
-        # target's own last result rather than the previous one's.
-        if self._cached_metrics_for is not active_system:
+        # target's own last result rather than the previous one's. The key is
+        # what the model contains, so an in-place edit - which the editor does
+        # on every keystroke - drops the cache too. Keying on identity alone let
+        # an edited lens keep showing the pre-edit numbers with no indication
+        # they were stale.
+        current = metrics_fingerprint(active_system)
+        same_model = self._cached_metrics_for is active_system
+
+        # Only a *previous result for this very model* can go stale. A model we
+        # have never calculated for is not stale, it is uncalculated - and
+        # telling a user their report is out of date when they never asked for
+        # one is its own kind of lie.
+        went_stale = (
+            same_model
+            and self._cached_metrics_text is not None
+            and self._cached_metrics_stamp is not None
+            and self._cached_metrics_stamp != current
+        )
+
+        if went_stale or not same_model:
             self._cached_metrics_text = None
+            self._cached_metrics = None
+            self._cached_metrics_stamp = current
             self._cached_metrics_for = active_system
 
         if self._cached_metrics_text is None:
-            self._perf_metrics_text.setPlainText(
-                f"Metrics not yet calculated for {active_system.name}.\n"
-                "Click 'Calculate Metrics' to run the analysis."
-            )
+            if went_stale:
+                # The distinction matters. "Not yet calculated" tells the user
+                # to press the button; "these numbers are from before your
+                # edit" tells them the report they were reading has just
+                # stopped describing the lens in front of them. Only the second
+                # is honest, and the first is what made the staleness invisible.
+                self._perf_metrics_text.setPlainText(
+                    f"{active_system.name} has changed since these metrics were "
+                    "calculated.\nThey no longer describe this design - click "
+                    "'Calculate Metrics' to update them."
+                )
+            else:
+                self._perf_metrics_text.setPlainText(
+                    f"Metrics not yet calculated for {active_system.name}.\n"
+                    "Click 'Calculate Metrics' to run the analysis."
+                )
             if hasattr(self, "_perf_viz"):
                 self._perf_viz.update_lens(active_system)
             return
