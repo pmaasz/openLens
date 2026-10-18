@@ -28,17 +28,31 @@ setup(
     long_description_content_type='text/markdown',
     author='Philip',
     author_email='',
-    url='https://github.com/philip/openlens',
+    url='https://github.com/pmaasz/openLens',
     license='MIT',
-    
+
     packages=find_packages(exclude=['tests', 'tests.*']),
+
+    # openlens.py is the GUI's entry point (openlens=openlens:main). It is a
+    # top-level module, and find_packages() only finds packages - directories
+    # with __init__.py - so without this it was absent from every non-editable
+    # install and the `openlens` command did not exist.
+    py_modules=['openlens'],
+
     include_package_data=True,
-    
-    python_requires='>=3.7',
-    
-    # Core dependencies (PySide6 for GUI)
+
+    # CI tests 3.10, 3.11 and 3.12. Claiming 3.7-3.9 advertised support that
+    # is never exercised, and 3.7 is long past end of life.
+    python_requires='>=3.10',
+
+    # Core dependencies. numpy is here because openlens.py imports
+    # src.analysis.plots at module load and that module imports numpy
+    # unconditionally - so a plain `pip install openlens` raised ImportError at
+    # startup. matplotlib stays optional: it is imported lazily inside
+    # functions, under try/except.
     install_requires=[
         'PySide6>=6.0',
+        'numpy>=1.19.0',
     ],
     
     # Optional dependencies for visualization / development
@@ -65,28 +79,28 @@ setup(
     },
     
     classifiers=[
-        'Development Status :: 5 - Production/Stable',
+        # 0.x, so "Production/Stable" overstates it. Beta is the honest claim.
+        'Development Status :: 4 - Beta',
         'Intended Audience :: Science/Research',
         'Intended Audience :: Education',
         'Topic :: Scientific/Engineering :: Physics',
         'Topic :: Scientific/Engineering :: Visualization',
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8',
-        'Programming Language :: Python :: 3.9',
+        # Only the versions CI actually tests. 3.7 was listed twice, and
+        # 3.7-3.9 were advertised without ever being exercised.
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
         'Operating System :: OS Independent',
         'Environment :: X11 Applications',
     ],
-    
+
     keywords='optics lens optical-design simulation physics education lensmaker',
-    
+
     project_urls={
-        'Documentation': 'https://github.com/philip/openlens/blob/master/README.md',
-        'Source': 'https://github.com/philip/openlens',
-        'Bug Reports': 'https://github.com/philip/openlens/issues',
+        'Documentation': 'https://github.com/pmaasz/openLens/blob/master/README.md',
+        'Source': 'https://github.com/pmaasz/openLens',
+        'Bug Reports': 'https://github.com/pmaasz/openLens/issues',
     },
 )

@@ -1,0 +1,305 @@
+#!/usr/bin/env python3
+"""Regression: the declared distribution must actually be installable.
+
+A normal (non-editable) install of this project was broken in several ways
+that nothing in the test suite noticed, because the tests all run against the
+source tree via ``pip install -e .``. The evidence lives in ``setup.py``, so
+these tests read the config it would hand to setuptools and assert that the
+distribution it describes is coherent.
+
+The headline defect: ``openlens=openlens:main`` points at the top-level
+``openlens.py``, which ``find_packages()`` does not include and nothing listed
+it as a module, so the ``openlens`` command was missing from a real install.
+"""
+
+import ast
+import os
+import subprocess
+import unittest
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SETUP_PY = os.path.join(REPO_ROOT, "setup.py")
+
+
+def _setup_config():
+    """The kwargs setup.py hands to setuptools(), without running a build.
+
+    setup.py does ``from setuptools import setup`` at module scope, so patching
+    ``setuptools.setup`` before the exec is enough to capture the call.
+    """
+    import setuptools
+
+    captured = {}
+    original = setuptools.setup
+    setuptools.setup = lambda **kwargs: captured.update(kwargs)
+    cwd = os.getcwd()
+    try:
+        os.chdir(REPO_ROOT)
+        with open(SETUP_PY, encoding="utf-8") as handle:
+            source = handle.read()
+        exec(  # noqa: S102 - executing setup.py is the point
+            compile(source, SETUP_PY, "exec"),
+            {"__name__": "__main__", "__file__": SETUP_PY},
+        )
+    finally:
+        os.chdir(cwd)
+        setuptools.setup = original
+
+    if not captured:
+        raise AssertionError("setup.py did not call setup()")
+    return captured
+
+
+def _entry_point_modules(config):
+    """The top-level module each console script imports."""
+    scripts = config.get("entry_points", {}).get("console_scripts", [])
+    modules = []
+    for script in scripts:
+        target = script.split("=", 1)[-1].strip()
+        modules.append(target.split(":", 1)[0].strip())
+    return modules
+
+
+class TestConsoleScriptsAreShipped(unittest.TestCase):
+    """A console script whose module is not installed is a broken command."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.config = _setup_config()
+
+    def test_every_console_script_target_is_in_the_distribution(self):
+        packages = set(self.config.get("packages", []))
+        py_modules = set(self.config.get("py_modules", []))
+        # What an installed distribution makes importable: every discovered
+        # package, plus any top-level module listed in py_modules.
+        shipped = {name.split(".")[0] for name in packages} | py_modules
+
+        # A dotted target only needs its top-level package shipped; the rest
+        # of the path is resolved inside it.
+        missing = [m for m in _entry_point_modules(self.config) if m.split(".")[0] not in shipped]
+
+        self.assertEqual(
+            missing,
+            [],
+            f"console script targets {missing} cannot be imported from a real "
+            f"install: find_packages() only finds packages, so a top-level "
+            f"module like openlens.py must be listed in py_modules",
+        )
+
+    def test_the_gui_entry_point_target_exists_on_disk(self):
+        for module in _entry_point_modules(self.config):
+            with self.subTest(module=module):
+                self.assertTrue(
+                    os.path.exists(os.path.join(REPO_ROOT, *module.split(".")) + ".py"),
+                    f"{module}.py does not exist, so its console script " f"cannot work",
+                )
+
+    def test_every_declared_package_exists(self):
+        for package in self.config.get("packages", []):
+            with self.subTest(package=package):
+                self.assertTrue(
+                    os.path.isdir(os.path.join(REPO_ROOT, *package.split("."))),
+                    f"{package} is declared as a package but has no directory",
+                )
+
+    def test_every_declared_module_exists(self):
+        for module in self.config.get("py_modules", []):
+            with self.subTest(module=module):
+                self.assertTrue(
+                    os.path.exists(os.path.join(REPO_ROOT, f"{module}.py")),
+                    f"{module} is declared in py_modules but the file is missing",
+                )
+
+    def test_the_tests_are_not_shipped(self):
+        for package in self.config.get("packages", []):
+            with self.subTest(package=package):
+                self.assertFalse(
+                    package == "tests" or package.startswith("tests."),
+                    "the test suite is being installed into site-packages",
+                )
+
+
+class TestInstallRequirementsMatchReality(unittest.TestCase):
+    """A plain ``pip install`` has to produce a runnable application."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.config = _setup_config()
+
+    def test_numpy_is_a_hard_requirement(self):
+        """openlens.py imports src.analysis.plots, which imports numpy unguarded."""
+        requirements = " ".join(self.config.get("install_requires", []))
+
+        self.assertIn(
+            "numpy",
+            requirements.lower(),
+            "numpy is imported unconditionally at module load by "
+            "src/analysis/plots.py, which openlens.py imports, so a plain "
+            "'pip install openlens' crashes at startup",
+        )
+
+    def test_pyside_is_a_hard_requirement(self):
+        requirements = " ".join(self.config.get("install_requires", []))
+
+        self.assertIn("pyside6", requirements.lower())
+
+    def test_the_startup_import_is_unguarded(self):
+        """Guards the premise: if numpy were made optional, this requirement
+        could move to an extra."""
+        with open(os.path.join(REPO_ROOT, "src", "analysis", "plots.py")) as handle:
+            tree = ast.parse(handle.read())
+
+        guarded = False
+        for node in tree.body:
+            if isinstance(node, ast.Try):
+                for sub in ast.walk(node):
+                    if isinstance(sub, ast.Import) and any(
+                        alias.name.split(".")[0] == "numpy" for alias in sub.names
+                    ):
+                        guarded = True
+            if isinstance(node, ast.Import) and any(
+                alias.name.split(".")[0] == "numpy" for alias in node.names
+            ):
+                self.assertFalse(
+                    guarded, "numpy turned out to be guarded; the test premise changed"
+                )
+
+
+class TestPythonVersionMetadata(unittest.TestCase):
+    """python_requires and the classifiers have to agree with CI."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.config = _setup_config()
+
+    def test_python_requires_matches_the_oldest_tested_version(self):
+        """CI tests 3.10-3.12; claiming 3.7 support that is never exercised."""
+        self.assertEqual(
+            self.config.get("python_requires"),
+            ">=3.10",
+            "python_requires claims support for versions CI does not test",
+        )
+
+    def test_no_duplicate_classifiers(self):
+        """The 3.7 classifier was listed twice."""
+        classifiers = self.config.get("classifiers", [])
+
+        duplicates = {c for c in classifiers if classifiers.count(c) > 1}
+
+        self.assertEqual(
+            duplicates,
+            set(),
+            f"classifiers are listed more than once: {sorted(duplicates)}",
+        )
+
+    def test_every_declared_version_is_actually_tested(self):
+        declared = {
+            c.rsplit(" ", 1)[-1]
+            for c in self.config.get("classifiers", [])
+            if c.startswith("Programming Language :: Python :: 3.")
+        }
+
+        for version in declared:
+            with self.subTest(version=version):
+                self.assertIn(
+                    version,
+                    {"3.10", "3.11", "3.12"},
+                    f"{version} is advertised as supported but CI does not " f"test it",
+                )
+
+    def test_the_development_status_is_not_overstated(self):
+        """'Production/Stable' is a claim about a 0.x package."""
+        classifiers = self.config.get("classifiers", [])
+        version = str(self.config.get("version", "0.0.0"))
+
+        self.assertNotIn(
+            "Development Status :: 5 - Production/Stable",
+            classifiers,
+            "a 0.x package should not be classified as Production/Stable",
+        )
+        self.assertTrue(
+            any(c.startswith("Development Status ::") for c in classifiers),
+            "no Development Status classifier is declared at all",
+        )
+        self.assertTrue(version)
+
+
+class TestProjectUrls(unittest.TestCase):
+    """The URLs have to point at the repository the code actually lives in."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.config = _setup_config()
+        cls.repo = _remote_slug()
+
+    def _urls(self):
+        values = []
+        if self.config.get("url"):
+            values.append(self.config["url"])
+        values.extend(self.config.get("project_urls", {}).values())
+        return values
+
+    def test_urls_point_at_the_real_repository(self):
+        wrong = [url for url in self._urls() if "github.com" in url and self.repo not in url]
+
+        self.assertEqual(
+            wrong,
+            [],
+            f"these URLs point somewhere other than {self.repo}: {wrong}",
+        )
+
+    def test_there_is_a_bug_tracker_url(self):
+        urls = {k.lower(): v for k, v in self.config.get("project_urls", {}).items()}
+
+        self.assertTrue(
+            any("issue" in k or "bug" in k for k in urls),
+            "no issue-tracker URL is declared",
+        )
+
+
+class TestManifestIn(unittest.TestCase):
+    """MANIFEST.in naming a file that does not exist is dead weight."""
+
+    def _included_files(self):
+        manifest = os.path.join(REPO_ROOT, "MANIFEST.in")
+        if not os.path.exists(manifest):
+            return []
+
+        with open(manifest, encoding="utf-8") as handle:
+            lines = [line.strip() for line in handle if line.strip().startswith("include ")]
+        return [line.split(None, 1)[1].strip() for line in lines]
+
+    def test_every_included_file_exists(self):
+        missing = [
+            name
+            for name in self._included_files()
+            if not os.path.exists(os.path.join(REPO_ROOT, name))
+        ]
+
+        self.assertEqual(
+            missing,
+            [],
+            f"MANIFEST.in includes files that do not exist: {missing}",
+        )
+
+
+def _remote_slug():
+    """The owner/repo of origin, so the test does not hardcode the location."""
+    try:
+        url = subprocess.check_output(
+            ["git", "remote", "get-url", "origin"],
+            cwd=REPO_ROOT,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return "pmaasz/openLens"
+
+    cleaned = url.removesuffix(".git").rstrip("/")
+    if "github.com" in cleaned:
+        return cleaned.split("github.com", 1)[1].lstrip("/:").replace(":", "/")
+    return "pmaasz/openLens"
+
+
+if __name__ == "__main__":
+    unittest.main()
