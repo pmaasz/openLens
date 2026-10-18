@@ -10,6 +10,7 @@ semantics on top of it.
 """
 
 import math
+import numbers
 import os
 from pathlib import Path
 from typing import Any, Union, Tuple, Optional
@@ -35,12 +36,31 @@ class ValidationError(Exception):
     pass
 
 
+def _is_numeric_field(expected_type) -> bool:
+    """Whether *expected_type* describes a JSON number rather than a string.
+
+    Args:
+        expected_type: The type or tuple of types a field is declared with.
+
+    Returns:
+        True when a bool should be rejected for this field.
+    """
+    types = expected_type if isinstance(expected_type, tuple) else (expected_type,)
+    return bool(types) and all(t in (int, float) for t in types)
+
+
 def _validate_number(value: float, param_name: str = "value") -> float:
     """Validate that a value is a real, finite number.
 
     Shared first stage for all numeric validators: rejects booleans
     (a bool is an int subclass in Python), non-numeric types and
     non-finite floats.
+
+    Accepts anything registered as ``numbers.Real``, not just ``int`` and
+    ``float``. ``numpy.float32`` is a Real, and rejecting it meant a value that
+    every downstream calculation handles fine - and which round-trips through
+    JSON as a plain number - was refused with "radius must be a number, got
+    float32".
 
     Args:
         value: Value to validate
@@ -56,13 +76,25 @@ def _validate_number(value: float, param_name: str = "value") -> float:
     if isinstance(value, bool):
         raise ValidationError(f"{param_name} must be a number, got bool")
 
-    if not isinstance(value, (int, float)):
+    if not isinstance(value, numbers.Real):
         raise ValidationError(f"{param_name} must be a number, got {type(value).__name__}")
 
-    if math.isnan(value) or math.isinf(value):
+    # float() on an int too large for a double raises OverflowError rather than
+    # returning inf, so math.isnan below would raise instead of reporting an
+    # invalid parameter. safe_float_conversion in this file already documents
+    # the same trap.
+    try:
+        number = float(value)
+    except (OverflowError, ValueError) as e:
+        raise ValidationError(
+            f"{param_name} must be a finite number, got a value too large to "
+            f"represent ({type(value).__name__})"
+        ) from e
+
+    if math.isnan(number) or math.isinf(number):
         raise ValidationError(f"{param_name} must be a finite number, got {value}")
 
-    return float(value)
+    return number
 
 
 def validate_radius(
@@ -597,6 +629,17 @@ def validate_lens_parameters(
     """
     validated_diameter = validate_diameter(diameter)
     validated_thickness = validate_thickness(thickness)
+    # The clear apertures used to be accepted as arguments, documented in the
+    # docstring, and then silently dropped: neither validated nor returned. So
+    # a -5 mm front aperture or a 1e9 mm rear one passed through this function
+    # without complaint, and whatever asked for validation got neither an error
+    # nor the value.
+    clear_aperture_1 = validate_clear_aperture(
+        clear_aperture_1, validated_diameter, "clear aperture 1"
+    )
+    clear_aperture_2 = validate_clear_aperture(
+        clear_aperture_2, validated_diameter, "clear aperture 2"
+    )
     sag_1 = _validate_number(parabolic_sag_1, "parabolic sag 1")
     sag_2 = _validate_number(parabolic_sag_2, "parabolic sag 2")
     if is_parabolic_1:
@@ -618,6 +661,8 @@ def validate_lens_parameters(
         "parabolic_sag_1": sag_1,
         "is_parabolic_2": bool(is_parabolic_2),
         "parabolic_sag_2": sag_2,
+        "clear_aperture_1": clear_aperture_1,
+        "clear_aperture_2": clear_aperture_2,
     }
 
 
@@ -953,6 +998,11 @@ def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> d
         if field not in data:
             raise ValidationError(f"Missing required field '{field}' in lens data{idx_str}")
 
+        if _is_numeric_field(expected_type) and isinstance(data[field], bool):
+            # isinstance(True, int) is True, so a JSON `true` used to satisfy a
+            # numeric field outright. `name` is a str and cannot hit this.
+            raise ValidationError(f"Field '{field}'{idx_str} must be a number, got bool")
+
         if not isinstance(data[field], expected_type):
             type_name = expected_type.__name__ if isinstance(expected_type, type) else "number"
             raise ValidationError(
@@ -976,6 +1026,13 @@ def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> d
     for field, expected_type in optional_fields.items():
         if field not in data:
             continue
+        if _is_numeric_field(expected_type) and isinstance(data[field], bool):
+            # JSON has no int/float distinction: `true` is not a number that
+            # happens to be 1, it is a boolean that isinstance calls an int
+            # because bool subclasses int. Accepting it let a hand-edited or
+            # generated import file set a radius or a thickness to True.
+            idx_str = f" at index {lens_index}" if lens_index is not None else ""
+            raise ValidationError(f"Field '{field}'{idx_str} must be a number, got bool")
         if not isinstance(data[field], expected_type):
             type_name = expected_type.__name__ if isinstance(expected_type, type) else "number"
             raise ValidationError(
