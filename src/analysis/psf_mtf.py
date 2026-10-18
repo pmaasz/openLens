@@ -6,8 +6,26 @@ from ..constants import (
 )
 from typing import List, Tuple, Dict, Any
 import logging
+import math
 
 logger = logging.getLogger(__name__)
+
+#: The geometric PSF window spans this many RMS spot radii when the spot is
+#: wide enough to need it. 2.2 encloses the great majority of a Gaussian spot;
+#: a tighter factor would clip the wings and flatter the MTF again.
+GEOMETRIC_WINDOW_SPOT_FACTOR = 2.2
+
+#: Log when this fraction of the traced rays or fewer lands inside the window.
+GEOMETRIC_CLIP_WARN_FRACTION = 0.98
+
+#: Ceiling on the geometric PSF window. Beyond this the window stops growing
+#: with the spot, and whatever falls outside is reported as lost energy
+#: rather than silently renormalised away.
+GEOMETRIC_WINDOW_MAX_MM = 8.0
+
+#: Ceiling on the geometric MTF pixel count. The window scales with the spot,
+#: so an extreme defocus would otherwise ask for an FFT nobody can afford.
+GEOMETRIC_MTF_MAX_PIXELS = 1024
 
 # Optional dependencies
 try:
@@ -62,7 +80,17 @@ class ImageQualityAnalyzer:
     #: drifted apart (the empty one returned x_axis and no z_axis), so
     #: plot_psf raised KeyError on a fully blocked design. Asserted in one
     #: place rather than documented in three.
-    PSF_KEYS = frozenset({"image", "y_axis", "z_axis", "centroid", "step_size", "raw_count"})
+    PSF_KEYS = frozenset(
+        {
+            "image",
+            "y_axis",
+            "z_axis",
+            "centroid",
+            "step_size",
+            "raw_count",
+            "captured_fraction",
+        }
+    )
 
     def _psf_result(self, **fields) -> Dict[str, Any]:
         """Build a PSF payload, asserting the key set every branch owes."""
@@ -151,6 +179,7 @@ class ImageQualityAnalyzer:
                 centroid=(0.0, 0.0),
                 step_size=sensor_size_mm / pixels,
                 raw_count=0,
+                captured_fraction=0.0,
             )
 
         # 2. Centering
@@ -161,9 +190,30 @@ class ImageQualityAnalyzer:
         centroid_y = np.mean(y_coords)
         centroid_z = np.mean(z_coords)
 
-        # 3. Binning (Histogram)
-        # Define bin edges centered on centroid
-        half_size = sensor_size_mm / 2.0
+        # 3. Window sizing.
+        # sensor_size_mm was taken literally, so any spot wider than about
+        # 0.1 mm radius had most of its light fall outside the frame.
+        # histogram2d discards those points silently, and the normalisation
+        # below then divided by the binned sum, so the image still summed to
+        # 1.0 - the MTF described only the clipped core and looked better
+        # than the lens really is.
+        #
+        # The window now grows to cover the spot the tracer actually
+        # produced, keeping the requested sensor size as a floor. The extent
+        # of the returned axis follows the window, so a wider spot yields a
+        # correspondingly larger image.
+        spot_rms = res.get("rms_radius")
+        if spot_rms is not None and math.isfinite(spot_rms) and spot_rms > 0:
+            required_half = GEOMETRIC_WINDOW_SPOT_FACTOR * spot_rms
+            window_mm = max(sensor_size_mm, 2.0 * required_half)
+            # Bounded, so a pathological spot cannot ask for an image large
+            # enough to exhaust memory. When the cap bites the rays outside
+            # are genuinely lost, which is why the normalisation below counts
+            # traced rays rather than binned ones and reports the shortfall.
+            window_mm = min(window_mm, GEOMETRIC_WINDOW_MAX_MM)
+        else:
+            window_mm = sensor_size_mm
+        half_size = window_mm / 2.0
 
         # Y is Tangential (vertical on detector), Z is Sagittal (horizontal on detector)
         # We want image[row, col]. Row usually Y, Col usually Z.
@@ -185,18 +235,39 @@ class ImageQualityAnalyzer:
         # For MTF calculation, sum to 1 is better (DC component = 1).
 
         total_energy = np.sum(H)
-        if total_energy > 0:
-            psf_norm = H / total_energy
+        # Normalise by every ray traced, not by the ones that happened to
+        # land in the frame. Dividing by the binned sum made the image sum to
+        # 1.0 even when 91% of the light had been thrown away, which hid the
+        # clipping from the MTF entirely.
+        traced = len(points)
+        if traced > 0:
+            psf_norm = H / traced
+            captured_fraction = float(total_energy) / traced
         else:
             psf_norm = H
+            captured_fraction = 0.0
+
+        if captured_fraction < GEOMETRIC_CLIP_WARN_FRACTION:
+            logger.warning(
+                "Geometric PSF: only %.1f%% of %d rays landed inside the "
+                "%.3f mm window (RMS spot %.4f mm). The image is normalised "
+                "by the traced ray count, so it sums to %.3f rather than 1; "
+                "the MTF reflects the clipped spot.",
+                100.0 * captured_fraction,
+                traced,
+                window_mm,
+                float(spot_rms) if spot_rms is not None else float("nan"),
+                captured_fraction,
+            )
 
         return self._psf_result(
             image=psf_norm,
             y_axis=(y_bins[:-1] + y_bins[1:]) / 2,  # Bin centers
             z_axis=(z_bins[:-1] + z_bins[1:]) / 2,
             centroid=(centroid_y, centroid_z),
-            step_size=sensor_size_mm / pixels,
-            raw_count=len(points),
+            step_size=window_mm / pixels,
+            raw_count=traced,
+            captured_fraction=captured_fraction,
         )
 
     def calculate_mtf(
@@ -340,17 +411,37 @@ class ImageQualityAnalyzer:
                 "mtf_sag": mtf_sag[mask],
             }
 
-        # 1. Calculate PSF with sufficient resolution
-        # Resolution requirement:
-        # Max freq = 100 lp/mm -> period = 0.01 mm
-        # Sampling theorem: need pixel size < 0.005 mm (5 microns)
-        # Let's use 2 microns (0.002 mm).
-        # Sensor size: needs to cover the spot. Say 0.2 mm.
-        # Pixels = 0.2 / 0.002 = 100 pixels.
+        # 1. Calculate PSF with sufficient resolution.
+        # The window used to be a fixed 0.256 mm with a fixed 128 pixels, so
+        # a spot wider than about 0.1 mm radius had most of its light
+        # discarded by the histogram - and the MTF was then computed from the
+        # clipped core, describing a better lens than the one being tested.
+        #
+        # The window is now sized from the spot the tracer produces (the same
+        # 2.2 RMS radii calculate_psf uses), and the pixel count is derived
+        # from it so the sampling stays at ~2 microns. Fixing the window while
+        # leaving the pixel count alone would have kept the clipping away but
+        # coarsened the sampling, trading one wrong answer for another.
+        target_pixel_mm = 0.002  # 2 microns
+        window_floor_mm = 0.256  # ~128 pixels at 2 microns
 
-        pixel_size_mm = 0.002  # 2 microns
-        window_size_mm = 0.256  # 256 microns, power of 2 roughly
-        num_pixels = 128
+        spot_res = self.spot_analyzer.trace_spot(
+            field_angle_y_deg=field_angle_deg,
+            wavelength_nm=wavelength_nm,
+            focus_shift_mm=focus_shift_mm,
+            num_rings=25,
+        )
+        spot_rms = spot_res.get("rms_radius")
+        if spot_rms is not None and math.isfinite(spot_rms) and spot_rms > 0:
+            window_size_mm = max(
+                window_floor_mm,
+                2.0 * GEOMETRIC_WINDOW_SPOT_FACTOR * spot_rms,
+            )
+        else:
+            window_size_mm = window_floor_mm
+
+        num_pixels = max(128, int(math.ceil(window_size_mm / target_pixel_mm)))
+        num_pixels = min(num_pixels, GEOMETRIC_MTF_MAX_PIXELS)
 
         psf_data = self.calculate_psf(
             field_angle_deg=field_angle_deg,
@@ -561,6 +652,7 @@ class ImageQualityAnalyzer:
             centroid=(0.0, 0.0),
             step_size=sensor_size_mm / pixels,
             raw_count=0,
+            captured_fraction=1.0,
         )
 
     def simulate_image(
