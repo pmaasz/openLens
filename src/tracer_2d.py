@@ -466,8 +466,14 @@ class LensRayTracer:
         rays = []
         min_h, max_h = ray_height_range
         angle_rad = math.radians(angle_deg)
-        start_x = -RAY_START_OFFSET_MM
-        lens_x = 0.0
+        # The bundle is referenced to the front vertex, not to the origin. With
+        # lens_x hard-coded to 0.0 a lens placed anywhere else had its
+        # back-projection computed against the wrong plane, so it received the
+        # fan at the wrong heights: a 0-height 5 deg ray for a lens at
+        # x_offset=50 arrived at y=4.3744 mm instead of on axis. The start
+        # plane moves with the vertex so the ray still begins in front of it.
+        lens_x = self.front_vertex_x
+        start_x = lens_x - RAY_START_OFFSET_MM
 
         for i in range(num_rays):
             if num_rays == 1:
