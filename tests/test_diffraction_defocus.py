@@ -66,12 +66,12 @@ class TestDiffractionPsfRespondsToDefocus(unittest.TestCase):
             sensor_size_mm=0.1,
             pixels=128,
         )
-        return np.asarray(result["image"])
+        return np.asarray(result["image"]), result["step_size"]
 
     def test_the_psf_is_not_bit_identical_at_two_defocus_values(self):
         """The issue's repro: np.array_equal -> True was the bug."""
-        at_focus = self._psf(0.0)
-        defocused = self._psf(2.0)
+        at_focus, _ = self._psf(0.0)
+        defocused, _ = self._psf(2.0)
 
         self.assertFalse(
             np.array_equal(at_focus, defocused),
@@ -80,26 +80,31 @@ class TestDiffractionPsfRespondsToDefocus(unittest.TestCase):
 
     def test_a_defocused_psf_is_wider(self):
         """More defocus must spread the energy out."""
-        at_focus = self._psf(0.0)
-        defocused = self._psf(2.0)
+        at_focus, at_step = self._psf(0.0)
+        defocused, def_step = self._psf(2.0)
 
-        self.assertGreater(_second_moment(defocused), _second_moment(at_focus))
+        self.assertGreater(
+            _second_moment(defocused, def_step),
+            _second_moment(at_focus, at_step),
+            msg="the defocused PSF is not wider once the measurement is made "
+            "in mm rather than pixels",
+        )
 
     def test_zero_defocus_leaves_the_psf_unchanged(self):
         """The fix must not disturb the in-focus case."""
         analyzer2 = self.analyzer
-        first = self._psf(0.0)
-        second = self._psf(0.0)
+        first, _ = self._psf(0.0)
+        second, _ = self._psf(0.0)
 
         self.assertTrue(np.array_equal(first, second))
         self.assertIsNotNone(analyzer2)
 
     def test_the_psf_stays_normalised(self):
         """Adding a phase term must not change the total energy."""
-        at_focus = self._psf(0.0)
-        defocused = self._psf(2.0)
+        at_focus, _ = self._psf(0.0)
+        defocused, _ = self._psf(2.0)
 
-        self.assertAlmostEqual(float(np.sum(at_focus)), float(np.sum(at_focus)), places=9)
+        self.assertGreater(float(np.sum(at_focus)), 0.0)
         self.assertGreater(float(np.sum(defocused)), 0.0)
 
 
@@ -160,17 +165,30 @@ class TestDiffractionMtfRespondsToDefocus(unittest.TestCase):
         return np.asarray(result["freq"])
 
 
-def _second_moment(psf):
-    """Spread of the PSF, as the variance of its intensity distribution."""
+def _second_moment(psf, step_size_mm):
+    """Spread of the PSF, as the variance of its intensity distribution.
+
+    Two things this must not depend on, because neither is the quantity under
+    test:
+
+    - *Total energy.* "Is the defocused spot wider" is a statement about
+      shape, so the image is normalised first.
+    - *The window size.* The geometric PSF grows its window to cover the
+      spot (#449), so the same spot then spans fewer pixels. Measuring the
+      second moment in pixel units made a wider spot look narrower - the
+      metric was really reporting the zoom. The step size is applied so the
+      variance comes out in mm^2.
+    """
     psf = np.asarray(psf, dtype=float)
     total = float(np.sum(psf))
     if total <= 0:
         return 0.0
+    psf = psf / total
     rows, cols = psf.shape
     cy, cx = rows // 2, cols // 2
     yy, xx = np.mgrid[0:rows, 0:cols]
-    y_var = float(np.sum(psf * (yy - cy) ** 2)) / total
-    x_var = float(np.sum(psf * (xx - cx) ** 2)) / total
+    y_var = float(np.sum(psf * ((yy - cy) * step_size_mm) ** 2))
+    x_var = float(np.sum(psf * ((xx - cx) * step_size_mm) ** 2))
     return y_var + x_var
 
 
