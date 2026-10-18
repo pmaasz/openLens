@@ -24,6 +24,7 @@ from PySide6.QtGui import QKeySequence
 from src.lens import Lens
 from src.optical_system import OpticalSystem
 from src.database import LensInUseError
+from src.paths import migrate_legacy_db, resolve_db_path
 from src.gui.storage import LensStorage
 from src.gui.widgets import LensEditorWidget
 from src.gui.tabs import (SimulationTab, PerformanceTab,
@@ -99,7 +100,7 @@ class OpenLensWindow(QMainWindow):
         # Initialize database. The status callback is what makes a storage-layer
         # failure visible: LensStorage otherwise reports errors into a no-op
         # lambda, and the window used to claim "Saved to database" regardless.
-        self._db_path = "openlens.db"
+        self._db_path = resolve_db_path()
         self._storage = LensStorage(self._db_path, self._update_status)
         self._lenses = []
         self._assemblies = []
@@ -1336,6 +1337,15 @@ def main() -> None:
     """Run the OpenLens application: startup dialog, then the main window."""
     _configure_logging()
 
+    # Relocate a database an older version left in the working directory, before
+    # anything opens it. Launching from a desktop launcher or an IDE made the old
+    # relative path resolve somewhere else entirely, which created a fresh empty
+    # database that looked like the user's data had vanished.
+    try:
+        migrate_legacy_db()
+    except Exception as e:
+        logger.warning("Could not migrate a legacy database: %s", e)
+
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
 
@@ -1348,7 +1358,7 @@ def main() -> None:
     try:
         from src.seed_data import ensure_nikon_series_e_example
 
-        ensure_nikon_series_e_example("openlens.db")
+        ensure_nikon_series_e_example(resolve_db_path())
     except Exception as e:
         logger.warning("Example data seeding failed: %s", e)
 
