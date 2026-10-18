@@ -13,12 +13,23 @@ def read_file(filename):
         return f.read()
 
 def get_version():
-    """Extract version from src/__init__.py."""
+    """Extract version from src/__init__.py.
+
+    That file is the single definition of the version: release-please bumps it
+    (.github/release-please-config.json) and `openlens --version` reads it. This
+    used to fall back to "0.1.0" if the line was missing or reformatted, which
+    silently shipped a package claiming to be far older than it was - and, since
+    the manifest drives every future release, quietly stalled them too. A
+    packaging build with no version is a build to fix, not to paper over.
+    """
     init_py = read_file(os.path.join('src', '__init__.py'))
     for line in init_py.splitlines():
         if line.startswith('__version__'):
             return line.split('=')[1].strip().strip('"').strip("'")
-    return "0.1.0"
+    raise RuntimeError(
+        "No __version__ assignment found in src/__init__.py; refusing to build "
+        "a distribution with a wrong version."
+    )
 
 setup(
     name='openlens',
