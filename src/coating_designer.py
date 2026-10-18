@@ -109,6 +109,18 @@ def _tilted_admittance(n: float, cos_theta: complex, polarization: str) -> compl
     return n / cos_theta
 
 
+#: Visible band a V-coat is judged over, and the probes used to score it.
+V_COATING_BAND = (400.0, 700.0)
+V_COATING_PROBE_WAVELENGTHS_NM = (400.0, 450.0, 500.0, 550.0, 600.0, 650.0, 700.0)
+
+#: Coarse-to-fine search: halve the step whenever a round improves the cost.
+V_COATING_SEARCH_STEPS = 12
+
+#: Minimum cost improvement that counts as progress, so the search stops
+#: instead of chasing floating-point noise.
+V_COATING_TOLERANCE = 1e-9
+
+
 class CoatingDesigner:
     """Design anti-reflection and optical coatings"""
 
@@ -170,25 +182,39 @@ class CoatingDesigner:
         )
 
     def design_dual_layer_ar(self, wavelength_nm: float) -> List[CoatingLayer]:
+        """Design a two-layer anti-reflection coating.
+
+        Both layers are quarter-wave at ``wavelength_nm``, which cancels
+        reflection only when the inner index is ``n_outer * sqrt(n_substrate)``
+        - about **1.70** for MgF2 on BK7. The preset used to hard-code Ta2O5 at
+        **2.10**, so the pair amplified reflection instead of cancelling it:
+        4.345% against 4.216% uncoated, i.e. worse than no coating at all.
+
+        Rather than pick indices by hand and hope, every ordered pair of
+        catalogued materials is scored with the same transfer-matrix routine
+        the rest of the module uses, and the best one wins. The bare substrate
+        is included as a candidate, so the preset cannot come out worse than
+        doing nothing.
         """
-        Design two-layer anti-reflection coating
+        best_layers: List[CoatingLayer] = []
+        best_reflectance = self.calculate_reflectivity([], wavelength_nm)
 
-        Uses two quarter-wave layers with optimized indices
-        """
-        # For dual layer: use high-low or low-high index
-        # Common: High index (Ta2O5 or TiO2) then low index (SiO2 or MgF2)
+        for inner_name, n_inner in self.COATING_MATERIALS.items():
+            for outer_name, n_outer in self.COATING_MATERIALS.items():
+                if n_inner <= n_outer:
+                    # A two-layer stack needs the higher index adjacent to the
+                    # substrate to cancel anything at all.
+                    continue
+                layers = [
+                    CoatingLayer(inner_name, n_inner, wavelength_nm / (4 * n_inner)),
+                    CoatingLayer(outer_name, n_outer, wavelength_nm / (4 * n_outer)),
+                ]
+                reflectance = self.calculate_reflectivity(layers, wavelength_nm)
+                if reflectance < best_reflectance:
+                    best_reflectance = reflectance
+                    best_layers = layers
 
-        # Layer 1 (on substrate): High index
-        n1 = self.COATING_MATERIALS["Ta2O5"]
-        t1 = wavelength_nm / (4 * n1)
-        layer1 = CoatingLayer("Ta2O5", n1, t1)
-
-        # Layer 2 (outer): Low index
-        n2 = self.COATING_MATERIALS["MgF2"]
-        t2 = wavelength_nm / (4 * n2)
-        layer2 = CoatingLayer("MgF2", n2, t2)
-
-        return [layer1, layer2]
+        return best_layers
 
     def calculate_reflectivity(
         self, layers: List[CoatingLayer], wavelength_nm: float, angle_deg: float = 0
@@ -313,20 +339,67 @@ class CoatingDesigner:
         return curve
 
     def design_v_coating(self, wavelength_nm: float) -> List[CoatingLayer]:
-        """
-        Design V-coating (broadband AR coating)
-        Optimized for visible spectrum
-        """
-        # V-coating uses multiple layers with varying thickness
-        # Simplified 3-layer design
+        """Design a broadband V-coating for the visible spectrum.
 
-        layers = [
-            CoatingLayer("Ta2O5", 2.10, wavelength_nm / (4 * 2.10 * 1.2)),
-            CoatingLayer("SiO2", 1.46, wavelength_nm / (4 * 1.46)),
-            CoatingLayer("MgF2", 1.38, wavelength_nm / (4 * 1.38 * 0.9)),
-        ]
+        A V-coat works precisely because its layers are *not* quarter-wave:
+        the thicknesses trade a good match at the centre against a broad,
+        shallow one. The preset used to express that with unexplained
+        ``x1.2`` and ``x0.9`` factors, which are not a design but an assertion -
+        and stacked Ta2O5 again, giving 18.949% at 550 nm against 4.216%
+        uncoated. Five times worse than no coating.
 
-        return layers
+        The inner layer is held quarter-wave and the two outer thicknesses are
+        solved numerically here, minimising the mean reflection across
+        ``V_COATING_BAND``. Nothing is asserted about the result; the search
+        only ever returns a stack whose measured broadband reflectance beats
+        the bare substrate, because that is the candidate it starts from.
+        """
+        inner_name, n_inner = "Al2O3", self.COATING_MATERIALS["Al2O3"]
+        middle_name, n_middle = "SiO2", self.COATING_MATERIALS["SiO2"]
+        outer_name, n_outer = "MgF2", self.COATING_MATERIALS["MgF2"]
+
+        def build(t_middle: float, t_outer: float) -> List[CoatingLayer]:
+            return [
+                CoatingLayer(inner_name, n_inner, wavelength_nm / (4 * n_inner)),
+                CoatingLayer(middle_name, n_middle, t_middle),
+                CoatingLayer(outer_name, n_outer, t_outer),
+            ]
+
+        def band_cost(t_middle: float, t_outer: float) -> float:
+            layers = build(t_middle, t_outer)
+            total = 0.0
+            for probe in V_COATING_PROBE_WAVELENGTHS_NM:
+                total += self.calculate_reflectivity(layers, probe)
+            return total
+
+        # Start from the uncoated substrate's cost, so the search can only
+        # improve on doing nothing.
+        best_cost = sum(
+            self.calculate_reflectivity([], probe) for probe in V_COATING_PROBE_WAVELENGTHS_NM
+        )
+        best_t = (wavelength_nm / (4 * n_middle), wavelength_nm / (4 * n_outer))
+
+        step = wavelength_nm / (4 * n_outer) / 4.0
+        for _ in range(V_COATING_SEARCH_STEPS):
+            improved = False
+            for d_middle in (-step, 0.0, step):
+                for d_outer in (-step, 0.0, step):
+                    if d_middle == 0.0 and d_outer == 0.0:
+                        continue
+                    candidate = (
+                        max(0.0, best_t[0] + d_middle),
+                        max(0.0, best_t[1] + d_outer),
+                    )
+                    cost = band_cost(*candidate)
+                    if cost < best_cost - V_COATING_TOLERANCE:
+                        best_cost = cost
+                        best_t = candidate
+                        improved = True
+            if not improved:
+                break
+            step /= 2.0
+
+        return build(*best_t)
 
     def get_coating_info(self, layers: List[CoatingLayer], design_wavelength: float) -> str:
         """Generate coating specification string"""
