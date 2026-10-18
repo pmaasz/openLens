@@ -7,7 +7,6 @@ include CHANGELOG.md
 # Include setup scripts
 include setup_venv.sh
 include setup_venv.bat
-include verify_setup.py
 
 # Include data files
 recursive-include data *.json
