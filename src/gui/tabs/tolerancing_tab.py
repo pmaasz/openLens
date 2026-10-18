@@ -82,6 +82,7 @@ class MonteCarloWorker(QThread):
         criterion: float,
         refocus: bool = False,
         focus_range: float = 5.0,
+        parent=None,
     ) -> None:
         """Initialize the worker inputs.
 
@@ -92,8 +93,11 @@ class MonteCarloWorker(QThread):
             criterion: RMS spot radius limit used as the pass/fail criterion.
             refocus: Re-optimize focus every trial (focus compensator).
             focus_range: Focus adjustment range (±mm) when refocusing.
+            parent: Qt parent. Parenting the thread to the tab means Qt owns it,
+                so it cannot be destroyed while it is still running - the
+                process-level abort this tab has to avoid.
         """
-        super().__init__()
+        super().__init__(parent)
         self.current_lens = current_lens
         self.tol_operands = tol_operands
         self.num_trials = num_trials
@@ -151,6 +155,7 @@ class InverseSensitivityWorker(QThread):
         current_lens,
         tol_operands: List[ToleranceOperand],
         criterion: float,
+        parent=None,
     ) -> None:
         """Initialize the worker inputs.
 
@@ -158,8 +163,10 @@ class InverseSensitivityWorker(QThread):
             current_lens: Lens under analysis (deep-copied before optimizing).
             tol_operands: Tolerance operands to budget.
             criterion: Target RMS yield criterion for the limit optimization.
+            parent: Qt parent, so the thread cannot be destroyed while it is
+                still running.
         """
-        super().__init__()
+        super().__init__(parent)
         self.current_lens = current_lens
         self.tol_operands = tol_operands
         self.criterion = criterion
@@ -611,6 +618,14 @@ class TolerancingTab(BaseTab):
             self._tol_results_text.setPlainText("Monte Carlo analysis already running.")
             return
 
+        # A previous worker may still be running even though the flag says
+        # otherwise. The flag is cleared by this worker's *own* completion slot
+        # now, so it should not, but replacing a live worker's reference would
+        # let Python destroy a running QThread and abort the process.
+        if self._worker_is_running("_mc_worker"):
+            self._tol_results_text.setPlainText("Monte Carlo analysis already running.")
+            return
+
         self._mc_running = True
         self._tol_results_text.setPlainText(
             f"Starting Monte Carlo analysis ({self._tol_num_trials.value()} trials)..."
@@ -627,9 +642,10 @@ class TolerancingTab(BaseTab):
             self._tol_criterion.value(),
             refocus=self._tol_refocus_check.isChecked(),
             focus_range=self._tol_focus_range.value(),
+            parent=self,
         )
-        self._mc_worker.finished.connect(self._on_analysis_finished)
-        self._mc_worker.failed.connect(self._on_analysis_failed)
+        self._mc_worker.finished.connect(self._on_mc_finished)
+        self._mc_worker.failed.connect(self._on_mc_failed)
         self._mc_worker.start()
 
     def _on_run_inverse_sensitivity(self) -> None:
@@ -649,6 +665,12 @@ class TolerancingTab(BaseTab):
             self._tol_results_text.setPlainText("Inverse Sensitivity analysis already running.")
             return
 
+        # See the matching check in _on_run_monte_carlo: never replace a
+        # worker reference while the old thread is still running.
+        if self._worker_is_running("_inv_worker"):
+            self._tol_results_text.setPlainText("Inverse Sensitivity analysis already running.")
+            return
+
         self._inv_running = True
         self._tol_results_text.setPlainText("Starting Inverse Sensitivity analysis...")
         self._tol_progress.setVisible(True)
@@ -659,9 +681,10 @@ class TolerancingTab(BaseTab):
             self._resolve_target(),
             self._parent._tol_operands,
             self._tol_criterion.value(),
+            parent=self,
         )
-        self._inv_worker.finished.connect(self._on_analysis_finished)
-        self._inv_worker.failed.connect(self._on_analysis_failed)
+        self._inv_worker.finished.connect(self._on_inv_finished)
+        self._inv_worker.failed.connect(self._on_inv_failed)
         self._inv_worker.start()
 
     # ------------------------------------------------------------------
@@ -702,9 +725,71 @@ class TolerancingTab(BaseTab):
             if stopped:
                 setattr(self, name, None)
 
+    def _worker_is_running(self, name: str) -> bool:
+        """Whether the worker in *name* is still running.
+
+        Used before starting a worker: replacing a live worker's reference
+        would let Python destroy a running QThread, and ``~QThread`` aborts
+        the process.
+
+        Args:
+            name: Attribute holding the worker.
+
+        Returns:
+            True when the worker exists and is running. An unknown state is
+            reported as running, so a worker is never replaced on a guess.
+        """
+        worker = getattr(self, name, None)
+        if worker is None:
+            return False
+        try:
+            return bool(worker.isRunning())
+        except Exception as e:
+            logger.debug("Could not query %s state, treating it as running: %s", name, e)
+            return True
+
+    @Slot(str, dict)
+    def _on_mc_finished(self, text: str, results: dict) -> None:
+        """Report a finished Monte Carlo run.
+
+        Only the Monte Carlo flag is cleared. The two analyses used to share
+        one completion slot that cleared *both* flags, so a finished inverse
+        sensitivity run unblocked Monte Carlo while it was still running;
+        starting it again replaced the live worker's reference and aborted the
+        process.
+        """
+        self._mc_running = False
+        self._release_finished_workers()
+        self._show_analysis_report(text, results)
+
+    @Slot(str)
+    def _on_mc_failed(self, message: str) -> None:
+        """Report a failed Monte Carlo run."""
+        self._mc_running = False
+        self._release_finished_workers()
+        self._show_analysis_failure(message)
+
+    @Slot(str, dict)
+    def _on_inv_finished(self, text: str, results: dict) -> None:
+        """Report a finished inverse-sensitivity run. Clears only its flag."""
+        self._inv_running = False
+        self._release_finished_workers()
+        self._show_analysis_report(text, results)
+
+    @Slot(str)
+    def _on_inv_failed(self, message: str) -> None:
+        """Report a failed inverse-sensitivity run. Clears only its flag."""
+        self._inv_running = False
+        self._release_finished_workers()
+        self._show_analysis_failure(message)
+
     @Slot(str, dict)
     def _on_analysis_finished(self, text: str, results: dict) -> None:
         """Display a finished analysis report and clear the busy indicator.
+
+        Kept for callers that finish an analysis from outside the two run
+        handlers. It clears both flags, so it must not be used as a worker's
+        completion slot - the per-worker slots above exist for that.
 
         Args:
             text: Preformatted report emitted by the worker.
@@ -715,21 +800,38 @@ class TolerancingTab(BaseTab):
         self._mc_running = False
         self._inv_running = False
         self._release_finished_workers()
-        self._tol_last_results = results
-        self._tol_progress.setMaximum(100)
-        self._tol_progress.setValue(100)
-        self._tol_results_text.setPlainText(text)
+        self._show_analysis_report(text, results)
 
     @Slot(str)
     def _on_analysis_failed(self, message: str) -> None:
         """Report a failed analysis and clear the busy indicator.
 
-        Args:
-            message: Error description emitted by the worker.
+        Like _on_analysis_finished, this clears both flags and so must not be
+        wired to a single worker's completion signal.
         """
         self._mc_running = False
         self._inv_running = False
         self._release_finished_workers()
+        self._show_analysis_failure(message)
+
+    def _show_analysis_report(self, text: str, results: dict) -> None:
+        """Render a finished analysis report.
+
+        Args:
+            text: Preformatted report emitted by the worker.
+            results: Raw analyzer payload, kept for callers that want it.
+        """
+        self._tol_last_results = results
+        self._tol_progress.setMaximum(100)
+        self._tol_progress.setValue(100)
+        self._tol_results_text.setPlainText(text)
+
+    def _show_analysis_failure(self, message: str) -> None:
+        """Render a failed analysis.
+
+        Args:
+            message: Error description emitted by the worker.
+        """
         self._tol_progress.setMaximum(100)
         self._tol_progress.setValue(0)
         self._tol_results_text.setPlainText(message)
