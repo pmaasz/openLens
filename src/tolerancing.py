@@ -300,29 +300,26 @@ def _radius_for_fringes(R: float, h: float, fringes: float) -> Optional[float]:
     change stands in for the fringe error. Returns None for flat or
     overhanging geometry.
     """
-    import math as _math
-
-    if not _math.isfinite(R) or abs(R) < 1e-12 or h <= 0:
+    if not math.isfinite(R) or abs(R) < 1e-12 or h <= 0:
         return None
     base = _spherical_sag(R, h)
     if base is None:
         return None
     target = base + fringes * FRINGE_SAG_MM
     span = 0.5 * abs(R)
-    lo, hi = (R - span, R + span) if R > 0 else (R - span, R + span)
-    f_lo = _spherical_sag(lo, h)
-    f_hi = _spherical_sag(hi, h)
-    if f_lo is None or f_hi is None:
-        return None
-    # Sag falls as |R| grows; bracket the root accordingly.
-    if R > 0:
-        lo, hi = R - span, R  # sag rises toward target
-        flo = _spherical_sag(lo, h)
-        fhi = base
-    else:
-        lo, hi = R, R + span
-        flo = base
-        fhi = _spherical_sag(hi, h)
+    # Search the full interval either side of R. The previous code bracketed
+    # [R - span, R] for a positive R and [R, R + span] for a negative one,
+    # which covers only targets on one side of the nominal sag: sag rises
+    # with curvature, so a fringe error of the other sign was never bracketed,
+    # the call returned None, _apply_value returned False and the perturbation
+    # was silently skipped. In a symmetric Monte Carlo run that dropped about
+    # half the IRREGULARITY draws and made the yield look better than it was.
+    #
+    # Over [R - span, R + span] the sag is monotonic in R, and span is half of
+    # |R| so the interval never crosses zero and the surface never flips sign.
+    lo, hi = R - span, R + span
+    flo = _spherical_sag(lo, h)
+    fhi = _spherical_sag(hi, h)
     if flo is None or fhi is None:
         return None
     if not min(flo, fhi) <= target <= max(flo, fhi):
