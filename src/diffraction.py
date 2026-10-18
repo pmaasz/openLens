@@ -59,12 +59,42 @@ except ImportError:
 
 # Optional scipy import for Bessel functions
 try:
-    from scipy.special import j1  # Bessel function of first kind
+    from scipy.special import j0, j1  # Bessel functions of first kind
 
     SCIPY_AVAILABLE = True
 except ImportError:
     SCIPY_AVAILABLE = False
     logger.warning("scipy not available. Diffraction calculations will use approximations.")
+
+    # The analytic encircled energy needs J0 as well as J1:
+    #     EE(v) = 1 - J0(v)^2 - J1(v)^2
+    # Without a fallback this raised NameError in precisely the environment
+    # the fallback below exists to serve - and CI installs no scipy, so
+    # "this code path already needed scipy" was not true of the *import*.
+    def j0(x):
+        """Fallback for Bessel J0, vectorised by recursion like j1.
+
+        Series expansion (x^2/4)^k / (k!)^2 for |x| < 8, asymptotic
+        sqrt(2/(pi x)) * cos(x - pi/4) beyond.
+        """
+        if hasattr(x, "__len__") or isinstance(x, np.ndarray):
+            arr = np.asarray(x, dtype=float)
+            res = np.zeros_like(arr, dtype=float)
+            for i, val in enumerate(arr.flat):
+                res.flat[i] = j0(float(val))
+            return res
+        xv = float(x)
+        if abs(xv) < 8.0:
+            term = 1.0
+            total = 1.0
+            y = (xv * xv) / 4.0
+            for k in range(1, 60):
+                term = -term * y / (k * k)
+                total += term
+                if abs(term) < 1e-18 * abs(total):
+                    break
+            return total
+        return math.sqrt(2.0 / (math.pi * xv)) * math.cos(xv - math.pi / 4.0)
 
     # Fallback approximation for j1(x) Bessel function
     # Uses series expansion for |x|<8 and asymptotic form for larger x
@@ -335,20 +365,36 @@ class DiffractionCalculator:
             airy_r = self.airy_disk_radius_um(focal_length_mm, aperture_diameter_mm)
             max_radius_um = 5 * airy_r
 
-        # Get Airy pattern
-        r, intensity = self.airy_pattern(
+        # Get Airy pattern radii. Only the *range* of radii comes from
+        # max_radius_um - it is a plotting extent, and it must not influence
+        # the answer.
+        r, _ = self.airy_pattern(
             max_radius_um, focal_length_mm, aperture_diameter_mm, num_points=1000
         )
 
-        # Calculate encircled energy using cumulative integration
-        # Energy at radius R = ∫∫ I(r) r dr dθ = 2π ∫ I(r) r dr
-        dr = r[1] - r[0]
-        energy_density = intensity * r * 2 * np.pi
-        cumulative_energy = np.cumsum(energy_density) * dr
+        # Encircled energy is available in closed form for the Airy pattern:
+        #
+        #     EE(v) = 1 - J0(v)^2 - J1(v)^2,   v = pi * D * r / (lambda * f)
+        #
+        # which reaches 0.83778 at the first Airy zero (J1 = 0 there, and
+        # J0(3.8317) = -0.40276).
+        #
+        # This replaces integrating the pattern only as far as max_radius_um
+        # and dividing by the energy found there. That made the final sample
+        # 1.0 by construction and rescaled the whole curve by whatever
+        # fraction of the light happened to fall inside the plotting window,
+        # so the same design gave different encircled energy depending on how
+        # far out it was drawn - 0.866 at the first zero instead of 0.838.
+        f_m = focal_length_mm / 1000.0
+        d_m = aperture_diameter_mm / 1000.0
+        r_m = r * 1e-6
+        v = np.pi * d_m * r_m / (self.wavelength_m * f_m)
+        v[0] = 0.0
 
-        # Normalize to total energy
-        total_energy = cumulative_energy[-1]
-        encircled = cumulative_energy / total_energy
+        encircled = 1.0 - j0(v) ** 2 - j1(v) ** 2
+
+        # Guard against tiny negative values from cancellation at v = 0.
+        encircled = np.clip(encircled, 0.0, 1.0)
 
         return r, encircled
 

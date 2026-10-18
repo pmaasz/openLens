@@ -111,7 +111,14 @@ class TestWithoutMatplotlib(unittest.TestCase):
             assert 1.34 < airy < 1.35, airy
             radii, encircled = c.encircled_energy(50.0, 25.0)
             assert len(radii) == len(encircled)
-            assert abs(encircled[-1] - 1.0) < 1e-9, encircled[-1]
+            # The curve is the analytic Airy encircled energy, so it ends at
+            # the true value for the default 5-Airy-radius extent - about
+            # 0.967 - and not at 1.0. It used to end at exactly 1.0 because the
+            # integration was normalised by whatever energy it had accumulated
+            # by the plotting edge, which made the result depend on the extent.
+            assert 0.9 < encircled[-1] < 1.0, encircled[-1]
+            assert all(encircled[i] <= encircled[i + 1] + 1e-9
+                       for i in range(len(encircled) - 1)), 'not monotonic'
             psf = c.point_spread_function_2d(0.02, 50.0, 25.0)
             assert psf.size > 0
             print('NUMERIC OK')
