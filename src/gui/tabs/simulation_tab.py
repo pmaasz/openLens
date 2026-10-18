@@ -18,6 +18,27 @@ from PySide6.QtWidgets import (
 )
 from .base_tab import BaseTab
 from ..widgets.simulation_viz import SimulationVisualizationWidget
+from ...constants import WAVELENGTH_GREEN
+
+#: The wavelengths offered in the picker, as ``(nm, label)``. The trace reads its
+#: wavelength from this same table, so the numbers and the labels cannot drift
+#: apart. They were two separate hard-coded lists - the combo's strings and a
+#: bare ``[400, 450, 550, 650, 700]`` - matched by position, with "Custom"
+#: recognized as the literal index 5.
+SIMULATION_WAVELENGTHS = (
+    (400.0, "400 nm (Violet)"),
+    (450.0, "450 nm (Blue)"),
+    (WAVELENGTH_GREEN, "550 nm (Green)"),
+    (650.0, "650 nm (Red)"),
+    (700.0, "700 nm (IR)"),
+)
+
+#: Index of the "Custom" entry, which follows the preset wavelengths.
+CUSTOM_WAVELENGTH_INDEX = len(SIMULATION_WAVELENGTHS)
+
+#: Preset wavelength selected by default: the photopic peak, which is also the
+#: application's default for ray-tracing visualization.
+DEFAULT_WAVELENGTH_INDEX = SIMULATION_WAVELENGTHS.index((WAVELENGTH_GREEN, "550 nm (Green)"))
 
 
 class SimulationTab(BaseTab):
@@ -52,17 +73,8 @@ class SimulationTab(BaseTab):
         source_layout.addRow("Source Height:", self._sim_source_height)
 
         self._sim_wavelength = QComboBox()
-        self._sim_wavelength.addItems(
-            [
-                "400 nm (Violet)",
-                "450 nm (Blue)",
-                "550 nm (Green)",
-                "650 nm (Red)",
-                "700 nm (IR)",
-                "Custom",
-            ]
-        )
-        self._sim_wavelength.setCurrentIndex(2)  # Default to 550nm (Green)
+        self._sim_wavelength.addItems([label for _nm, label in SIMULATION_WAVELENGTHS] + ["Custom"])
+        self._sim_wavelength.setCurrentIndex(DEFAULT_WAVELENGTH_INDEX)
         source_layout.addRow("Wavelength:", self._sim_wavelength)
 
         self._sim_custom_label = QLabel("Custom:")
@@ -128,16 +140,28 @@ class SimulationTab(BaseTab):
             show_ghosts = self._ghost_analysis.isChecked()
 
             # Get wavelength
-            wavelength_idx = self._sim_wavelength.currentIndex()
-            if wavelength_idx == 5:  # Custom
-                wavelength = self._sim_custom_wavelength.value()
-            else:
-                wavelengths = [400, 450, 550, 650, 700]
-                wavelength = wavelengths[wavelength_idx]
+            wavelength = self._selected_wavelength()
 
             self._sim_viz.run_simulation(
                 active_system, num_rays, angle, source_height, show_ghosts, wavelength
             )
+
+    def _selected_wavelength(self) -> float:
+        """Wavelength in nm for the current picker selection.
+
+        Reads the preset value out of :data:`SIMULATION_WAVELENGTHS` rather than
+        from a parallel list of numbers, so the value traced is the one the
+        entry is labelled with.
+
+        Returns:
+            The selected wavelength in nanometers.
+        """
+        index = self._sim_wavelength.currentIndex()
+        if index == CUSTOM_WAVELENGTH_INDEX:
+            return float(self._sim_custom_wavelength.value())
+        if 0 <= index < len(SIMULATION_WAVELENGTHS):
+            return SIMULATION_WAVELENGTHS[index][0]
+        return WAVELENGTH_GREEN
 
     def _on_wavelength_changed(self, index: int) -> None:
         """Show/hide custom wavelength input based on selection.
@@ -146,7 +170,7 @@ class SimulationTab(BaseTab):
             index: Index of the selected wavelength entry; index 5 selects
                 the custom wavelength input.
         """
-        is_custom = index == 5
+        is_custom = index == CUSTOM_WAVELENGTH_INDEX
         self._sim_custom_label.setVisible(is_custom)
         self._sim_custom_wavelength.setVisible(is_custom)
         self._sim_custom_wavelength.setEnabled(is_custom)
@@ -160,9 +184,17 @@ class SimulationTab(BaseTab):
         self._sim_viz.reset_view()
 
     def refresh(self) -> None:
-        """Refresh simulation state if needed.
+        """Re-run the simulation against the parent's current lens/system.
 
-        Reloads from the parent window's current lens/system state; currently
-        no extra work is required.
+        This was ``pass``. The visualization widget holds a live reference to
+        the lens, so after an edit the view drew the *new* lens with rays that
+        belonged to the *old* one - and because the rays were never recomputed,
+        the two silently disagreed.
+
+        Args:
+            None
+
+        Returns:
+            None
         """
-        pass
+        self._sim_viz.refresh()
