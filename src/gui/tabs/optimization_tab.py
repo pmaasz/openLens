@@ -6,7 +6,7 @@ Tab for lens and system optimization
 import logging
 import copy
 from enum import Enum
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from PySide6.QtWidgets import (
     QWidget,
@@ -313,6 +313,9 @@ class OptimizationTab(BaseTab):
 
         self._opt_is_running = False
         self._opt_original_target = None
+        # modified_at of the target when the run started, for the
+        # edited-while-running warning on Apply.
+        self._opt_run_start_stamp = None
         self._opt_pending_target = None
         self._opt_worker = None
 
@@ -693,6 +696,10 @@ class OptimizationTab(BaseTab):
 
         self._opt_is_running = True
         self._opt_original_target = active_target
+        # Remember the design's state as it was when the run started, so Apply
+        # can say whether the user edited it in the meantime. Without this the
+        # edits are discarded silently.
+        self._opt_run_start_stamp = getattr(active_target, "modified_at", None)
         self._opt_pending_target = None
         self._opt_apply_btn.setEnabled(False)
 
@@ -828,6 +835,48 @@ class OptimizationTab(BaseTab):
         if self._parent:
             self._parent._update_status(f"Optimization failed: {message}")
 
+    def _fold_target_into_library(self, target: Any, is_assembly: bool) -> None:
+        """Put `target` back into the parent library, by id, and select it.
+
+        Apply and Reset are the same operation in opposite directions - one
+        folds the optimised design in, the other folds the original back - and
+        both have to reach *every* place the library is mirrored. Reset used to
+        assign only `_current_lens`, which left `_lenses` still holding the
+        optimised copy and left the editor holding an object that was no longer
+        current. The next reconciling save then swapped by id and discarded
+        whatever the user had edited in the meantime.
+
+        Args:
+            target: The Lens or OpticalSystem to install.
+            is_assembly: True for an OpticalSystem, False for a single lens.
+
+        Returns:
+            None
+        """
+        if is_assembly:
+            replaced = False
+            for i, asm in enumerate(self._parent._assemblies):
+                if getattr(asm, "id", None) == getattr(target, "id", None):
+                    self._parent._assemblies[i] = target
+                    replaced = True
+                    break
+            if not replaced:
+                self._parent._assemblies.append(target)
+            self._parent._assembly_tab_widget._optical_system = target
+        else:
+            replaced = False
+            for i, item in enumerate(self._parent._lenses):
+                if getattr(item, "id", None) == getattr(target, "id", None):
+                    self._parent._lenses[i] = target
+                    replaced = True
+                    break
+            if not replaced:
+                self._parent._lenses.append(target)
+
+        # _set_current_item also calls _lens_editor.load_lens, which is what
+        # makes the editor's object and the library's object the same one again.
+        self._parent._set_current_item(target, is_assembly=is_assembly)
+
     def _on_apply_optimization(self) -> None:
         """Apply the optimization results to the current system.
 
@@ -845,17 +894,13 @@ class OptimizationTab(BaseTab):
         pending = self._opt_pending_target
         original = self._opt_original_target
 
+        # Apply replaces the design wholesale, so anything the user edited
+        # while the run was going is about to be overwritten without warning.
+        # Say so rather than losing the work.
+        warning = self._edits_since_run_warning()
+
         if isinstance(original, OpticalSystem) and isinstance(pending, OpticalSystem):
-            replaced = False
-            for i, asm in enumerate(self._parent._assemblies):
-                if getattr(asm, "id", None) == getattr(pending, "id", None):
-                    self._parent._assemblies[i] = pending
-                    replaced = True
-                    break
-            if not replaced:
-                self._parent._assemblies.append(pending)
-            self._parent._assembly_tab_widget._optical_system = pending
-            self._parent._set_current_item(pending, is_assembly=True)
+            self._fold_target_into_library(pending, is_assembly=True)
         else:
             # Single-lens case: unwrap the optimized lens from its wrapper.
             lens = (
@@ -863,37 +908,62 @@ class OptimizationTab(BaseTab):
                 if isinstance(pending, OpticalSystem) and pending.elements
                 else pending
             )
-            replaced = False
-            for i, item in enumerate(self._parent._lenses):
-                if getattr(item, "id", None) == getattr(lens, "id", None):
-                    self._parent._lenses[i] = lens
-                    replaced = True
-                    break
-            if not replaced:
-                self._parent._lenses.append(lens)
-            self._parent._set_current_item(lens, is_assembly=False)
+            self._fold_target_into_library(lens, is_assembly=False)
 
         self._parent._update_all_tabs()
         self._opt_apply_btn.setEnabled(False)
         self._opt_pending_target = None
-        self._opt_results_text.append("\nChanges applied to system.")
+        self._opt_results_text.append("\nChanges applied to system." + warning)
         self._parent._save_to_database()
 
+    def _edits_since_run_warning(self) -> str:
+        """Note edits made while the optimizer was running, if there were any.
+
+        The run works on a snapshot, so an edit made afterwards is silently
+        discarded by Apply. The user is told instead.
+
+        Returns:
+            A warning paragraph, or an empty string when nothing changed.
+        """
+        original = self._opt_original_target
+        stamp = getattr(original, "modified_at", None)
+        start = self._opt_run_start_stamp
+        # With no snapshot to compare against there is nothing to conclude.
+        # Claiming edits the user may not have made is worse than staying quiet.
+        if start is None or stamp is None or stamp == start:
+            return ""
+
+        name = getattr(original, "name", "the design")
+        return (
+            f"\n\nWarning: {name} was edited while the optimizer was running. "
+            "Those edits are not part of the optimized result and have been "
+            "replaced."
+        )
+
     def _on_reset_optimization(self) -> None:
-        """Reset optimization to original values."""
+        """Put the design back the way it was before the optimizer ran.
+
+        This is Apply run backwards, and it has to be the *same* operation:
+        the original goes back into `_lenses`/`_assemblies` by id and through
+        `_set_current_item`, which reloads the editor. Reset used to assign
+        only `_current_lens`, so the library kept the optimised copy and the
+        editor kept editing an object that was no longer current - and the
+        next reconciling save swapped by id and threw away the user's edits.
+        """
         if not self._parent or not self._opt_original_target:
             self._opt_results_text.setPlainText("No original state to reset to.")
             return
 
         from ...optical_system import OpticalSystem
 
-        if isinstance(self._opt_original_target, OpticalSystem):
-            self._parent._current_assembly = self._opt_original_target
-            self._parent._optical_system = self._opt_original_target
-            self._opt_asm_viz.update_system(self._parent._current_assembly)
+        original = self._opt_original_target
+        is_assembly = isinstance(original, OpticalSystem)
+        self._fold_target_into_library(original, is_assembly=is_assembly)
+
+        if is_assembly:
+            self._opt_asm_viz.update_system(original)
         else:
-            self._parent._current_lens = self._opt_original_target
-            self._opt_lens_viz.update_lens(self._parent._current_lens)
+            self._opt_lens_viz.update_lens(original)
 
         self._parent._update_all_tabs()
         self._opt_results_text.setPlainText("Reset to original values.")
