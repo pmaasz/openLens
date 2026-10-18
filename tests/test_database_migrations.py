@@ -27,7 +27,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from src.database import DatabaseManager, UnsupportedSchemaVersionError
+from src.database import SCHEMA_VERSION, DatabaseManager, UnsupportedSchemaVersionError
 
 # Columns the v1 schema did not have, in the order the ladder adds them.
 LENS_COLUMNS_ADDED_AFTER_V1 = (
@@ -171,6 +171,11 @@ ADDED_IN_VERSION = {
         ("lenses", "coating_1", "TEXT"),
         ("lenses", "coating_2", "TEXT"),
     ),
+    6: (
+        # Whether a lens is a library item in its own right, as opposed to
+        # existing only as an assembly element.
+        ("lenses", "is_library", "INTEGER"),
+    ),
 }
 
 
@@ -240,12 +245,12 @@ class TestUnstampedLegacyDatabase(_TempDb):
         _make_v1_db(self.path, stamp_version=0)
 
     def test_migration_reaches_the_current_version(self):
-        """Opening an unstamped database must not leave it claiming v5."""
+        """Opening an unstamped database must leave it at the current version."""
         DatabaseManager(self.path)
-        self.assertEqual(_user_version(self.path), 5)
+        self.assertEqual(_user_version(self.path), SCHEMA_VERSION)
 
     def test_migration_adds_every_column_added_since_v1(self):
-        """The v2-v5 lens columns must actually be present afterwards."""
+        """Every column added since v1 must actually be present afterwards."""
         DatabaseManager(self.path)
         columns = _columns(self.path, "lenses")
         for column in LENS_COLUMNS_ADDED_AFTER_V1:
@@ -311,7 +316,7 @@ class TestPartiallyPresentLegacyTables(_TempDb):
         """Creation is idempotent, so the ladder can still add its columns."""
         DatabaseManager(self.path)
 
-        self.assertEqual(_user_version(self.path), 5)
+        self.assertEqual(_user_version(self.path), SCHEMA_VERSION)
         self.assertLessEqual(set(LENS_COLUMNS_ADDED_AFTER_V1), _columns(self.path, "lenses"))
         self.assertLessEqual(
             set(ASSEMBLY_COLUMNS_ADDED_AFTER_V1), _columns(self.path, "assemblies")
@@ -330,7 +335,7 @@ class TestEveryHistoricalVersionMigrates(_TempDb):
 
                 DatabaseManager(path)
 
-                self.assertEqual(_user_version(path), 5)
+                self.assertEqual(_user_version(path), SCHEMA_VERSION)
                 self.assertLessEqual(set(LENS_COLUMNS_ADDED_AFTER_V1), _columns(path, "lenses"))
 
     def test_each_stamped_version_keeps_its_rows(self):
@@ -354,7 +359,7 @@ class TestEveryHistoricalVersionMigrates(_TempDb):
 
         DatabaseManager(path)
 
-        self.assertEqual(_user_version(path), 5)
+        self.assertEqual(_user_version(path), SCHEMA_VERSION)
         self.assertLessEqual(set(LENS_COLUMNS_ADDED_AFTER_V1), _columns(path, "lenses"))
 
     def test_reopening_a_migrated_database_is_a_no_op(self):
@@ -368,7 +373,7 @@ class TestEveryHistoricalVersionMigrates(_TempDb):
         DatabaseManager(path)
 
         self.assertEqual(_columns(path, "lenses"), columns_after_first)
-        self.assertEqual(_user_version(path), 5)
+        self.assertEqual(_user_version(path), SCHEMA_VERSION)
 
     def _remove(self, path):
         if os.path.exists(path):
@@ -393,7 +398,7 @@ class TestFutureSchemaIsRefused(_TempDb):
 
         message = str(caught.exception)
         self.assertIn("99", message)
-        self.assertIn("5", message)
+        self.assertIn(str(SCHEMA_VERSION), message)
 
     def test_the_database_is_left_untouched(self):
         """Refusing must not downgrade or half-migrate the newer file."""
