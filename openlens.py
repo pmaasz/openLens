@@ -690,6 +690,91 @@ class OpenLensWindow(QMainWindow):
         if hasattr(self, '_assembly_tab_widget'):
             self._assembly_tab_widget.refresh()
 
+    def _stop_worker(self, worker, timeout_ms: int = 3000) -> bool:
+        """Stop one QThread and report whether it actually stopped.
+
+        Cooperative first, then terminate, then wait. Terminating a thread
+        mid-write can leave a partially updated object behind, so it is only
+        reached when the worker ignored the request - typically because it is
+        inside one long evaluation with no callback boundary to return at.
+
+        Args:
+            worker: The QThread to stop, or None.
+            timeout_ms: How long to wait for the cooperative request before
+                escalating to terminate().
+
+        Returns:
+            True once the thread is known to be finished, so its last Python
+            reference can safely be dropped.
+        """
+        if worker is None:
+            return True
+
+        try:
+            if not worker.isRunning():
+                return True
+        except Exception as e:
+            # Unknown state: report "not stopped" rather than guess, so the
+            # caller keeps the reference. Dropping a live QThread's last
+            # reference makes CPython destroy it and ~QThread aborts.
+            logger.debug("Could not query worker state: %s", e)
+            return False
+
+        try:
+            worker.requestInterruption()
+            if not worker.wait(timeout_ms):
+                worker.terminate()
+                worker.wait()
+        except Exception as e:
+            logger.warning("Could not stop worker cleanly: %s", e)
+            return False
+
+        return True
+
+    def _shutdown_workers(self) -> None:
+        """Stop every worker thread the window owns.
+
+        Without this, quitting mid-run lets CPython destroy a live QThread and
+        ~QThread aborts the process - the "QThread: Destroyed while thread is
+        still running" message. The optimizer has its own stop path, which is
+        reused so the two cannot disagree about how a worker is stopped.
+        """
+        opt_tab = getattr(self, '_opt_tab', None)
+        if opt_tab is not None:
+            try:
+                opt_tab._on_stop_optimization()
+            except Exception as e:
+                logger.warning("Could not stop optimizer: %s", e)
+
+        tol_tab = getattr(self, '_tol_tab', None)
+        if tol_tab is not None:
+            for name in ("_mc_worker", "_inv_worker"):
+                if self._stop_worker(getattr(tol_tab, name, None)):
+                    # Only safe to drop once the thread is known to be done.
+                    setattr(tol_tab, name, None)
+
+        for dialog in list(getattr(self, '_analysis_dialogs', []) or []):
+            if self._stop_worker(getattr(dialog, '_pending_worker', None)):
+                self._retire_analysis_dialog(dialog)
+
+    def closeEvent(self, event) -> None:
+        """Commit the last edit and stop every worker before the window goes.
+
+        Edits are saved EDIT_COMMIT_DELAY_MS after the last change, so quitting
+        inside that window dropped the final edit with nothing to say so. The
+        pending edit is committed here first: it is the one thing on screen
+        that is genuinely the user's and genuinely not yet on disk.
+
+        Args:
+            event: The QCloseEvent. Accepted so the window closes.
+
+        Returns:
+            None
+        """
+        self._flush_pending_edit()
+        self._shutdown_workers()
+        event.accept()
+
     
     def _on_new_lens(self) -> None:
         """Create new lens"""
