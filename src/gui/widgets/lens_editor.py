@@ -5,6 +5,7 @@ Main editor widget for lens properties with visualization
 
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
+import logging
 
 from PySide6.QtWidgets import (
     QWidget,
@@ -31,6 +32,45 @@ from ...validation import (
 
 if TYPE_CHECKING:
     from ...lens import Lens
+
+logger = logging.getLogger(__name__)
+
+
+#: Shown while the material is looked up, before one is chosen.
+CUSTOM_MATERIAL = "Custom"
+
+
+def _materials_with_indices():
+    """Catalogued materials with their reference index, plus Custom.
+
+    Indices come from the glass database when it is available, falling back to
+    the static per-material defaults. The editor carried its own hard-coded dict
+    with different numbers for the same glasses - 1.4580 for Fused Silica here
+    against 1.4585 in constants - so the editor and the rest of the application
+    could disagree about what a material is.
+
+    Returns:
+        List of ``(name, index)`` pairs. "Custom" carries ``None``: its index is
+        whatever the user types, not something to look up.
+    """
+    from ...constants import DEFAULT_MATERIAL_INDICES, WAVELENGTH_D_LINE
+
+    indices = dict(DEFAULT_MATERIAL_INDICES)
+    try:
+        from ...material_database import MATERIAL_DB_AVAILABLE, get_material_database
+
+        if MATERIAL_DB_AVAILABLE:
+            db = get_material_database()
+            for entry in db.list_materials():
+                name = entry.get("name") if isinstance(entry, dict) else None
+                if name:
+                    indices[name] = db.get_refractive_index(name, WAVELENGTH_D_LINE)
+    except Exception:  # pragma: no cover - the catalog is optional
+        logger.debug("Glass catalog unavailable; using static indices", exc_info=True)
+
+    pairs = [(name, index) for name, index in indices.items()]
+    pairs.append((CUSTOM_MATERIAL, None))
+    return pairs
 
 
 class LensEditorWidget(QWidget):
@@ -255,9 +295,9 @@ class LensEditorWidget(QWidget):
         mat_group = QGroupBox("Material")
         mat_layout = QFormLayout(mat_group)
 
-        materials = ["BK7", "SF11", "F2", "N-BK7", "Fused Silica", "Custom"]
         self._material_combo = QComboBox()
-        self._material_combo.addItems(materials)
+        for name, _index in _materials_with_indices():
+            self._material_combo.addItem(name)
         self._material_combo.setCurrentText("BK7")
         self._material_combo.currentTextChanged.connect(self._on_material_changed)
         mat_layout.addRow("Material:", self._material_combo)
@@ -266,8 +306,18 @@ class LensEditorWidget(QWidget):
         self._n_input.setRange(1.0, 3.0)
         self._n_input.setValue(1.5168)
         self._n_input.setDecimals(4)
+        # Read-only while a catalogued glass is selected, and editable for
+        # "Custom" - where the index is the user's to choose. It was read-only
+        # always, so "Custom" pinned n to 1.5 and there was no way to state the
+        # index you actually wanted.
         self._n_input.setReadOnly(True)
-        self._n_input.setStyleSheet("QSpinBox: { background: #2d2d2d; color: #888; }")
+        # The selector has to name the widget it styles: "QSpinBox" does not
+        # match a QDoubleSpinBox, so this rule was applied to nothing at all.
+        self._n_input.setStyleSheet("QDoubleSpinBox { background: #2d2d2d; color: #888; }")
+        # A custom index has to reach the model. The box had no connection at
+        # all, so a typed value stayed on screen and in the widget and nowhere
+        # else - the index shown and the index traced silently disagreed.
+        self._n_input.valueChanged.connect(self._on_index_changed)
         mat_layout.addRow("Refractive Index:", self._n_input)
 
         layout.addWidget(mat_group)
@@ -563,17 +613,33 @@ class LensEditorWidget(QWidget):
             if sync_model and enabled:
                 setattr(self._lens, attr, spin.value())
 
+    def _on_index_changed(self, index: float) -> None:
+        """Handle a hand-typed refractive index (Custom material).
+
+        Only a custom index is editable, so this only fires for one the user
+        chose. The model is updated without going through _on_material_changed,
+        which would overwrite the value just typed with the catalog's.
+        """
+        if self._lens is None:
+            return
+        self._lens.refractive_index = float(index)
+        self._touch_lens()
+        self._update_calculated()
+        if self._viz_widget:
+            self._viz_widget.update_lens(self._lens)
+        self.lens_updated.emit()
+
     def _on_material_changed(self, material: str) -> None:
         """Handle material change"""
-        material_indices = {
-            "BK7": 1.5168,
-            "SF11": 1.7847,
-            "F2": 1.6200,
-            "N-BK7": 1.5168,
-            "Fused Silica": 1.4580,
-            "Custom": 1.5,
-        }
-        self._n_input.setValue(material_indices.get(material, 1.5))
+        indices = dict(_materials_with_indices())
+        index = indices.get(material)
+
+        # Custom is the one entry with no catalogued index, so the field
+        # becomes editable and keeps whatever the user has typed.
+        self._n_input.setReadOnly(index is not None)
+        if index is not None:
+            self._n_input.setValue(index)
+
         if self._lens:
             self._lens.refractive_index = self._n_input.value()
             self._lens.material = material
@@ -850,7 +916,43 @@ class LensEditorWidget(QWidget):
         self._bevel2_input.setValue(lens.bevel_2)
         for spin in dim_inputs:
             spin.blockSignals(False)
-        self._n_input.setValue(lens.refractive_index)
+        # Material and index together. load_lens never touched the combo, so loading
+        # an SF11 lens showed "BK7" beside an index of 1.7847 - and because
+        # currentTextChanged only fires on a *change*, re-picking the material
+        # the combo already displayed did nothing to correct it.
+        #
+        # The combo's signals are blocked so the handler does not overwrite the
+        # model with the combo's previous selection mid-load.
+        loaded_index = lens.refractive_index
+        loaded_material = lens.material or CUSTOM_MATERIAL
+        known = [self._material_combo.itemText(i) for i in range(self._material_combo.count())]
+        if loaded_material not in known:
+            # setCurrentText on a non-editable combo is a no-op for a value
+            # that is not in the list, which would leave the previous material
+            # showing next to this lens's index. An uncatalogued material is
+            # exactly what "Custom" is for.
+            logger.debug(
+                "Material %r is not in the editor's list; showing it as %s",
+                loaded_material,
+                CUSTOM_MATERIAL,
+            )
+            loaded_material = CUSTOM_MATERIAL
+
+        self._material_combo.blockSignals(True)
+        self._material_combo.setCurrentText(loaded_material)
+        self._material_combo.blockSignals(False)
+
+        # Deliberately not _on_material_changed(): that handler rewrites the
+        # model from the combo and emits lens_modified, so calling it during a
+        # load would report the act of displaying a lens as an edit, and would
+        # overwrite the model's own index with the catalog's. Loading is not a
+        # modification.
+        indices = dict(_materials_with_indices())
+        self._n_input.setReadOnly(indices.get(loaded_material) is not None)
+        self._n_input.setValue(loaded_index)
+        if self._lens is not None:
+            self._lens.material = loaded_material
+            self._lens.refractive_index = loaded_index
         # Parabolic
         # Ranges first (from model D/t), then values: a stale narrow range
         # must never clamp the incoming values, and the model keeps file
