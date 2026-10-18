@@ -29,7 +29,13 @@ fi
 echo "waiting for CI on PR #${pr} (this takes ~12 min) ..."
 
 is_transport_error() {
-  grep -qiE "error connecting|could not resolve host|connection (refused|reset)|i/o timeout|502 Bad Gateway|503 Service Unavailable" <<<"$1"
+  # Anything matched here means "we could not ask", not "CI said no".
+  # Reporting an unreachable API as a CI failure points the agent at the
+  # branch under review when the branch is fine - it invites a re-run of a
+  # suite that already passes, and hunting a bug that does not exist.
+  # A TLS handshake timeout was doing exactly that: it fell through to the
+  # verdict branch on PR #520 while every job was still pending.
+  grep -qiE "error connecting|could not resolve (to )?host|no such host|lookup .*(: no such host)?$|connection (refused|reset|timed out)|i/o timeout|TLS handshake timeout|handshake timeout|net/http:|502 Bad Gateway|503 Service Unavailable" <<<"$1"
 }
 
 transport_errors=0
