@@ -4,6 +4,7 @@ Lens Aberrations Calculator
 Calculates primary optical aberrations for single lens elements
 """
 
+import json
 import logging
 import math
 from typing import Optional, Dict, Any, List, Tuple
@@ -579,38 +580,71 @@ class AberrationsCalculator:
             self._strehl_cache[key] = result
         return result
 
+    #: Lens fields that do not affect the pupil trace. Excluded from the Strehl
+    #: cache key so renaming a lens, reloading it from the database (a new id)
+    #: or editing its free-form metadata does not throw the cache away.
+    _STREHL_NON_OPTICAL_FIELDS = frozenset({"id", "name", "created_at", "modified_at", "metadata"})
+
     def _strehl_state_key(self, wavelength_nm: float, grid_size: int) -> Optional[tuple]:
         """Hashable snapshot of everything the pupil trace depends on.
+
+        Built from the serialized lens state rather than a hand-picked list of
+        attributes. The list was the defect: it named radii, thickness,
+        diameter and index, so clear apertures, parabolic flags and sags,
+        per-surface alignment and the aperture stop were all invisible to it,
+        and editing any of them returned the previous Strehl result. Any field
+        added to Lens in future would have been missing too, because nobody
+        remembers to extend a list of attributes elsewhere in the file.
+
+        The non-optical fields are dropped so the key is stable across a
+        rename or a reload. The result is JSON-encoded because the serialized
+        state contains lists and dicts (coating stacks, metadata), which are
+        not hashable.
 
         Returns None if the state cannot be snapshotted (cache bypassed).
         """
         try:
 
-            def _r(x: float) -> float:
+            def _r(x) -> float:
+                """Round so floating-point noise cannot cause a spurious miss."""
                 return round(float(x), 9)
+
+            def _lens_state(lens) -> str:
+                state = {
+                    name: value
+                    for name, value in lens.to_dict().items()
+                    if name not in self._STREHL_NON_OPTICAL_FIELDS
+                }
+                return json.dumps(state, sort_keys=True, default=str)
 
             if self.is_system:
                 elements = tuple(
                     (
-                        _r(e.lens.radius_of_curvature_1),
-                        _r(e.lens.radius_of_curvature_2),
-                        _r(e.lens.thickness),
-                        _r(e.lens.diameter),
-                        _r(e.lens.refractive_index),
+                        _lens_state(e.lens),
                         _r(e.position),
+                        _r(e.decenter_y),
+                        _r(e.decenter_z),
+                        _r(e.tilt_x),
+                        _r(e.tilt_y),
+                        _r(e.tilt_z),
                     )
                     for e in self.target.elements
                 )
                 gaps = tuple(_r(g.thickness) for g in self.target.air_gaps)
-                return ("system", elements, gaps, _r(wavelength_nm), grid_size)
-            lens = self.lens
+                stop = getattr(self.target, "aperture_stop_gap", None)
+                stop_diameter = getattr(self.target, "aperture_stop_diameter", None)
+                return (
+                    "system",
+                    elements,
+                    gaps,
+                    stop,
+                    _r(stop_diameter) if stop_diameter is not None else None,
+                    _r(wavelength_nm),
+                    grid_size,
+                )
             return (
                 "lens",
-                _r(lens.radius_of_curvature_1),
-                _r(lens.radius_of_curvature_2),
-                _r(lens.thickness),
-                _r(lens.diameter),
-                _r(lens.refractive_index),
+                _lens_state(self.lens),
                 _r(wavelength_nm),
                 grid_size,
             )
