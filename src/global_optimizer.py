@@ -40,16 +40,63 @@ class GlobalOptimizer(LensOptimizer):
         # from that shared stream.
         self._rng = random.Random(seed)
 
+    #: Temperature at which annealing is considered frozen. The loop stops
+    #: here, so it is the number the derived cooling schedule targets.
+    ANNEALING_FLOOR = 1e-6
+
+    @classmethod
+    def _derive_cooling_rate(cls, initial_temperature: float, max_iterations: int) -> float:
+        """A geometric cooling factor reaching the floor in ``max_iterations``.
+
+        Solving ``T0 * rate**n = FLOOR`` for ``rate`` gives a schedule that
+        finishes exactly when the caller asked the run to finish, so
+        ``max_iterations`` means what it says instead of being an unreachable
+        ceiling.
+
+        Args:
+            initial_temperature: Starting temperature, already clamped positive.
+            max_iterations: Iterations the schedule must span.
+
+        Returns:
+            The cooling factor. Falls back to no cooling for a degenerate
+            non-positive ``max_iterations``, which the loop will not enter.
+        """
+        if max_iterations <= 0:
+            return 1.0
+        ratio = cls.ANNEALING_FLOOR / initial_temperature
+        if ratio <= 0.0:
+            return 1.0
+        if ratio >= 1.0:
+            # Already at or below the floor; nothing to cool towards.
+            return 1.0
+        return float(ratio ** (1.0 / max_iterations))
+
     def optimize_simulated_annealing(
         self,
         max_iterations: int = 1000,
         initial_temperature: float = 100.0,
-        cooling_rate: float = 0.95,
+        cooling_rate: Optional[float] = None,
         restart_threshold: float = 1e-4,
         callback: Optional[Callable[[int, float, List[float]], None]] = None,
     ) -> OptimizationResult:
-        """
-        Simulated Annealing global optimization.
+        """Simulated annealing global optimization.
+
+        Args:
+            max_iterations: Iterations to run. The default cooling schedule is
+                derived from this, so the run lasts as long as asked for.
+            initial_temperature: Starting temperature.
+            cooling_rate: Geometric cooling factor. ``None`` (the default)
+                derives one from ``max_iterations`` that reaches the annealing
+                floor at exactly that many iterations. Pass a value to impose
+                your own schedule; the run then ends when the temperature hits
+                the floor, which may be well before ``max_iterations``.
+            restart_threshold: Unused; retained for API compatibility.
+            callback: Per-iteration progress callback. The GUI's cooperative
+                cancel raises from here, so it is also consulted by the final
+                local refinement.
+
+        Returns:
+            OptimizationResult with the best design found.
         """
         current_values = [var.current_value for var in self.variables]
         current_merit = self._evaluate_design(current_values)
@@ -78,6 +125,14 @@ class GlobalOptimizer(LensOptimizer):
                 initial_temperature,
             )
             initial_temperature = 1e-6
+
+        # The schedule has to fit inside max_iterations, or the run stops on
+        # the temperature floor long before the caller asked it to. With the
+        # defaults (T0 = 100, cooling 0.95) the floor at 1e-6 was reached at
+        # ~360 iterations, so the GUI's max_iterations=500 was unreachable and
+        # every annealing run silently stopped early.
+        if cooling_rate is None:
+            cooling_rate = self._derive_cooling_rate(initial_temperature, max_iterations)
 
         # max_iterations <= 0 leaves the loop body unentered, and `iteration` was
         # then read below for the iteration count - UnboundLocalError. -1 makes
@@ -152,7 +207,9 @@ class GlobalOptimizer(LensOptimizer):
         # a simulated-annealing run silently overwrote the user's inputs. The
         # adjacent self._apply_variables(best_values) was dead code: it returns
         # a deepcopy and never mutates self.system.
-        local_result = self.optimize_simplex(max_iterations=50, start=best_values)
+        local_result = self.optimize_simplex(
+            max_iterations=50, start=best_values, callback=callback
+        )
 
         # Combine results. initial_merit is the *starting* design's merit:
         # merit_history[0] is the best of the first step, after a random
@@ -226,6 +283,13 @@ class GlobalOptimizer(LensOptimizer):
             # Evaluate population
             merits = []
             for ind in population:
+                # Also checked here, not just once per generation: the merit
+                # can take seconds per evaluation, so a whole population of
+                # 30 is over a minute during which the GUI's Stop does
+                # nothing. The generation index is reported so the caller
+                # still sees generation granularity.
+                if callback and best_overall_design:
+                    callback(gen, best_overall_merit, best_overall_design)
                 m = self._evaluate_design(ind)
                 merits.append(m)
 
@@ -269,7 +333,9 @@ class GlobalOptimizer(LensOptimizer):
         # Final refinement. As in the simulated-annealing path: the start is
         # passed explicitly rather than written into the caller's variable
         # objects, and the _apply_variables call was dead code.
-        local_result = self.optimize_simplex(max_iterations=50, start=best_overall_design)
+        local_result = self.optimize_simplex(
+            max_iterations=50, start=best_overall_design, callback=callback
+        )
 
         # starting_merit is the merit of the design the search began from.
         # history_merit[0] would be the best of generation 0 - after up to 50
