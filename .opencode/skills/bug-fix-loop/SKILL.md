@@ -39,6 +39,36 @@ first. When the user names an issue explicitly, work on that one instead.
 If the issue body lists several defects, fix all of them on that branch, or
 split off follow-up issues - never leave one silently unfixed.
 
+### Label every follow-up issue before moving on
+
+`scripts/next-issue.sh` selects work with `gh issue list --label bug`. An
+unlabelled issue is therefore **invisible to the loop**: it will never be picked
+up, never appear in the triage list, and quietly sit in the tracker forever.
+Four issues filed from the #438 and #470 fixes went unlabelled for exactly this
+reason.
+
+```bash
+gh issue create --title "..." --body "..."          # labels: none by default
+gh issue edit <n> --add-label bug,data-loss,prio-medium
+```
+
+Choose the labels from what the repo already has - check `gh label list` rather
+than inventing new ones. The ones that carry meaning for triage:
+
+- `bug` - required, or the issue is invisible to this loop.
+- A domain label from the list (`physics`, `gui`, `packaging`, `performance`,
+  `data-loss`, `tech-debt`) so the issue can be found again later.
+- `prio-high` / `prio-medium` / `prio-low` - drives the ordering, so leaving it
+  off is what the default sort falls back to. `data-loss` and `packaging`
+  issues found mid-fix are normally `prio-medium`: real user impact, but
+  usually a larger change than the issue it came from.
+
+Verify the label took, and that the issue now appears in the queue:
+
+```bash
+gh issue view <n> --json labels
+scripts/next-issue.sh | grep <n>
+
 ## Throughput: pipeline, do not serialise the wait
 
 CI takes ~12 min per PR. Sitting idle through it wastes most of the run. Keep
