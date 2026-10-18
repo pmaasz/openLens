@@ -68,9 +68,24 @@ class _HermeticWindow(unittest.TestCase):
                 os.remove(self.temp_db + ext)
 
     def _rows_for(self, lens_id):
-        from src.gui.storage import LensStorage
+        """The persisted row for a lens, whatever kind of lens it is.
 
-        return [x for x in LensStorage(self.temp_db).load_lenses() if x.id == lens_id]
+        Reads the table directly rather than going through load_lenses(): that
+        is the *library* view, and an assembly element is deliberately not a
+        library item, so it would report "absent" for a row that is stored
+        perfectly well. This asserts persistence, so it should ask the
+        database.
+        """
+        import sqlite3
+
+        conn = sqlite3.connect(self.temp_db)
+        try:
+            conn.row_factory = sqlite3.Row
+            return [
+                dict(row) for row in conn.execute("SELECT * FROM lenses WHERE id = ?", (lens_id,))
+            ]
+        finally:
+            conn.close()
 
 
 @unittest.skipUnless(PYSIDE_AVAILABLE, "PySide6 not available")
@@ -110,7 +125,7 @@ class TestApplyKeepSingleLens(_HermeticWindow):
         # And it persisted (reconciling save must not drop it).
         rows = self._rows_for(lens.id)
         self.assertEqual(len(rows), 1)
-        self.assertAlmostEqual(rows[0].radius_of_curvature_1, 80.0)
+        self.assertAlmostEqual(rows[0]["radius1"], 80.0)
 
 
 @unittest.skipUnless(PYSIDE_AVAILABLE, "PySide6 not available")
@@ -137,7 +152,7 @@ class TestApplyKeepAssembly(_HermeticWindow):
         self.assertAlmostEqual(self.window._current_assembly.elements[0].lens.thickness, 9.0)
         rows = self._rows_for(pending.elements[0].lens.id)
         self.assertEqual(len(rows), 1)
-        self.assertAlmostEqual(rows[0].thickness, 9.0)
+        self.assertAlmostEqual(rows[0]["thickness"], 9.0)
 
 
 if __name__ == "__main__":

@@ -306,8 +306,13 @@ class OpenLensWindow(QMainWindow):
                 if hasattr(item, 'id'):
                     unique_items[item.id] = item
 
+            # unique_items is every stored object, so a lens missing from it
+            # that an assembly still holds really is an assembly member - and
+            # load_all hides those, which is what keeps an assembly's lenses
+            # from reappearing as standalone library lenses after a reload.
             if not self._storage.save_lenses(list(unique_items.values()),
-                                             reconcile=reconcile):
+                                             reconcile=reconcile,
+                                             library_snapshot=True):
                 # save_lenses swallowed the exception, so its own report is the
                 # only place the real reason survives.
                 self._report_save_failure(

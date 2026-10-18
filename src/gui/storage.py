@@ -132,7 +132,11 @@ class LensStorage:
         return True
 
     def save_lenses(
-        self, items: List[Any], show_status: bool = True, reconcile: bool = False
+        self,
+        items: List[Any],
+        show_status: bool = True,
+        reconcile: bool = False,
+        library_snapshot: bool = False,
     ) -> bool:
         """Save lenses/optical systems to the SQLite database.
 
@@ -163,6 +167,23 @@ class LensStorage:
                 else:
                     self.db.save_lens(item_dict)
 
+            # Record library membership. Promotion is always safe: a lens handed to us as
+            # a library item is one. Demotion is not - save_lenses is free to
+            # receive a *partial* list (the CLI's lens-only view passes one),
+            # and reading "absent from this list" as "not a library item" would
+            # silently delete every library lens whenever a single assembly was
+            # saved. Only reconcile, which by contract means the caller owns
+            # every stored object, is allowed to demote.
+            self.db.set_library_membership(
+                (
+                    item.id
+                    for item in items
+                    if not isinstance(item, OpticalSystem)
+                    and getattr(item, "type", None) != "OpticalSystem"
+                ),
+                demote=library_snapshot or reconcile,
+            )
+
             if reconcile:
                 self._reconcile(items)
 
@@ -192,6 +213,13 @@ class LensStorage:
 
         for lens_id in existing["lenses"]:
             if lens_id in keep:
+                continue
+            if lens_id in self.db.lens_ids_used_by_assemblies():
+                # An assembly kept in the snapshot still holds this lens, so the
+                # delete below cannot succeed - the in-use guard would refuse it.
+                # Not attempted: a doomed attempt is not a safety net, it is just
+                # one refusal per assembly lens on every save.
+                logger.debug("Reconciliation kept assembly lens %s", lens_id)
                 continue
             try:
                 self.db.delete_item(lens_id)

@@ -6,7 +6,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from src.database import DatabaseManager
+from src.database import SCHEMA_VERSION, DatabaseManager
 from src.lens import Lens
 from src.optical_system import OpticalSystem
 
@@ -231,7 +231,7 @@ class TestStopAlignmentPersistence(unittest.TestCase):
             db = DatabaseManager(path)
             conn = sqlite3.connect(path)
             try:
-                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 5)
+                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], SCHEMA_VERSION)
             finally:
                 conn.close()
             rows = {r["id"]: r for r in db.load_all()}

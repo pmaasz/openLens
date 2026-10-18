@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # src/constants.py: it is meaningless anywhere except the migration ladder in
 # DatabaseManager._initialize_db, and keeping it there keeps this module free
 # of intra-package imports.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def _coating_json(value) -> Optional[str]:
@@ -277,6 +277,7 @@ class DatabaseManager:
                             bevel_2 REAL NOT NULL DEFAULT 0.0,
                             coating_1 TEXT,
                             coating_2 TEXT,
+                            is_library INTEGER NOT NULL DEFAULT 1,
                             metadata TEXT
                         )
                     """)
@@ -375,7 +376,56 @@ class DatabaseManager:
                 if cursor.fetchone()[0] == 4:
                     _add_column(cursor, "lenses", "coating_1", "TEXT")
                     _add_column(cursor, "lenses", "coating_2", "TEXT")
+                    cursor.execute("PRAGMA user_version = 5")
+
+                # v5 -> v6: whether a lens is a library item in its own right.
+                #
+                # A lens row is written for every assembly element, so before
+                # this column the database could not tell a lens the user keeps
+                # in the library from one that exists only inside an assembly -
+                # and load_all returned both, so every assembly's lenses
+                # reappeared in the library lists after a reload.
+                #
+                # DEFAULT 1 keeps existing databases behaving exactly as they
+                # did until the application next saves, at which point the
+                # membership is recorded correctly.
+                cursor.execute("PRAGMA user_version")
+                if cursor.fetchone()[0] == 5:
+                    _add_column(cursor, "lenses", "is_library", "INTEGER NOT NULL DEFAULT 1")
                     cursor.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+    def set_library_membership(self, library_lens_ids, demote: bool = False) -> None:
+        """Record which lenses are library items in their own right.
+
+        A lens row exists for every assembly element, so the rows alone cannot
+        distinguish a lens the user keeps in the library from one that exists
+        only inside an assembly. The caller *does* know: it holds the library
+        snapshot. Recording that here - rather than inferring it - is what keeps
+        a shared lens visible while hiding a member-only one.
+
+        Args:
+            library_lens_ids: Ids of the lenses that belong in the library.
+            demote: Whether lenses absent from *library_lens_ids* may be
+                demoted to assembly-only. Only the caller that owns every
+                stored object may do this; see the note in
+                :meth:`LensStorage.save_lenses` about partial snapshots.
+
+        Returns:
+            None
+        """
+        library = {str(i) for i in library_lens_ids}
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            if demote:
+                cursor.execute("SELECT id FROM lenses")
+                for row in cursor.fetchall():
+                    cursor.execute(
+                        "UPDATE lenses SET is_library = ? WHERE id = ?",
+                        (1 if row["id"] in library else 0, row["id"]),
+                    )
+            else:
+                for lens_id in library:
+                    cursor.execute("UPDATE lenses SET is_library = 1 WHERE id = ?", (lens_id,))
 
     def save_lens(self, lens_dict: Dict[str, Any]):
         """Save or update a single lens."""
@@ -631,14 +681,31 @@ class DatabaseManager:
                 raise
 
     def load_all(self) -> List[Dict[str, Any]]:
-        """Load all standalone lenses and assemblies."""
+        """Load all standalone lenses and assemblies.
+
+        "Standalone" is the operative word. A lens row that exists only as an
+        element of an assembly is *not* a library item, and returning it as a
+        top-level "Lens" made every assembly member reappear in the lens lists
+        after a reload::
+
+            [OpticalSystem A(L1, L2)]  ->  [Lens L1, Lens L2, OpticalSystem A]
+
+        It then also made every full save try to delete each of them, which the
+        in-use guard correctly refused - so each save reported one failure per
+        assembly lens.
+
+        Assembly members are still read, and kept in the lookup, because the
+        assemblies below need them.
+        """
         results = []
         lenses_lookup = {}
 
         with self._connection() as conn:
             cursor = conn.cursor()
 
-            # 1. Load all lenses first (including those in assemblies)
+            # 1. Load all lenses first (including those in assemblies).
+            # is_library is what the save path recorded: a lens the user keeps
+            # in the library stays visible even when an assembly also uses it.
             cursor.execute("SELECT * FROM lenses")
             for row in cursor.fetchall():
                 lens = dict(row)
@@ -656,8 +723,11 @@ class DatabaseManager:
                 for _ckey in ("coating_1", "coating_2"):
                     _raw = lens.get(_ckey)
                     lens[_ckey] = _coating_parse(_raw) if isinstance(_raw, str) else _raw
-                results.append(lens)
+                # Always available to assemblies, whether or not it is a
+                # library item in its own right.
                 lenses_lookup[lens["id"]] = lens
+                if lens.get("is_library", 1):
+                    results.append(lens)
 
             # 2. Load all assemblies
             cursor.execute("SELECT * FROM assemblies")
@@ -793,6 +863,22 @@ class DatabaseManager:
             asm_ids = [r["id"] for r in cursor.fetchall()]
         return {"lenses": lens_ids, "assemblies": asm_ids}
 
+    def lens_ids_used_by_assemblies(self) -> set:
+        """Ids of every lens currently placed in at least one assembly.
+
+        These are not library items in their own right, so reconciliation has
+        no business trying to delete them - the in-use guard refuses, and one
+        refusal per assembly lens on every save reads as an application fault
+        rather than the guard doing its job.
+
+        Returns:
+            The set of referenced lens ids.
+        """
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT lens_id FROM assembly_elements")
+            return {row["lens_id"] for row in cursor.fetchall()}
+
     def get_referencing_assemblies(self, lens_id: str) -> List[tuple]:
         """Return (assembly_id, assembly_name) pairs using this lens."""
         with self._connection() as conn:
@@ -864,5 +950,16 @@ class DatabaseManager:
                 cursor.execute("COMMIT")
             except Exception as e:
                 cursor.execute("ROLLBACK")
-                logger.error("Failed to delete item %s: %s", item_id, e)
+                if isinstance(e, LensInUseError):
+                    # The guard working as designed, not a failure. This used to
+                    # be logged at ERROR, so every full save of a library with
+                    # assemblies reported one failure per assembly lens - the
+                    # application reading as broken while behaving correctly.
+                    logger.debug(
+                        "Refused to delete %s: still in assembly %s",
+                        item_id,
+                        ", ".join(name for _id, name in e.assemblies) or "an assembly",
+                    )
+                else:
+                    logger.error("Failed to delete item %s: %s", item_id, e)
                 raise

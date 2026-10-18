@@ -6,7 +6,7 @@ import os
 import tempfile
 import unittest
 
-from src.database import DatabaseManager, LensInUseError
+from src.database import SCHEMA_VERSION, DatabaseManager, LensInUseError
 
 
 def _make_db():
@@ -63,14 +63,14 @@ def _load_lenses(db):
 class TestDatabaseManagerInit(unittest.TestCase):
 
     def test_fresh_db_is_v2_with_parabolic_columns(self):
-        """New databases are created at user_version=5 directly."""
+        """New databases are created at the current version directly."""
         import sqlite3
 
         db, path = _make_db()
         try:
             conn = sqlite3.connect(path)
             try:
-                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 5)
+                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], SCHEMA_VERSION)
                 columns = {r[1] for r in conn.execute("PRAGMA table_info(lenses)").fetchall()}
                 for col in (
                     "is_parabolic_1",
@@ -408,7 +408,7 @@ class TestMigrationV1ToV2(unittest.TestCase):
         conn = sqlite3.connect(self._path)
         try:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            self.assertEqual(version, 5)
+            self.assertEqual(version, SCHEMA_VERSION)
             columns = {r[1] for r in conn.execute("PRAGMA table_info(lenses)").fetchall()}
             for col in (
                 "is_parabolic_1",
@@ -524,7 +524,7 @@ class TestMigrationIsAtomicAndIdempotent(unittest.TestCase):
         DatabaseManager(self._path)  # must not raise
 
         version, _ = self._version_and_columns()
-        self.assertEqual(version, 5)
+        self.assertEqual(version, SCHEMA_VERSION)
 
     def test_migration_is_idempotent_across_repeated_opens(self):
         _make_v1_db(self._path)
@@ -584,7 +584,7 @@ class TestMigrationIsAtomicAndIdempotent(unittest.TestCase):
 
         DatabaseManager(self._path)
         version, _ = self._version_and_columns()
-        self.assertEqual(version, 5)
+        self.assertEqual(version, SCHEMA_VERSION)
 
     def test_add_column_helper_is_idempotent(self):
         import sqlite3
