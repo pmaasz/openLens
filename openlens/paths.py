@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from .constants import DEFAULT_DB_FILE
+from .constants import DEFAULT_DB_FILE, DEFAULT_MATERIALS_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,10 @@ DB_PATH_ENV_VAR = "OPENLENS_DB_PATH"
 
 #: Overrides the user data directory itself, for the same reasons.
 DATA_DIR_ENV_VAR = "OPENLENS_DATA_DIR"
+
+#: Overrides the material catalog path. The catalog is user-editable and the
+#: application writes to it, so it must never default to the installed package.
+MATERIALS_PATH_ENV_VAR = "OPENLENS_MATERIALS_PATH"
 
 #: The directory name used under the platform's per-user data root.
 APP_DIR_NAME = "openlens"
@@ -78,6 +82,39 @@ def default_db_path() -> Path:
     if override:
         return Path(override).expanduser()
     return user_data_dir() / DEFAULT_DB_FILE
+
+
+def default_materials_path() -> Path:
+    """The writable material catalog OpenLens uses by default.
+
+    Returns:
+        The path from ``$OPENLENS_MATERIALS_PATH`` if set, otherwise
+        ``<user data dir>/materials.json``.
+
+    The catalog is user data: ``add_material`` writes the whole file. The old
+    default was ``<package>/../data/materials.json``, which on an installed copy
+    resolved inside site-packages - not shipped, and not writable without root.
+    It also made ``MaterialDatabase()`` in tests write to the developer's real
+    catalog, silently mixing test glasses into it.
+    """
+    override = os.environ.get(MATERIALS_PATH_ENV_VAR)
+    if override:
+        return Path(override).expanduser()
+    return user_data_dir() / DEFAULT_MATERIALS_FILE
+
+
+def legacy_materials_path() -> Path:
+    """Where the catalog lived before it moved to the user data directory.
+
+    Only a migration *source*. It deliberately does not serve as a fallback
+    data source: on an installed copy it resolves under site-packages and is
+    absent, and reading from it silently is what made the old default write
+    into the package in the first place.
+
+    Returns:
+        ``<repository root>/data/materials.json`` for a source checkout.
+    """
+    return Path(__file__).resolve().parent.parent / "data" / DEFAULT_MATERIALS_FILE
 
 
 def resolve_db_path(storage_file: Optional[str] = None) -> str:
@@ -156,4 +193,56 @@ def migrate_legacy_db(legacy: Optional[str] = None) -> Optional[Path]:
         return None
 
     logger.info("Moved the database from %s to %s", old, target)
+    return target
+
+
+def migrate_legacy_materials(
+    legacy: Optional[str] = None, destination: Optional[str] = None
+) -> Optional[Path]:
+    """Copy a catalog left in the repository's ``data/`` directory.
+
+    The old default path was ``<package>/../data/materials.json``. Existing
+    users have a catalog there and would otherwise appear to lose every custom
+    glass the moment the default moved to the user data directory.
+
+    A **copy**, not a move: the file belongs to a checkout that may be shared,
+    under version control, or read-only, and deleting it is not this function's
+    business. It never overwrites an existing destination - the user's current
+    catalog wins - and a missing legacy file is a no-op, which is the normal
+    case for an installed copy.
+
+    Args:
+        legacy: The old catalog path, or None for the repository's ``data/``.
+        destination: The target path, or None for the default user path.
+
+    Returns:
+        The new catalog path if a copy happened, else None.
+    """
+    if destination is None and os.environ.get(MATERIALS_PATH_ENV_VAR):
+        # The user has said exactly where the catalog is. Copying a different
+        # file over it - or beside it - would be arguing with them.
+        return None
+
+    old = Path(legacy).expanduser() if legacy else legacy_materials_path()
+    if not old.is_file():
+        return None
+
+    target = Path(destination).expanduser() if destination else default_materials_path()
+    if target.exists():
+        logger.info(
+            "Found a catalog at %s but the user catalog is already at %s; "
+            "leaving the destination untouched",
+            old,
+            target,
+        )
+        return None
+
+    ensure_parent_dir(str(target))
+    try:
+        shutil.copy2(str(old), str(target))
+    except OSError as e:
+        logger.warning("Could not copy the catalog from %s to %s: %s", old, target, e)
+        return None
+
+    logger.info("Copied the material catalog from %s to %s", old, target)
     return target

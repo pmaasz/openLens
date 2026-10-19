@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 import math
 from .atomic import atomic_write_json
+from .paths import default_materials_path, ensure_parent_dir
 
 # Setup module logger
 logger = logging.getLogger(__name__)
@@ -91,9 +92,15 @@ class MaterialDatabase:
     INDEX_CACHE_MAX = 1024
 
     def __init__(self, db_path: Optional[str] = None):
-        self.db_path = db_path or os.path.join(
-            os.path.dirname(__file__), "..", "data", "materials.json"
-        )
+        # None means "the application's catalog": the per-user data file. It
+        # used to mean "<package>/../data/materials.json", which is absent from
+        # the distribution, sits in site-packages on an installed copy (not
+        # writable without root), and made `MaterialDatabase()` in tests write
+        # straight into the developer's real catalog.
+        #
+        # Built-in materials are loaded before this file, so a fresh install
+        # always has a usable catalog even when the file does not exist yet.
+        self.db_path = db_path or str(default_materials_path())
         self.materials: Dict[str, MaterialProperties] = {}
         # Per-instance index cache. This used to be @lru_cache on the method,
         # whose key therefore included `self`: a class-wide cache holding every
@@ -353,7 +360,10 @@ class MaterialDatabase:
 
     def save_database(self) -> None:
         """Save materials to JSON file"""
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        # The user data directory may not exist yet. ensure_parent_dir reports
+        # an unwritable directory instead of raising, which is the same contract
+        # the database path uses.
+        ensure_parent_dir(self.db_path)
         data = {name: mat.to_dict() for name, mat in self.materials.items()}
         atomic_write_json(self.db_path, data)
 

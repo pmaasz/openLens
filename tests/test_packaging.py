@@ -324,7 +324,9 @@ class TestTheInstalledCommandRuns(unittest.TestCase):
     def test_the_version_flag_needs_no_display(self):
         """CI runs this headless; a QApplication first would need a GPU."""
         source = (REPO_ROOT / "openlens" / "__main__.py").read_text()
-        main_body = source[source.index("def main()") : source.index("def main()") + 900]
+        # To the end: a fixed-length slice started failing as soon as main()
+        # grew a migration block, which is not what this test is about.
+        main_body = source[source.index("def main()") :]
 
         self.assertLess(
             main_body.index("_handle_headless_flags"),

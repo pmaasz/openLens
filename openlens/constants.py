@@ -182,6 +182,9 @@ MM_TO_MICRONS = 1000.0
 
 # Default filenames
 DEFAULT_DB_FILE = "openlens.db"
+#: The writable material catalog. Lives in the per-user data directory, never
+#: beside the package: site-packages is not writable on a system install.
+DEFAULT_MATERIALS_FILE = "materials.json"
 DEFAULT_BACKUP_SUFFIX = ".backup"
 
 # JSON formatting
