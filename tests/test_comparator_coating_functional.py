@@ -4,6 +4,7 @@ Comprehensive functional tests for lens comparator and coating designer
 """
 
 import os
+import sys
 import unittest
 import tempfile
 
