@@ -199,7 +199,7 @@ class TestStopAlignmentPersistence(unittest.TestCase):
         system.set_element_alignment(1, decenter_y=0.1, tilt_x=0.5)
         system.set_aperture_stop(0, 20.0)
         self.db.save_assembly(system.to_dict())
-        assemblies = [r for r in self.db.load_all() if r.get("type") == "OpticalSystem"]
+        assemblies = [r for r in self.db.load_all() if r.get("row_type") == "OpticalSystem"]
         self.assertEqual(len(assemblies), 1)
         loaded = assemblies[0]
         self.assertEqual(loaded["aperture_stop_gap"], 0)

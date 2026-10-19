@@ -83,7 +83,12 @@ class LensStorage:
 
             # Pass 1: Create Lens objects
             for item_data in data:
-                if item_data.get("type") != "OpticalSystem":
+                # row_type is the row marker; "type" is the payload's own type
+                # (for a lens, the lens type: "Biconvex", ...). Dispatching on
+                # "type" happened to work only because the merge overwrote the
+                # marker - and it left the lens type as the only value, so a
+                # filter on type == "Lens" matched nothing (#488).
+                if item_data.get("row_type") != "OpticalSystem":
                     try:
                         lens = Lens.from_dict(item_data)
                         lens_lookup[lens.id] = lens
@@ -93,7 +98,7 @@ class LensStorage:
 
             # Pass 2: Create OpticalSystem objects using the lookup
             for item_data in data:
-                if item_data.get("type") == "OpticalSystem":
+                if item_data.get("row_type") == "OpticalSystem":
                     try:
                         system = OpticalSystem.from_dict(item_data)
                         # Refresh references to ensure identity match with Pass 1 lenses

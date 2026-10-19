@@ -163,7 +163,7 @@ class TestCoatingPersistence(unittest.TestCase):
         system = OpticalSystem(name="Coated System")
         system.add_lens(lens)
         self.db.save_assembly(system.to_dict())
-        assemblies = [r for r in self.db.load_all() if r.get("type") == "OpticalSystem"]
+        assemblies = [r for r in self.db.load_all() if r.get("row_type") == "OpticalSystem"]
         self.assertEqual(len(assemblies), 1)
         element_lens = assemblies[0]["elements"][0]["lens"]
         self.assertEqual(len(element_lens["coating_2"]), 1)

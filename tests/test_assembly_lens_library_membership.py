@@ -122,14 +122,14 @@ class TestAssemblyLensesAreNotLibraryItems(_DbFixture):
         """The fix must not strip the elements out of the assembly."""
         self._save(_assembly(_lens("L1"), _lens("L2")))
 
-        assemblies = [i for i in self.db.load_all() if i["type"] == "OpticalSystem"]
+        assemblies = [i for i in self.db.load_all() if i["row_type"] == "OpticalSystem"]
         self.assertEqual(len(assemblies), 1)
         self.assertEqual(len(assemblies[0]["elements"]), 2, msg="an assembly lost an element")
 
     def test_every_element_has_its_lens_data(self):
         self._save(_assembly(_lens("L1"), _lens("L2", 35.0)))
 
-        assembly = [i for i in self.db.load_all() if i["type"] == "OpticalSystem"][0]
+        assembly = [i for i in self.db.load_all() if i["row_type"] == "OpticalSystem"][0]
         radii = sorted(e["lens"]["radius_of_curvature_1"] for e in assembly["elements"])
 
         self.assertEqual(
@@ -153,7 +153,7 @@ class TestTheSavedShapeSurvivesAReload(_DbFixture):
 
         first = self._kinds()
         for item in self.db.load_all():
-            if item["type"] == "OpticalSystem":
+            if item["row_type"] == "OpticalSystem":
                 self.db.save_assembly(item)
             else:
                 self.db.save_lens(item)
@@ -209,7 +209,7 @@ class TestTheInUseGuardIsNotLoggedAsAFailure(_DbFixture):
 
     def _lens_id_in_assembly(self, assembly_name):
         for item in self.db.load_all():
-            if item["type"] == "OpticalSystem" and item["name"] == assembly_name:
+            if item["row_type"] == "OpticalSystem" and item["name"] == assembly_name:
                 return item["elements"][0]["lens_id"]
         raise AssertionError("assembly not found")
 
@@ -333,7 +333,9 @@ class TestReconciliationDoesNotAttemptDoomedDeletes(_DbFixture):
         self.storage.save_lenses(items, show_status=False, reconcile=True)
 
         self.assertIn("A", self._names())
-        self.assertEqual(len([i for i in self.db.load_all() if i["type"] == "OpticalSystem"]), 1)
+        self.assertEqual(
+            len([i for i in self.db.load_all() if i["row_type"] == "OpticalSystem"]), 1
+        )
 
 
 class TestAllIdsStillSeesEverything(_DbFixture):

@@ -101,7 +101,7 @@ class TestEnsureSeedData(unittest.TestCase):
     def test_seeded_assembly_loads_with_correct_gaps(self):
         """Seeded assembly should round-trip with patent air gaps."""
         ensure_nikon_series_e_example(self.db)
-        assemblies = [r for r in self.db.load_all() if r.get("type") == "OpticalSystem"]
+        assemblies = [r for r in self.db.load_all() if r.get("row_type") == "OpticalSystem"]
         seed = [a for a in assemblies if a["id"] == NIKON_SERIES_E_ASSEMBLY_ID]
         self.assertEqual(len(seed), 1)
         self.assertEqual(len(seed[0]["elements"]), 6)
