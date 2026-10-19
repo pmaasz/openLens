@@ -8,6 +8,7 @@ from ..vector3 import vec3
 from ..ray_tracer import Ray3D, SystemRayTracer3D
 from ..optical_system import OpticalSystem
 from ..constants import NM_TO_MM, WAVELENGTH_GREEN
+from .paraxial import find_paraxial_focus
 
 
 class SpotDiagram:
@@ -96,34 +97,13 @@ class SpotDiagram:
         try:
             # Determine image plane position
             if image_plane_x_mm is None:
-                # Calculate paraxial focus position
-                # Find system total length
-                length = self.system.get_total_length()
-
-                # Trace a paraxial ray to find focus
-                # Start slightly off-axis
-                start_x = self.system.elements[0].position - 10.0
-                para_ray = Ray3D(vec3(start_x, 0.001, 0), vec3(1, 0, 0), wavelength=wl_mm)
-                self.tracer.trace_ray(para_ray)
-
-                # Find intersection with axis (y=0)
-                if len(para_ray.path) >= 2:
-                    p2 = para_ray.path[-1]
-                    p1 = para_ray.path[-2]
-                    # Linear interpolation for y=0
-                    # y = m*x + c  -> x = (y-c)/m
-                    # slope m = (y2-y1)/(x2-x1)
-                    dx = p2.x - p1.x
-                    dy = p2.y - p1.y
-                    if abs(dy) > 1e-9:
-                        slope = dy / dx
-                        # y - y1 = m(x - x1) -> -y1 = m(x_focus - x1) -> x_focus = x1 - y1/m
-                        x_focus = p1.x - p1.y / slope
-                        image_plane_x_mm = x_focus
-                    else:
-                        image_plane_x_mm = length + 100  # Default if collimated
-                else:
-                    image_plane_x_mm = length + 100
+                # Shared paraxial-focus search (#460): the image plane is at
+                # the focus, or well behind a collimated system.
+                image_plane_x_mm = find_paraxial_focus(
+                    self.system, wavelength_nm, tracer=self.tracer
+                )
+                if image_plane_x_mm is None:
+                    image_plane_x_mm = self.system.get_total_length() + 100
 
             target_x = image_plane_x_mm + focus_shift_mm
 
