@@ -131,25 +131,37 @@ class ImageSimulationDialog(QDialog):
         ax.axis("off")
         return ax
 
+    @staticmethod
+    def _view_is_zoomed(xlim, ylim, shape) -> bool:
+        """Whether ``(xlim, ylim)`` shows less than the full ``shape`` image.
+
+        imshow's full extent is ``[-0.5, w-0.5] x [h-0.5, -0.5]`` because the
+        origin is upper, so the height difference is negative on the inverted
+        y axis and must be compared by magnitude. The previous inline check in
+        ``_on_simulation_done`` compared it signed, making ``was_zoomed``
+        always True.
+        """
+        h, w = shape[0], shape[1]
+        return not (abs((xlim[1] - xlim[0]) - w) < 1 and abs(abs(ylim[1] - ylim[0]) - h) < 1)
+
     def _is_zoomed(self) -> bool:
         """Return True if the current view is not the full image."""
         if self._original_image is None:
             return False
         try:
-            xlim = self._ax_orig.get_xlim()
-            ylim = self._ax_orig.get_ylim()
-            w, h = self._original_image.shape[1], self._original_image.shape[0]
-            # imshow extent is [-0.5, w-0.5] / [h-0.5, -0.5] (origin upper)
-            return not (abs((xlim[1] - xlim[0]) - w) < 1 and abs(abs(ylim[1] - ylim[0]) - h) < 1)
-        except Exception:
+            return self._view_is_zoomed(
+                self._ax_orig.get_xlim(), self._ax_orig.get_ylim(), self._original_image.shape
+            )
+        except Exception as e:
+            logger.debug("Could not read the zoom state: %s", e)
             return False
 
     def _update_reset_button(self) -> None:
         """Enable Reset only when zoomed and an image is loaded."""
         try:
             self._reset_btn.setEnabled(self._original_image is not None and self._is_zoomed())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not update the Reset button: %s", e)
 
     def _reset_view(self) -> None:
         """Zoom out to show the full image on both sides."""
@@ -161,8 +173,8 @@ class ImageSimulationDialog(QDialog):
             self._ax_orig.set_xlim(-0.5, w - 0.5)
             self._ax_orig.set_ylim(h - 0.5, -0.5)
             self.canvas.draw_idle()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not reset the view: %s", e)
         self._update_reset_button()
 
     def _zoom_at(self, xdata: float, ydata: float, factor: float = 2.0) -> None:
@@ -198,8 +210,8 @@ class ImageSimulationDialog(QDialog):
                 self._ax_orig.set_xlim(x0, x1)
                 self._ax_orig.set_ylim(y0, y0 + new_h)
             self.canvas.draw_idle()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not zoom to the clicked point: %s", e)
         self._update_reset_button()
 
     def _on_mouse_press(self, event) -> None:  # type: ignore[no-untyped-def]
@@ -290,8 +302,8 @@ class ImageSimulationDialog(QDialog):
             self._ax_orig.set_xlim(new_x0, new_x1)
             self._ax_orig.set_ylim(new_y0, new_y1)
             self.canvas.draw_idle()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not pan the view: %s", e)
 
     def _on_scroll(self, event) -> None:  # type: ignore[no-untyped-def]
         """Mouse wheel zoom – scroll up to zoom in, down to zoom out."""
@@ -331,8 +343,8 @@ class ImageSimulationDialog(QDialog):
                 try:
                     self._ax_sim.set_xlim(self._ax_orig.get_xlim())
                     self._ax_sim.set_ylim(self._ax_orig.get_ylim())
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Could not sync the simulated view: %s", e)
                 self.canvas.draw()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load image: {e}")
@@ -381,22 +393,16 @@ class ImageSimulationDialog(QDialog):
         try:
             prev_xlim = self._ax_orig.get_xlim()
             prev_ylim = self._ax_orig.get_ylim()
-            was_zoomed = not (
-                abs(prev_xlim[1] - prev_xlim[0] - self._original_image.shape[1]) < 1
-                and abs(prev_ylim[1] - prev_ylim[0] - self._original_image.shape[0]) < 1
-            )
-        except Exception:
+            was_zoomed = self._view_is_zoomed(prev_xlim, prev_ylim, self._original_image.shape)
+        except Exception as e:
+            logger.debug("Could not snapshot the view before redrawing: %s", e)
             was_zoomed = False
             prev_xlim = prev_ylim = None
 
         self._ax_sim.clear()
         self._setup_axes(self._ax_sim, "Simulated Image")
-        # Re-establish sharing after clear (clear() keeps sharing but be explicit)
-        try:
-            self._ax_sim.sharex(self._ax_orig)
-            self._ax_sim.sharey(self._ax_orig)
-        except Exception:
-            pass
+        # No sharex/sharey re-binding here: the subplots were created shared
+        # (add_subplot(..., sharex=, sharey=)) and clear() keeps them shared.
         self._ax_sim.imshow(self._simulated_image)
         # Restore synchronized view if user was zoomed, otherwise show full
         if was_zoomed and prev_xlim is not None and prev_ylim is not None:
