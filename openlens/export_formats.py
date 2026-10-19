@@ -22,6 +22,7 @@ from .constants import (
 )
 from .validation import (
     ValidationError,
+    reject_oversized_file,
     validate_clear_aperture,
     validate_lens_parameters,
 )
@@ -938,7 +939,11 @@ class ZemaxSystemImporter:
 
         Returns:
             OpticalSystem with elements, gaps, and stop (when present).
+
+        Raises:
+            ValidationError: If the file exceeds the import size limit.
         """
+        reject_oversized_file(filename)
         with open(filename) as f:
             surfaces = ZemaxSystemImporter._parse_surfaces(f.read())
 

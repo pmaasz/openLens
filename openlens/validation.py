@@ -913,6 +913,31 @@ def validate_json_file_path(
     return path
 
 
+#: Largest file an importer will read into memory. A catalog or CAD file
+#: larger than this is far more likely to be a mistake - or a hostile input -
+#: than a real optical design, and reading it whole would exhaust memory.
+MAX_IMPORT_FILE_BYTES = 64 * 1024 * 1024
+
+
+def reject_oversized_file(path: Union[str, Path], max_bytes: Optional[int] = None) -> None:
+    """Reject an import file above the in-memory size limit.
+
+    Args:
+        path: File to inspect.
+        max_bytes: Optional override for the limit. The default is read from
+            :data:`MAX_IMPORT_FILE_BYTES` at call time, so callers that change
+            the policy see it.
+
+    Raises:
+        ValidationError: If the file is larger than the limit.
+        OSError: If the file cannot be stat'ed (missing, unreadable).
+    """
+    limit = MAX_IMPORT_FILE_BYTES if max_bytes is None else max_bytes
+    size = os.path.getsize(path)
+    if size > limit:
+        raise ValidationError(f"{path} is {size} bytes; the import limit is {limit} bytes")
+
+
 def reject_non_finite_numbers(data: Any, param_name: str = "data") -> Any:
     """Reject NaN and Infinity anywhere in a parsed JSON payload.
 

@@ -208,6 +208,24 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    @contextmanager
+    def _write_transaction(self) -> Iterator[sqlite3.Cursor]:
+        """Run a block as one immediate transaction and commit it atomically.
+
+        Yields:
+            A cursor on a fresh autocommit connection, inside ``BEGIN
+            IMMEDIATE``. Any exception rolls the whole block back.
+        """
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+            try:
+                yield cursor
+            except Exception:
+                cursor.execute("ROLLBACK")
+                raise
+            cursor.execute("COMMIT")
+
     def _initialize_db(self):
         """Create tables if they don't exist and handle migrations.
 
@@ -413,107 +431,78 @@ class DatabaseManager:
         Returns:
             None
         """
+        with self._write_transaction() as cursor:
+            self._save_membership_rows(cursor, library_lens_ids, demote)
+
+    def _save_membership_rows(
+        self, cursor: sqlite3.Cursor, library_lens_ids, demote: bool = False
+    ) -> None:
+        """Write library membership inside the caller's transaction."""
         library = {str(i) for i in library_lens_ids}
-        with self._connection() as conn:
-            cursor = conn.cursor()
-            if demote:
-                cursor.execute("SELECT id FROM lenses")
-                for row in cursor.fetchall():
-                    cursor.execute(
-                        "UPDATE lenses SET is_library = ? WHERE id = ?",
-                        (1 if row["id"] in library else 0, row["id"]),
-                    )
-            else:
-                for lens_id in library:
-                    cursor.execute("UPDATE lenses SET is_library = 1 WHERE id = ?", (lens_id,))
+        if demote:
+            cursor.execute("SELECT id FROM lenses")
+            for row in cursor.fetchall():
+                cursor.execute(
+                    "UPDATE lenses SET is_library = ? WHERE id = ?",
+                    (1 if row["id"] in library else 0, row["id"]),
+                )
+        else:
+            for lens_id in library:
+                cursor.execute("UPDATE lenses SET is_library = 1 WHERE id = ?", (lens_id,))
+
+    def save_library(
+        self,
+        items: List[Dict[str, Any]],
+        library_lens_ids,
+        demote: bool = False,
+    ) -> None:
+        """Save a whole library snapshot in one transaction.
+
+        A failure on any item rolls the whole snapshot back, so the stored
+        library is always one consistent save rather than the first N items
+        of a failed one.
+
+        Args:
+            items: Serialized lenses and optical systems. The
+                ``"OpticalSystem"`` type marker selects the assembly writer.
+            library_lens_ids: Ids of the lenses that belong in the library.
+            demote: See :meth:`set_library_membership`.
+        """
+        with self._write_transaction() as cursor:
+            for item_dict in items:
+                if item_dict.get("type") == "OpticalSystem":
+                    self._save_assembly_rows(cursor, item_dict)
+                else:
+                    self._save_lens_row(cursor, item_dict)
+            self._save_membership_rows(cursor, library_lens_ids, demote)
 
     def save_lens(self, lens_dict: Dict[str, Any]):
         """Save or update a single lens."""
-        with self._connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("BEGIN IMMEDIATE")
-            try:
-                cursor.execute(
-                    """
-                    INSERT OR REPLACE INTO lenses
-                    (id, name, radius1, radius2, thickness, material, refractive_index, diameter,
-                     created_at, modified_at,
-                     is_parabolic_1, parabolic_sag_1, is_parabolic_2, parabolic_sag_2,
-                     clear_aperture_1, clear_aperture_2, bevel_1, bevel_2,
-                     coating_1, coating_2,
-                     metadata)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        lens_dict.get("id"),
-                        lens_dict.get("name"),
-                        lens_dict.get("radius_of_curvature_1", lens_dict.get("radius1")),
-                        lens_dict.get("radius_of_curvature_2", lens_dict.get("radius2")),
-                        lens_dict.get("thickness"),
-                        lens_dict.get("material"),
-                        lens_dict.get("refractive_index"),
-                        lens_dict.get("diameter"),
-                        lens_dict.get("created_at"),
-                        lens_dict.get("modified_at"),
-                        1 if lens_dict.get("is_parabolic_1") else 0,
-                        float(lens_dict.get("parabolic_sag_1", 0.0) or 0.0),
-                        1 if lens_dict.get("is_parabolic_2") else 0,
-                        float(lens_dict.get("parabolic_sag_2", 0.0) or 0.0),
-                        lens_dict.get("clear_aperture_1"),
-                        lens_dict.get("clear_aperture_2"),
-                        float(lens_dict.get("bevel_1", 0.0) or 0.0),
-                        float(lens_dict.get("bevel_2", 0.0) or 0.0),
-                        _coating_json(lens_dict.get("coating_1")),
-                        _coating_json(lens_dict.get("coating_2")),
-                        json.dumps(
-                            {
-                                k: v
-                                for k, v in lens_dict.items()
-                                if k
-                                not in [
-                                    "id",
-                                    "name",
-                                    "radius_of_curvature_1",
-                                    "radius_of_curvature_2",
-                                    "radius1",
-                                    "radius2",
-                                    "thickness",
-                                    "material",
-                                    "refractive_index",
-                                    "diameter",
-                                    "created_at",
-                                    "modified_at",
-                                    "is_parabolic_1",
-                                    "parabolic_sag_1",
-                                    "is_parabolic_2",
-                                    "parabolic_sag_2",
-                                    "clear_aperture_1",
-                                    "clear_aperture_2",
-                                    "bevel_1",
-                                    "bevel_2",
-                                    "coating_1",
-                                    "coating_2",
-                                    # The model's own metadata is folded in
-                                    # flat by _metadata_payload; letting it
-                                    # through here would nest it.
-                                    "metadata",
-                                ]
-                            }
-                            | dict(lens_dict.get("metadata") or {})
-                        ),
-                    ),
-                )
-                cursor.execute("COMMIT")
-            except Exception as e:
-                cursor.execute("ROLLBACK")
-                logger.error("Failed to save lens: %s", e)
-                raise
+        try:
+            with self._write_transaction() as cursor:
+                self._save_lens_row(cursor, lens_dict)
+        except Exception as e:
+            logger.error("Failed to save lens: %s", e)
+            raise
 
-    def _save_lens_row(self, cursor: sqlite3.Cursor, lens_dict: Dict[str, Any]) -> None:
+    def _save_lens_row(
+        self,
+        cursor: sqlite3.Cursor,
+        lens_dict: Dict[str, Any],
+        flatten_metadata: bool = True,
+    ) -> None:
         """Insert/replace one lenses row inside the caller's transaction.
 
-        Does not manage the transaction itself; used by save_assembly so
-        all writes for one assembly commit atomically.
+        Does not manage the transaction itself: ``save_assembly`` uses it so
+        all writes for one assembly commit atomically, and the batch library
+        save uses it so the whole snapshot commits at once.
+
+        Args:
+            cursor: Cursor inside the caller's transaction.
+            lens_dict: Serialized lens.
+            flatten_metadata: Fold the model's metadata into the blob's top
+                level, as standalone lens saves have always done. Assembly
+                elements preserve the ``metadata`` key as-is.
         """
         cursor.execute(
             """
@@ -576,7 +565,9 @@ class DatabaseManager:
                             "coating_1",
                             "coating_2",
                         ]
+                        and not (flatten_metadata and k == "metadata")
                     }
+                    | (dict(lens_dict.get("metadata") or {}) if flatten_metadata else {})
                 ),
             ),
         )
@@ -587,98 +578,101 @@ class DatabaseManager:
         All writes (assembly row, elements, air gaps) happen inside a
         single BEGIN IMMEDIATE ... COMMIT block.
         """
+        try:
+            with self._write_transaction() as cursor:
+                self._save_assembly_rows(cursor, assembly_dict)
+        except Exception as e:
+            logger.error("Failed to save assembly: %s", e)
+            raise
+
+    def _save_assembly_rows(self, cursor: sqlite3.Cursor, assembly_dict: Dict[str, Any]) -> None:
+        """Write one assembly row, its elements and its air gaps.
+
+        Runs inside the caller's transaction so a whole library save can
+        commit all of its assemblies and lenses at once.
+        """
         assembly_id = assembly_dict.get("id")
-        with self._connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("BEGIN IMMEDIATE")
-            try:
-                # 1. Save assembly metadata
-                cursor.execute(
-                    """
-                    INSERT OR REPLACE INTO assemblies
-                    (id, name, created_at, modified_at,
-                     aperture_stop_gap, aperture_stop_diameter, metadata)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        assembly_id,
-                        assembly_dict.get("name"),
-                        assembly_dict.get("created_at"),
-                        assembly_dict.get("modified_at"),
-                        assembly_dict.get("aperture_stop_gap"),
-                        assembly_dict.get("aperture_stop_diameter"),
-                        json.dumps(
-                            {
-                                k: v
-                                for k, v in assembly_dict.items()
-                                if k
-                                not in [
-                                    "id",
-                                    "name",
-                                    "created_at",
-                                    "modified_at",
-                                    "aperture_stop_gap",
-                                    "aperture_stop_diameter",
-                                    "elements",
-                                    "air_gaps",
-                                    "metadata",
-                                ]
-                            }
-                            | dict(assembly_dict.get("metadata") or {})
-                        ),
-                    ),
-                )
+        # 1. Save assembly metadata
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO assemblies
+            (id, name, created_at, modified_at,
+             aperture_stop_gap, aperture_stop_diameter, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                assembly_id,
+                assembly_dict.get("name"),
+                assembly_dict.get("created_at"),
+                assembly_dict.get("modified_at"),
+                assembly_dict.get("aperture_stop_gap"),
+                assembly_dict.get("aperture_stop_diameter"),
+                json.dumps(
+                    {
+                        k: v
+                        for k, v in assembly_dict.items()
+                        if k
+                        not in [
+                            "id",
+                            "name",
+                            "created_at",
+                            "modified_at",
+                            "aperture_stop_gap",
+                            "aperture_stop_diameter",
+                            "elements",
+                            "air_gaps",
+                            "metadata",
+                        ]
+                    }
+                    | dict(assembly_dict.get("metadata") or {})
+                ),
+            ),
+        )
 
-                # 2. Clear existing elements and gaps for this assembly
-                cursor.execute(
-                    "DELETE FROM assembly_elements WHERE assembly_id = ?",
-                    (assembly_id,),
-                )
-                cursor.execute(
-                    "DELETE FROM assembly_air_gaps WHERE assembly_id = ?",
-                    (assembly_id,),
-                )
+        # 2. Clear existing elements and gaps for this assembly
+        cursor.execute(
+            "DELETE FROM assembly_elements WHERE assembly_id = ?",
+            (assembly_id,),
+        )
+        cursor.execute(
+            "DELETE FROM assembly_air_gaps WHERE assembly_id = ?",
+            (assembly_id,),
+        )
 
-                # 3. Save elements
-                for i, elem in enumerate(assembly_dict.get("elements", [])):
-                    lens_data = elem.get("lens")
-                    self._save_lens_row(cursor, lens_data)
+        # 3. Save elements
+        for i, elem in enumerate(assembly_dict.get("elements", [])):
+            lens_data = elem.get("lens")
+            self._save_lens_row(cursor, lens_data, flatten_metadata=False)
 
-                    cursor.execute(
-                        """
-                        INSERT INTO assembly_elements
-                        (assembly_id, lens_id, position, order_index,
-                         decenter_y, decenter_z, tilt_x, tilt_y, tilt_z)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                        (
-                            assembly_id,
-                            lens_data.get("id"),
-                            elem.get("position"),
-                            i,
-                            float(elem.get("decenter_y", 0.0) or 0.0),
-                            float(elem.get("decenter_z", 0.0) or 0.0),
-                            float(elem.get("tilt_x", 0.0) or 0.0),
-                            float(elem.get("tilt_y", 0.0) or 0.0),
-                            float(elem.get("tilt_z", 0.0) or 0.0),
-                        ),
-                    )
+            cursor.execute(
+                """
+                INSERT INTO assembly_elements
+                (assembly_id, lens_id, position, order_index,
+                 decenter_y, decenter_z, tilt_x, tilt_y, tilt_z)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    assembly_id,
+                    lens_data.get("id"),
+                    elem.get("position"),
+                    i,
+                    float(elem.get("decenter_y", 0.0) or 0.0),
+                    float(elem.get("decenter_z", 0.0) or 0.0),
+                    float(elem.get("tilt_x", 0.0) or 0.0),
+                    float(elem.get("tilt_y", 0.0) or 0.0),
+                    float(elem.get("tilt_z", 0.0) or 0.0),
+                ),
+            )
 
-                # 4. Save air gaps
-                for i, gap in enumerate(assembly_dict.get("air_gaps", [])):
-                    cursor.execute(
-                        """
-                        INSERT INTO assembly_air_gaps (assembly_id, thickness, position, order_index)
-                        VALUES (?, ?, ?, ?)
-                    """,
-                        (assembly_id, gap.get("thickness"), gap.get("position"), i),
-                    )
-
-                cursor.execute("COMMIT")
-            except Exception as e:
-                cursor.execute("ROLLBACK")
-                logger.error("Failed to save assembly: %s", e)
-                raise
+        # 4. Save air gaps
+        for i, gap in enumerate(assembly_dict.get("air_gaps", [])):
+            cursor.execute(
+                """
+                INSERT INTO assembly_air_gaps (assembly_id, thickness, position, order_index)
+                VALUES (?, ?, ?, ?)
+            """,
+                (assembly_id, gap.get("thickness"), gap.get("position"), i),
+            )
 
     def load_all(self) -> List[Dict[str, Any]]:
         """Load all standalone lenses and assemblies.

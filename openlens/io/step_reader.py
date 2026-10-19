@@ -12,6 +12,8 @@ import logging
 import re
 from typing import Any, Dict, List, Tuple
 
+from ..validation import reject_oversized_file
+
 logger = logging.getLogger(__name__)
 
 # A Part 21 string literal is '...' with any apostrophe doubled (''), so the
@@ -82,7 +84,11 @@ def read_step_solids(filename: str) -> List[Dict[str, Any]]:
         List of dicts with ``id``, ``name``, ``points`` (list of
         ``(x, y, z)`` tuples in file order), ``z_min`` and ``z_max``
         (None when a solid owns no points).
+
+    Raises:
+        ValidationError: If the file exceeds the import size limit.
     """
+    reject_oversized_file(filename)
     with open(filename) as f:
         content = f.read()
 

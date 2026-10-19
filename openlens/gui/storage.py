@@ -164,28 +164,29 @@ class LensStorage:
             return False
 
         try:
-            # Serialize and save items to DB
-            for item in items:
-                item_dict = item.to_dict()
-                if isinstance(item, OpticalSystem) or item_dict.get("type") == "OpticalSystem":
-                    self.db.save_assembly(item_dict)
-                else:
-                    self.db.save_lens(item_dict)
+            # Serialize and save the whole snapshot in one transaction. The
+            # old per-item save_lens/save_assembly calls each committed, so a
+            # failure half-way left the earlier items persisted - half a save
+            # that looked like a successful one.
+            serialized = [item.to_dict() for item in items]
 
-            # Record library membership. Promotion is always safe: a lens handed to us as
-            # a library item is one. Demotion is not - save_lenses is free to
-            # receive a *partial* list (the CLI's lens-only view passes one),
-            # and reading "absent from this list" as "not a library item" would
-            # silently delete every library lens whenever a single assembly was
-            # saved. Only reconcile, which by contract means the caller owns
-            # every stored object, is allowed to demote.
-            self.db.set_library_membership(
-                (
-                    item.id
-                    for item in items
-                    if not isinstance(item, OpticalSystem)
-                    and getattr(item, "type", None) != "OpticalSystem"
-                ),
+            # Record library membership in the same transaction. Promotion is
+            # always safe: a lens handed to us as a library item is one.
+            # Demotion is not - save_lenses is free to receive a *partial*
+            # list (the CLI's lens-only view passes one), and reading "absent
+            # from this list" as "not a library item" would silently delete
+            # every library lens whenever a single assembly was saved. Only
+            # reconcile, which by contract means the caller owns every stored
+            # object, is allowed to demote.
+            library_lens_ids = [
+                item.id
+                for item in items
+                if not isinstance(item, OpticalSystem)
+                and getattr(item, "type", None) != "OpticalSystem"
+            ]
+            self.db.save_library(
+                serialized,
+                library_lens_ids,
                 demote=library_snapshot or reconcile,
             )
 

@@ -92,8 +92,9 @@ class _WindowCase(unittest.TestCase):
     def _break_the_database(self):
         """Make every real save raise, the way an unwritable file would."""
         error = RuntimeError("table lenses has no column named is_parabolic_1")
-        self.storage.db.save_lens = mock.Mock(side_effect=error)
-        self.storage.db.save_assembly = mock.Mock(side_effect=error)
+        # LensStorage commits the whole snapshot through save_library; the
+        # per-item save_lens/save_assembly methods are no longer on that path.
+        self.storage.db.save_library = mock.Mock(side_effect=error)
 
     def _save(self):
         self.window._on_save()
