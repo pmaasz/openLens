@@ -1,6 +1,9 @@
+import logging
 from typing import List, Optional, Tuple, Any, Dict
 from .vector3 import Vector3, vec3
 from .transform import Matrix4x4
+
+logger = logging.getLogger(__name__)
 
 
 class OpticalNode:
@@ -96,17 +99,95 @@ class OpticalNode:
             "rotation": self.rotation.to_tuple(),
             "children": [child.to_dict() for child in self.children],
             "type": self.__class__.__name__,
+            # Serialized, so a modifier survives a save/load cycle instead of
+            # being silently dropped. These used to be omitted outright, which
+            # made to_dict lossy for any node carrying one.
+            "modifiers": [modifier.to_dict() for modifier in getattr(self, "modifiers", [])],
         }
 
 
 class SurfaceModifier:
-    """Base class for surface modifiers (Asphere, Coating, etc.)"""
+    """Base class for surface modifiers (Asphere, Coating, etc.).
 
-    def __init__(self, name: str = "Modifier"):
+    Note: no modifier is *applied* to geometry yet - get_local_transform uses
+    only position and rotation. Modifiers are therefore currently inert: they
+    round-trip faithfully but change no optical result. The serialization is
+    here so that the moment one of them does apply, saving a system no longer
+    silently discards it.
+    """
+
+    def __init__(self, name: str = "Modifier", **fields: Any):
         self.name = name
+        # Subclasses add their own attributes; kept generically so an unknown
+        # type can still round-trip its name and reported type.
+        for key, value in fields.items():
+            setattr(self, key, value)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"name": self.name, "type": self.__class__.__name__}
+        data = {"name": self.name, "type": self.__class__.__name__}
+        # Any extra attributes a subclass set are carried too, so a subclass
+        # that overrides nothing still does not lose its state.
+        for key, value in vars(self).items():
+            if key.startswith("_") or key == "name":
+                continue
+            data.setdefault(key, value)
+        return data
+
+
+#: Modifier classes that :func:`modifier_from_dict` can rebuild. Empty for now -
+#: SurfaceModifier has no subclasses - but an unknown type is preserved rather
+#: than discarded, which is the difference between a warning and data loss.
+MODIFIER_REGISTRY: Dict[str, type] = {
+    # The base type is registered by definition. Anything else has to opt in.
+    SurfaceModifier.__name__: SurfaceModifier,
+}
+
+
+def register_modifier(cls: type) -> type:
+    """Register a modifier class so it can be restored from a saved file.
+
+    Args:
+        cls: The SurfaceModifier subclass to register.
+
+    Returns:
+        The class, unchanged, so this can be used as a decorator.
+    """
+    MODIFIER_REGISTRY[cls.__name__] = cls
+    return cls
+
+
+def modifier_from_dict(data: Dict[str, Any]) -> SurfaceModifier:
+    """Rebuild one modifier from its serialized form.
+
+    An unregistered type is rebuilt as a generic SurfaceModifier that keeps the
+    name and the original type name, and a warning is logged: the data survives,
+    but its behaviour cannot be guaranteed until the class is available. That is
+    a materially better failure than dropping it.
+
+    Args:
+        data: A modifier dict from ``to_dict``.
+
+    Returns:
+        The reconstructed modifier.
+    """
+    type_name = data.get("type", SurfaceModifier.__name__)
+    cls = MODIFIER_REGISTRY.get(type_name)
+
+    if cls is not None:
+        known = {"name", "type"}
+        return cls(
+            name=data.get("name", "Modifier"), **{k: v for k, v in data.items() if k not in known}
+        )
+
+    logger.warning(
+        "Modifier type %r is not registered; restored as a generic "
+        "SurfaceModifier named %r. Its behaviour is not guaranteed.",
+        type_name,
+        data.get("name"),
+    )
+    fields = {k: v for k, v in data.items() if k not in ("name", "type")}
+    fields["original_type"] = type_name
+    return SurfaceModifier(name=data.get("name", "Modifier"), **fields)
 
 
 class OpticalElement(OpticalNode):
@@ -132,7 +213,6 @@ class OpticalElement(OpticalNode):
         data = super().to_dict()
         if hasattr(self.element_model, "to_dict"):
             data["element_model"] = self.element_model.to_dict()
-        # TODO: Serialize modifiers
         return data
 
 

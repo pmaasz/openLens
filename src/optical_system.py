@@ -20,7 +20,12 @@ from .constants import (
     WAVELENGTH_GREEN,
     DEFAULT_MATERIAL_INDICES,
 )
-from .optical_node import OpticalElement, OpticalAssembly, OpticalNode
+from .optical_node import (
+    OpticalElement,
+    OpticalAssembly,
+    OpticalNode,
+    modifier_from_dict,
+)
 
 try:
     from .material_database import get_material_database
@@ -623,6 +628,10 @@ class OpticalSystem:
             node.position = vec3(*(float(v) for v in position))
             node.rotation = vec3(*(float(v) for v in rotation))
             node.parent = parent
+            if isinstance(node, OpticalElement):
+                node.modifiers = [
+                    modifier_from_dict(entry) for entry in node_data.get("modifiers") or []
+                ]
             for child_data in node_data.get("children") or []:
                 node.children.append(build(child_data, node))
             return node
