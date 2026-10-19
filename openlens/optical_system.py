@@ -36,6 +36,7 @@ except ImportError:
     HAS_MATERIAL_DATABASE = False
 from .vector3 import vec3
 from .atomic import atomic_write_text
+from .validation import reject_non_finite_numbers, reject_oversized_file
 
 logger = logging.getLogger(__name__)
 
@@ -648,10 +649,18 @@ class OpticalSystem:
 
     @staticmethod
     def load(filename: str) -> Optional["OpticalSystem"]:
-        """Load optical system from JSON file"""
+        """Load optical system from JSON file.
+
+        The file is size-capped and every number is checked for NaN/Infinity:
+        ``json.load`` accepts the non-standard bare literals, and a NaN that
+        reaches the model compares false against every sanity threshold and
+        silently disables downstream checks.
+        """
         try:
+            reject_oversized_file(filename)
             with open(filename, "r") as f:
                 data = json.load(f)
+            reject_non_finite_numbers(data, "optical system")
             return OpticalSystem.from_dict(data)
         except Exception as e:
             logger.error("Error loading optical system: %s", e)

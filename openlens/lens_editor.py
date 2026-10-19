@@ -14,6 +14,7 @@ from .lens import Lens
 from .paths import default_db_path, resolve_db_path
 from .validation import (
     ValidationError,
+    check_physical_feasibility,
     validate_radius,
     validate_thickness,
     validate_diameter,
@@ -102,6 +103,11 @@ class LensManager:
         """
         print("\n=== Create New Optical Lens ===")
         name = input("Lens name: ").strip() or "Untitled"
+        try:
+            name = validate_lens_name(name)
+        except ValidationError as e:
+            print(f"  invalid name: {e}")
+            return None
 
         r1 = self._prompt_float(
             "Radius of curvature 1 (mm) [100.0]: ",
@@ -129,6 +135,14 @@ class LensManager:
             input("Type (Biconvex/Biconcave/Plano-Convex/etc) [Biconvex]: ").strip() or "Biconvex"
         )
         material = input("Material (BK7/Fused Silica/etc) [BK7]: ").strip() or "BK7"
+
+        # Same cross-parameter check the GUI runs before it accepts a lens:
+        # radii, thickness and diameter can each be valid on their own while
+        # the surfaces intersect inside the clear aperture.
+        feasible, reason = check_physical_feasibility(r1, r2, thickness, diameter)
+        if not feasible:
+            print(f"  cannot create lens: {reason}")
+            return None
 
         lens = Lens(
             name=name,
