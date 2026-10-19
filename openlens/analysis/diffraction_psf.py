@@ -1,4 +1,4 @@
-from ..constants import WAVELENGTH_GREEN
+from ..constants import PARAXIAL_LAUNCH_OFFSET_MM, WAVELENGTH_GREEN
 import math
 import logging
 from typing import Any, Optional
@@ -79,6 +79,7 @@ except ImportError:  # pragma: no cover - depends on the environment
 from ..vector3 import vec3
 from ..ray_tracer import Ray3D, SystemRayTracer3D
 from ..optical_system import OpticalSystem
+from .paraxial import find_paraxial_focus
 
 logger = logging.getLogger(__name__)
 
@@ -212,27 +213,19 @@ class WavefrontSensor:
         direction = vec3(dx, dy, 0)
 
         pupil_x = self.system.elements[0].position
-        start_x = pupil_x - 20.0
-        dist = pupil_x - start_x
+        # The pupil grid below launches from this plane; the shared paraxial
+        # search uses the same offset (#460).
+        dist = PARAXIAL_LAUNCH_OFFSET_MM
 
-        # 2. Gaussian image point from an on-axis paraxial ray.
-        para_ray = Ray3D(
-            origin=vec3(start_x, 0.001, 0),
-            direction=vec3(1, 0, 0),
-            wavelength=wavelength_mm,
-        )
-        self.tracer.trace_ray(para_ray)
-        if para_ray.terminated or len(para_ray.path) < 2:
-            logger.warning("Paraxial focus trace failed; cannot reference wavefront")
+        # 2. Gaussian image point from an on-axis paraxial ray. The shared
+        # search sets and restores the lenses for the wavelength.
+        x_focus = find_paraxial_focus(self.system, wavelength_nm, tracer=self.tracer)
+        if x_focus is None:
+            logger.warning(
+                "Paraxial focus unavailable (collimated exit or failed trace); "
+                "cannot reference wavefront"
+            )
             return _nan_map()
-        p2 = para_ray.path[-1]
-        p1 = para_ray.path[-2]
-        pdx = p2.x - p1.x
-        pdy = p2.y - p1.y
-        if abs(pdy) < 1e-12 or abs(pdx) < 1e-12:
-            logger.warning("Paraxial ray collimated; no finite image point")
-            return _nan_map()
-        x_focus = p1.x - p1.y * (pdx / pdy)
 
         # 3. Chief ray through the pupil centre; its image-plane intercept
         # is the reference-sphere centre Q.

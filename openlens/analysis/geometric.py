@@ -5,6 +5,7 @@ from ..vector3 import vec3
 from ..ray_tracer import Ray3D, SystemRayTracer3D
 from ..optical_system import OpticalSystem
 from ..constants import NM_TO_MM, WAVELENGTH_GREEN
+from .paraxial import find_paraxial_focus
 
 
 def _sagittal_focus_on_chief_ray(chief_ray: Ray3D, sag_ray: Ray3D) -> Optional[float]:
@@ -47,41 +48,14 @@ class GeometricTraceAnalysis:
     def _get_image_plane_x(self, wavelength_nm: float = WAVELENGTH_GREEN) -> float:
         """
         Determine the image plane position (paraxial focus) for the system.
+
+        The focus comes from the shared paraxial search (#460), which also
+        sets and restores the lens indices for ``wavelength_nm``.
         """
-        # Save state
-        original_states = []
-        for element in self.system.elements:
-            lens = element.lens
-            original_states.append((lens, lens.wavelength))
-            lens.update_refractive_index(wavelength_nm=wavelength_nm)
-
-        try:
-            # Trace paraxial ray
-            start_x = self.system.elements[0].position - 10.0
-            para_ray = Ray3D(
-                vec3(start_x, 0.001, 0),
-                vec3(1, 0, 0),
-                wavelength=wavelength_nm * NM_TO_MM,
-            )
-            self.tracer.trace_ray(para_ray)
-
-            if len(para_ray.path) >= 2:
-                p2 = para_ray.path[-1]
-                p1 = para_ray.path[-2]
-                dx = p2.x - p1.x
-                dy = p2.y - p1.y
-                if abs(dy) > 1e-9:
-                    slope = dy / dx
-                    x_focus = p1.x - p1.y / slope
-                    return x_focus
-
+        focus = find_paraxial_focus(self.system, wavelength_nm, tracer=self.tracer)
+        if focus is None:
             return self.system.get_total_length() + 10.0
-
-        finally:
-            # Restore state
-            for lens, wl in original_states:
-                lens.wavelength = wl
-                lens.update_refractive_index(wavelength_nm=wl)
+        return focus
 
     def calculate_ray_fan(
         self,

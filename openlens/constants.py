@@ -79,6 +79,13 @@ RAY_EXIT_PROPAGATION_3D_MM = 50.0  # draw length after the last element (3D)
 RAY_INTERSECTION_TOLERANCE = 1e-10
 MAX_RAY_PROPAGATION_DISTANCE = 1000.0  # mm
 
+# Paraxial-focus search (openlens/analysis/paraxial.py). The spot diagram,
+# geometric analysis and wavefront sensor all place the image plane with the
+# same near-axis ray; these constants keep the copies from drifting apart
+# again (#460).
+PARAXIAL_LAUNCH_OFFSET_MM = 10.0  # upstream of the first surface
+PARAXIAL_COLLIMATION_EPSILON = 1e-9  # exit-segment slope below which the ray is collimated
+
 # ==================== Aberration Constants ====================
 
 # Aberration quality thresholds (dimensionless)
