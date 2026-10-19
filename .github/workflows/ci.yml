@@ -110,6 +110,33 @@ jobs:
           print('imports OK')
           "
 
+  no-optional-deps:
+    name: Core without optional deps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1 libopengl0 libxkbcommon0 libdbus-1-3 libfontconfig1 libglib2.0-0
+      - name: Install the application only
+        # Deliberately NOT numpy, matplotlib, scipy or Pillow. AGENTS.md
+        # requires the app to start and run its core features without them,
+        # and nothing here could check that: every other job installs the full
+        # set, so a missing guard was invisible - the modules it protected were
+        # importable anyway.
+        run: |
+          pip install PySide6
+      - name: The application imports
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python3 -c "import openlens; print('openlens imports')"
+      - name: Core tests still pass
+        env:
+          QT_QPA_PLATFORM: offscreen
+          OPENLENS_SKIP_SLOW: "1"
+        run: python3 -m unittest tests.test_optional_dependency_guards -v
+
   coverage:
     name: Coverage
     needs: test

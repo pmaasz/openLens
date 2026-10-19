@@ -3,19 +3,36 @@ Image Simulation Module
 Simulates how test patterns and real images appear through the optical system.
 
 Requires:
-- numpy
-- matplotlib
-- PIL (Pillow)
+- numpy (optional - guarded)
+- matplotlib (optional - guarded)
+- PIL (Pillow) (optional - guarded)
 - scipy (optional, for advanced image processing)
 """
+
+# The annotations below are written against `np.ndarray`. Without this line they
+# are evaluated when each function is *defined*, and the optional-import guard
+# further down sets np = None when numpy is absent - so importing this module
+# raised "AttributeError: 'NoneType' object has no attribute 'ndarray'" instead
+# of simply reporting the missing dependency.
+from __future__ import annotations
 
 import logging
 import math
 
-import numpy as np
 from typing import Tuple, Optional, Dict, Any
 
 from .constants import WAVELENGTH_D_LINE, WAVELENGTH_GREEN
+
+# numpy is a soft dependency like scipy and Pillow below. Importing it
+# unguarded meant a machine without numpy could not import this module at all,
+# which took down anything that merely imported it.
+try:
+    import numpy as np
+
+    HAS_NUMPY = True
+except ImportError:  # pragma: no cover - environment guard
+    HAS_NUMPY = False
+    np = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 

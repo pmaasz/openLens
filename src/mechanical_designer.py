@@ -3,7 +3,12 @@ Mechanical Design Module
 Handles lens housing, mounting, and spacing calculations.
 """
 
-import numpy as np
+# math.pi, not np.pi: this module's only use of numpy was the constant, and
+# importing numpy here meant a missing numpy - a *soft* dependency everywhere
+# else in the project - took down mechanical design too. It also misreported
+# the failure as a missing pythonocc-core, because callers that catch ImportError
+# around the CAD imports attribute it to the wrong package.
+import math
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 
@@ -57,8 +62,8 @@ class LensCell:
         density = densities.get(self.material.lower(), 2.7)
 
         # Volume calculation
-        outer_volume = np.pi * (self.outer_diameter / 2) ** 2 * self.length
-        inner_volume = np.pi * (self.inner_diameter / 2) ** 2 * self.length
+        outer_volume = math.pi * (self.outer_diameter / 2) ** 2 * self.length
+        inner_volume = math.pi * (self.inner_diameter / 2) ** 2 * self.length
         volume_mm3 = outer_volume - inner_volume
         volume_cm3 = volume_mm3 / 1000
 
@@ -315,7 +320,7 @@ class MechanicalDesigner:
         # Spacer weights (simplified)
         for spacer in self.spacers:
             volume_cm3 = (
-                np.pi
+                math.pi
                 * ((spacer.outer_diameter / 2) ** 2 - (spacer.inner_diameter / 2) ** 2)
                 * spacer.thickness
             ) / 1000

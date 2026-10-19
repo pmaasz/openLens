@@ -16,6 +16,7 @@ import ast
 import os
 import subprocess
 import unittest
+from pathlib import Path
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SETUP_PY = os.path.join(REPO_ROOT, "setup.py")
@@ -180,17 +181,32 @@ class TestInstallRequirementsMatchReality(unittest.TestCase):
     def setUpClass(cls):
         cls.config = _setup_config()
 
-    def test_numpy_is_a_hard_requirement(self):
-        """openlens.py imports src.analysis.plots, which imports numpy unguarded."""
+    def test_numpy_is_not_a_hard_requirement(self):
+        """It was, for exactly one reason: unguarded imports.
+
+        This assertion was added when src/analysis/plots.py imported numpy at
+        module level and openlens.py imported that module unconditionally - so a
+        plain `pip install openlens` raised ImportError at startup.
+
+        Those imports are guarded now (#476), and the core does not need numpy:
+        Lens, the ray tracer and focal length all run without it. Requiring it
+        made every one of those guards dead code, and quietly narrowed what
+        AGENTS.md means by an optional dependency.
+        """
         requirements = " ".join(self.config.get("install_requires", []))
 
-        self.assertIn(
+        self.assertNotIn(
             "numpy",
             requirements.lower(),
-            "numpy is imported unconditionally at module load by "
-            "src/analysis/plots.py, which openlens.py imports, so a plain "
-            "'pip install openlens' crashes at startup",
+            "numpy is guarded at every use site and the core optics run without "
+            "it; requiring it contradicts the guards it was added to avoid",
         )
+
+    def test_numpy_is_still_offered_as_an_extra(self):
+        setup_py = (Path(__file__).resolve().parent.parent / "setup.py").read_text()
+        extras = setup_py.split("extras_require")[1]
+
+        self.assertIn("numpy", extras, "removing the hard requirement must not remove the extra")
 
     def test_pyside_is_a_hard_requirement(self):
         requirements = " ".join(self.config.get("install_requires", []))

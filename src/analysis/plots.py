@@ -9,7 +9,18 @@ src/analysis/ instead of inline in window code.
 
 from typing import List
 
-import numpy as np
+# matplotlib and numpy are soft dependencies: the application must start and
+# run its core features without them. openlens.py imports this module at module
+# level, so an unguarded `import numpy as np` here meant the whole GUI failed
+# to launch on a machine without numpy, rather than only the plots going
+# missing.
+try:
+    import numpy as np
+
+    HAS_NUMPY = True
+except ImportError:  # pragma: no cover - environment guard
+    HAS_NUMPY = False
+    np = None  # type: ignore[assignment]
 
 from ..constants import (
     COLOR_LENS_BAD,
