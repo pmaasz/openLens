@@ -27,6 +27,7 @@ from openlens.gui.widgets import LensEditorWidget
 from openlens.gui.tabs import (SimulationTab, PerformanceTab,
                           AssemblyTab, OptimizationTab, TolerancingTab)
 from openlens.gui.dialogs import StartupDialog, require_analysis_plot_dialog
+from openlens.gui.workers import stop_worker
 from openlens.gui.theme import (
     DARK, LIGHT, get_app_stylesheet, get_menubar_qss,
     get_status_bar_qss, get_tab_widget_qss,
@@ -696,10 +697,8 @@ class OpenLensWindow(QMainWindow):
     def _stop_worker(self, worker, timeout_ms: int = 3000) -> bool:
         """Stop one QThread and report whether it actually stopped.
 
-        Cooperative first, then terminate, then wait. Terminating a thread
-        mid-write can leave a partially updated object behind, so it is only
-        reached when the worker ignored the request - typically because it is
-        inside one long evaluation with no callback boundary to return at.
+        Thin wrapper over ``openlens.gui.workers.stop_worker`` so the window's
+        quit sweep and a dialog closing on its own worker share one policy.
 
         Args:
             worker: The QThread to stop, or None.
@@ -710,29 +709,7 @@ class OpenLensWindow(QMainWindow):
             True once the thread is known to be finished, so its last Python
             reference can safely be dropped.
         """
-        if worker is None:
-            return True
-
-        try:
-            if not worker.isRunning():
-                return True
-        except Exception as e:
-            # Unknown state: report "not stopped" rather than guess, so the
-            # caller keeps the reference. Dropping a live QThread's last
-            # reference makes CPython destroy it and ~QThread aborts.
-            logger.debug("Could not query worker state: %s", e)
-            return False
-
-        try:
-            worker.requestInterruption()
-            if not worker.wait(timeout_ms):
-                worker.terminate()
-                worker.wait()
-        except Exception as e:
-            logger.warning("Could not stop worker cleanly: %s", e)
-            return False
-
-        return True
+        return stop_worker(worker, timeout_ms)
 
     def _shutdown_workers(self) -> None:
         """Stop every worker thread the window owns.
@@ -755,6 +732,11 @@ class OpenLensWindow(QMainWindow):
                 if self._stop_worker(getattr(tol_tab, name, None)):
                     # Only safe to drop once the thread is known to be done.
                     setattr(tol_tab, name, None)
+
+        perf_tab = getattr(self, '_perf_tab', None)
+        if perf_tab is not None:
+            if self._stop_worker(getattr(perf_tab, '_metrics_worker', None)):
+                perf_tab._metrics_worker = None
 
         for dialog in list(getattr(self, '_analysis_dialogs', []) or []):
             if self._stop_worker(getattr(dialog, '_pending_worker', None)):
@@ -799,6 +781,11 @@ class OpenLensWindow(QMainWindow):
             for name in ("_mc_worker", "_inv_worker"):
                 if self._worker_still_running(getattr(tol_tab, name, None)):
                     running += 1
+
+        perf_tab = getattr(self, '_perf_tab', None)
+        if perf_tab is not None:
+            if self._worker_still_running(getattr(perf_tab, '_metrics_worker', None)):
+                running += 1
 
         for dialog in list(getattr(self, '_analysis_dialogs', []) or []):
             if self._worker_still_running(getattr(dialog, '_pending_worker', None)):
@@ -1272,7 +1259,7 @@ Ctrl+6         Tolerancing
             logger.error("Report export failed: %s", e)
             QMessageBox.critical(self, "Export Error", f"Failed to export report: {e}")
 
-    def _open_analysis_dialog(self, title, compute, plot) -> None:
+    def _open_analysis_dialog(self, title, compute, plot, columns: int = 1) -> None:
         """Open an analysis dialog that computes off the GUI thread.
 
         The heavy work (wavefront sampling, PSF/MTF synthesis, ghost tracing)
@@ -1284,7 +1271,10 @@ Ctrl+6         Tolerancing
         Args:
             title: Dialog window title.
             compute: Zero-argument callable doing the analysis.
-            plot: Callable receiving (axes, payload) to paint the result.
+            plot: Callable receiving (axes, payload) to paint the result. A
+                single Axes unless ``columns > 1``, then a tuple of axes.
+            columns: How many side-by-side panels the analysis draws into.
+                Field curves need two.
 
         Raises:
             ImportError: If matplotlib is unavailable. Resolved through
@@ -1302,7 +1292,7 @@ Ctrl+6         Tolerancing
         self._analysis_dialogs.append(dialog)
         dialog.finished.connect(lambda _code=0: self._on_analysis_dialog_closed(dialog))
 
-        dialog.plot_async(compute, plot)
+        dialog.plot_async(compute, plot, columns=columns)
 
     def _on_analysis_dialog_closed(self, dialog) -> None:
         """Release a closed dialog, but only once its worker has stopped."""

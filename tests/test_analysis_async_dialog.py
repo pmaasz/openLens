@@ -221,6 +221,54 @@ class TestPlotAsync(unittest.TestCase):
         dialog.close()
 
 
+class TestMultiPanelPlots(unittest.TestCase):
+    """Field curves need two side-by-side panels, painted by one compute.
+
+    ``plot_async`` historically handed its callback a single axes. A two-panel
+    analysis therefore cannot use the helper at all without stacking a second
+    subplot by hand - and then the "Calculating" placeholder and the finished
+    plot disagree about which axes they own.
+    """
+
+    def setUp(self):
+        _ensure_app()
+
+    def test_two_columns_hand_the_plot_two_axes(self):
+        dialog = AnalysisPlotDialog("Test", None)
+        seen = []
+
+        def _plot(axes, payload):
+            seen.append(axes)
+            left, right = axes
+            self.assertEqual(len(axes), 2)
+            left.plot([0, 1], [0, payload])
+            right.plot([0, 1], [payload, 0])
+
+        dialog.plot_async(lambda: 1, _plot, columns=2)
+        _run_until(lambda: bool(seen))
+
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(len(dialog.figure.axes), 2)
+        self.assertEqual(len(dialog.figure.axes[0].lines), 1)
+        self.assertEqual(len(dialog.figure.axes[1].lines), 1)
+        dialog.close()
+
+    def test_two_columns_are_reused_not_stacked(self):
+        """A second run must replace the result, not add a third subplot."""
+        dialog = AnalysisPlotDialog("Test", None)
+
+        for value in (1, 2):
+            dialog.plot_async(
+                lambda v=value: v,
+                lambda axes, payload: axes[0].plot([0, payload]),
+                columns=2,
+            )
+            _run_until(lambda: dialog._pending_worker is None)
+
+        self.assertEqual(len(dialog.figure.axes), 2)
+        dialog.close()
+
+
 class TestShowComputingDialog(unittest.TestCase):
     def setUp(self):
         _ensure_app()

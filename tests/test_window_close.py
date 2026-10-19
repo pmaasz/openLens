@@ -283,6 +283,27 @@ class TestWorkersAreStopped(unittest.TestCase):
 
         self.assertTrue(worker.interrupted, "quitting left an analysis thread running")
 
+    def test_a_running_metrics_worker_is_interrupted(self):
+        """The Performance tab's Calculate Metrics runs in its own worker."""
+        worker = _Worker()
+        self.window._perf_tab = type("P", (), {"_metrics_worker": worker})()
+
+        self.window._shutdown_workers()
+
+        self.assertTrue(worker.interrupted, "quitting left a metrics trace running")
+
+    def test_a_stopped_metrics_worker_reference_is_released(self):
+        worker = _Worker()
+        tab = type("P", (), {"_metrics_worker": worker})()
+        self.window._perf_tab = tab
+
+        self.window._shutdown_workers()
+
+        self.assertIsNone(
+            tab._metrics_worker,
+            msg="the reference was kept for a thread that had already stopped",
+        )
+
     def test_a_finished_analysis_dialog_is_retired(self):
         dialog = type("D", (), {"_pending_worker": _Worker(running=False)})()
         self.window._analysis_dialogs = [dialog]
@@ -440,6 +461,17 @@ class TestRunningWorkIsConfirmedBeforeQuit(unittest.TestCase):
         self.window.closeEvent(_CloseEvent())
 
         self.assertEqual(self.window.confirmations, [])
+
+    def test_a_running_metrics_worker_is_counted(self):
+        self.window._perf_tab = type("P", (), {"_metrics_worker": _Worker()})()
+
+        self.window.closeEvent(_CloseEvent())
+
+        self.assertEqual(
+            self.window.confirmations,
+            [1],
+            msg="quitting would discard a running metrics calculation without asking",
+        )
 
     def test_a_worker_with_unknown_state_is_counted(self):
         """Unknown is treated as running: a needless prompt costs one click,

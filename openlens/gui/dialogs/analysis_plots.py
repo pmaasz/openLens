@@ -6,7 +6,6 @@ Reusable dialog for displaying Matplotlib plots
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
-from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -19,46 +18,13 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
+from ..workers import AnalysisWorker
+
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from PySide6.QtWidgets import QWidget
 
 logger = logging.getLogger(__name__)
-
-
-class AnalysisWorker(QThread):
-    """Runs one analysis off the GUI thread and hands back its payload.
-
-    Every analysis dialog used to do its multi-second computation *before*
-    creating a window, so nothing was on screen and the app simply looked
-    hung. Computing in a worker lets the dialog be up and repainting first.
-
-    Only the analysis runs here; matplotlib painting stays on the GUI thread,
-    which Qt requires and the signal connection provides.
-    """
-
-    #: Emitted with whatever ``compute()`` returned.
-    done = Signal(object)
-    #: Emitted with the failure message when ``compute()`` raises.
-    failed = Signal(str)
-
-    def __init__(self, compute: Callable[[], Any], parent: Optional["QThread"] = None) -> None:
-        """Initialize the worker.
-
-        Args:
-            compute: Zero-argument callable doing the heavy analysis.
-            parent: Optional owning thread, for orderly teardown.
-        """
-        super().__init__(parent)
-        self._compute = compute
-
-    def run(self) -> None:
-        """Execute the analysis, reporting success or failure."""
-        try:
-            self.done.emit(self._compute())
-        except Exception as exc:  # noqa: BLE001 - reported to the user via failed
-            logger.error("Analysis computation failed: %s", exc, exc_info=True)
-            self.failed.emit(str(exc))
 
 
 class AnalysisPlotDialog(QDialog):
@@ -99,8 +65,10 @@ class AnalysisPlotDialog(QDialog):
 
         # Holds the in-flight AnalysisWorker so Qt does not collect it.
         self._pending_worker = None
-        # The single axes drawn into by show_computing/plot_async.
+        # The axes drawn into by show_computing/plot_async, created on first
+        # use and rebuilt when the requested panel count changes.
         self._content_ax = None
+        self._content_axes_list = None
 
     def get_axes(self, *args: Any, **kwargs: Any) -> "Axes":
         """Get axes for the figure, setting dark theme if needed.
@@ -133,36 +101,58 @@ class AnalysisPlotDialog(QDialog):
         dark = getattr(self.parent(), "_theme", "dark") == "dark"
         return "#e0e0e0" if dark else "black"
 
-    def _content_axes(self) -> "Axes":
-        """The one axes this dialog draws into, created on first use.
+    def _content_axes(self, columns: int = 1):
+        """The axes this dialog draws into, created (or rebuilt) on first use.
 
         Reused rather than re-created per run: calling ``get_axes()`` for both
         the status line and the result would stack a fresh subplot on every
-        analysis and leave the stale "Calculating" axes on the figure.
-        """
-        if self._content_ax is None:
-            self._content_ax = self.get_axes()
-        return self._content_ax
+        analysis and leave the stale "Calculating" axes on the figure. A
+        multi-panel analysis (field curves) asks for several columns; the
+        figure is rebuilt when the requested count differs from the current
+        one, so a second run with another count cannot stack panels.
 
-    def show_computing(self, message: str = "Calculating…") -> None:
+        Args:
+            columns: How many side-by-side axes the analysis needs.
+
+        Returns:
+            A single Axes when ``columns == 1`` - the historical contract -
+            otherwise a tuple of that many axes, left to right.
+        """
+        if self._content_axes_list is None or len(self._content_axes_list) != columns:
+            self.figure.clear()
+            self._content_axes_list = [
+                self.get_axes(1, columns, index + 1) for index in range(columns)
+            ]
+        if columns == 1:
+            self._content_ax = self._content_axes_list[0]
+            return self._content_ax
+        return tuple(self._content_axes_list)
+
+    def show_computing(self, message: str = "Calculating…", columns: int = 1) -> None:
         """Paint a status line and make sure the window is on screen.
 
         Called before any expensive analysis, so the user sees a window
         immediately rather than a frozen app.
+
+        Args:
+            message: Status line to paint on the first panel.
+            columns: How many panels the analysis will draw into.
         """
-        ax = self._content_axes()
-        ax.clear()
-        ax.text(
+        axes = self._content_axes(columns)
+        panels = axes if isinstance(axes, tuple) else (axes,)
+        for panel in panels:
+            panel.clear()
+            panel.set_axis_off()
+        panels[0].text(
             0.5,
             0.5,
             message,
             ha="center",
             va="center",
-            transform=ax.transAxes,
+            transform=panels[0].transAxes,
             fontsize=12,
             color=self._text_color(),
         )
-        ax.set_axis_off()
         self.canvas.draw_idle()
         self.show()
         # Without this the show() above is only queued, so the work that
@@ -173,36 +163,44 @@ class AnalysisPlotDialog(QDialog):
     def plot_async(
         self,
         compute: Callable[[], Any],
-        plot: Callable[["Axes", Any], None],
+        plot: Callable[[Any, Any], None],
+        columns: int = 1,
     ) -> None:
         """Compute in a worker thread, then paint the result on the GUI thread.
 
         Args:
             compute: Zero-argument callable performing the heavy analysis.
             plot: Callable receiving the axes and the computed payload, and
-                painting the finished plot.
+                painting the finished plot. A single Axes when ``columns == 1``,
+                otherwise a tuple of axes.
+            columns: How many side-by-side panels to draw into.
         """
-        self.show_computing()
+        self.show_computing(columns=columns)
 
         def _on_done(payload: Any) -> None:
             # Delivered on the GUI thread via the queued signal connection.
-            ax = self._content_axes()
-            ax.clear()
-            ax.set_axis_on()
-            plot(ax, payload)
+            axes = self._content_axes(columns)
+            panels = axes if isinstance(axes, tuple) else (axes,)
+            for panel in panels:
+                panel.clear()
+                panel.set_axis_on()
+            plot(axes, payload)
             self.canvas.draw_idle()
 
         def _on_failed(message: str) -> None:
-            ax = self._content_axes()
-            ax.clear()
-            ax.set_axis_on()
-            ax.text(
+            axes = self._content_axes(columns)
+            panels = axes if isinstance(axes, tuple) else (axes,)
+            for panel in panels:
+                panel.clear()
+                panel.set_axis_off()
+            panels[0].set_axis_on()
+            panels[0].text(
                 0.5,
                 0.5,
                 f"Analysis failed:\n{message}",
                 ha="center",
                 va="center",
-                transform=ax.transAxes,
+                transform=panels[0].transAxes,
                 fontsize=10,
                 color=self._text_color(),
             )
