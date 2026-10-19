@@ -24,7 +24,7 @@ import tempfile
 import unittest
 from collections import defaultdict
 
-from src.stl_export import STLExporter
+from openlens.stl_export import STLExporter
 
 
 def _triangle_normal(tri):

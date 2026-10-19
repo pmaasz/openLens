@@ -28,7 +28,7 @@ if PYSIDE_AVAILABLE:
 
 def _window_class():
     """Import the main window lazily: it pulls in the whole GUI."""
-    from openlens import OpenLensWindow
+    from openlens.__main__ import OpenLensWindow
 
     return OpenLensWindow
 
@@ -143,7 +143,7 @@ class TestThePendingEditIsCommitted(unittest.TestCase):
         """
         from PySide6.QtCore import QTimer
 
-        from openlens import OpenLensWindow
+        from openlens.__main__ import OpenLensWindow
 
         window = OpenLensWindow.__new__(OpenLensWindow)
         window._pending_edit_status = "edited"
@@ -168,7 +168,7 @@ class TestThePendingEditIsCommitted(unittest.TestCase):
     def test_closing_with_no_debounce_pending_still_saves_nothing_extra(self):
         from PySide6.QtCore import QTimer
 
-        from openlens import OpenLensWindow
+        from openlens.__main__ import OpenLensWindow
 
         window = OpenLensWindow.__new__(OpenLensWindow)
         window._pending_edit_status = None
@@ -370,7 +370,7 @@ class TestStopWorkerEdgeCases(unittest.TestCase):
 @unittest.skipUnless(PYSIDE_AVAILABLE, "PySide6 not available")
 class TestTheWindowReallyHasCloseEvent(unittest.TestCase):
     def test_main_window_defines_close_event(self):
-        from openlens import OpenLensWindow
+        from openlens.__main__ import OpenLensWindow
 
         self.assertTrue(
             hasattr(OpenLensWindow, "closeEvent"),

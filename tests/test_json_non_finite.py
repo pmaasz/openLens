@@ -23,8 +23,8 @@ path and the payload before constructing anything.
 import json
 import unittest
 
-from src.lens import Lens
-from src.validation import (
+from openlens.lens import Lens
+from openlens.validation import (
     ValidationError,
     reject_non_finite_numbers,
     validate_lens_data_schema,
@@ -160,7 +160,7 @@ class TestImportPathValidates(unittest.TestCase):
     def _startup_source(self):
         import inspect
 
-        from src.gui.dialogs.startup import StartupDialog
+        from openlens.gui.dialogs.startup import StartupDialog
 
         return inspect.getsource(StartupDialog)
 

@@ -20,9 +20,9 @@ produces.
 
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.vector3 import vec3
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.vector3 import vec3
 
 
 def _system():

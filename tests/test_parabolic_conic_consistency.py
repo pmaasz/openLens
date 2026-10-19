@@ -29,9 +29,9 @@ _intersect_sphere_surface already treats it.
 import math
 import unittest
 
-from src.lens import Lens
-from src.ray import Ray
-from src.tracer_2d import LensRayTracer
+from openlens.lens import Lens
+from openlens.ray import Ray
+from openlens.tracer_2d import LensRayTracer
 
 
 def _parabolic(clear_aperture=None):
@@ -128,7 +128,7 @@ class TestClearApertureStillVignettes(unittest.TestCase):
 
 class TestParabolicTracingUnaffected(unittest.TestCase):
     def test_ray_through_the_parabolic_lens(self):
-        from src.lens import Lens as _L
+        from openlens.lens import Lens as _L
 
         lens = _L(
             name="plano",

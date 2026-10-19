@@ -11,9 +11,9 @@ import tempfile
 from datetime import datetime
 import sys
 
-from src.constants import DEFAULT_DIAMETER
-from src.lens import Lens
-from src.lens_editor import LensManager
+from openlens.constants import DEFAULT_DIAMETER
+from openlens.lens import Lens
+from openlens.lens_editor import LensManager
 
 
 class TestLens(unittest.TestCase):

@@ -13,7 +13,7 @@ if [ -d "venv" ]; then
     
     # Launch the application
     echo "Launching OpenLens GUI..."
-    python3 openlens.py
+    python3 -m openlens
     
     # Deactivate when done
     deactivate

@@ -10,7 +10,7 @@
       "extra-files": [
         {
           "type": "generic",
-          "path": "src/__init__.py"
+          "path": "openlens/__init__.py"
         }
       ]
     }

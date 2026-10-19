@@ -2,7 +2,7 @@
 """
 One canonical preset library, and no lost catalogue content.
 
-src/preset_library.py and src/preset_lenses.py both exported
+openlens/preset_library.py and openlens/preset_lenses.py both exported
 get_preset_library() with the same name and the same intent but opposite
 shapes:
 
@@ -15,7 +15,7 @@ import_custom_preset on the factory version was a no-op - the imported preset
 was discarded on the next call - and the two test suites encoded
 contradictory contracts. Neither module was wired into the GUI.
 
-src/preset_library.py is the survivor (typed LensPreset, singleton,
+openlens/preset_library.py is the survivor (typed LensPreset, singleton,
 category listing, and get_lens_copy's to_dict/from_dict round-trip). This
 suite covers the survivor, the catalogue migrated over from the retired
 module, and the absence of the duplicate.
@@ -27,18 +27,18 @@ dict-based API.
 import math
 import unittest
 
-from src.constants import LARGE_NUMBER
-from src.lens import Lens, _is_flat
-from src.preset_library import FLAT_RADIUS
-from src.validation import ValidationError
-from src.preset_library import (
+from openlens.constants import LARGE_NUMBER
+from openlens.lens import Lens, _is_flat
+from openlens.preset_library import FLAT_RADIUS
+from openlens.validation import ValidationError
+from openlens.preset_library import (
     LensPreset,
     PresetLibrary,
     _CATALOG_PRESETS,
     get_preset_library,
 )
 
-# Presets that existed only in the retired src/preset_lenses.py.
+# Presets that existed only in the retired openlens/preset_lenses.py.
 MIGRATED = (
     "Symmetric Biconvex",
     "Kellner Eyepiece",
@@ -55,18 +55,18 @@ class TestRetiredModuleIsGone(unittest.TestCase):
     def test_preset_lenses_no_longer_imports(self):
         """The duplicate public name must not come back."""
         with self.assertRaises(ImportError):
-            import src.preset_lenses  # noqa: F401
+            import openlens.preset_lenses  # noqa: F401
 
     def test_only_one_module_defines_get_preset_library(self):
         import pkgutil
 
-        import src
+        import openlens
 
         found = []
-        for info in pkgutil.iter_modules(src.__path__):
+        for info in pkgutil.iter_modules(openlens.__path__):
             if not info.name.startswith("preset"):
                 continue
-            module = __import__("src.%s" % info.name, fromlist=["*"])
+            module = __import__("openlens.%s" % info.name, fromlist=["*"])
             if hasattr(module, "get_preset_library"):
                 found.append(info.name)
         self.assertEqual(found, ["preset_library"])
@@ -219,7 +219,7 @@ class TestFlatSurfaceConvention(unittest.TestCase):
     def test_no_bare_large_literal_remains(self):
         import inspect
 
-        import src.preset_library as module
+        import openlens.preset_library as module
 
         self.assertNotIn("radius_of_curvature_2=1e10", inspect.getsource(module))
 
@@ -230,7 +230,7 @@ class TestFlatSurfaceConvention(unittest.TestCase):
         no flat radius satisfies it. A flat radius is therefore internal-only
         and must not be round-tripped through that validator.
         """
-        from src.validation import MAX_RADIUS_OF_CURVATURE, validate_radius
+        from openlens.validation import MAX_RADIUS_OF_CURVATURE, validate_radius
 
         for candidate in (FLAT_RADIUS, LARGE_NUMBER, LARGE_NUMBER * 2):
             with self.subTest(candidate=candidate):

@@ -26,9 +26,9 @@ except ImportError as _e:
     PYSIDE_AVAILABLE = False
     _PYSIDE_ERROR = _e
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.gui.storage import LensStorage
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.gui.storage import LensStorage
 
 if not PYSIDE_AVAILABLE:
 
@@ -46,12 +46,12 @@ else:
             fd, self.db_path = tempfile.mkstemp(suffix=".db")
             os.close(fd)
             self.app = QApplication.instance() or QApplication(sys.argv)
-            import openlens
+            import openlens.__main__ as openlens
 
             self.openlens = openlens
             self.window = openlens.OpenLensWindow()
             self.window._db_path = self.db_path
-            from src.gui.storage import LensStorage
+            from openlens.gui.storage import LensStorage
 
             self.storage = LensStorage(self.db_path)
             self.window._storage = self.storage

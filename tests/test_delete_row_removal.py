@@ -29,10 +29,10 @@ if os.environ.get("DISPLAY", "") == "" and sys.platform.startswith("linux"):
 try:
     from PySide6.QtWidgets import QApplication, QListWidget, QMessageBox
 
-    from src.gui.dialogs.startup import StartupDialog
-    from src.gui.storage import LensStorage
-    from src.lens import Lens
-    from src.optical_system import OpticalSystem
+    from openlens.gui.dialogs.startup import StartupDialog
+    from openlens.gui.storage import LensStorage
+    from openlens.lens import Lens
+    from openlens.optical_system import OpticalSystem
 
     PYSIDE_AVAILABLE = True
     _PYSIDE_ERROR = None
@@ -80,7 +80,7 @@ class TestCliDeleteRemovesTheRow(_DbCase):
     """LensManager.delete_lens."""
 
     def _manager(self):
-        from src.lens_editor import LensManager
+        from openlens.lens_editor import LensManager
 
         return LensManager(self.path)
 
@@ -121,7 +121,7 @@ class TestStartupDialogDeleteRemovesTheRow(_DbCase):
         widget = _widget_for(dialog._all_items)
 
         with mock.patch(
-            "src.gui.dialogs.startup.QMessageBox.question", return_value=QMessageBox.Yes
+            "openlens.gui.dialogs.startup.QMessageBox.question", return_value=QMessageBox.Yes
         ):
             dialog._on_delete(widget, dialog._all_items, "lens")
 
@@ -133,7 +133,7 @@ class TestStartupDialogDeleteRemovesTheRow(_DbCase):
         widget = _widget_for(dialog._all_items)
 
         with mock.patch(
-            "src.gui.dialogs.startup.QMessageBox.question", return_value=QMessageBox.No
+            "openlens.gui.dialogs.startup.QMessageBox.question", return_value=QMessageBox.No
         ):
             dialog._on_delete(widget, dialog._all_items, "lens")
 
@@ -146,7 +146,7 @@ class TestStartupDialogDeleteRemovesTheRow(_DbCase):
         widget = _widget_for(dialog._all_items)
 
         with mock.patch(
-            "src.gui.dialogs.startup.QMessageBox.question", return_value=QMessageBox.Yes
+            "openlens.gui.dialogs.startup.QMessageBox.question", return_value=QMessageBox.Yes
         ):
             dialog._on_delete(widget, dialog._all_items, "lens")
 
@@ -174,8 +174,8 @@ class TestStartupDialogRespectsTheInUseGuard(_DbCase):
         widget = _widget_for(dialog._all_items, select_id="lens-1")
 
         with mock.patch(
-            "src.gui.dialogs.startup.QMessageBox.question", return_value=QMessageBox.Yes
-        ), mock.patch("src.gui.dialogs.startup.QMessageBox.warning") as warning:
+            "openlens.gui.dialogs.startup.QMessageBox.question", return_value=QMessageBox.Yes
+        ), mock.patch("openlens.gui.dialogs.startup.QMessageBox.warning") as warning:
             dialog._on_delete(widget, dialog._all_items, "lens")
 
         self.assertEqual(warning.call_count, 1, "the in-use guard was not reported")

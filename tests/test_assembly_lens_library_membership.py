@@ -22,9 +22,9 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.database import DatabaseManager, LensInUseError
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.database import DatabaseManager, LensInUseError
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _lens(name="L1", radius=50.0):
@@ -48,7 +48,7 @@ def _assembly(*lenses, name="A"):
 
 class _DbFixture(unittest.TestCase):
     def setUp(self):
-        from src.gui.storage import LensStorage
+        from openlens.gui.storage import LensStorage
 
         handle, self.path = tempfile.mkstemp(suffix=".db")
         os.close(handle)
@@ -221,7 +221,7 @@ class TestTheInUseGuardIsNotLoggedAsAFailure(_DbFixture):
                 records.append(record)
 
         handler = _Capture(level=level)
-        logger = logging.getLogger("src.database")
+        logger = logging.getLogger("openlens.database")
         # The logger's level filters records before the handler ever sees them,
         # so capturing DEBUG means setting it outright. NOTSET (0) would leave
         # the level at NOTSET and defer to the root logger, which is WARNING -

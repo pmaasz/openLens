@@ -36,10 +36,10 @@ Quick Start
 .. code-block:: bash
 
    # Run the GUI application
-   python3 openlens.py
+   python3 -m openlens
 
    # Run the CLI application
-   python3 -m src.lens_editor
+   python3 -m openlens.lens_editor
 
 Installation
 ------------
@@ -76,8 +76,8 @@ Project Structure
 .. code-block:: text
 
    openLens/
-   ├── openlens.py          # Main entry point
-   ├── src/                 # Source code (30+ modules)
+   ├── openlens/__main__.py          # Main entry point
+   ├── openlens/                 # Source code (30+ modules)
    │   ├── lens.py         # Core Lens class
    │   ├── ray_tracer.py   # Ray tracing engine
    │   ├── aberrations.py  # Aberration calculations

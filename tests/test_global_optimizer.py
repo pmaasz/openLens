@@ -3,13 +3,13 @@ import math
 import sys
 import os
 
-# Add src to path
+# Add the repo root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.optical_system import OpticalSystem
-from src.lens import Lens
-from src.optimizer import OptimizationVariable, OptimizationTarget
-from src.global_optimizer import GlobalOptimizer
+from openlens.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optimizer import OptimizationVariable, OptimizationTarget
+from openlens.global_optimizer import GlobalOptimizer
 
 
 class TestGlobalOptimizer(unittest.TestCase):
@@ -155,7 +155,7 @@ class TestOptimizerResultIntegrity(unittest.TestCase):
                 self.assertEqual(len(result.best_values), len(self._variables()))
 
     def test_gradient_descent_result_has_best_values_field(self):
-        from src.optimizer import LensOptimizer
+        from openlens.optimizer import LensOptimizer
 
         result = LensOptimizer(
             self._system(), self._variables(), self._targets()
@@ -218,7 +218,7 @@ class TestGeneticNoFiniteMerit(unittest.TestCase):
         self.assertTrue(math.isfinite(result.final_merit))
 
     def test_nan_merit_normalises_to_infeasible(self):
-        from src.optimizer import INFEASIBLE_MERIT
+        from openlens.optimizer import INFEASIBLE_MERIT
 
         optimizer = self._optimizer()
         optimizer.merit_function.evaluate = lambda system: float("nan")

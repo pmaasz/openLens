@@ -14,7 +14,7 @@ if os.environ.get("DISPLAY", "") == "" and sys.platform.startswith("linux"):
 try:
     from PySide6.QtWidgets import QApplication
 
-    from openlens import OpenLensWindow
+    from openlens.__main__ import OpenLensWindow
 
     PYSIDE_AVAILABLE = True
     _PYSIDE_ERROR = None
@@ -24,8 +24,8 @@ except ImportError as _e:
     PYSIDE_AVAILABLE = False
     _PYSIDE_ERROR = _e
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 if not PYSIDE_AVAILABLE:
 
@@ -48,7 +48,7 @@ class _HermeticWindow(unittest.TestCase):
     """
 
     def setUp(self):
-        from src.gui.storage import LensStorage
+        from openlens.gui.storage import LensStorage
 
         self.temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
         self.window = OpenLensWindow()

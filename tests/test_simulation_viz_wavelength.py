@@ -35,8 +35,8 @@ except ImportError:  # pragma: no cover - environment guard
 if PYSIDE_AVAILABLE:
     _app = QApplication.instance() or QApplication(sys.argv)
 
-from src.constants import NM_TO_MM, WAVELENGTH_GREEN
-from src.lens import Lens
+from openlens.constants import NM_TO_MM, WAVELENGTH_GREEN
+from openlens.lens import Lens
 
 
 def _lens():
@@ -56,7 +56,7 @@ class TestRaysCarryTheSelectedWavelength(unittest.TestCase):
     """The colour and the trace have to agree."""
 
     def setUp(self):
-        from src.gui.widgets.simulation_viz import SimulationVisualizationWidget
+        from openlens.gui.widgets.simulation_viz import SimulationVisualizationWidget
 
         self.lens = _lens()
         self.widget = SimulationVisualizationWidget()
@@ -100,7 +100,7 @@ class TestRefreshReactsToAnEditedLens(unittest.TestCase):
     """A refresh that does nothing leaves stale rays on screen."""
 
     def setUp(self):
-        from src.gui.widgets.simulation_viz import SimulationVisualizationWidget
+        from openlens.gui.widgets.simulation_viz import SimulationVisualizationWidget
 
         self.lens = _lens()
         self.widget = SimulationVisualizationWidget()
@@ -152,7 +152,7 @@ class TestErrorsAreLoggedNotPrinted(unittest.TestCase):
         return found
 
     def test_simulation_viz_does_not_print(self):
-        import src.gui.widgets.simulation_viz as module
+        import openlens.gui.widgets.simulation_viz as module
 
         self.assertEqual(
             self._print_calls(inspect.getsource(module)),
@@ -161,7 +161,7 @@ class TestErrorsAreLoggedNotPrinted(unittest.TestCase):
         )
 
     def test_simulation_viz_logs_errors(self):
-        import src.gui.widgets.simulation_viz as module
+        import openlens.gui.widgets.simulation_viz as module
 
         source = inspect.getsource(module)
 
@@ -172,7 +172,7 @@ class TestWavelengthsAreNamed(unittest.TestCase):
     """The wavelength used should be stated, not inherited from a default."""
 
     def test_ray_construction_names_the_wavelength(self):
-        import src.gui.widgets.simulation_viz as module
+        import openlens.gui.widgets.simulation_viz as module
 
         source = inspect.getsource(module)
 
@@ -183,7 +183,7 @@ class TestWavelengthsAreNamed(unittest.TestCase):
         )
 
     def test_the_conversion_constant_is_used(self):
-        import src.gui.widgets.simulation_viz as module
+        import openlens.gui.widgets.simulation_viz as module
 
         source = inspect.getsource(module)
 
@@ -197,7 +197,7 @@ class TestTheTabIsNotHalfWired(unittest.TestCase):
     def setUp(self):
         from PySide6.QtWidgets import QWidget
 
-        from src.gui.tabs.simulation_tab import SimulationTab
+        from openlens.gui.tabs.simulation_tab import SimulationTab
 
         # BaseTab passes its parent to QWidget, so the stand-in has to be one.
         class _Parent(QWidget):
@@ -213,7 +213,7 @@ class TestTheTabIsNotHalfWired(unittest.TestCase):
 
     def test_the_picker_labels_and_values_come_from_one_table(self):
         """Two lists matched by position can drift apart silently."""
-        from src.gui.tabs.simulation_tab import SIMULATION_WAVELENGTHS
+        from openlens.gui.tabs.simulation_tab import SIMULATION_WAVELENGTHS
 
         labels = [
             self.tab._sim_wavelength.itemText(i) for i in range(self.tab._sim_wavelength.count())
@@ -225,7 +225,7 @@ class TestTheTabIsNotHalfWired(unittest.TestCase):
         )
 
     def test_the_selected_wavelength_is_the_labelled_one(self):
-        from src.gui.tabs.simulation_tab import SIMULATION_WAVELENGTHS
+        from openlens.gui.tabs.simulation_tab import SIMULATION_WAVELENGTHS
 
         for index, (nanometres, label) in enumerate(SIMULATION_WAVELENGTHS):
             with self.subTest(label=label):
@@ -250,7 +250,7 @@ class TestTheTabIsNotHalfWired(unittest.TestCase):
         """
         import re
 
-        from src.gui.tabs.simulation_tab import CUSTOM_WAVELENGTH_INDEX
+        from openlens.gui.tabs.simulation_tab import CUSTOM_WAVELENGTH_INDEX
 
         for index in range(CUSTOM_WAVELENGTH_INDEX):
             with self.subTest(entry=index):
@@ -282,7 +282,7 @@ class TestTheTabIsNotHalfWired(unittest.TestCase):
         self.assertFalse(matches, "the label test cannot detect a drifted entry")
 
     def test_custom_is_the_last_entry(self):
-        from src.gui.tabs.simulation_tab import CUSTOM_WAVELENGTH_INDEX
+        from openlens.gui.tabs.simulation_tab import CUSTOM_WAVELENGTH_INDEX
 
         self.tab._sim_wavelength.setCurrentIndex(CUSTOM_WAVELENGTH_INDEX)
 
@@ -294,7 +294,7 @@ class TestTheTabIsNotHalfWired(unittest.TestCase):
 
     def test_the_tab_refresh_is_not_a_no_op(self):
         """The tab's refresh was `pass`, which is the reported defect."""
-        from src.gui.widgets.simulation_viz import SimulationVisualizationWidget
+        from openlens.gui.widgets.simulation_viz import SimulationVisualizationWidget
 
         calls = []
 

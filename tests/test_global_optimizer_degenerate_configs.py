@@ -17,10 +17,10 @@ After the fix all of them run, and the search still reaches the same optimum.
 
 import unittest
 
-from src.global_optimizer import GlobalOptimizer
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.optimizer import OptimizationTarget, OptimizationVariable
+from openlens.global_optimizer import GlobalOptimizer
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.optimizer import OptimizationTarget, OptimizationVariable
 
 
 def _system():

@@ -33,7 +33,7 @@ try:
     from PySide6.QtWidgets import QApplication
 
     import openlens
-    from openlens import OpenLensWindow
+    from openlens.__main__ import OpenLensWindow
 
     PYSIDE_AVAILABLE = True
     _PYSIDE_ERROR = None
@@ -54,7 +54,7 @@ class _WindowCase(unittest.TestCase):
     """A window wired to a throwaway database, with one lens in the library."""
 
     def setUp(self):
-        from src.gui.storage import LensStorage
+        from openlens.gui.storage import LensStorage
 
         self.temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
         self.storage = LensStorage(self.temp_db)
@@ -226,7 +226,7 @@ class TestFailedLoadIsReported(_WindowCase):
         self.window._storage.load_lenses = mock.Mock(side_effect=RuntimeError("database is locked"))
 
     def _load(self):
-        with mock.patch("openlens.QMessageBox.information"):
+        with mock.patch("openlens.__main__.QMessageBox.information"):
             self.window._load_from_database()
         return self.window.statusBar().currentMessage()
 
@@ -302,15 +302,15 @@ class TestLoggingIsConfigured(unittest.TestCase):
         """After configuring, the root logger must have somewhere to write."""
         root = logging.getLogger()
 
-        openlens._configure_logging()
+        openlens.__main__._configure_logging()
 
         self.assertTrue(root.handlers, "no handler was installed")
         self.assertEqual(root.level, logging.INFO)
 
     def test_configure_logging_is_idempotent(self):
         """Calling it twice must not double every message."""
-        openlens._configure_logging()
-        openlens._configure_logging()
+        openlens.__main__._configure_logging()
+        openlens.__main__._configure_logging()
 
         self.assertLessEqual(len(logging.getLogger().handlers), 1)
 

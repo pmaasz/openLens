@@ -27,13 +27,13 @@ The names are now used directly and every caught exception is logged.
 import logging
 import unittest
 
-from src.optimizer import INFEASIBLE_MERIT, MeritFunction, OptimizationTarget
-import src.optimizer as optimizer_module
+from openlens.optimizer import INFEASIBLE_MERIT, MeritFunction, OptimizationTarget
+import openlens.optimizer as optimizer_module
 
 
 def _system():
-    from src.lens import Lens
-    from src.optical_system import OpticalSystem
+    from openlens.lens import Lens
+    from openlens.optical_system import OpticalSystem
 
     system = OpticalSystem(name="T")
     system.add_lens(
@@ -105,7 +105,7 @@ class TestFailuresAreDistinguishable(unittest.TestCase):
             def emit(self, record):
                 records.append(record)
 
-        logger = logging.getLogger("src.optimizer")
+        logger = logging.getLogger("openlens.optimizer")
         handler = Handler()
         logger.addHandler(handler)
         old = logger.level
@@ -182,7 +182,7 @@ class TestFailuresAreDistinguishable(unittest.TestCase):
             def emit(self, record):
                 records.append(record)
 
-        logger = logging.getLogger("src.optimizer")
+        logger = logging.getLogger("openlens.optimizer")
         handler = Handler()
         logger.addHandler(handler)
         try:

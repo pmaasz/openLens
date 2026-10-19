@@ -2,7 +2,7 @@
 
 The database was opened as the bare relative name ``"openlens.db"``, which SQLite
 resolves against the current working directory. Launching the app from a desktop
-launcher, an IDE, or ``python /path/to/openlens.py`` therefore created a brand new
+launcher, an IDE, or ``python /path/to/openlens/__main__.py`` therefore created a brand new
 empty database in whatever folder happened to be current - which looks exactly like
 data loss, because the real database is still sitting somewhere else with everything
 in it.
@@ -15,8 +15,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from src import paths
-from src.paths import (
+from openlens import paths
+from openlens.paths import (
     DB_PATH_ENV_VAR,
     default_db_path,
     migrate_legacy_db,
@@ -185,8 +185,8 @@ class TestResolutionHappensAtCallTimeNotImportTime(_Env):
     def test_no_default_argument_freezes_the_path(self):
         import inspect
 
-        from src.database import DatabaseManager
-        from src.gui.storage import LensStorage
+        from openlens.database import DatabaseManager
+        from openlens.gui.storage import LensStorage
 
         for target, param in (
             (DatabaseManager.__init__, "db_path"),
@@ -291,10 +291,10 @@ class TestTheCallersUseIt(unittest.TestCase):
     """The resolution only helps if the callers ask for it."""
 
     def _sources(self):
-        from src.database import DatabaseManager
-        from src.gui.storage import LensStorage
-        from src.lens_editor import LensManager
-        import openlens
+        from openlens.database import DatabaseManager
+        from openlens.gui.storage import LensStorage
+        from openlens.lens_editor import LensManager
+        import openlens.__main__
 
         import inspect
 
@@ -302,14 +302,14 @@ class TestTheCallersUseIt(unittest.TestCase):
             "DatabaseManager": inspect.getsource(DatabaseManager.__init__),
             "LensStorage": inspect.getsource(LensStorage.__init__),
             "LensManager": inspect.getsource(LensManager.__init__),
-            "openlens.db literal in openlens.py": openlens.__file__,
+            "openlens.db literal in the GUI entry module": openlens.__main__.__file__,
         }
 
     def test_no_bare_openlens_db_literal_remains(self):
         import subprocess
 
         result = subprocess.run(
-            ["grep", "-rn", '"openlens.db"', "src/", "openlens.py"],
+            ["grep", "-rn", '"openlens.db"', "openlens/"],
             capture_output=True,
             text=True,
             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -319,7 +319,7 @@ class TestTheCallersUseIt(unittest.TestCase):
             for line in result.stdout.splitlines()
             if "DEFAULT_DB_FILE" not in line
             and "startup.py:41" not in line
-            and not line.startswith("src/paths.py:")
+            and not line.startswith("openlens/paths.py:")
         ]
         self.assertEqual(
             remaining,
@@ -331,7 +331,7 @@ class TestTheCallersUseIt(unittest.TestCase):
         """basename comparison seeds any temp file called openlens.db."""
         import inspect
 
-        from src.lens_editor import LensManager
+        from openlens.lens_editor import LensManager
 
         source = inspect.getsource(LensManager.__init__)
 
@@ -351,7 +351,7 @@ class TestEndToEndAcrossWorkingDirectories(unittest.TestCase):
         os.environ[paths.DATA_DIR_ENV_VAR] = str(data_dir)
         self.addCleanup(lambda: os.environ.pop(paths.DATA_DIR_ENV_VAR, None))
 
-        from src.database import DatabaseManager
+        from openlens.database import DatabaseManager
 
         here = tempfile.mkdtemp()
         there = tempfile.mkdtemp()
@@ -382,7 +382,7 @@ class TestTheAppRunsTheMigration(unittest.TestCase):
     def test_main_migrates_before_opening_anything(self):
         import inspect
 
-        import openlens
+        import openlens.__main__ as openlens
 
         source = inspect.getsource(openlens.main)
 
@@ -397,7 +397,7 @@ class TestTheAppRunsTheMigration(unittest.TestCase):
         """Order matters: moving the file after it is opened does nothing."""
         import inspect
 
-        import openlens
+        import openlens.__main__ as openlens
 
         source = inspect.getsource(openlens.main)
 
@@ -411,7 +411,7 @@ class TestTheAppRunsTheMigration(unittest.TestCase):
     def test_a_failing_migration_does_not_stop_the_app_starting(self):
         import inspect
 
-        import openlens
+        import openlens.__main__ as openlens
 
         source = inspect.getsource(openlens.main)
         body = source[source.index("migrate_legacy_db") :]

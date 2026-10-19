@@ -24,9 +24,9 @@ and are unchanged.
 
 import unittest
 
-from src.aberrations import AberrationsCalculator, _all_valid
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.aberrations import AberrationsCalculator, _all_valid
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _biconvex():
@@ -150,7 +150,7 @@ class TestReportFormatting(unittest.TestCase):
     """The report formats with :.4f, so a None must not reach it."""
 
     def _fmt(self, value, spec=".4f", scale=1.0):
-        from src.gui.tabs.performance_tab import _fmt
+        from openlens.gui.tabs.performance_tab import _fmt
 
         return _fmt(value, spec, scale)
 

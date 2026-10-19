@@ -23,9 +23,9 @@ import os
 import tempfile
 import unittest
 
-from src.io.step_export import StepExporter
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.io.step_export import StepExporter
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _system():
@@ -65,7 +65,7 @@ class _ExportFixture(unittest.TestCase):
             def emit(self, record):
                 records.append(record)
 
-        logger = logging.getLogger("src.io.step_export")
+        logger = logging.getLogger("openlens.io.step_export")
         handler = Handler()
         handler.setLevel(level)
         logger.addHandler(handler)
@@ -164,7 +164,7 @@ class TestUsableObjectWithoutAttributes(unittest.TestCase):
             def emit(self, record):
                 records.append(record)
 
-        logger = logging.getLogger("src.io.step_export")
+        logger = logging.getLogger("openlens.io.step_export")
         handler = Handler()
         logger.addHandler(handler)
         try:

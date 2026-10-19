@@ -11,7 +11,7 @@ import re
 import tempfile
 import unittest
 
-from src.io.step_export import StepExporter, StepWriter
+from openlens.io.step_export import StepExporter, StepWriter
 
 
 class TestStepWriter(unittest.TestCase):
@@ -94,8 +94,8 @@ class TestStepWriter(unittest.TestCase):
         """Every #id in a real export must resolve to an entity in the file."""
         import tempfile as _tempfile
 
-        from src.lens import Lens
-        from src.optical_system import OpticalSystem
+        from openlens.lens import Lens
+        from openlens.optical_system import OpticalSystem
 
         system = OpticalSystem(name="Link check")
         system.add_lens(
@@ -123,8 +123,8 @@ class TestStepWriter(unittest.TestCase):
         """The reported defect: MANIFOLD_SOLID_BREP took a real, not #shell."""
         import tempfile as _tempfile
 
-        from src.lens import Lens
-        from src.optical_system import OpticalSystem
+        from openlens.lens import Lens
+        from openlens.optical_system import OpticalSystem
 
         system = OpticalSystem(name="Brep")
         system.add_lens(
@@ -188,9 +188,9 @@ class TestStepWriter(unittest.TestCase):
         """Export then read back: the name and its points must survive."""
         import tempfile as _tempfile
 
-        from src.lens import Lens
-        from src.optical_system import OpticalSystem
-        from src.io.step_reader import read_step_solids
+        from openlens.lens import Lens
+        from openlens.optical_system import OpticalSystem
+        from openlens.io.step_reader import read_step_solids
 
         name = "Bob's 50mm PCX & <optics>"
         system = OpticalSystem(name="RoundTrip")
@@ -237,8 +237,8 @@ class TestStepExporterReuse(unittest.TestCase):
     """
 
     def setUp(self):
-        from src.lens import Lens
-        from src.optical_system import OpticalSystem
+        from openlens.lens import Lens
+        from openlens.optical_system import OpticalSystem
 
         self.system = OpticalSystem(name="Reuse")
         self.system.add_lens(

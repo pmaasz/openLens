@@ -4,7 +4,7 @@
 import math
 import unittest
 
-from src.transform import Matrix4x4
+from openlens.transform import Matrix4x4
 
 
 def _identity_error(rows):
@@ -28,7 +28,7 @@ class TestMatrixInverse(unittest.TestCase):
 
     def test_inverse_reverses_points(self):
         """A point transformed forth and back lands where it started."""
-        from src.vector3 import vec3
+        from openlens.vector3 import vec3
 
         mat = Matrix4x4.from_translation(5, -3, 2) * Matrix4x4.from_euler(0, 0, 10)
         original = vec3(1.5, -4.25, 7.0)

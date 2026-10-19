@@ -25,9 +25,9 @@ on- and off-axis field.
 import ast
 import unittest
 
-from src.analysis.psf_mtf import ImageQualityAnalyzer
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.analysis.psf_mtf import ImageQualityAnalyzer
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _analyzer():
@@ -81,7 +81,7 @@ def _unreachable_statements(node):
     return dead
 
 
-PSF_MTF = "src/analysis/psf_mtf.py"
+PSF_MTF = "openlens/analysis/psf_mtf.py"
 
 
 class TestNoUnreachableCode(unittest.TestCase):

@@ -6,17 +6,17 @@
 import os
 import sys
 
-# Add the source directory to the path for autodoc
+# Add the repository root to the path for autodoc. The package is `openlens`,
+# so this is the directory that contains it - not the package directory itself.
 sys.path.insert(0, os.path.abspath('../../..'))
-sys.path.insert(0, os.path.abspath('../../../src'))
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 def get_version():
-    """Extract version from src/__init__.py."""
+    """Extract version from openlens/__init__.py."""
     conf_dir = os.path.dirname(__file__)
-    init_path = os.path.abspath(os.path.join(conf_dir, '../../../src/__init__.py'))
+    init_path = os.path.abspath(os.path.join(conf_dir, '../../../openlens/__init__.py'))
     with open(init_path, 'r', encoding='utf-8') as f:
         for line in f:
             if line.startswith('__version__'):

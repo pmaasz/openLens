@@ -6,11 +6,11 @@ of DesensitizationOptimizer.optimize_robust.
 
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.optimizer import OptimizationTarget, OptimizationVariable
-from src.desensitization import DesensitizationOptimizer, RobustMeritFunction
-from src.tolerancing import ToleranceOperand, ToleranceType
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.optimizer import OptimizationTarget, OptimizationVariable
+from openlens.desensitization import DesensitizationOptimizer, RobustMeritFunction
+from openlens.tolerancing import ToleranceOperand, ToleranceType
 
 
 def _make_system(r2=-100.0):

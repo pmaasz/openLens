@@ -3,11 +3,11 @@ import math
 import sys
 import os
 
-# Add src to path
-sys.path.append(os.path.abspath("src"))
+# Add the repo root to path
+sys.path.append(os.path.abspath("openlens"))
 
-from src.optical_node import OpticalNode
-from src.vector3 import vec3
+from openlens.optical_node import OpticalNode
+from openlens.vector3 import vec3
 
 
 class TestOpticalNodeRotation(unittest.TestCase):

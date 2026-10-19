@@ -6,11 +6,11 @@ standalone executable has full functionality without `pip install`:
 
   Required:  PySide6
   Optional:  numpy, matplotlib, scipy, Pillow
-  (see requirements.txt and src/dependencies.py)
+  (see requirements.txt and openlens/dependencies.py)
 
 PyInstaller static analysis cannot see the guarded / function-level /
-string-based optional imports used throughout src/ (e.g. `__import__`
-in src/dependencies.py, `from scipy.ndimage import ...` inside
+string-based optional imports used throughout openlens/ (e.g. `__import__`
+in openlens/dependencies.py, `from scipy.ndimage import ...` inside
 functions, `from PIL import Image` inside dialogs), so they are listed
 explicitly via collect_all() + hiddenimports below.
 
@@ -41,8 +41,8 @@ for _pkg in _bundled_packages:
     _hiddenimports += _h
 
 # Dynamic / function-level imports PyInstaller cannot detect statically.
-# Keep in sync with src/dependencies.py, src/image_simulator.py,
-# src/diffraction.py, src/gui/dialogs/*, src/gui/widgets/lens_viz_3d.py.
+# Keep in sync with openlens/dependencies.py, openlens/image_simulator.py,
+# openlens/diffraction.py, openlens/gui/dialogs/*, openlens/gui/widgets/lens_viz_3d.py.
 _hiddenimports += [
     "numpy",
     "matplotlib",
@@ -64,8 +64,10 @@ _hiddenimports += [
 
 
 a = Analysis(
-    ['openlens.py'],
-    pathex=[],
+    ['openlens/__main__.py'],
+    # The entry module lives inside the package and imports `openlens.*`
+    # absolutely, so the repository root must be on the analysis path.
+    pathex=['.'],
     binaries=_binaries,
     datas=_datas,
     hiddenimports=_hiddenimports,

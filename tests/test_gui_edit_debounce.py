@@ -19,8 +19,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QEventLoop, QTimer
 
-import openlens
-from src.lens import Lens
+import openlens.__main__ as openlens
+from openlens.lens import Lens
 
 _app = None
 _window = None

@@ -1,7 +1,7 @@
 Performance Tab
 ===============
 
-.. automodule:: src.gui.tabs.performance_tab
+.. automodule:: openlens.gui.tabs.performance_tab
    :members:
    :undoc-members:
    :show-inheritance:

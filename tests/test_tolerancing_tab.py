@@ -27,8 +27,8 @@ except ImportError as _e:
     PYSIDE_AVAILABLE = False
     _PYSIDE_ERROR = _e
 
-from src.lens import Lens
-from src.tolerancing import ToleranceOperand, ToleranceType
+from openlens.lens import Lens
+from openlens.tolerancing import ToleranceOperand, ToleranceType
 
 if PYSIDE_AVAILABLE:
     app = QApplication.instance()
@@ -49,7 +49,7 @@ class TestTolerancingWorkerSlots(unittest.TestCase):
     """Both workers' completion signals must land in a real slot."""
 
     def setUp(self):
-        from src.gui.tabs.tolerancing_tab import TolerancingTab
+        from openlens.gui.tabs.tolerancing_tab import TolerancingTab
 
         class _Parent:
             """Minimal stand-in for the main window the tab reads from."""

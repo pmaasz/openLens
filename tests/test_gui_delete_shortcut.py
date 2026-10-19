@@ -34,7 +34,7 @@ if os.environ.get("DISPLAY", "") == "" and sys.platform.startswith("linux"):
 try:
     from PySide6.QtWidgets import QApplication, QMessageBox
 
-    from openlens import OpenLensWindow
+    from openlens.__main__ import OpenLensWindow
 
     PYSIDE_AVAILABLE = True
     _PYSIDE_ERROR = None
@@ -58,7 +58,7 @@ class TestDeleteLensShortcutSafety(unittest.TestCase):
     """Delete Lens must be deliberate, never a stray keystroke."""
 
     def setUp(self):
-        from src.gui.storage import LensStorage
+        from openlens.gui.storage import LensStorage
 
         self.temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
         self.storage = LensStorage(self.temp_db)
@@ -111,7 +111,7 @@ class TestDeleteLensShortcutSafety(unittest.TestCase):
             for entry in menu.actions():
                 if entry.text() == "Keyboard Shortcuts":
                     self._keep_alive = menu
-                    with mock.patch("openlens.QMessageBox.information") as info:
+                    with mock.patch("openlens.__main__.QMessageBox.information") as info:
                         self.window._on_show_shortcuts()
                     help_text = info.call_args[0][2]
                     self.assertNotIn("\nDelete        Delete Lens", help_text)
@@ -125,7 +125,8 @@ class TestDeleteLensShortcutSafety(unittest.TestCase):
         before = len(self.window._lenses)
 
         with mock.patch(
-            "openlens.QMessageBox.question", side_effect=lambda *a, **k: asked.append(a) or _NO
+            "openlens.__main__.QMessageBox.question",
+            side_effect=lambda *a, **k: asked.append(a) or _NO,
         ):
             self.window._confirm_and_delete_lens()
 
@@ -143,7 +144,7 @@ class TestDeleteLensShortcutSafety(unittest.TestCase):
         target_name = self.window._current_lens.name
         before = len(self.window._lenses)
 
-        with mock.patch("openlens.QMessageBox.question", return_value=_YES):
+        with mock.patch("openlens.__main__.QMessageBox.question", return_value=_YES):
             self.window._confirm_and_delete_lens()
 
         self.assertEqual(len(self.window._lenses), before - 1)
@@ -153,14 +154,14 @@ class TestDeleteLensShortcutSafety(unittest.TestCase):
         """Declining must say so rather than looking like it did nothing."""
         self.window._current_lens = self.window._lenses[-1]
 
-        with mock.patch("openlens.QMessageBox.question", return_value=_NO):
+        with mock.patch("openlens.__main__.QMessageBox.question", return_value=_NO):
             self.window._confirm_and_delete_lens()
 
         self.assertIn("ancel", self.window.statusBar().currentMessage())
 
     def test_prompt_offers_no_as_the_default(self):
         """Enter must not mean delete: No has to be the default button."""
-        with mock.patch("openlens.QMessageBox.question", return_value=_NO) as question:
+        with mock.patch("openlens.__main__.QMessageBox.question", return_value=_NO) as question:
             self.window._confirm_and_delete_lens()
 
         self.assertEqual(question.call_count, 1)

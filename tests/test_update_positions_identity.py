@@ -20,9 +20,9 @@ layout.
 
 import unittest
 
-from src.lens import Lens
-from src.optical_node import OpticalAssembly, OpticalElement, vec3
-from src.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optical_node import OpticalAssembly, OpticalElement, vec3
+from openlens.optical_system import OpticalSystem
 
 
 def _lens(name, thickness=2.0):

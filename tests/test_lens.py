@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unit tests for the core Lens model (src/lens.py)
+Unit tests for the core Lens model (openlens/lens.py)
 
 Direct coverage of geometry, optics math, type presets and
 serialization, independent of the CLI manager in lens_editor.
@@ -8,8 +8,8 @@ serialization, independent of the CLI manager in lens_editor.
 
 import unittest
 
-from src.lens import Lens
-from src.validation import (
+from openlens.lens import Lens
+from openlens.validation import (
     ValidationError,
     validate_radius,
     check_physical_feasibility,
@@ -219,7 +219,7 @@ class TestLensTypePresets(unittest.TestCase):
 
     def test_every_preset_classifies_as_its_own_type(self):
         """set_lens_type presets must round-trip through classify_lens_type."""
-        from src.constants import ALL_LENS_TYPES
+        from openlens.constants import ALL_LENS_TYPES
 
         for lens_type in ALL_LENS_TYPES:
             lens = Lens()

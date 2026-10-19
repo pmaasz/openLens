@@ -3,9 +3,9 @@ import math
 
 try:
     import numpy as np
-    from src.ray_tracer import Ray3D, HAS_POLARIZATION
-    from src.vector3 import vec3, Vector3
-    from src.polarization import PolarizationCalculator
+    from openlens.ray_tracer import Ray3D, HAS_POLARIZATION
+    from openlens.vector3 import vec3, Vector3
+    from openlens.polarization import PolarizationCalculator
 
     HAS_NUMPY = True
     print(f"DEBUG: numpy imported successfully. HAS_POLARIZATION={HAS_POLARIZATION}")

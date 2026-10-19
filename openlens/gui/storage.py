@@ -23,7 +23,7 @@ class LensStorage:
 
     Args:
         storage_file: Path to the database file. None uses the per-user
-            database; see ``src.paths``.
+            database; see ``openlens.paths``.
         status_callback: Optional callback function to report status messages.
     """
 

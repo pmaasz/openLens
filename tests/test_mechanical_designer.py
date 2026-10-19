@@ -5,9 +5,9 @@ MechanicalDesigner: lens cells, spacers, BOM and assembly outputs.
 
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.mechanical_designer import MechanicalDesigner
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.mechanical_designer import MechanicalDesigner
 
 
 def _make_doublet():

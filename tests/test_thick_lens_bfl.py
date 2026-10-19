@@ -3,7 +3,7 @@
 Thick-lens paraxial BFL/EFL for a two-element system.
 
 Independent hand-derived reference (surface-by-surface ABCD, reduced
-thickness d/n, matching src/optical_system._calculate_system_matrix):
+thickness d/n, matching openlens/optical_system._calculate_system_matrix):
 
   L1: R1=100, R2=-100, t=10, n=1.5
   gap = 5
@@ -19,8 +19,8 @@ thickness d/n, matching src/optical_system._calculate_system_matrix):
 
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 class TestDoubletBFL(unittest.TestCase):

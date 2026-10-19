@@ -7,9 +7,9 @@ import os
 import unittest
 import tempfile
 
-from src.lens import Lens
-from src.lens_comparator import LensComparator, ComparisonResult
-from src.coating_designer import CoatingDesigner, CoatingLayer
+from openlens.lens import Lens
+from openlens.lens_comparator import LensComparator, ComparisonResult
+from openlens.coating_designer import CoatingDesigner, CoatingLayer
 
 
 class TestLensComparator(unittest.TestCase):

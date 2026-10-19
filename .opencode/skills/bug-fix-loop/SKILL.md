@@ -113,7 +113,7 @@ discarding anything.
 
 ## Phase 2 - Reproduce first, in a test
 
-Never fix a bug you cannot demonstrate. Before touching `src/`:
+Never fix a bug you cannot demonstrate. Before touching `openlens/`:
 
 1. `scripts/next-issue.sh <n>` and read the issue body; the **Where:** line names
    the files and lines involved.
@@ -133,7 +133,7 @@ import error. This is the evidence the fix is real.
 ## Phase 3 - Fix
 
 - Make the smallest change that fixes the root cause.
-- Respect `AGENTS.md`: constants from `src/constants.py`, `logger.*` instead of
+- Respect `AGENTS.md`: constants from `openlens/constants.py`, `logger.*` instead of
   `print()`, Google-style docstrings, type hints, 100-char lines, optional
   imports guarded with a `*_AVAILABLE` flag.
 - Keep the fix scoped to the issue. Unrelated cleanups belong in their own branch.
@@ -144,8 +144,8 @@ import error. This is the evidence the fix is real.
 ## Phase 4 - Verify locally
 
 ```bash
-black --line-length=100 src/ tests/ --check
-flake8 src/ tests/ --max-line-length=100 --ignore=E203,W503
+black --line-length=100 --exclude 'openlens/__main__.py' openlens/ tests/ --check
+flake8 openlens/ tests/ --max-line-length=100 --ignore=E203,W503
 QT_QPA_PLATFORM=offscreen OPENLENS_SKIP_SLOW=1 python3 -m unittest discover -s tests -t .
 ```
 

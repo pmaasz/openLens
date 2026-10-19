@@ -19,8 +19,8 @@ import unittest
 
 import numpy as np
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 F_LINE = 486.1
 D_LINE = 587.6
@@ -47,7 +47,7 @@ class TestWavefrontRespondsToWavelength(unittest.TestCase):
     """Different wavelengths must give different wavefronts."""
 
     def setUp(self):
-        from src.analysis.diffraction_psf import WavefrontSensor
+        from openlens.analysis.diffraction_psf import WavefrontSensor
 
         self.system, self.lens = _system()
         self.sensor = WavefrontSensor(self.system)
@@ -147,7 +147,7 @@ class TestWavefrontRespondsToWavelength(unittest.TestCase):
 
     def test_the_lenses_are_restored_even_on_an_empty_system(self):
         """The restore runs on every path, including the early returns."""
-        from src.analysis.diffraction_psf import WavefrontSensor
+        from openlens.analysis.diffraction_psf import WavefrontSensor
 
         system, lens = _system()
         sensor = WavefrontSensor(system)
@@ -177,7 +177,7 @@ class TestChromaticPsfAndMtf(unittest.TestCase):
     """The user-visible consequence: R/G/B PSFs must differ."""
 
     def setUp(self):
-        from src.analysis.psf_mtf import ImageQualityAnalyzer
+        from openlens.analysis.psf_mtf import ImageQualityAnalyzer
 
         self.system, _ = _system()
         self.analyzer = ImageQualityAnalyzer(self.system)
@@ -205,7 +205,7 @@ class TestChromaticPsfAndMtf(unittest.TestCase):
         self.assertFalse(np.array_equal(red, blue), "the PSF is identical at the C and F lines")
 
     def test_the_mtf_differs_between_red_and_blue(self):
-        from src.analysis.psf_mtf import ImageQualityAnalyzer
+        from openlens.analysis.psf_mtf import ImageQualityAnalyzer
 
         red = ImageQualityAnalyzer(self.system).calculate_mtf(
             field_angle_deg=0.0, wavelength_nm=C_LINE, use_diffraction=True

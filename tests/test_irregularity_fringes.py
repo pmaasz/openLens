@@ -24,7 +24,7 @@ is monotonic in R.
 
 import unittest
 
-from src.tolerancing import FRINGE_SAG_MM, _radius_for_fringes, _spherical_sag
+from openlens.tolerancing import FRINGE_SAG_MM, _radius_for_fringes, _spherical_sag
 
 H = 10.0
 
@@ -137,10 +137,10 @@ class TestIrregularityDrawsAreNotDropped(unittest.TestCase):
     def _run_with_irregularity(self, seed):
         import random
 
-        from src.tolerancing import MonteCarloAnalyzer, ToleranceOperand, ToleranceType
+        from openlens.tolerancing import MonteCarloAnalyzer, ToleranceOperand, ToleranceType
 
-        from src.lens import Lens
-        from src.optical_system import OpticalSystem
+        from openlens.lens import Lens
+        from openlens.optical_system import OpticalSystem
 
         system = OpticalSystem()
         system.add_lens(

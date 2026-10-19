@@ -154,7 +154,7 @@ Using the Material Database
 
 .. code-block:: python
 
-   from src.material_database import MaterialDatabase
+   from openlens.material_database import MaterialDatabase
 
    db = MaterialDatabase()
    
@@ -338,8 +338,8 @@ Programmatic Ray Tracing
 
 .. code-block:: python
 
-   from src.ray_tracer import LensRayTracer
-   from src.lens import Lens
+   from openlens.ray_tracer import LensRayTracer
+   from openlens.lens import Lens
 
    # Create a lens
    lens = Lens(
@@ -403,7 +403,7 @@ Rays at different heights focus at different points.
 
 .. code-block:: python
 
-   from src.aberrations import AberrationsCalculator
+   from openlens.aberrations import AberrationsCalculator
 
    calc = AberrationsCalculator(lens)
    spherical = calc.calculate_spherical_aberration()
@@ -449,7 +449,7 @@ JSON Format
 .. code-block:: python
 
    import json
-   from src.lens import Lens
+   from openlens.lens import Lens
 
    # Save lens
    lens_data = lens.to_dict()
@@ -466,7 +466,7 @@ STL Export for 3D Printing
 
 .. code-block:: python
 
-   from src.stl_export import export_lens_to_stl
+   from openlens.stl_export import export_lens_to_stl
 
    export_lens_to_stl(lens, 'my_lens.stl', resolution=100)
 

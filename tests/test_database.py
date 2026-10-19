@@ -1,12 +1,12 @@
 """
-Tests for src/database.py — DatabaseManager CRUD and transaction handling.
+Tests for openlens/database.py — DatabaseManager CRUD and transaction handling.
 """
 
 import os
 import tempfile
 import unittest
 
-from src.database import SCHEMA_VERSION, DatabaseManager, LensInUseError
+from openlens.database import SCHEMA_VERSION, DatabaseManager, LensInUseError
 
 
 def _make_db():
@@ -435,7 +435,7 @@ class TestMigrationV1ToV2(unittest.TestCase):
 
     def test_pre_parabolic_row_hydrates_spherical(self):
         """A row from before parabolic existed loads as plain spherical."""
-        from src.lens import Lens
+        from openlens.lens import Lens
 
         rows = {r["id"]: r for r in _load_lenses(self.db)}
         lens = Lens.from_dict(rows["old-spherical"])
@@ -446,7 +446,7 @@ class TestMigrationV1ToV2(unittest.TestCase):
 
     def test_metadata_blob_still_wins_after_migration(self):
         """Migrated columns default 0; the metadata blob keeps the truth."""
-        from src.lens import Lens
+        from openlens.lens import Lens
 
         rows = {r["id"]: r for r in _load_lenses(self.db)}
         lens = Lens.from_dict(rows["old-parabolic"])
@@ -458,7 +458,7 @@ class TestMigrationV1ToV2(unittest.TestCase):
         import json
         import sqlite3
 
-        from src.lens import Lens
+        from openlens.lens import Lens
 
         rows = {r["id"]: r for r in _load_lenses(self.db)}
         lens = Lens.from_dict(rows["old-parabolic"])
@@ -536,7 +536,7 @@ class TestMigrationIsAtomicAndIdempotent(unittest.TestCase):
 
     def test_crash_mid_migration_rolls_back_completely(self):
         """Nothing partial may survive a failure inside the migration."""
-        from src import database as database_module
+        from openlens import database as database_module
 
         _make_v1_db(self._path)
         before = self._version_and_columns()
@@ -563,7 +563,7 @@ class TestMigrationIsAtomicAndIdempotent(unittest.TestCase):
 
     def test_database_recovers_after_a_rolled_back_migration(self):
         """A rolled-back migration must not leave the app unusable."""
-        from src import database as database_module
+        from openlens import database as database_module
 
         _make_v1_db(self._path)
         real_add_column = database_module._add_column
@@ -589,7 +589,7 @@ class TestMigrationIsAtomicAndIdempotent(unittest.TestCase):
     def test_add_column_helper_is_idempotent(self):
         import sqlite3
 
-        from src.database import _add_column
+        from openlens.database import _add_column
 
         _make_v1_db(self._path)
         conn = sqlite3.connect(self._path)
@@ -607,7 +607,7 @@ class TestMigrationIsAtomicAndIdempotent(unittest.TestCase):
         """Self-healing must not mask a genuinely missing table."""
         import sqlite3
 
-        from src.database import _add_column
+        from openlens.database import _add_column
 
         tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         tmp.close()

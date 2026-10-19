@@ -1,7 +1,7 @@
 Services Module
 ===============
 
-.. automodule:: src.services
+.. automodule:: openlens.services
    :members:
    :undoc-members:
    :show-inheritance:

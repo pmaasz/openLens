@@ -13,8 +13,8 @@ OpenLens is an interactive optical lens design and simulation tool for single gl
 ## Project Structure
 
 ```
-/openlens.py        # PySide6 GUI entry point (main window)
-/src/               # Main source package (~68 modules incl. subpackages)
+/openlens/           # Main source package (~68 modules incl. subpackages)
+/openlens/__main__.py  # PySide6 GUI entry point (main window)
 /tests/             # Test suites (~56 files, unittest)
 /docs/              # Documentation
 /setup.py           # Package distribution (pip install -e .)
@@ -22,24 +22,24 @@ OpenLens is an interactive optical lens design and simulation tool for single gl
 ```
 
 Key source files:
-- `src/lens.py` - Core Lens class model
-- `src/optical_system.py` - Multi-element OpticalSystem model
-- `src/lens_editor.py` - CLI application and LensManager
-- `src/ray_tracer.py` - 2D/3D ray tracing engine
-- `src/aberrations.py` - Seidel aberration calculator
-- `src/validation.py` - Input validation utilities
-- `src/database.py` - SQLite persistence (DatabaseManager)
-- `src/constants.py` - All constants and configuration
-- `src/gui/` - GUI implementation (widgets/, tabs/, dialogs/, theme.py, storage.py)
-- `src/analysis/` - Spot diagram, PSF/MTF, ghost, wavefront analysis
-- `src/io/` - STEP / ISO 10110 export
+- `openlens/lens.py` - Core Lens class model
+- `openlens/optical_system.py` - Multi-element OpticalSystem model
+- `openlens/lens_editor.py` - CLI application and LensManager
+- `openlens/ray_tracer.py` - 2D/3D ray tracing engine
+- `openlens/aberrations.py` - Seidel aberration calculator
+- `openlens/validation.py` - Input validation utilities
+- `openlens/database.py` - SQLite persistence (DatabaseManager)
+- `openlens/constants.py` - All constants and configuration
+- `openlens/gui/` - GUI implementation (widgets/, tabs/, dialogs/, theme.py, storage.py)
+- `openlens/analysis/` - Spot diagram, PSF/MTF, ghost, wavefront analysis
+- `openlens/io/` - STEP / ISO 10110 export
 
 ## Build/Lint/Test Commands
 
 ### Running the Application
 ```bash
-python3 openlens.py              # Run GUI application
-python3 -m src.lens_editor       # Run CLI application
+python3 -m openlens              # Run GUI application
+python3 -m openlens.lens_editor       # Run CLI application
 ```
 ### Running Tests
 
@@ -67,8 +67,8 @@ pytest -n auto tests/
 ### Linting
 ```bash
 pre-commit run --all-files    # Run all pre-commit hooks
-black src/ tests/ --check     # Check formatting
-flake8 src/ tests/            # Run linter
+black --exclude 'openlens/__main__.py' openlens/ tests/ --check   # Check formatting (entry module is pre-existing, unformatted)
+flake8 openlens/ tests/            # Run linter
 ```
 
 ### Installation
@@ -218,7 +218,7 @@ class TestLensCalculations(unittest.TestCase):
             validate_radius(0)
 ```
 
-## Key Constants (from src/constants.py)
+## Key Constants (from openlens/constants.py)
 
 - `EPSILON = 1e-10` - Tolerance for floating-point comparisons
 - `DEFAULT_RADIUS_1 = 100.0` - Default first surface radius (mm)
@@ -243,7 +243,7 @@ only (`OpticalSystem.save/load` and the GUI "Save As..." dialog); do not
 introduce new features that treat JSON files as primary app state.
 
 ### Optimization Pattern
-The `LensOptimizer` in `src/optimizer.py` uses a flexible target/variable system.
+The `LensOptimizer` in `openlens/optimizer.py` uses a flexible target/variable system.
 Always use the high-level `optimize()` wrapper which selects the best algorithm (defaulting to simplex):
 ```python
 optimizer = LensOptimizer(system, variables, targets)
@@ -262,7 +262,7 @@ def process_lens(self, data: Dict[str, Any]) -> Lens:
 
 ## Context-Aware Reminders
 
-### When Editing `src/*.py` Files
+### When Editing `openlens/*.py` Files
 
 **Before making changes:**
 - Read the existing code to understand the module's purpose
@@ -270,7 +270,7 @@ def process_lens(self, data: Dict[str, Any]) -> Lens:
 
 **During changes:**
 - Use `logger.info()`, `logger.warning()`, `logger.error()` instead of `print()` statements
-- Import constants from `src/constants.py` - don't hardcode magic numbers
+- Import constants from `openlens/constants.py` - don't hardcode magic numbers
 - Add type hints to all function signatures
 - Write Google-style docstrings for all public functions
 
@@ -368,7 +368,7 @@ This project has automation subagents configured in `.opencode/agents/`:
 
 ### quality-checker
 - **Purpose**: Run tests, formatters (black), and linters (flake8)
-- **When to use**: After editing `src/` or `tests/` files, before committing
+- **When to use**: After editing `openlens/` or `tests/` files, before committing
 - **Command**: Checks formatting, runs linter, and invokes `python3 -m unittest discover -s tests -t .`
 
 ### doc-checker

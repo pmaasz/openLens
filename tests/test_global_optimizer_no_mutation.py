@@ -30,10 +30,10 @@ optimize_simplex now takes an explicit `start`.
 
 import unittest
 
-from src.global_optimizer import GlobalOptimizer
-from src.lens import Lens
-from src.optimizer import LensOptimizer, OptimizationTarget, OptimizationVariable
-from src.optical_system import OpticalSystem
+from openlens.global_optimizer import GlobalOptimizer
+from openlens.lens import Lens
+from openlens.optimizer import LensOptimizer, OptimizationTarget, OptimizationVariable
+from openlens.optical_system import OpticalSystem
 
 
 def _system():

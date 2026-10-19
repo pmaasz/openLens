@@ -2,9 +2,9 @@
 
 import unittest
 
-from src.io.export import ISO10110Generator
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.io.export import ISO10110Generator
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _demo_system():
@@ -66,7 +66,7 @@ class TestIsoNotes(unittest.TestCase):
 
     def test_coating_note_lists_surfaces(self):
         """6/ should list per-surface coating labels."""
-        from src.coating_designer import design_preset
+        from openlens.coating_designer import design_preset
 
         system = _demo_system()
         system.elements[0].lens.set_coating(

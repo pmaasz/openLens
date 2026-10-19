@@ -9,7 +9,7 @@ from .paths import ensure_parent_dir, resolve_db_path
 logger = logging.getLogger(__name__)
 
 # The schema version this build writes. Deliberately local rather than in
-# src/constants.py: it is meaningless anywhere except the migration ladder in
+# openlens/constants.py: it is meaningless anywhere except the migration ladder in
 # DatabaseManager._initialize_db, and keeping it there keeps this module free
 # of intra-package imports.
 SCHEMA_VERSION = 6

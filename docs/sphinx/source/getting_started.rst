@@ -46,7 +46,7 @@ Launch the graphical interface:
 
 .. code-block:: bash
 
-    python openlens.py
+    python3 -m openlens
 
 This opens the main OpenLens window where you can:
 
@@ -62,7 +62,7 @@ For command-line usage:
 
 .. code-block:: bash
 
-    python -m src.lens_editor
+    python3 -m openlens.lens_editor
 
 Basic Usage Example
 -------------------
@@ -72,7 +72,7 @@ Creating a Lens Programmatically
 
 .. code-block:: python
 
-    from src.lens import Lens
+    from openlens.lens import Lens
 
     # Create a biconvex lens
     lens = Lens(
@@ -92,7 +92,7 @@ Ray Tracing
 
 .. code-block:: python
 
-    from src.ray_tracer import LensRayTracer
+    from openlens.ray_tracer import LensRayTracer
 
     # Create ray tracer for the lens
     tracer = LensRayTracer(lens)
@@ -109,7 +109,7 @@ Aberration Analysis
 
 .. code-block:: python
 
-    from src.aberrations import AberrationsCalculator
+    from openlens.aberrations import AberrationsCalculator
 
     # Calculate aberrations
     calc = AberrationsCalculator(lens)

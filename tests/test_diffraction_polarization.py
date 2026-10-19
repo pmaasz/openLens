@@ -13,8 +13,8 @@ except ImportError:
     NUMPY_AVAILABLE = False
 
 if NUMPY_AVAILABLE:
-    from src.diffraction import DiffractionCalculator
-    from src.polarization import (
+    from openlens.diffraction import DiffractionCalculator
+    from openlens.polarization import (
         PolarizationCalculator,
         PolarizationState,
         JonesMatrices,

@@ -44,7 +44,7 @@ pip install -e .
 
 # Or add the src directory to your Python path
 import sys
-sys.path.append('/path/to/openLens/src')
+sys.path.append('/path/to/openLens')
 ```
 
 ### Dependencies

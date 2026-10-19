@@ -24,9 +24,9 @@ import math
 import textwrap
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.tolerancing import InverseSensitivityAnalyzer, ToleranceOperand, ToleranceType
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.tolerancing import InverseSensitivityAnalyzer, ToleranceOperand, ToleranceType
 
 
 def _system():

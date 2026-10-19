@@ -14,15 +14,15 @@ except ImportError:
     OPTIONAL_DEPS_AVAILABLE = False
 
 if OPTIONAL_DEPS_AVAILABLE:
-    from src.interactive_ray_tracer import (
+    from openlens.interactive_ray_tracer import (
         InteractiveRayTracer,
         InteractiveRay,
         RayManipulator,
     )
-    from src.image_simulator import ImageSimulator, SCIPY_AVAILABLE
-    from src.mechanical_designer import MechanicalDesigner, LensMount, LensCell, Spacer
-    from src.lens import Lens as _Lens
-    from src.optical_system import OpticalSystem
+    from openlens.image_simulator import ImageSimulator, SCIPY_AVAILABLE
+    from openlens.mechanical_designer import MechanicalDesigner, LensMount, LensCell, Spacer
+    from openlens.lens import Lens as _Lens
+    from openlens.optical_system import OpticalSystem
 
 
 # Mock optical system for testing.
@@ -31,8 +31,8 @@ if OPTIONAL_DEPS_AVAILABLE:
 # legacy stub methods used by these tests stay available.
 class MockOpticalSystem:
     def __init__(self):
-        from src.lens import Lens as _Lens
-        from src.optical_system import OpticalSystem as _OpticalSystem
+        from openlens.lens import Lens as _Lens
+        from openlens.optical_system import OpticalSystem as _OpticalSystem
 
         self._system = _OpticalSystem(name="mock")
         self._system.add_lens(
@@ -343,7 +343,7 @@ class TestMechanicalDesigner(unittest.TestCase):
     """Test mechanical design functionality."""
 
     def setUp(self):
-        from src.lens import Lens as _Lens
+        from openlens.lens import Lens as _Lens
 
         self.optical_system = OpticalSystem(name="mech")
         self.optical_system.add_lens(
@@ -509,7 +509,7 @@ class TestIntegration(unittest.TestCase):
     def test_full_mechanical_design_workflow(self):
         """Test complete mechanical design workflow."""
         # Setup optical system
-        from src.lens import Lens as _Lens
+        from openlens.lens import Lens as _Lens
 
         optical_system = OpticalSystem(name="integration")
         optical_system.add_lens(

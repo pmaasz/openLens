@@ -1,8 +1,8 @@
 import unittest
-from src.optical_system import OpticalSystem, Lens
-from src.analysis.ghost import GhostAnalyzer, GhostPath
-from src.vector3 import vec3
-from src.constants import WAVELENGTH_GREEN, NM_TO_MM
+from openlens.optical_system import OpticalSystem, Lens
+from openlens.analysis.ghost import GhostAnalyzer, GhostPath
+from openlens.vector3 import vec3
+from openlens.constants import WAVELENGTH_GREEN, NM_TO_MM
 
 
 class TestGhostAnalysis(unittest.TestCase):
@@ -91,8 +91,8 @@ class TestGhostAnalysis(unittest.TestCase):
 
     def test_interact_reports_miss_as_bool_false(self):
         """Missed interactions return actual False so paths can abort."""
-        from src.vector3 import vec3
-        from src.ray_tracer import Ray3D
+        from openlens.vector3 import vec3
+        from openlens.ray_tracer import Ray3D
 
         # Far outside the aperture, heading away: cannot hit the front.
         ray = Ray3D(vec3(1000, 500, 0), vec3(1, 0, 0))

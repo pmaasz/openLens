@@ -3,16 +3,16 @@
 OpenLens must start without matplotlib.
 
 AGENTS.md classes matplotlib as optional: "the app must start and run core
-features without them". But `src/gui/dialogs/__init__.py` imported
-AnalysisPlotDialog at module scope, and `openlens.py` imported it from there
+features without them". But `openlens/gui/dialogs/__init__.py` imported
+AnalysisPlotDialog at module scope, and `openlens/__main__.py` imported it from there
 at module scope too. On a clean `pip install PySide6` the app therefore died
 during startup with a raw ModuleNotFoundError - no editor, no message - even
 though the lens editor, assembly builder and the QPainter-based 2D/3D
 visualisations need no matplotlib at all.
 
-`src/gui/__init__.py` already wrapped its imports in try/except ImportError,
+`openlens/gui/__init__.py` already wrapped its imports in try/except ImportError,
 which made the codebase look compliant, but that guard was dead weight:
-openlens.py imports the submodules directly.
+openlens/__main__.py imports the submodules directly.
 
 matplotlib is blocked in a subprocess, since removing an already-imported
 module from sys.meta_path mid-process is unreliable.
@@ -65,14 +65,14 @@ class TestAppStartsWithoutMatplotlib(unittest.TestCase):
     def test_openlens_entry_point_imports(self):
         """Regression: the headline symptom was a startup crash."""
         result = _run_without_matplotlib(
-            "import openlens; print('OK', openlens.OpenLensWindow.__name__)"
+            "from openlens.__main__ import OpenLensWindow; print('OK', OpenLensWindow.__name__)"
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("OK OpenLensWindow", result.stdout)
 
     def test_dialogs_package_imports(self):
         result = _run_without_matplotlib(
-            "import src.gui.dialogs as d; print('OK', d.ANALYSIS_PLOTS_AVAILABLE)"
+            "import openlens.gui.dialogs as d; print('OK', d.ANALYSIS_PLOTS_AVAILABLE)"
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("OK False", result.stdout)
@@ -80,14 +80,14 @@ class TestAppStartsWithoutMatplotlib(unittest.TestCase):
     def test_startup_dialog_is_still_available(self):
         """The dialog that does not need matplotlib must survive."""
         result = _run_without_matplotlib(
-            "from src.gui.dialogs import StartupDialog; print('OK', StartupDialog.__name__)"
+            "from openlens.gui.dialogs import StartupDialog; print('OK', StartupDialog.__name__)"
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("OK StartupDialog", result.stdout)
 
     def test_requester_raises_an_actionable_import_error(self):
         result = _run_without_matplotlib(
-            "from src.gui.dialogs import require_analysis_plot_dialog\n"
+            "from openlens.gui.dialogs import require_analysis_plot_dialog\n"
             "try:\n"
             "    require_analysis_plot_dialog()\n"
             "except ImportError as e:\n"
@@ -99,18 +99,20 @@ class TestAppStartsWithoutMatplotlib(unittest.TestCase):
 
     def test_no_module_scope_matplotlib_import_in_openlens(self):
         """A static guard, so the eager import cannot creep back in."""
-        with open(os.path.join(REPO_ROOT, "openlens.py"), encoding="utf-8") as f:
+        with open(os.path.join(REPO_ROOT, "openlens", "__main__.py"), encoding="utf-8") as f:
             source = f.read()
         eager = [
             line
             for line in source.splitlines()
             if line.startswith(("import matplotlib", "from matplotlib"))
         ]
-        self.assertEqual(eager, [], "openlens.py must not import matplotlib at module scope")
+        self.assertEqual(
+            eager, [], "openlens/__main__.py must not import matplotlib at module scope"
+        )
 
     def test_dialogs_package_guards_the_plot_import(self):
         with open(
-            os.path.join(REPO_ROOT, "src", "gui", "dialogs", "__init__.py"),
+            os.path.join(REPO_ROOT, "openlens", "gui", "dialogs", "__init__.py"),
             encoding="utf-8",
         ) as f:
             source = f.read()
@@ -126,7 +128,7 @@ class TestWithMatplotlibPresent(unittest.TestCase):
             import matplotlib  # noqa: F401
         except ImportError:
             self.skipTest("matplotlib not installed")
-        from src.gui.dialogs import ANALYSIS_PLOTS_AVAILABLE, require_analysis_plot_dialog
+        from openlens.gui.dialogs import ANALYSIS_PLOTS_AVAILABLE, require_analysis_plot_dialog
 
         self.assertTrue(ANALYSIS_PLOTS_AVAILABLE)
         self.assertIs(require_analysis_plot_dialog().__name__.split(".")[-1], "AnalysisPlotDialog")

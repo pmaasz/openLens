@@ -23,9 +23,9 @@ import unittest
 
 import numpy as np
 
-from src.image_simulator import ImageSimulator
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.image_simulator import ImageSimulator
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _simulator():
@@ -55,7 +55,7 @@ def _red_image(size=32):
 #: tests exercise those code paths and cannot run without it. Same class of
 #: environment gap as #446: local runs have scipy, the Coverage job does not.
 requires_scipy = unittest.skipUnless(
-    __import__("src.image_simulator", fromlist=["SCIPY_AVAILABLE"]).SCIPY_AVAILABLE,
+    __import__("openlens.image_simulator", fromlist=["SCIPY_AVAILABLE"]).SCIPY_AVAILABLE,
     "scipy not installed; the blur and chromatic paths return early without it",
 )
 
@@ -133,7 +133,7 @@ class TestChromaticAberrationVariesByChannel(unittest.TestCase):
         """The core defect: one scale for all three channels.
 
         Spies on scipy.ndimage.zoom rather than the module attribute: the
-        function imports zoom locally, so patching ``src.image_simulator.zoom``
+        function imports zoom locally, so patching ``openlens.image_simulator.zoom``
         is silently bypassed and the test passes without observing anything.
         """
         import scipy.ndimage
@@ -198,7 +198,7 @@ class TestChromaticAberrationVariesByChannel(unittest.TestCase):
 
     def test_aberrations_forwards_the_wavelength_it_is_given(self):
         """It accepted a wavelength and dropped it."""
-        import src.aberrations as aberrations_module
+        import openlens.aberrations as aberrations_module
 
         seen = []
         real = aberrations_module.AberrationsCalculator.calculate_all_aberrations
@@ -258,7 +258,7 @@ class TestTextPatternWithoutPillow(unittest.TestCase):
     """PIL is optional; the module guards it everywhere else."""
 
     def test_it_raises_a_clear_error_when_pillow_is_missing(self):
-        import src.image_simulator as module
+        import openlens.image_simulator as module
 
         sim = _simulator()
         saved = module.PIL_AVAILABLE
@@ -278,7 +278,7 @@ class TestTextPatternWithoutPillow(unittest.TestCase):
         """Other call sites already check PIL_AVAILABLE."""
         import inspect
 
-        import src.image_simulator as module
+        import openlens.image_simulator as module
 
         source = inspect.getsource(module)
         if module.PIL_AVAILABLE:

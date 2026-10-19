@@ -31,9 +31,9 @@ import unittest
 
 import numpy as np
 
-from src.image_simulator import ImageSimulator, SCIPY_AVAILABLE
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.image_simulator import ImageSimulator, SCIPY_AVAILABLE
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _simulator():

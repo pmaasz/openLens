@@ -33,7 +33,7 @@ import os
 import tempfile
 import unittest
 
-from src.material_database import MaterialDatabase
+from openlens.material_database import MaterialDatabase
 
 # Schott N-BK7, AGF formula 2 (Sellmeier 1), interleaved B1 C1 B2 C2 B3 C3.
 N_BK7 = """

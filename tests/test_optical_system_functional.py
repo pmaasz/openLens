@@ -9,7 +9,7 @@ import unittest
 import json
 import tempfile
 
-from src.optical_system import (
+from openlens.optical_system import (
     OpticalSystem,
     LensElement,
     AirGap,
@@ -17,7 +17,7 @@ from src.optical_system import (
     create_doublet,
     create_triplet,
 )
-from src.lens import Lens
+from openlens.lens import Lens
 
 
 class TestOpticalSystem(unittest.TestCase):
@@ -274,7 +274,7 @@ class TestCementedDoubletMaterialConsistency(unittest.TestCase):
     """
 
     def _catalog(self):
-        from src.material_database import get_material_database
+        from openlens.material_database import get_material_database
 
         return get_material_database()
 
@@ -294,7 +294,7 @@ class TestCementedDoubletMaterialConsistency(unittest.TestCase):
 
     def test_flint_is_not_the_static_default(self):
         """SF11's static default (1.78) differs from its catalog nd."""
-        from src.constants import DEFAULT_MATERIAL_INDICES
+        from openlens.constants import DEFAULT_MATERIAL_INDICES
 
         doublet = create_doublet(focal_length=100, diameter=50)
         flint = doublet.elements[1].lens

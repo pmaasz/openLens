@@ -1,7 +1,7 @@
 Theme Manager
 =============
 
-.. automodule:: src.gui.theme
+.. automodule:: openlens.gui.theme
    :members:
    :undoc-members:
    :show-inheritance:
@@ -36,7 +36,7 @@ Example Usage
 
 .. code-block:: python
 
-    from src.gui.theme import ThemeManager, COLORS
+    from openlens.gui.theme import ThemeManager, COLORS
 
     # Access color definitions
     primary_color = COLORS['primary']

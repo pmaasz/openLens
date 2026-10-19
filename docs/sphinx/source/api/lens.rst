@@ -1,7 +1,7 @@
 Lens Module
 ===========
 
-.. automodule:: src.lens
+.. automodule:: openlens.lens
    :members:
    :undoc-members:
    :show-inheritance:

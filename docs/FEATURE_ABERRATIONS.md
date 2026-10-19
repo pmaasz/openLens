@@ -9,7 +9,7 @@ A complete optical aberrations analysis system has been implemented for openlens
 
 ## 📦 New Files Added
 
-### 1. `/src/aberrations.py` (15,638 characters)
+### 1. `/openlens/aberrations.py` (15,638 characters)
 Complete aberrations calculation engine with:
 - `AberrationsCalculator` class - Main calculation engine
 - `analyze_lens_quality()` function - Quality assessment
@@ -30,7 +30,7 @@ Quick standalone test for verification
 
 ## ⚙️ Modifications
 
-### `/src/lens_editor_gui.py`
+### `/openlens/lens_editor_gui.py`
 **Added:**
 - Import of aberrations calculator module
 - New "Aberrations Analysis" panel in Simulation tab

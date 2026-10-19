@@ -1,10 +1,10 @@
 import unittest
 import math
 
-from src.analysis.environmental import EnvironmentalAnalyzer
-from src.optical_system import OpticalSystem
-from src.lens import Lens
-from src.material_database import get_material_database, MaterialProperties
+from openlens.analysis.environmental import EnvironmentalAnalyzer
+from openlens.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.material_database import get_material_database, MaterialProperties
 
 
 class TestEnvironmental(unittest.TestCase):

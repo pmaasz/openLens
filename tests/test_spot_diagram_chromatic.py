@@ -2,17 +2,17 @@ import unittest
 import sys
 import os
 
-# Add src to path
+# Add the repo root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.optical_system import OpticalSystem
-from src.lens import Lens
-from src.analysis import SpotDiagram
-from src.constants import WAVELENGTH_F_LINE, WAVELENGTH_D_LINE, WAVELENGTH_C_LINE
+from openlens.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.analysis import SpotDiagram
+from openlens.constants import WAVELENGTH_F_LINE, WAVELENGTH_D_LINE, WAVELENGTH_C_LINE
 
 # Mock material database for testing
 try:
-    from src.material_database import get_material_database
+    from openlens.material_database import get_material_database
 
     HAS_DB = True
 except ImportError:

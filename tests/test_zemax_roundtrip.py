@@ -4,13 +4,13 @@ import os
 import tempfile
 import unittest
 
-from src.export_formats import (
+from openlens.export_formats import (
     ZemaxExporter,
     ZemaxSystemExporter,
     ZemaxSystemImporter,
 )
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _system():
@@ -221,7 +221,7 @@ class TestZemaxSystemImportValidation(unittest.TestCase):
 
 
 # NOTE: the preset-JSON validation added for #358 lived on
-# PresetLensLibrary.import_custom_preset in src/preset_lenses.py, which this
+# PresetLensLibrary.import_custom_preset in openlens/preset_lenses.py, which this
 # branch retires in favour of the typed PresetLibrary. The untrusted-JSON
 # trust boundary it guarded no longer exists, so those tests went with it.
 # The Zemax half of #358 (per-element validation in

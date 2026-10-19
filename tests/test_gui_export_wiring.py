@@ -24,7 +24,7 @@ if os.environ.get("DISPLAY", "") == "" and sys.platform.startswith("linux"):
 try:
     from PySide6.QtWidgets import QApplication
 
-    from openlens import OpenLensWindow
+    from openlens.__main__ import OpenLensWindow
 
     PYSIDE_AVAILABLE = True
     _PYSIDE_ERROR = None
@@ -45,7 +45,7 @@ class TestStepExportGuiWiring(unittest.TestCase):
     """The File > Export to STEP action must run end to end."""
 
     def setUp(self):
-        from src.gui.storage import LensStorage
+        from openlens.gui.storage import LensStorage
 
         self.temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
         self.storage = LensStorage(self.temp_db)
@@ -82,9 +82,11 @@ class TestStepExportGuiWiring(unittest.TestCase):
             return handler
 
         with mock.patch(
-            "openlens.QFileDialog.getSaveFileName", return_value=(path, "")
-        ), mock.patch("openlens.QMessageBox.critical", side_effect=record("critical")), mock.patch(
-            "openlens.QMessageBox.warning", side_effect=record("warning")
+            "openlens.__main__.QFileDialog.getSaveFileName", return_value=(path, "")
+        ), mock.patch(
+            "openlens.__main__.QMessageBox.critical", side_effect=record("critical")
+        ), mock.patch(
+            "openlens.__main__.QMessageBox.warning", side_effect=record("warning")
         ):
             self.window._on_export_step()
 
@@ -114,7 +116,7 @@ class TestStepExportGuiWiring(unittest.TestCase):
         This is the exact defect: the call site used a name that is not bound in
         the module, and no import or attribute check caught it.
         """
-        import openlens
+        import openlens.__main__ as openlens
 
         self.assertTrue(hasattr(openlens, "StepExporter"))
         self.assertFalse(hasattr(openlens, "STEPExporter"))

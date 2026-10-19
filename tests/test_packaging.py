@@ -2,10 +2,14 @@
 
 Every CI job installs with ``pip install -e .``, so nothing in the suite would
 catch a packaging defect that only appears in a real install. That is how the
-``openlens`` command shipped broken: ``openlens.py`` is a *top-level module* and
-``find_packages()`` only finds packages, so it was simply absent from every
-non-editable install - and an editable install hides it completely, because the
-source tree is on the path anyway.
+``openlens`` command shipped broken once: the entry point was a top-level
+``openlens.py`` and ``find_packages()`` only finds packages, so it was absent
+from every non-editable install - and an editable install hides it completely,
+because the source tree is on the path anyway.
+
+The same blind spot hid the installed package name: ``find_packages()`` found
+``src``, so a real install put a top-level package called ``src`` into
+site-packages, shadowing every other project's ``src/`` directory.
 
 Building a wheel and installing it needs network access, so these tests assert
 the properties that make such an install work, and CI does the real thing.
@@ -48,21 +52,50 @@ def _literal(node) -> object:
         return None
 
 
-class TestTheConsoleScriptIsInstallable(unittest.TestCase):
-    def test_openlens_is_declared_as_a_module(self):
-        """The reported defect: find_packages() cannot see a top-level module."""
-        kwargs = _setup_kwargs()
+class TestThePackageNameIsNotGeneric(unittest.TestCase):
+    """The reported defect: the distribution installed a top-level ``src``.
 
-        modules = _literal(kwargs["py_modules"])
+    ``src`` is the most generic directory name there is. Installing it into
+    site-packages shadowed, or was shadowed by, every other project on the
+    machine with a ``src/`` directory - and the console scripts silently
+    imported ``src.lens_editor``, so it worked in exactly the way a consumer
+    would not expect.
+    """
 
-        self.assertIsNotNone(modules, "py_modules is missing entirely")
-        self.assertIn(
-            "openlens",
-            modules,
-            "openlens.py is a top-level module, and find_packages() only finds "
-            "packages - without py_modules the console script does not exist in "
-            "a real install",
+    def test_no_top_level_package_called_src_exists(self):
+        self.assertFalse(
+            (REPO_ROOT / "src" / "__init__.py").is_file(),
+            "the source directory is still an importable package named src, "
+            "so a real install puts src/ into site-packages",
         )
+
+    def test_there_is_no_root_openlens_module_to_shadow_the_package(self):
+        self.assertFalse(
+            (REPO_ROOT / "openlens.py").is_file(),
+            "a root openlens.py sits beside the openlens/ package and shadows "
+            "it on the module path, which is how this became a problem the "
+            "first time",
+        )
+
+    def test_the_declared_packages_are_all_inside_openlens(self):
+        """What find_packages() may ship. Nothing outside the package."""
+        kwargs = _setup_kwargs()
+        packages = _literal(kwargs.get("packages"))
+
+        if packages is None:
+            # Computed by find_packages(include=[...]); assert the include
+            # pattern, since that is what constrains it.
+            source = _setup_py()
+            self.assertIn(
+                "find_packages(include=['openlens', 'openlens.*'])",
+                source,
+                "find_packages() is unconstrained, so a stray top-level "
+                "directory can be installed as a package again",
+            )
+            return
+
+        stray = [name for name in packages if name.split(".")[0] != "openlens"]
+        self.assertEqual(stray, [], f"packages outside openlens would be installed: {stray}")
 
     def test_the_entry_point_target_is_importable_from_a_real_install(self):
         entry_points = _literal(_setup_kwargs()["entry_points"])
@@ -73,25 +106,26 @@ class TestTheConsoleScriptIsInstallable(unittest.TestCase):
         self.assertTrue(scripts, "no console_scripts entry point")
 
         for script in scripts:
-            module, _, attribute = script.partition("=")[2].partition(":")
+            target = script.partition("=")[2]
+            module, _, attribute = target.partition(":")
+            path = REPO_ROOT / f"{module.replace('.', '/')}.py"
             self.assertTrue(
-                (REPO_ROOT / f"{module.replace('.', '/')}.py").is_file()
-                or (REPO_ROOT / module.replace(".", "/") / "__init__.py").is_file(),
+                path.is_file() or (REPO_ROOT / module.replace(".", "/") / "__init__.py").is_file(),
                 f"entry point {script} points at a module that is not in the tree",
             )
             self.assertTrue(
-                (REPO_ROOT / f"{module.replace('.', '/')}.py").is_file(),
-                f"entry point {script} points at a top-level module, which "
-                f"needs py_modules to be installed",
+                module.split(".")[0] == "openlens",
+                f"entry point {script} does not import the installed package",
             )
 
-    def test_openlens_py_is_importable(self):
-        self.assertTrue((REPO_ROOT / "openlens.py").is_file())
-        self.assertIn(
-            "def main(",
-            (REPO_ROOT / "openlens.py").read_text(),
-            "the entry point names main() in openlens.py",
-        )
+    def test_the_gui_entry_point_is_inside_the_package(self):
+        entry = _literal(_setup_kwargs()["entry_points"])["console_scripts"]
+        gui = [script for script in entry if script.startswith("openlens=")]
+
+        self.assertEqual(gui, ["openlens=openlens.__main__:main"])
+        main_py = REPO_ROOT / "openlens" / "__main__.py"
+        self.assertTrue(main_py.is_file(), "the GUI entry module is missing")
+        self.assertIn("def main(", main_py.read_text(), "the entry point names main()")
 
 
 class TestTheMetadataIsHonest(unittest.TestCase):
@@ -165,7 +199,7 @@ class TestTheMetadataIsHonest(unittest.TestCase):
         entry = _literal(_setup_kwargs()["install_requires"]) or []
         entry_names = {re.split(r"[<>=!\[]", r)[0].strip().lower() for r in entry}
 
-        source = (REPO_ROOT / "openlens.py").read_text()
+        source = (REPO_ROOT / "openlens" / "__main__.py").read_text()
         module_level = "\n".join(
             line for line in source.splitlines() if not line.startswith((" ", "\t", "#"))
         )
@@ -201,7 +235,7 @@ class TestTheMetadataIsHonest(unittest.TestCase):
 
 
 class TestTheVersionIsDefinedOnce(unittest.TestCase):
-    """setup.py parsed src/__init__.py and fell back to a hard-coded version."""
+    """setup.py parsed openlens/__init__.py and fell back to a hard-coded version."""
 
     def test_setup_py_does_not_invent_a_version(self):
         source = _setup_py()
@@ -221,7 +255,7 @@ class TestTheVersionIsDefinedOnce(unittest.TestCase):
         self.assertIn("raise", body, "a version-less build should fail, not guess")
 
     def test_the_version_reported_matches_the_one_packaged(self):
-        import src
+        import openlens
 
         tree = ast.parse(_setup_py())
         get_version = next(
@@ -240,7 +274,7 @@ class TestTheVersionIsDefinedOnce(unittest.TestCase):
 
         self.assertEqual(
             packaged.stdout.strip(),
-            src.__version__,
+            openlens.__version__,
             "the installed distribution and the package report different versions",
         )
 
@@ -250,9 +284,9 @@ class TestTheInstalledCommandRuns(unittest.TestCase):
 
     def _headless_flags(self, *args):
         """Run the flag handling the way the console script would."""
-        import openlens
+        from openlens import __main__
 
-        return openlens._handle_headless_flags(list(args))
+        return __main__._handle_headless_flags(list(args))
 
     def test_version_prints_and_exits_zero(self):
         import contextlib
@@ -289,7 +323,7 @@ class TestTheInstalledCommandRuns(unittest.TestCase):
 
     def test_the_version_flag_needs_no_display(self):
         """CI runs this headless; a QApplication first would need a GPU."""
-        source = (REPO_ROOT / "openlens.py").read_text()
+        source = (REPO_ROOT / "openlens" / "__main__.py").read_text()
         main_body = source[source.index("def main()") : source.index("def main()") + 900]
 
         self.assertLess(

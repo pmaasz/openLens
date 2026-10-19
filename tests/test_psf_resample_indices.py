@@ -37,9 +37,9 @@ import unittest
 
 import numpy as np
 
-from src.analysis.psf_mtf import ImageQualityAnalyzer, _map_to_raw_indices
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.analysis.psf_mtf import ImageQualityAnalyzer, _map_to_raw_indices
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _analyzer():

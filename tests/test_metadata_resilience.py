@@ -17,7 +17,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from src.database import DatabaseManager, _metadata_merge
+from openlens.database import DatabaseManager, _metadata_merge
 
 
 def _db():

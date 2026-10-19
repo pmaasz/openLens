@@ -12,8 +12,8 @@ Later runs fail only on significant drift (see snapshots.py thresholds).
 
 from PySide6.QtWidgets import QApplication
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 from .conftest import requires_pyside
 from .snapshots import assert_snapshot
 
@@ -35,9 +35,9 @@ def _battery():
 
 
 def test_viz_widgets_render_and_match(main_window, qtbot):
-    from src.gui.widgets.lens_viz_2d import LensViz2DWidget
-    from src.gui.widgets.simulation_viz import SimulationVisualizationWidget
-    from src.gui.widgets.assembly_viz import AssemblyVisualizationWidget
+    from openlens.gui.widgets.lens_viz_2d import LensViz2DWidget
+    from openlens.gui.widgets.simulation_viz import SimulationVisualizationWidget
+    from openlens.gui.widgets.assembly_viz import AssemblyVisualizationWidget
 
     lens = _battery()[0]
 

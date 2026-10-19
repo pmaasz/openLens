@@ -5,9 +5,9 @@ InteractiveRayTracer: ray bookkeeping and tracing through a system.
 
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.interactive_ray_tracer import InteractiveRayTracer
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.interactive_ray_tracer import InteractiveRayTracer
 
 
 class TestInteractiveRayTracer(unittest.TestCase):

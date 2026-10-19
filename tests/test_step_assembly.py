@@ -4,11 +4,11 @@ import os
 import tempfile
 import unittest
 
-from src.io.step_export import StepExporter
-from src.io.step_reader import read_step_solids
-from src.lens import Lens
-from src.mechanical_designer import MechanicalDesigner
-from src.optical_system import OpticalSystem
+from openlens.io.step_export import StepExporter
+from openlens.io.step_reader import read_step_solids
+from openlens.lens import Lens
+from openlens.mechanical_designer import MechanicalDesigner
+from openlens.optical_system import OpticalSystem
 
 
 def _two_element_system():

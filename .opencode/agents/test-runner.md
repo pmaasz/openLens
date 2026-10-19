@@ -4,7 +4,7 @@ Automated test runner for the OpenLens project. This subagent runs the test suit
 
 ## Purpose
 
-Run after code changes to `src/` files to ensure no regressions are introduced.
+Run after code changes to `openlens/` files to ensure no regressions are introduced.
 
 ## Instructions
 
@@ -66,7 +66,7 @@ If all tests pass:
 
 This subagent should be invoked:
 
-- After editing any file in `src/`
+- After editing any file in `openlens/`
 - After editing any file in `tests/`
 - Before committing changes
 - When explicitly requested by the user

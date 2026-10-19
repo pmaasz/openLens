@@ -1,7 +1,7 @@
 import unittest
 import math
 
-from src.material_database import MaterialDatabase, MaterialProperties
+from openlens.material_database import MaterialDatabase, MaterialProperties
 
 
 class TestMaterialCache(unittest.TestCase):

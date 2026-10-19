@@ -22,8 +22,8 @@ import unittest
 
 import numpy as np
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _doublet():
@@ -54,7 +54,7 @@ class TestDiffractionPsfRespondsToDefocus(unittest.TestCase):
     """A defocused PSF must differ from the in-focus one."""
 
     def setUp(self):
-        from src.analysis.psf_mtf import ImageQualityAnalyzer
+        from openlens.analysis.psf_mtf import ImageQualityAnalyzer
 
         self.analyzer = ImageQualityAnalyzer(_doublet())
 
@@ -112,7 +112,7 @@ class TestDiffractionMtfRespondsToDefocus(unittest.TestCase):
     """A defocused system must have a lower MTF."""
 
     def setUp(self):
-        from src.analysis.psf_mtf import ImageQualityAnalyzer
+        from openlens.analysis.psf_mtf import ImageQualityAnalyzer
 
         self.analyzer = ImageQualityAnalyzer(_doublet())
 
@@ -154,7 +154,7 @@ class TestDiffractionMtfRespondsToDefocus(unittest.TestCase):
         )
 
     def _freqs(self, defocus):
-        from src.analysis.psf_mtf import ImageQualityAnalyzer
+        from openlens.analysis.psf_mtf import ImageQualityAnalyzer
 
         result = ImageQualityAnalyzer(_doublet()).calculate_mtf(
             field_angle_deg=0.0,

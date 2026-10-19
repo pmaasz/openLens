@@ -27,7 +27,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from src.database import SCHEMA_VERSION, DatabaseManager, UnsupportedSchemaVersionError
+from openlens.database import SCHEMA_VERSION, DatabaseManager, UnsupportedSchemaVersionError
 
 # Columns the v1 schema did not have, in the order the ladder adds them.
 LENS_COLUMNS_ADDED_AFTER_V1 = (

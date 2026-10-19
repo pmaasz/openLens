@@ -278,9 +278,9 @@ Directory Structure
 
    openLens/
    │
-   ├── openlens.py                    # Main entry point
+   ├── openlens/__main__.py                    # Main entry point
    │
-   ├── src/                           # Source code
+   ├── openlens/                           # Source code
    │   │
    │   ├── __init__.py               # Package initialization
    │   │
@@ -350,7 +350,7 @@ Core Components
 1. Lens Class
 ^^^^^^^^^^^^^
 
-**File:** ``src/lens.py``, ``src/lens_editor.py``
+**File:** ``openlens/lens.py``, ``openlens/lens_editor.py``
 
 **Responsibilities:**
 
@@ -373,7 +373,7 @@ Core Components
 2. Material Database
 ^^^^^^^^^^^^^^^^^^^^
 
-**File:** ``src/material_database.py``
+**File:** ``openlens/material_database.py``
 
 **Responsibilities:**
 
@@ -394,7 +394,7 @@ Core Components
 3. Ray Tracer
 ^^^^^^^^^^^^^
 
-**File:** ``src/ray_tracer.py``
+**File:** ``openlens/ray_tracer.py``
 
 **Responsibilities:**
 
@@ -421,7 +421,7 @@ Core Components
 4. Aberrations Calculator
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-**File:** ``src/aberrations.py``
+**File:** ``openlens/aberrations.py``
 
 **Responsibilities:**
 
@@ -443,7 +443,7 @@ Core Components
 5. GUI Application
 ^^^^^^^^^^^^^^^^^^
 
-**File:** ``src/lens_editor_gui.py``, ``src/gui/``
+**File:** ``openlens/lens_editor_gui.py``, ``openlens/gui/``
 
 **Responsibilities:**
 
@@ -465,7 +465,7 @@ Core Components
 6. Optical System
 ^^^^^^^^^^^^^^^^^
 
-**File:** ``src/optical_system.py``
+**File:** ``openlens/optical_system.py``
 
 **Responsibilities:**
 

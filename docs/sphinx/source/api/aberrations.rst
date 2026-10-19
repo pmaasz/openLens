@@ -1,7 +1,7 @@
 Aberrations Module
 ==================
 
-.. automodule:: src.aberrations
+.. automodule:: openlens.aberrations
    :members:
    :undoc-members:
    :show-inheritance:

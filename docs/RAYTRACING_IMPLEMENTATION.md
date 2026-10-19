@@ -11,7 +11,7 @@ A complete **Ray Tracing Engine** with interactive visualization, implementing S
 ## 📦 Deliverables
 
 ### 1. Core Ray Tracing Engine
-**File:** `src/ray_tracer.py` (15,042 characters)
+**File:** `openlens/ray_tracer.py` (15,042 characters)
 
 **Classes:**
 - `Ray` - Represents a light ray with position, direction, and path tracking
@@ -51,7 +51,7 @@ A complete **Ray Tracing Engine** with interactive visualization, implementing S
 - Different lens types (biconvex, biconcave, plano-convex)
 
 ### 3. GUI Integration
-**Modified:** `src/lens_editor_gui.py`
+**Modified:** `openlens/lens_editor_gui.py`
 
 **Added:**
 - Ray tracer import and availability check
@@ -345,12 +345,12 @@ For point (x,y) on sphere centered at (cx, 0):
 ## 📁 Files Created/Modified
 
 ### Created
-1. ✅ `src/ray_tracer.py` (15,042 chars)
+1. ✅ `openlens/ray_tracer.py` (15,042 chars)
 2. ✅ `tests/test_ray_tracer.py` (13,078 chars)
 3. ✅ `test_ray_tracer_quick.py` (1,681 chars)
 
 ### Modified
-1. ✅ `src/lens_editor_gui.py` (ray tracer integration)
+1. ✅ `openlens/lens_editor_gui.py` (ray tracer integration)
 2. ✅ `CHANGELOG.md` (v1.2.0 notes)
 3. ✅ `README.md` (ray tracing features)
 4. ✅ `docs/ideas.md` (marked complete)

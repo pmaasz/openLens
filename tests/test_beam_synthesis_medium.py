@@ -27,9 +27,9 @@ Three defects:
 import math
 import unittest
 
-from src.analysis.beam_synthesis import GaussianBeam
-from src.ray import Ray3D
-from src.vector3 import vec3
+from openlens.analysis.beam_synthesis import GaussianBeam
+from openlens.ray import Ray3D
+from openlens.vector3 import vec3
 
 WAVELENGTH_MM = 550e-6
 SUBPROCESS_BLOCKER = """
@@ -193,7 +193,7 @@ class TestGracefulDegradationWithoutNumpy(unittest.TestCase):
 
     def test_flag_is_false(self):
         result = self._without_numpy(
-            "import src.analysis.beam_synthesis as b; print('FLAG', b.NUMPY_AVAILABLE)"
+            "import openlens.analysis.beam_synthesis as b; print('FLAG', b.NUMPY_AVAILABLE)"
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("FLAG False", result.stdout)
@@ -202,7 +202,7 @@ class TestGracefulDegradationWithoutNumpy(unittest.TestCase):
         # The wavefront/PSF pair now lives in analysis.diffraction_psf (the
         # single implementation); beam_synthesis no longer duplicates it.
         result = self._without_numpy("""
-            import src.analysis.diffraction_psf as b
+            import openlens.analysis.diffraction_psf as b
 
             class _P:
                 elements = None
@@ -218,7 +218,7 @@ class TestGracefulDegradationWithoutNumpy(unittest.TestCase):
 
     def test_mtf_path_returns_instead_of_raising(self):
         result = self._without_numpy("""
-            import src.analysis.diffraction_psf as b
+            import openlens.analysis.diffraction_psf as b
             print('OK', b.DiffractionPSFCalculator.calculate_mtf(None))
             """)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -227,7 +227,7 @@ class TestGracefulDegradationWithoutNumpy(unittest.TestCase):
     def test_shim_provides_the_names_the_module_uses(self):
         import inspect
 
-        import src.analysis.beam_synthesis as module
+        import openlens.analysis.beam_synthesis as module
 
         shim = module.np
         for name in ("array", "zeros", "ones", "linspace", "meshgrid", "ndarray"):
@@ -237,7 +237,7 @@ class TestGracefulDegradationWithoutNumpy(unittest.TestCase):
     def test_bsp_still_raises_a_clean_import_error(self):
         """The numpy-requiring path should refuse clearly, not crash oddly."""
         result = self._without_numpy("""
-            import src.analysis.beam_synthesis as b
+            import openlens.analysis.beam_synthesis as b
 
             class _P:
                 elements = [object()]

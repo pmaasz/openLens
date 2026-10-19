@@ -8,11 +8,11 @@ import os
 import unittest
 import tempfile
 
-# Add src to path
+# Add the repo root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.material_database import MaterialDatabase, MaterialProperties
-from src.lens import Lens
+from openlens.material_database import MaterialDatabase, MaterialProperties
+from openlens.lens import Lens
 
 # Check if material DB is available (it should be for these tests)
 MATERIAL_DB_AVAILABLE = True

@@ -1,7 +1,7 @@
 Simulation Tab
 ==============
 
-.. automodule:: src.gui.tabs.simulation_tab
+.. automodule:: openlens.gui.tabs.simulation_tab
    :members:
    :undoc-members:
    :show-inheritance:

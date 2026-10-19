@@ -26,10 +26,10 @@ Each class now owns a `random.Random(seed)` and threads it through.
 import random
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.optimizer import OptimizationTarget, OptimizationVariable
-from src.tolerancing import MonteCarloAnalyzer, ToleranceOperand, ToleranceType
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.optimizer import OptimizationTarget, OptimizationVariable
+from openlens.tolerancing import MonteCarloAnalyzer, ToleranceOperand, ToleranceType
 
 
 def _system():
@@ -64,7 +64,7 @@ class TestGlobalStreamIsUntouched(unittest.TestCase):
         self.assertEqual(after, expected)
 
     def test_constructing_a_global_optimizer_does_not_reseed(self):
-        from src.global_optimizer import GlobalOptimizer
+        from openlens.global_optimizer import GlobalOptimizer
 
         random.seed(1234)
         expected = random.random()
@@ -102,7 +102,7 @@ class TestSeedIsActuallyReproducible(unittest.TestCase):
         self.assertNotEqual(self._run(7), self._run(8))
 
     def test_global_optimizer_seed_is_reproducible(self):
-        from src.global_optimizer import GlobalOptimizer
+        from openlens.global_optimizer import GlobalOptimizer
 
         variables = [
             OptimizationVariable(
@@ -164,7 +164,7 @@ class TestNoModuleLevelReseedRemains(unittest.TestCase):
         import pathlib
         import re
 
-        root = pathlib.Path(__file__).resolve().parent.parent / "src"
+        root = pathlib.Path(__file__).resolve().parent.parent / "openlens"
         pattern = re.compile(r"(?<![\w.])random\.seed\(")
         offenders = []
         for path in root.rglob("*.py"):

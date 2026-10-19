@@ -1,8 +1,8 @@
 import unittest
 import os
 import tempfile
-from src.io.step_export import StepExporter
-from src.lens import Lens
+from openlens.io.step_export import StepExporter
+from openlens.lens import Lens
 
 
 class TestStepExport(unittest.TestCase):

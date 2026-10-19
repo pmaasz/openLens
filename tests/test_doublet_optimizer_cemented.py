@@ -16,8 +16,8 @@ Two defects in ``create_doublet_optimizer``:
 
 import unittest
 
-from src.optimizer import create_doublet_optimizer
-from src.optical_system import create_doublet
+from openlens.optimizer import create_doublet_optimizer
+from openlens.optical_system import create_doublet
 
 
 class TestDoubletOptimizerCementedInterface(unittest.TestCase):

@@ -2,9 +2,9 @@
 import unittest
 import math
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.optimizer import LensOptimizer, OptimizationVariable, OptimizationTarget
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.optimizer import LensOptimizer, OptimizationVariable, OptimizationTarget
 
 
 class TestAssemblyOptimization(unittest.TestCase):

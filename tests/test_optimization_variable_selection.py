@@ -28,8 +28,8 @@ except ImportError as _e:
     PYSIDE_AVAILABLE = False
     _PYSIDE_ERROR = _e
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 if not PYSIDE_AVAILABLE:  # pragma: no cover - environment guard
 
@@ -43,13 +43,13 @@ if not PYSIDE_AVAILABLE:  # pragma: no cover - environment guard
 class TestOptimizationVariableSelection(unittest.TestCase):
     def setUp(self):
         self.app = QApplication.instance() or QApplication(sys.argv)
-        import openlens
+        from openlens.__main__ import OpenLensWindow
 
         fd, self.db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
 
-        self.window = openlens.OpenLensWindow()
-        from src.gui.storage import LensStorage
+        self.window = OpenLensWindow()
+        from openlens.gui.storage import LensStorage
 
         self.window._storage = LensStorage(self.db_path)
         self.window._db_path = self.db_path

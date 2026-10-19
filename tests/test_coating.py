@@ -6,17 +6,17 @@ import sqlite3
 import tempfile
 import unittest
 
-from src.coating_designer import (
+from openlens.coating_designer import (
     COATING_PRESETS,
     CoatingLayer,
     coated_reflectance,
     coating_label,
     design_preset,
 )
-from src.database import SCHEMA_VERSION, DatabaseManager
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.validation import ValidationError, validate_coating_stack
+from openlens.database import SCHEMA_VERSION, DatabaseManager
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.validation import ValidationError, validate_coating_stack
 
 
 def _make_db():
@@ -261,7 +261,7 @@ class TestCoatingExports(unittest.TestCase):
 
     def test_iso_table_shows_coating(self):
         """ISO SVG table should carry per-surface coating labels."""
-        from src.io.export import ISO10110Generator
+        from openlens.io.export import ISO10110Generator
 
         system, _ = self._coated_system()
         svg = ISO10110Generator(system)._render_svg(800, 600)
@@ -270,7 +270,7 @@ class TestCoatingExports(unittest.TestCase):
 
     def test_step_name_carries_coating(self):
         """STEP solid names should note non-default coatings."""
-        from src.io.step_export import StepExporter
+        from openlens.io.step_export import StepExporter
 
         system, _ = self._coated_system()
         with tempfile.NamedTemporaryFile(suffix=".step", delete=False, mode="w") as tmp:
@@ -285,7 +285,7 @@ class TestCoatingExports(unittest.TestCase):
 
     def test_zemax_has_coat_lines(self):
         """Zemax surfaces should carry COAT lines when coated."""
-        from src.export_formats import ZemaxExporter
+        from openlens.export_formats import ZemaxExporter
 
         _, lens = self._coated_system()
         with tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w") as tmp:
@@ -318,7 +318,7 @@ class TestCoatingGhosts(unittest.TestCase):
 
     def test_coated_ghosts_dimmer(self):
         """Coated ghost pairs should report lower intensity."""
-        from src.analysis.ghost import GhostAnalyzer
+        from openlens.analysis.ghost import GhostAnalyzer
 
         bare_ghosts = GhostAnalyzer(self._system(False)).trace_ghosts(num_rays=3)
         coated_ghosts = GhostAnalyzer(self._system(True)).trace_ghosts(num_rays=3)
@@ -331,7 +331,7 @@ class TestCoatingGhosts(unittest.TestCase):
 class TestSeriesECoatingSeed(unittest.TestCase):
     def test_seed_air_surfaces_single_coated(self):
         """Fresh Series E seeds should carry the historic single coat."""
-        from src.seed_data import build_nikon_series_e_lenses
+        from openlens.seed_data import build_nikon_series_e_lenses
 
         lenses = build_nikon_series_e_lenses()
         # L1 front/back, L4a front, L4b back spot-checks.

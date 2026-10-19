@@ -2,7 +2,7 @@
 
 AGENTS.md requires optional imports to be guarded with a ``*_AVAILABLE`` flag so
 the app starts and runs its core features without them. Four modules did not, and
-because ``openlens.py`` imports two of them at module level, the whole GUI failed
+because ``openlens/__main__.py`` imports two of them at module level, the whole GUI failed
 to launch:
 
     plots, mechanical_designer, image_simulator  -> ModuleNotFoundError
@@ -31,13 +31,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: The modules that must import with nothing optional installed.
-#: openlens.py pulls in two of these at module level, so they are load-bearing
+#: openlens/__main__.py pulls in two of these at module level, so they are load-bearing
 #: for whether the application starts at all.
 GUARDED_MODULES = (
-    "src.analysis.plots",
-    "src.analysis.psf_mtf",
-    "src.mechanical_designer",
-    "src.image_simulator",
+    "openlens.analysis.plots",
+    "openlens.analysis.psf_mtf",
+    "openlens.mechanical_designer",
+    "openlens.image_simulator",
 )
 
 OPTIONAL_PACKAGES = ("numpy", "matplotlib", "scipy", "PIL", "Pillow")
@@ -90,10 +90,10 @@ class TestTheGuardlessModulesImport(unittest.TestCase):
     def test_the_issue_repro_for_each_module(self):
         """Names them individually, so a failure says which one."""
         expected = {
-            "src.analysis.plots": "ModuleNotFoundError",
-            "src.mechanical_designer": "ModuleNotFoundError",
-            "src.image_simulator": "ModuleNotFoundError",
-            "src.analysis.psf_mtf": "AttributeError",
+            "openlens.analysis.plots": "ModuleNotFoundError",
+            "openlens.mechanical_designer": "ModuleNotFoundError",
+            "openlens.image_simulator": "ModuleNotFoundError",
+            "openlens.analysis.psf_mtf": "AttributeError",
         }
         for module, was_raising in expected.items():
             with self.subTest(module=module, was_raising=was_raising):
@@ -120,7 +120,7 @@ class TestTheGuardlessModulesImport(unittest.TestCase):
 
     def test_the_window_class_is_reachable(self):
         result = _run_without_optional("""
-            from openlens import OpenLensWindow
+            from openlens.__main__ import OpenLensWindow
             print(OpenLensWindow.__name__)
             """)
         self.assertEqual(result.returncode, 0, result.stderr.strip()[-600:])
@@ -147,13 +147,13 @@ class TestTheAvailabilityFlagsAreHonest(unittest.TestCase):
         return flags
 
     def test_psf_mtf_reports_numpy_as_unavailable(self):
-        flags = self._flags("src.analysis.psf_mtf")
+        flags = self._flags("openlens.analysis.psf_mtf")
 
         self.assertIn("HAS_NUMPY", flags)
         self.assertFalse(flags["HAS_NUMPY"], "reports numpy as present when it is not")
 
     def test_image_simulator_reports_every_optional_as_unavailable(self):
-        flags = self._flags("src.image_simulator")
+        flags = self._flags("openlens.image_simulator")
 
         self.assertFalse(flags.get("HAS_NUMPY"), flags)
         self.assertFalse(flags.get("SCIPY_AVAILABLE"), flags)
@@ -167,7 +167,7 @@ class TestTheAvailabilityFlagsAreHonest(unittest.TestCase):
         The module still imports with deferred annotations, so the annotations
         must have survived as strings.
         """
-        for module in ("src.analysis.psf_mtf", "src.image_simulator"):
+        for module in ("openlens.analysis.psf_mtf", "openlens.image_simulator"):
             with self.subTest(module=module):
                 result = _run_without_optional(f"""
                     import {module} as m
@@ -192,7 +192,7 @@ class TestMechanicalDesignerNeedsNoNumpy(unittest.TestCase):
     """Its only use of numpy was the constant np.pi."""
 
     def test_it_does_not_import_numpy(self):
-        source = (REPO_ROOT / "src" / "mechanical_designer.py").read_text()
+        source = (REPO_ROOT / "openlens" / "mechanical_designer.py").read_text()
 
         self.assertNotIn(
             "import numpy",
@@ -204,7 +204,7 @@ class TestMechanicalDesignerNeedsNoNumpy(unittest.TestCase):
     def test_the_volume_math_still_works(self):
         result = _run_without_optional("""
             import math
-            from src.mechanical_designer import LensMount
+            from openlens.mechanical_designer import LensMount
             mount = LensMount(
                 lens_diameter=25.0, mount_type="threaded", thread_diameter=30.0,
                 thread_pitch=1.0, flange_distance=5.0, clear_aperture=20.0,

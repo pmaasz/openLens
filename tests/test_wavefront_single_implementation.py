@@ -28,8 +28,8 @@ import unittest
 
 import numpy as np
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _system():
@@ -57,35 +57,35 @@ def _residual_tilt(wavefront):
 
 class TestOnlyOneImplementationExists(unittest.TestCase):
     def test_beam_synthesis_no_longer_exports_a_wavefront_sensor(self):
-        import src.analysis.beam_synthesis as module
+        import openlens.analysis.beam_synthesis as module
 
         self.assertFalse(hasattr(module, "WavefrontSensor"))
 
     def test_beam_synthesis_no_longer_exports_a_psf_calculator(self):
-        import src.analysis.beam_synthesis as module
+        import openlens.analysis.beam_synthesis as module
 
         self.assertFalse(hasattr(module, "PSFCalculator"))
 
     def test_beam_synthesis_keeps_the_beam_propagator(self):
         """Gaussian beam synthesis is a separate, still-valid feature."""
-        import src.analysis.beam_synthesis as module
+        import openlens.analysis.beam_synthesis as module
 
         self.assertTrue(hasattr(module, "GaussianBeam"))
         self.assertTrue(hasattr(module, "BeamSynthesisPropagator"))
 
     def test_analysis_package_exports_the_survivor(self):
-        import src.analysis as analysis
+        import openlens.analysis as analysis
 
         self.assertTrue(hasattr(analysis, "WavefrontSensor"))
         self.assertTrue(hasattr(analysis, "DiffractionPSFCalculator"))
 
     def test_analysis_package_does_not_export_the_ambiguous_name(self):
-        import src.analysis as analysis
+        import openlens.analysis as analysis
 
         self.assertFalse(hasattr(analysis, "PSFCalculator"))
 
     def test_optimizer_uses_the_survivor(self):
-        import src.optimizer as optimizer
+        import openlens.optimizer as optimizer
 
         self.assertTrue(hasattr(optimizer, "DiffractionPSFCalculator"))
         self.assertTrue(hasattr(optimizer, "WavefrontSensor"))
@@ -93,9 +93,9 @@ class TestOnlyOneImplementationExists(unittest.TestCase):
 
     def test_every_consumer_agrees_on_one_class(self):
         """The same object everywhere, so the two cannot drift again."""
-        import src.analysis as analysis
-        import src.analysis.diffraction_psf as diffraction
-        import src.analysis.psf_mtf as psf_mtf
+        import openlens.analysis as analysis
+        import openlens.analysis.diffraction_psf as diffraction
+        import openlens.analysis.psf_mtf as psf_mtf
 
         self.assertIs(analysis.WavefrontSensor, diffraction.WavefrontSensor)
         self.assertIs(psf_mtf.WavefrontSensor, diffraction.WavefrontSensor)
@@ -105,7 +105,7 @@ class TestTiltIsRemoved(unittest.TestCase):
     """The whole point of the consolidation."""
 
     def setUp(self):
-        from src.analysis.diffraction_psf import WavefrontSensor
+        from openlens.analysis.diffraction_psf import WavefrontSensor
 
         self.sensor = WavefrontSensor(_system())
 
@@ -139,7 +139,7 @@ class TestTiltIsRemoved(unittest.TestCase):
         with its magnitude intact - otherwise the "tilt removal" would be
         quietly flattening real aberration.
         """
-        from src.analysis.diffraction_psf import WavefrontError, WavefrontSensor
+        from openlens.analysis.diffraction_psf import WavefrontError, WavefrontSensor
 
         sensor = WavefrontSensor(_system())
         wavefront = sensor.get_pupil_wavefront(grid_size=16)
@@ -157,7 +157,7 @@ class TestMtfMeritIsFieldIndependent(unittest.TestCase):
     """_eval_mtf previously measured a tilt ramp, not aberration."""
 
     def test_merit_does_not_depend_on_field_angle(self):
-        from src.optimizer import MeritFunction, OptimizationTarget
+        from openlens.optimizer import MeritFunction, OptimizationTarget
 
         system = _system()
         target = OptimizationTarget("mtf", 0, weight=1.0, target_type="minimize")
@@ -166,7 +166,7 @@ class TestMtfMeritIsFieldIndependent(unittest.TestCase):
         self.assertGreater(on_axis, 0.0)
 
     def test_merit_is_finite(self):
-        from src.optimizer import MeritFunction, OptimizationTarget
+        from openlens.optimizer import MeritFunction, OptimizationTarget
 
         target = OptimizationTarget("mtf", 0, weight=1.0, target_type="minimize")
         merit = MeritFunction._eval_mtf(_system(), target)
@@ -177,7 +177,7 @@ class TestPsfCalculatorStillWorks(unittest.TestCase):
     """The coverage dropped from test_beam_synthesis.TestPSF."""
 
     def test_ideal_pupil_gives_the_airy_pattern(self):
-        from src.analysis.diffraction_psf import DiffractionPSFCalculator, WavefrontError
+        from openlens.analysis.diffraction_psf import DiffractionPSFCalculator, WavefrontError
 
         N = 64
         Y, Z = np.meshgrid(np.linspace(-1, 1, N), np.linspace(-1, 1, N))
@@ -193,7 +193,7 @@ class TestPsfCalculatorStillWorks(unittest.TestCase):
         self.assertAlmostEqual(psf[centre + 1, centre], psf[centre - 1, centre], places=5)
 
     def test_mtf_of_an_ideal_psf_is_non_increasing(self):
-        from src.analysis.diffraction_psf import DiffractionPSFCalculator, WavefrontError
+        from openlens.analysis.diffraction_psf import DiffractionPSFCalculator, WavefrontError
 
         N = 64
         Y, Z = np.meshgrid(np.linspace(-1, 1, N), np.linspace(-1, 1, N))

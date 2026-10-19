@@ -3,12 +3,12 @@ import math
 import sys
 import os
 
-# Add src to path
+# Add the repo root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.optical_system import OpticalSystem
-from src.lens import Lens
-from src.optimizer import LensOptimizer, OptimizationVariable, OptimizationTarget
+from openlens.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optimizer import LensOptimizer, OptimizationVariable, OptimizationTarget
 
 
 class TestAdvancedOptimizer(unittest.TestCase):
@@ -147,7 +147,7 @@ class TestAdvancedOptimizer(unittest.TestCase):
 
     def test_empty_system_scores_infeasible(self):
         """Unevaluatable targets share one INFEASIBLE scale (not 0.0)."""
-        from src.optimizer import INFEASIBLE_MERIT
+        from openlens.optimizer import INFEASIBLE_MERIT
 
         system = OpticalSystem("Empty System")
         optimizer = LensOptimizer(system, [], [])
@@ -162,7 +162,7 @@ class TestAdvancedOptimizer(unittest.TestCase):
 
     def test_afocal_focal_length_scores_infeasible(self):
         """Undefined focus scores INFEASIBLE, not a magic 1e6."""
-        from src.optimizer import INFEASIBLE_MERIT
+        from openlens.optimizer import INFEASIBLE_MERIT
 
         afocal = Lens(
             radius_of_curvature_1=100.0,

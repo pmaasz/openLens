@@ -156,8 +156,8 @@ Action: Stage everything, create descriptive commit
 
 ### Commit specific files
 ```
-Invoke: "commit only the src/ changes"
-Action: Stage only src/, create focused commit
+Invoke: "commit only the openlens/ changes"
+Action: Stage only openlens/, create focused commit
 ```
 
 ### Commit with custom message

@@ -15,7 +15,7 @@ import os
 import tempfile
 import unittest
 
-from src.atomic import atomic_write_bytes, atomic_write_json, atomic_write_text
+from openlens.atomic import atomic_write_bytes, atomic_write_json, atomic_write_text
 
 
 class TestAtomicWriteText(unittest.TestCase):
@@ -143,9 +143,9 @@ class TestExportsUseAtomicWrites(unittest.TestCase):
     def test_step_export_leaves_previous_file_on_failure(self):
         import tempfile as tf
 
-        from src.lens import Lens
-        from src.optical_system import OpticalSystem
-        from src.io.step_export import StepExporter
+        from openlens.lens import Lens
+        from openlens.optical_system import OpticalSystem
+        from openlens.io.step_export import StepExporter
 
         fd, path = tf.mkstemp(suffix=".step")
         os.close(fd)
@@ -180,7 +180,7 @@ class TestExportsUseAtomicWrites(unittest.TestCase):
         """A serialiser that fails partway must not destroy the database."""
         import tempfile as tf
 
-        from src.material_database import MaterialDatabase
+        from openlens.material_database import MaterialDatabase
 
         fd, path = tf.mkstemp(suffix=".json")
         os.close(fd)

@@ -18,9 +18,9 @@ jobs:
       - name: Install dev deps
         run: pip install -e .[dev]
       - name: Formatting (black)
-        run: black --line-length=100 src/ tests/ --check
+        run: black --line-length=100 --exclude 'openlens/__main__\.py' openlens/ tests/ --check
       - name: Linting (flake8)
-        run: flake8 src/ tests/ --max-line-length=100 --ignore=E203,W503 --exit-zero
+        run: flake8 openlens/ tests/ --max-line-length=100 --ignore=E203,W503 --exit-zero
         continue-on-error: true
       - name: Pre-commit hooks
         uses: pre-commit/action@v3.0.1
@@ -87,9 +87,10 @@ jobs:
       - name: Install the wheel into a clean venv
         # Deliberately NOT `pip install -e .`. Every other job installs
         # editable, so nothing here would catch a packaging defect that only
-        # appears in a real install - which is exactly how the `openlens`
-        # command shipped broken: openlens.py is a top-level module, and
-        # find_packages() only finds packages.
+        # appears in a real install. Two already did: the `openlens` command
+        # was missing because its entry module was a top-level file that
+        # find_packages() could not see, and the package itself was installed
+        # under the name `src`.
         run: |
           python3 -m venv /tmp/verify
           /tmp/verify/bin/pip install --upgrade pip
@@ -105,9 +106,22 @@ jobs:
       - name: The package imports from the installed location
         run: |
           /tmp/verify/bin/python -c "
-          from src.lens import Lens
-          from src.gui.storage import LensStorage
+          from openlens.lens import Lens
+          from openlens.gui.storage import LensStorage
           print('imports OK')
+          "
+      - name: The distribution does not install a package called `src`
+        # The reported defect. `src` is the most generic directory name there
+        # is; installing it into site-packages shadowed, or was shadowed by,
+        # every other project on the machine with a src/ directory. Asserted on
+        # the installed tree rather than on setup.py, because that is the thing
+        # that actually polluted site-packages.
+        run: |
+          /tmp/verify/bin/python -c "
+          import importlib.util, sys
+          if importlib.util.find_spec('src') is not None:
+              sys.exit('the wheel installed a top-level package named src')
+          print('no top-level src package: OK')
           "
 
   no-optional-deps:
@@ -156,7 +170,7 @@ jobs:
       - name: Run with coverage
         env:
           QT_QPA_PLATFORM: offscreen
-        run: pytest --cov=src --cov-report=xml tests/
+        run: pytest --cov=openlens --cov-report=xml tests/
       - name: Upload to Codecov
         uses: codecov/codecov-action@v4
 

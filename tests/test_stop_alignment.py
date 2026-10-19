@@ -6,9 +6,9 @@ import sqlite3
 import tempfile
 import unittest
 
-from src.database import SCHEMA_VERSION, DatabaseManager
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.database import SCHEMA_VERSION, DatabaseManager
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _make_db():
@@ -210,7 +210,7 @@ class TestStopAlignmentPersistence(unittest.TestCase):
 
     def test_storage_objects_rehydrate_stop(self):
         """LensStorage loading should rebuild working stop objects."""
-        from src.gui.storage import LensStorage
+        from openlens.gui.storage import LensStorage
 
         system = _two_element_system()
         system.set_aperture_stop(0, 20.0)
@@ -253,7 +253,7 @@ class TestStopAlignmentPersistence(unittest.TestCase):
 class TestSeriesEStopSeed(unittest.TestCase):
     def test_series_e_assembly_has_stop(self):
         """The Series E seed should carry the L3-L4a stop."""
-        from src.seed_data import build_nikon_series_e_system
+        from openlens.seed_data import build_nikon_series_e_system
 
         system = build_nikon_series_e_system()
         stop = system.get_aperture_stop()
@@ -263,7 +263,7 @@ class TestSeriesEStopSeed(unittest.TestCase):
 
     def test_seed_ensure_backfills_missing_stop(self):
         """Ensure should add the stop to a stop-less seed assembly."""
-        from src.seed_data import (
+        from openlens.seed_data import (
             NIKON_SERIES_E_ASSEMBLY_ID,
             ensure_nikon_series_e_example,
         )
@@ -280,8 +280,8 @@ class TestSeriesEStopSeed(unittest.TestCase):
 
     def test_iso_marks_stop(self):
         """ISO SVG output should label the stop plane."""
-        from src.io.export import ISO10110Generator
-        from src.seed_data import build_nikon_series_e_system
+        from openlens.io.export import ISO10110Generator
+        from openlens.seed_data import build_nikon_series_e_system
 
         svg = ISO10110Generator(build_nikon_series_e_system())._render_svg(800, 600)
         self.assertIn("STOP", svg)

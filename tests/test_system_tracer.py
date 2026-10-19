@@ -1,13 +1,13 @@
 import unittest
 import math
 
-from src.constants import RAY_EXIT_PROPAGATION_2D_MM
-from src.optical_system import OpticalSystem, create_doublet
-from src.lens import Lens
-from src.ray import Ray, Ray3D
-from src.tracer_2d import SystemRayTracer
-from src.tracer_3d import SystemRayTracer3D
-from src.vector3 import vec3
+from openlens.constants import RAY_EXIT_PROPAGATION_2D_MM
+from openlens.optical_system import OpticalSystem, create_doublet
+from openlens.lens import Lens
+from openlens.ray import Ray, Ray3D
+from openlens.tracer_2d import SystemRayTracer
+from openlens.tracer_3d import SystemRayTracer3D
+from openlens.vector3 import vec3
 
 
 class TestSystemRayTracer(unittest.TestCase):

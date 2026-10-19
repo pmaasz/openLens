@@ -13,7 +13,7 @@ def read_file(filename):
         return f.read()
 
 def get_version():
-    """Extract version from src/__init__.py.
+    """Extract version from openlens/__init__.py.
 
     That file is the single definition of the version: release-please bumps it
     (.github/release-please-config.json) and `openlens --version` reads it. This
@@ -22,13 +22,13 @@ def get_version():
     the manifest drives every future release, quietly stalled them too. A
     packaging build with no version is a build to fix, not to paper over.
     """
-    init_py = read_file(os.path.join('src', '__init__.py'))
+    init_py = read_file(os.path.join('openlens', '__init__.py'))
     for line in init_py.splitlines():
         if line.startswith('__version__'):
             return line.split('=')[1].strip().strip('"').strip("'")
     raise RuntimeError(
-        "No __version__ assignment found in src/__init__.py; refusing to build "
-        "a distribution with a wrong version."
+        "No __version__ assignment found in openlens/__init__.py; refusing to "
+        "build a distribution with a wrong version."
     )
 
 setup(
@@ -42,13 +42,13 @@ setup(
     url='https://github.com/pmaasz/openLens',
     license='MIT',
 
-    packages=find_packages(exclude=['tests', 'tests.*']),
-
-    # openlens.py is the GUI's entry point (openlens=openlens:main). It is a
-    # top-level module, and find_packages() only finds packages - directories
-    # with __init__.py - so without this it was absent from every non-editable
-    # install and the `openlens` command did not exist.
-    py_modules=['openlens'],
+    # The importable package is `openlens`, not `src`. The source directory was
+    # called `src`, and find_packages() happily installed it under that name
+    # into site-packages - so every project on the machine that had a `src`
+    # directory either shadowed it or was shadowed by it. Restricted by
+    # include, so a stray top-level directory can never be shipped again by
+    # accident: the only thing this distribution installs is `openlens`.
+    packages=find_packages(include=['openlens', 'openlens.*']),
 
     include_package_data=True,
 
@@ -61,11 +61,12 @@ setup(
     # *_AVAILABLE flag so the application starts and its core optics run
     # without them.
     #
-    # numpy used to be listed here, because src.analysis.plots and
-    # src.image_simulator imported it unguarded and openlens.py imports those
-    # at module level - so a plain `pip install openlens` raised ImportError at
-    # startup. Those imports are guarded now (#476), and the core works without
-    # it: Lens, the ray tracer and focal length all run. Listing it here made
+    # numpy used to be listed here, because openlens.analysis.plots and
+    # openlens.image_simulator imported it unguarded and the GUI entry module
+    # imports those at module level - so a plain `pip install openlens` raised
+    # ImportError at startup. Those imports are guarded now (#476), and the
+    # core works without it: Lens, the ray tracer and focal length all run.
+    # Listing it here made
     # the guards dead code and silently narrowed what "optional" means.
     install_requires=[
         'PySide6>=6.0',
@@ -89,8 +90,12 @@ setup(
     # Console scripts - entry points for command-line execution
     entry_points={
         'console_scripts': [
-            'openlens=openlens:main',
-            'openlens-cli=src.lens_editor:main',
+            # The GUI entry point lives inside the package as __main__.py, so
+            # `python3 -m openlens` and the console script are the same module.
+            # It used to be a top-level openlens.py, which both forced
+            # py_modules and would have shadowed the package of the same name.
+            'openlens=openlens.__main__:main',
+            'openlens-cli=openlens.lens_editor:main',
         ],
     },
     

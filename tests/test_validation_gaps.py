@@ -20,7 +20,7 @@ Four defects, found together:
 
 import unittest
 
-from src.validation import (
+from openlens.validation import (
     ValidationError,
     _validate_number,
     validate_clear_aperture,

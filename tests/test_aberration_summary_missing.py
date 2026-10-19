@@ -22,9 +22,9 @@ import unittest
 
 import numpy as np
 
-from src.aberrations import AberrationsCalculator
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.aberrations import AberrationsCalculator
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _lens(**kwargs):

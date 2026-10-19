@@ -10,10 +10,10 @@ regression to placeholder (e.g. Airy/spot-area or hardcoded) estimates.
 import math
 import unittest
 
-from src.aberrations import AberrationsCalculator
-from src.constants import WAVELENGTH_GREEN
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.aberrations import AberrationsCalculator
+from openlens.constants import WAVELENGTH_GREEN
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _biconvex(diameter: float) -> Lens:
@@ -119,7 +119,7 @@ class TestWavefrontSensor(unittest.TestCase):
         """Chief-referenced exit-pupil map of a slow lens is sub-wave."""
         import numpy as np
 
-        from src.analysis.diffraction_psf import WavefrontSensor
+        from openlens.analysis.diffraction_psf import WavefrontSensor
 
         system = OpticalSystem(name="slow")
         system.add_lens(_biconvex(10.0))

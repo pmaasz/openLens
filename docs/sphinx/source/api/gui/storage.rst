@@ -1,7 +1,7 @@
 Lens Storage
 ============
 
-.. automodule:: src.gui.storage
+.. automodule:: openlens.gui.storage
    :members:
    :undoc-members:
    :show-inheritance:
@@ -17,7 +17,7 @@ Example Usage
 
 .. code-block:: python
 
-    from src.gui.storage import LensStorage
+    from openlens.gui.storage import LensStorage
 
     storage = LensStorage()
 

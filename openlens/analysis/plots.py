@@ -4,7 +4,7 @@ Matplotlib plotting helpers for the analysis dialogs.
 These functions draw on a caller-supplied Axes so the GUI layer stays
 thin: openlens.py builds the dialog and calls one of these with the
 analyzer output. Everything lives next to the analyzer classes in
-src/analysis/ instead of inline in window code.
+openlens/analysis/ instead of inline in window code.
 """
 
 from typing import List

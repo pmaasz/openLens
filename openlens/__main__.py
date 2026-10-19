@@ -13,38 +13,35 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-# Add src to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QLabel, QTabWidget, QStatusBar, QFileDialog, QMessageBox)
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QKeySequence
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.database import LensInUseError
-from src.paths import migrate_legacy_db, resolve_db_path
-from src.gui.storage import LensStorage
-from src.gui.widgets import LensEditorWidget
-from src.gui.tabs import (SimulationTab, PerformanceTab,
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.database import LensInUseError
+from openlens.paths import migrate_legacy_db, resolve_db_path
+from openlens.gui.storage import LensStorage
+from openlens.gui.widgets import LensEditorWidget
+from openlens.gui.tabs import (SimulationTab, PerformanceTab,
                           AssemblyTab, OptimizationTab, TolerancingTab)
-from src.gui.dialogs import StartupDialog, require_analysis_plot_dialog
-from src.gui.theme import (
+from openlens.gui.dialogs import StartupDialog, require_analysis_plot_dialog
+from openlens.gui.theme import (
     DARK, LIGHT, get_app_stylesheet, get_menubar_qss,
     get_status_bar_qss, get_tab_widget_qss,
 )
-from src.stl_export import export_lens_stl
-from src.io.step_export import StepExporter
-from src.io.export import ISO10110Generator
-from src.analysis.ghost import GhostAnalyzer
-from src.analysis.psf_mtf import ImageQualityAnalyzer
-from src.analysis.diffraction_psf import WavefrontSensor
-from src.analysis.plots import (
+from openlens.stl_export import export_lens_stl
+from openlens.io.step_export import StepExporter
+from openlens.io.export import ISO10110Generator
+from openlens.analysis.ghost import GhostAnalyzer
+from openlens.analysis.psf_mtf import ImageQualityAnalyzer
+from openlens.analysis.diffraction_psf import WavefrontSensor
+from openlens.analysis.plots import (
     apply_dark_axis_theme, plot_ghost_analysis,
     plot_mtf, plot_psf, plot_wavefront,
 )
-from src.tolerancing import deserialize_operands, serialize_operands
+from openlens.tolerancing import deserialize_operands, serialize_operands
 
 
 def _report_missing_plot_dependency(parent, exc) -> None:
@@ -53,7 +50,7 @@ def _report_missing_plot_dependency(parent, exc) -> None:
     The analysis dialogs are the only matplotlib dependency in the app; the
     lens editor, assembly builder and the QPainter visualisations all work
     without it. Mirrors the "Dependency Missing" warning used in
-    src/gui/tabs/performance_tab.py.
+    openlens/gui/tabs/performance_tab.py.
     """
     logger.warning("Analysis plots unavailable: %s", exc)
     QMessageBox.warning(
@@ -374,7 +371,7 @@ class OpenLensWindow(QMainWindow):
     
     def _load_lens_from_data(self, data: Any) -> None:
         """Load lens or assembly from saved data"""
-        from src.optical_system import OpticalSystem
+        from openlens.optical_system import OpticalSystem
 
         # Check if the item already exists in the library by ID
         existing = None
@@ -1120,7 +1117,7 @@ Ctrl+6         Tolerancing
             
             system = self._ensure_system(target)
 
-            from src.mechanical_designer import MechanicalDesigner
+            from openlens.mechanical_designer import MechanicalDesigner
 
             housing = MechanicalDesigner(system).suggest_housing()
             exporter = StepExporter(system)
@@ -1441,10 +1438,10 @@ def _handle_headless_flags(argv: Optional[list] = None) -> Optional[int]:
     args = list(sys.argv[1:] if argv is None else argv)
 
     if "--version" in args or "-V" in args:
-        # src/__init__.py is the canonical version, and release-please bumps it
+        # openlens/__init__.py is the canonical version, and release-please bumps it
         # (see .github/release-please-config.json). setup.py reads the same
         # file, so the two cannot report different versions.
-        from src import __version__
+        from openlens import __version__
 
         print(f"openlens {__version__}")
         return 0
@@ -1489,7 +1486,7 @@ def main() -> None:
     # Done once here (not in OpenLensWindow.__init__) so unit tests that
     # construct the window directly never touch the production database.
     try:
-        from src.seed_data import ensure_nikon_series_e_example
+        from openlens.seed_data import ensure_nikon_series_e_example
 
         ensure_nikon_series_e_example(resolve_db_path())
     except Exception as e:

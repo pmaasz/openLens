@@ -24,9 +24,9 @@ being iterated on.
 
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.optimizer import (
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.optimizer import (
     LensOptimizer,
     OptimizationTarget,
     OptimizationVariable,
@@ -151,7 +151,7 @@ class TestDeadCodeRemoved(unittest.TestCase):
         import inspect
         import re
 
-        from src.optimizer import LensOptimizer
+        from openlens.optimizer import LensOptimizer
 
         source = inspect.getsource(LensOptimizer.optimize_gradient_descent)
         assignments = re.findall(r"^(\s*)last_iteration = iteration$", source, re.M)
@@ -161,7 +161,7 @@ class TestDeadCodeRemoved(unittest.TestCase):
         """The loop-local `improvement` was overwritten without being read."""
         import inspect
 
-        from src.optimizer import LensOptimizer
+        from openlens.optimizer import LensOptimizer
 
         source = inspect.getsource(LensOptimizer.optimize_gradient_descent)
         body = source.split('logger.debug(\n            "Gradient descent:')[0]
@@ -170,7 +170,7 @@ class TestDeadCodeRemoved(unittest.TestCase):
     def test_convergence_uses_the_current_merit_not_the_history(self):
         import inspect
 
-        from src.optimizer import LensOptimizer
+        from openlens.optimizer import LensOptimizer
 
         source = inspect.getsource(LensOptimizer.optimize_gradient_descent)
         self.assertNotIn("merit_history[-1] <", source)

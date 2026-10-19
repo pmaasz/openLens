@@ -20,9 +20,9 @@ The nominal trace had the same unguarded shape.
 
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.tolerancing import (
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.tolerancing import (
     MonteCarloAnalyzer,
     ToleranceOperand,
     ToleranceType,
@@ -57,7 +57,7 @@ class _BoomSpotDiagram:
 
     @classmethod
     def install(cls, fail_after, test):
-        import src.tolerancing as module
+        import openlens.tolerancing as module
 
         cls.calls = 0
         cls.fail_after = fail_after

@@ -31,7 +31,7 @@ except ImportError as _e:  # pragma: no cover - environment guard
     PYSIDE_AVAILABLE = False
     _PYSIDE_ERROR = _e
 
-from src.lens import Lens
+from openlens.lens import Lens
 
 if PYSIDE_AVAILABLE:
     _app = QApplication.instance()
@@ -67,7 +67,7 @@ def _lens():
 @unittest.skipUnless(PYSIDE_AVAILABLE, "PySide6 not available")
 class _TolerancingTabFixture(unittest.TestCase):
     def setUp(self):
-        from src.gui.tabs.tolerancing_tab import TolerancingTab
+        from openlens.gui.tabs.tolerancing_tab import TolerancingTab
 
         class _Parent:
             def __init__(self, lens):

@@ -14,16 +14,16 @@ When invoked, perform the following validation steps in order. Stop immediately 
 Verify code formatting complies with Black style.
 
 ```bash
-black src/ tests/ --check
+black --exclude 'openlens/__main__.py' openlens/ tests/ --check
 ```
 
-If this fails, instruct the user to run `black src/ tests/` to fix it automatically.
+If this fails, instruct the user to run `black --exclude 'openlens/__main__.py' openlens/ tests/` to fix it automatically.
 
 ### 2. Run Linter
 Check for syntax errors and style violations.
 
 ```bash
-flake8 src/ tests/
+flake8 openlens/ tests/
 ```
 
 If this fails, list the specific violations.
@@ -52,12 +52,12 @@ Provide a consolidated report:
 
 ### 1. Formatting (Black)
 - Status: [PASS/FAIL]
-- Action: (If failed) Run `black src/ tests/` to fix.
+- Action: (If failed) Run `black --exclude 'openlens/__main__.py' openlens/ tests/` to fix.
 
 ### 2. Linting (Flake8)
 - Status: [PASS/FAIL]
 - Issues:
-  - src/file.py:line:col: E123 Error message
+  - openlens/file.py:line:col: E123 Error message
 
 ### 3. Tests
 - Status: [PASS/FAIL]

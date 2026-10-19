@@ -17,9 +17,9 @@ yield.
 
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.tolerancing import (
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.tolerancing import (
     MonteCarloAnalyzer,
     ToleranceOperand,
     ToleranceType,
