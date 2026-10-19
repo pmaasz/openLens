@@ -138,7 +138,7 @@ class TestLoadAllSurvivesCorruptMetadata(unittest.TestCase):
         conn.commit()
         conn.close()
 
-        asm = next(r for r in self.db.load_all() if r.get("type") == "OpticalSystem")
+        asm = next(r for r in self.db.load_all() if r.get("row_type") == "OpticalSystem")
         self.assertEqual(asm["elements"][0]["lens"]["name"], "Shared")
 
 

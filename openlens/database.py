@@ -683,6 +683,12 @@ class DatabaseManager:
     def load_all(self) -> List[Dict[str, Any]]:
         """Load all standalone lenses and assemblies.
 
+        Every returned row carries a ``row_type`` of ``"Lens"`` or
+        ``"OpticalSystem"``. The marker is deliberately not ``type``: the
+        stored metadata blob is merged flat onto the row, and a lens's own
+        ``type`` is its lens type (``"Biconvex"``, ...), so storing the marker
+        under ``type`` meant the merge always overwrote it.
+
         "Standalone" is the operative word. A lens row that exists only as an
         element of an assembly is *not* a library item, and returning it as a
         top-level "Lens" made every assembly member reappear in the lens lists
@@ -709,7 +715,6 @@ class DatabaseManager:
             cursor.execute("SELECT * FROM lenses")
             for row in cursor.fetchall():
                 lens = dict(row)
-                lens["type"] = "Lens"  # Explicitly mark as Lens
                 lens["radius_of_curvature_1"] = lens["radius1"]
                 lens["radius_of_curvature_2"] = lens["radius2"]
                 del lens["radius1"]
@@ -717,6 +722,13 @@ class DatabaseManager:
                 lens["metadata"] = _metadata_merge(
                     lens, lens.pop("metadata", None), f"lens {lens['id']}"
                 )
+                # The row marker lives under its own key, set after the merge.
+                # "type" belongs to the payload: Lens.to_dict()["type"] is the
+                # lens type ("Biconvex"), and _metadata_merge flattens the blob
+                # onto the row, so a marker stored under "type" was always
+                # overwritten and every lens came back as "Biconvex". After the
+                # merge, a stored blob cannot spoof the marker either (#488).
+                lens["row_type"] = "Lens"
                 # Coating TEXT columns decode to layer lists; an explicit
                 # blob key (hand-written rows) wins, matching the
                 # parabolic convention above.
@@ -734,12 +746,13 @@ class DatabaseManager:
             for row in cursor.fetchall():
                 assembly = dict(row)
                 assembly_id = assembly["id"]
-                assembly["type"] = "OpticalSystem"
 
                 # Load metadata
                 assembly["metadata"] = _metadata_merge(
                     assembly, assembly.pop("metadata", None), f"assembly {assembly_id}"
                 )
+                # Same contract as the lens marker above.
+                assembly["row_type"] = "OpticalSystem"
 
                 # Load elements. Named columns only: both tables define an
                 # 'id' column, so 'l.*' would create a duplicate key whose

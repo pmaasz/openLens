@@ -114,7 +114,7 @@ class _DbCase(unittest.TestCase):
         # production; matching it here keeps this test honest about the real
         # loading path.
         for item in DatabaseManager(self.path).load_all():
-            if item.get("type") != "OpticalSystem":
+            if item.get("row_type") != "OpticalSystem":
                 return item
         self.fail("the lens did not come back from the database")
 
@@ -252,7 +252,7 @@ class TestMetadataSurvivesSqlite(_DbCase):
         db.save_assembly(system.to_dict())
 
         for item in DatabaseManager(self.path).load_all():
-            if item.get("type") == "OpticalSystem":
+            if item.get("row_type") == "OpticalSystem":
                 self.assertEqual(item["metadata"]["tolerances"], TOLERANCES)
                 return
         self.fail("the assembly did not come back from the database")

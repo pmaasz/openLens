@@ -281,7 +281,7 @@ class TestUnstampedLegacyDatabase(_TempDb):
     def test_existing_rows_survive_the_migration(self):
         """Migrating must not drop the lenses the user already had."""
         db = DatabaseManager(self.path)
-        lenses = [item for item in db.load_all() if item.get("type") == "Lens"]
+        lenses = [item for item in db.load_all() if item.get("row_type") == "Lens"]
 
         self.assertEqual([lens["id"] for lens in lenses], ["legacy-1"])
         self.assertEqual(lenses[0]["name"], "Legacy Lens")
@@ -347,7 +347,7 @@ class TestEveryHistoricalVersionMigrates(_TempDb):
                 self.addCleanup(self._remove, path)
 
                 db = DatabaseManager(path)
-                lenses = [item for item in db.load_all() if item.get("type") == "Lens"]
+                lenses = [item for item in db.load_all() if item.get("row_type") == "Lens"]
 
                 self.assertEqual([lens["id"] for lens in lenses], ["legacy-1"])
 

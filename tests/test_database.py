@@ -51,13 +51,23 @@ def _make_assembly_dict(
 
 
 def _load_assemblies(db):
-    """Return only OpticalSystem items from load_all."""
-    return [r for r in db.load_all() if r.get("type") == "OpticalSystem"]
+    """Return only OpticalSystem items from load_all.
+
+    ``row_type`` is the row marker. ``type`` is the payload's own type - for
+    a lens that is the lens type ("Biconvex", ...), which is exactly the
+    collision #488 is about.
+    """
+    return [r for r in db.load_all() if r.get("row_type") == "OpticalSystem"]
 
 
 def _load_lenses(db):
-    """Return only standalone Lens items from load_all."""
-    return [r for r in db.load_all() if r.get("type") == "Lens"]
+    """Return only standalone Lens items from load_all.
+
+    Filtering on ``type`` made this return [] for every call: the metadata
+    merge overwrites the marker with Lens.to_dict()["type"], so every
+    assertion built on the old helper passed vacuously.
+    """
+    return [r for r in db.load_all() if r.get("row_type") == "Lens"]
 
 
 class TestDatabaseManagerInit(unittest.TestCase):
@@ -620,6 +630,122 @@ class TestMigrationIsAtomicAndIdempotent(unittest.TestCase):
             conn.close()
         finally:
             os.unlink(tmp.name)
+
+
+class TestLoadAllRowMarker(unittest.TestCase):
+    """#488: the row marker must not collide with the payload's own type.
+
+    ``Lens.to_dict()["type"]`` is the lens type ("Biconvex", ...). Storing the
+    row marker under the same key meant the metadata merge overwrote it, so
+    ``load_all`` returned ``type: "Biconvex"`` for every lens. The marker is
+    now ``row_type``, set after the merge so a stored blob cannot spoof it.
+    """
+
+    def setUp(self):
+        self.db, self.path = _make_db()
+        self.addCleanup(os.unlink, self.path)
+
+    def test_a_lens_row_is_marked_and_keeps_its_lens_type(self):
+        from openlens.constants import LENS_TYPE_PLANO_CONVEX
+        from openlens.lens import Lens
+
+        self.db.save_lens(Lens(name="PCX", lens_type=LENS_TYPE_PLANO_CONVEX).to_dict())
+
+        row = _load_lenses(self.db)[0]
+
+        self.assertEqual(row["row_type"], "Lens")
+        self.assertEqual(row["type"], LENS_TYPE_PLANO_CONVEX)
+
+    def test_the_default_lens_type_is_not_mistaken_for_the_marker(self):
+        from openlens.constants import LENS_TYPE_BICONVEX
+        from openlens.lens import Lens
+
+        self.db.save_lens(Lens(name="Biconvex").to_dict())
+
+        row = _load_lenses(self.db)[0]
+
+        self.assertEqual(row["type"], LENS_TYPE_BICONVEX)
+        self.assertNotEqual(row["type"], "Lens")
+
+    def test_an_assembly_row_is_marked(self):
+        from openlens.optical_system import OpticalSystem
+
+        self.db.save_assembly(OpticalSystem(name="Doublet").to_dict())
+
+        row = _load_assemblies(self.db)[0]
+
+        self.assertEqual(row["row_type"], "OpticalSystem")
+        self.assertEqual(row["type"], "OpticalSystem")
+
+    def test_a_stored_blob_cannot_spoof_the_row_marker(self):
+        """The marker is not a payload key: metadata reaches the row through
+        the merge, so it must not be able to claim a different row kind."""
+        from openlens.lens import Lens
+
+        self.db.save_lens(Lens(name="Sneaky", metadata={"row_type": "OpticalSystem"}).to_dict())
+
+        row = _load_lenses(self.db)[0]
+
+        self.assertEqual(row["row_type"], "Lens")
+
+    def test_a_row_written_without_a_blob_still_gets_a_marker(self):
+        self.db.save_lens(_make_lens_dict())
+
+        row = _load_lenses(self.db)[0]
+
+        self.assertEqual(row["row_type"], "Lens")
+        self.assertEqual(row["name"], "Test Lens")
+
+
+class TestLensStorageUsesTheRowMarker(unittest.TestCase):
+    """The production dispatcher must key on the marker, not the payload."""
+
+    def setUp(self):
+        self.db, self.path = _make_db()
+        self.addCleanup(os.unlink, self.path)
+
+    def test_a_lens_comes_back_as_a_lens_with_its_type(self):
+        from openlens.constants import LENS_TYPE_PLANO_CONVEX
+        from openlens.gui.storage import LensStorage
+        from openlens.lens import Lens
+
+        lens = Lens(name="PCX", lens_type=LENS_TYPE_PLANO_CONVEX)
+        self.db.save_lens(lens.to_dict())
+
+        items = LensStorage(self.path).load_lenses()
+
+        self.assertEqual(len(items), 1)
+        self.assertIsInstance(items[0], Lens)
+        self.assertEqual(items[0].lens_type, LENS_TYPE_PLANO_CONVEX)
+
+    def test_an_assembly_comes_back_as_an_assembly(self):
+        from openlens.gui.storage import LensStorage
+        from openlens.optical_system import OpticalSystem
+
+        self.db.save_assembly(OpticalSystem(name="Doublet").to_dict())
+
+        items = LensStorage(self.path).load_lenses()
+
+        self.assertEqual(len(items), 1)
+        self.assertIsInstance(items[0], OpticalSystem)
+
+    def test_an_assembly_without_a_payload_type_is_still_an_assembly(self):
+        """The table is the authority, not a key the payload may omit.
+
+        ``OpticalSystem.to_dict`` writes "type": "OpticalSystem", but a row
+        assembled by hand - or by an older writer - need not. Dispatching on
+        "type" then built a Lens out of the assembly's row.
+        """
+        from openlens.gui.storage import LensStorage
+        from openlens.optical_system import OpticalSystem
+
+        self.db.save_assembly(_make_assembly_dict(asm_id="asm-x", name="Typeless"))
+
+        items = LensStorage(self.path).load_lenses()
+
+        systems = [item for item in items if isinstance(item, OpticalSystem)]
+        self.assertEqual(len(systems), 1)
+        self.assertEqual(systems[0].name, "Typeless")
 
 
 if __name__ == "__main__":
