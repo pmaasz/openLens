@@ -69,12 +69,14 @@ class ZemaxExporter:
             # Surface 1 (front)
             f.write("SURF 1\n")
             f.write("  TYPE STANDARD\n")
-            f.write(
-                f"  CURV {1/lens.radius_of_curvature_1 if lens.radius_of_curvature_1 != 0 else 0}\n"
-            )
+            # A parabolic surface is CONI -1 at its vertex radius, not a
+            # standard sphere at the nominal radius.
+            f.write(f"  CURV {_zemax_curv(lens.get_effective_radius_1())}\n")
+            if lens.is_parabolic_1:
+                f.write("  CONI -1\n")
             f.write(f"  DISZ {lens.thickness}\n")
-            f.write(f"  DIAM {lens.get_clear_aperture_1()}\n")
-            f.write(f"  GLAS {lens.material}\n")
+            f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_1())}\n")
+            f.write(f"  GLAS {_zemax_material(lens.material)}\n")
             coat1 = lens.coating_label(1)
             if coat1 != "Uncoated":
                 f.write(f"  COAT {coat1}\n")
@@ -83,10 +85,10 @@ class ZemaxExporter:
             # Surface 2 (back)
             f.write("SURF 2\n")
             f.write("  TYPE STANDARD\n")
-            f.write(
-                f"  CURV {1/lens.radius_of_curvature_2 if lens.radius_of_curvature_2 != 0 else 0}\n"
-            )
-            f.write(f"  DIAM {lens.get_clear_aperture_2()}\n")
+            f.write(f"  CURV {_zemax_curv(lens.get_effective_radius_2())}\n")
+            if lens.is_parabolic_2:
+                f.write("  CONI -1\n")
+            f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_2())}\n")
             coat2 = lens.coating_label(2)
             if coat2 != "Uncoated":
                 f.write(f"  COAT {coat2}\n")
@@ -652,6 +654,30 @@ def _zemax_curv(radius: float) -> str:
     return f"{1.0 / radius}"
 
 
+def _zemax_material(material: str) -> str:
+    """Render a material name as a single .zmx GLAS argument.
+
+    A .zmx GLAS line is a keyword plus one glass name; real files use names
+    such as ``N-BK7`` with no whitespace. OpenLens also has ``Fused Silica``
+    and user-imported AGF names, so quote anything with whitespace. The
+    importer strips the quotes again.
+    """
+    name = (material or "BK7").strip() or "BK7"
+    if any(ch.isspace() for ch in name):
+        return f'"{name}"'
+    return name
+
+
+def _zemax_diam(full_aperture: float) -> float:
+    """Convert an OpenLens full aperture to Zemax's semi-diameter.
+
+    Zemax DIAM is a semi-diameter. OpenLens stores the clear aperture (and
+    mechanical diameter) as a full width, so writing it verbatim made a 25 mm
+    lens appear as 50 mm in Zemax.
+    """
+    return full_aperture / 2.0
+
+
 class ZemaxSystemExporter:
     """Export a full multi-element system to the simplified .zmx dialect.
 
@@ -689,10 +715,12 @@ class ZemaxSystemExporter:
                 # Front surface carries the center thickness.
                 f.write(f"SURF {surf}\n")
                 f.write("  TYPE STANDARD\n")
-                f.write(f"  CURV {_zemax_curv(lens.radius_of_curvature_1)}\n")
+                f.write(f"  CURV {_zemax_curv(lens.get_effective_radius_1())}\n")
+                if lens.is_parabolic_1:
+                    f.write("  CONI -1\n")
                 f.write(f"  DISZ {lens.thickness}\n")
-                f.write(f"  DIAM {lens.get_clear_aperture_1()}\n")
-                f.write(f"  GLAS {lens.material}\n")
+                f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_1())}\n")
+                f.write(f"  GLAS {_zemax_material(lens.material)}\n")
                 coat = lens.coating_label(1)
                 if coat != "Uncoated":
                     f.write(f"  COAT {coat}\n")
@@ -712,8 +740,10 @@ class ZemaxSystemExporter:
                     stop_remainder = None
                 f.write(f"SURF {surf}\n")
                 f.write("  TYPE STANDARD\n")
-                f.write(f"  CURV {_zemax_curv(lens.radius_of_curvature_2)}\n")
-                f.write(f"  DIAM {lens.get_clear_aperture_2()}\n")
+                f.write(f"  CURV {_zemax_curv(lens.get_effective_radius_2())}\n")
+                if lens.is_parabolic_2:
+                    f.write("  CONI -1\n")
+                f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_2())}\n")
                 coat = lens.coating_label(2)
                 if coat != "Uncoated":
                     f.write(f"  COAT {coat}\n")
@@ -727,7 +757,7 @@ class ZemaxSystemExporter:
                     f.write("  STOP\n")
                     f.write("  CURV 0.0\n")
                     if stop_dia:
-                        f.write(f"  DIAM {stop_dia}\n")
+                        f.write(f"  DIAM {_zemax_diam(stop_dia)}\n")
                     f.write(f"  DISZ {stop_remainder}\n")
                     f.write("\n")
                     surf += 1
@@ -767,7 +797,7 @@ class ZemaxSystemImporter:
             rest = head[1] if len(head) > 1 else ""
             if key == "STOP":
                 current["stop"] = True
-            elif key in ("CURV", "DISZ", "DIAM"):
+            elif key in ("CURV", "DISZ", "DIAM", "CONI"):
                 token = rest.split()[0] if rest.split() else ""
                 if token.upper() == "INFINITY":
                     current[key.lower()] = float("inf")
@@ -776,8 +806,16 @@ class ZemaxSystemImporter:
                         current[key.lower()] = float(token)
                     except ValueError:
                         logger.debug("Zemax import: bad %s value %r", key, token)
-            elif key in ("GLAS", "TYPE"):
-                current[key.lower()] = rest.split()[0] if rest.split() else ""
+            elif key == "GLAS":
+                # A glass name may contain spaces - real files use names like
+                # "Fused Silica" - so take the whole argument, and accept the
+                # quotes our own exporter adds for exactly that reason.
+                value = rest.strip()
+                if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+                    value = value[1:-1]
+                current["glas"] = value or "BK7"
+            elif key == "TYPE":
+                current["type"] = rest.split()[0] if rest.split() else ""
         if current is not None:
             surfaces.append(current)
         return surfaces
@@ -792,6 +830,8 @@ class ZemaxSystemImporter:
         material: str,
         ca1: Optional[float],
         ca2: Optional[float],
+        conic1: float = 0.0,
+        conic2: float = 0.0,
     ) -> Optional[Lens]:
         """Validate one imported element and build a Lens, or return None.
 
@@ -809,6 +849,8 @@ class ZemaxSystemImporter:
             material: Glass name from the GLAS keyword.
             ca1: Front clear aperture (mm), or None for full diameter.
             ca2: Back clear aperture (mm), or None for full diameter.
+            conic1: Front conic constant from CONI (0.0 when absent).
+            conic2: Back conic constant from CONI.
 
         Returns:
             The validated Lens, or None if validation failed.
@@ -833,8 +875,18 @@ class ZemaxSystemImporter:
             logger.warning("Zemax import: element %d dropped, zero radius", index)
             return None
 
-        material_name = (material or "BK7").upper()
-        n = DEFAULT_MATERIAL_INDICES.get(material_name, REFRACTIVE_INDEX_BK7)
+        # Preserve the glass name as written. It is shown in the UI, and
+        # upper-casing it made every mixed-case catalog name ("Fused Silica")
+        # miss DEFAULT_MATERIAL_INDICES and silently fall back to BK7.
+        material_name = (material or "BK7").strip() or "BK7"
+        n = next(
+            (
+                index_value
+                for name, index_value in DEFAULT_MATERIAL_INDICES.items()
+                if name.lower() == material_name.lower()
+            ),
+            REFRACTIVE_INDEX_BK7,
+        )
         try:
             validate_lens_parameters(
                 radius1=probe if not math.isfinite(r1) else r1,
@@ -851,6 +903,15 @@ class ZemaxSystemImporter:
             logger.warning("Zemax import: element %d dropped: %s", index, exc)
             return None
 
+        # CONI -1 is a paraboloid. OpenLens stores it as a sag at the clear
+        # aperture, which follows from the vertex radius and that aperture:
+        # the conic term vanishes for k = -1 and z(r) = r² / (2R).
+        semi = diameter / 2.0
+        is_parabolic_1 = conic1 == -1.0
+        is_parabolic_2 = conic2 == -1.0
+        sag_1 = semi * semi / (2.0 * r1) if is_parabolic_1 and math.isfinite(r1) else 0.0
+        sag_2 = semi * semi / (2.0 * r2) if is_parabolic_2 and math.isfinite(r2) else 0.0
+
         return Lens(
             name=f"Element {index}",
             radius_of_curvature_1=r1,
@@ -858,8 +919,13 @@ class ZemaxSystemImporter:
             thickness=thickness,
             diameter=diameter,
             material=material_name,
+            refractive_index=n,
             clear_aperture_1=ca1,
             clear_aperture_2=ca2,
+            is_parabolic_1=is_parabolic_1,
+            parabolic_sag_1=sag_1,
+            is_parabolic_2=is_parabolic_2,
+            parabolic_sag_2=sag_2,
         )
 
     @staticmethod
@@ -894,16 +960,26 @@ class ZemaxSystemImporter:
             if disz >= float("inf"):
                 continue  # OBJ/IMA markers carry no geometry.
             if surf.get("stop"):
-                pending_stop = {"position": cursor_x, "diameter": surf.get("diam")}
-                cursor_x += disz
-                continue
+                # STOP is a flag on a surface, not a surface kind: it may be
+                # the front (or back) surface of an element. Record it and
+                # carry on with the normal handling below. Continuing here
+                # used to skip the GLAS check, so a lens whose front surface
+                # was the stop never opened and the element vanished.
+                diam = surf.get("diam")
+                pending_stop = {
+                    "position": cursor_x,
+                    "diameter": None if diam is None else diam * 2.0,
+                }
             if "glas" in surf:
                 # Front surface opens an element.
                 gap_before = 0.0 if last_back_x is None else max(0.0, cursor_x - last_back_x)
+                diam = surf.get("diam")
                 pending_front = {
                     "r1": _curv_to_radius(surf.get("curv", 0.0)),
                     "thickness": disz,
-                    "ca1": surf.get("diam"),
+                    # DIAM is a semi-diameter; the app stores full apertures.
+                    "ca1": None if diam is None else diam * 2.0,
+                    "conic1": surf.get("coni", 0.0),
                     "material": surf.get("glas", "BK7"),
                     "gap_before": gap_before,
                 }
@@ -911,7 +987,16 @@ class ZemaxSystemImporter:
                 continue
             if pending_front is not None:
                 # Back surface closes the element.
-                diameter = surf.get("diam") or pending_front.get("ca1") or 25.0
+                diam = surf.get("diam")
+                if diam is not None:
+                    diameter = diam * 2.0
+                    ca2 = diam * 2.0
+                elif pending_front.get("ca1") is not None:
+                    diameter = pending_front["ca1"]
+                    ca2 = None
+                else:
+                    diameter = 25.0
+                    ca2 = None
                 lens = ZemaxSystemImporter._build_validated_lens(
                     index=len(system.elements) + 1,
                     r1=pending_front["r1"],
@@ -920,7 +1005,9 @@ class ZemaxSystemImporter:
                     diameter=diameter,
                     material=pending_front["material"],
                     ca1=pending_front.get("ca1"),
-                    ca2=surf.get("diam"),
+                    ca2=ca2,
+                    conic1=pending_front.get("conic1", 0.0),
+                    conic2=surf.get("coni", 0.0),
                 )
                 if lens is not None:
                     system.add_lens(lens, air_gap_before=pending_front["gap_before"])
