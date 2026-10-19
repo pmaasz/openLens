@@ -338,7 +338,7 @@ class MaterialDatabase:
                 skipped += 1
                 continue
             try:
-                self.materials[name] = MaterialProperties.from_dict(mat_data)
+                self.materials[name.upper()] = MaterialProperties.from_dict(mat_data)
             except Exception as e:
                 # One bad entry must not cost the rest of the catalog.
                 logger.warning("Skipping material %r in %s: %s", name, self.db_path, e)
@@ -371,12 +371,20 @@ class MaterialDatabase:
         """Get material by name"""
         return self.materials.get(name.upper())
 
-    def add_material(self, material: MaterialProperties):
-        """Add or update material"""
+    def add_material(self, material: MaterialProperties, save: bool = True):
+        """Add or update material.
+
+        Args:
+            material: Material to store, keyed by its uppercased name.
+            save: Write the catalog now. Catalog imports pass False and save
+                once after the batch instead of rewriting the JSON file per
+                glass.
+        """
         self.materials[material.name.upper()] = material
         # Clear cache as material properties might have changed
         self.clear_cache()
-        self.save_database()
+        if save:
+            self.save_database()
 
     def list_materials(self, catalog: Optional[str] = None) -> List[str]:
         """List all material names, optionally filtered by catalog"""
@@ -572,7 +580,9 @@ class MaterialDatabase:
 
                 if key == "NM":
                     # Save previous glass if exists
-                    if current_glass and self._process_agf_glass(current_glass, catalog_name):
+                    if current_glass and self._process_agf_glass(
+                        current_glass, catalog_name, save=False
+                    ):
                         count += 1
 
                     # Start new glass.
@@ -666,21 +676,32 @@ class MaterialDatabase:
                             current_glass["transmission_thickness"] = thickness
 
             # Save last glass
-            if current_glass and self._process_agf_glass(current_glass, catalog_name):
+            if current_glass and self._process_agf_glass(current_glass, catalog_name, save=False):
                 count += 1
 
         except Exception as e:
             logger.error("Error importing AGF catalog: %s", e)
 
+        # One write for the whole batch. Outside the parse guard on purpose:
+        # a read-only catalog path must reach the caller instead of coming
+        # back as an under-counted, silently unsaved import (#474).
+        if count:
+            self.save_database()
+
         return count
 
-    def _process_agf_glass(self, data: Dict, catalog: str) -> bool:
+    def _process_agf_glass(self, data: Dict, catalog: str, save: bool = True) -> bool:
         """Convert raw AGF data to MaterialProperties.
 
         The CD line is a flat, interleaved list of K/L pairs:
         ``K1 L1 K2 L2 K3 L3``. MaterialProperties stores Sellmeier B and C
         separately, so the pairs have to be de-interleaved; reading the list as
         ``B1 B2 B3 C1 C2 C3`` gave every glass the wrong dispersion curve.
+
+        Args:
+            data: Raw glass entry accumulated from the AGF file.
+            catalog: Catalog name to record on the material.
+            save: Passed to ``add_material``; imports batch the write.
 
         Returns:
             True when the glass was stored. False when it was skipped, so the
@@ -725,7 +746,7 @@ class MaterialDatabase:
             transmission_data=data.get("transmission", []),
             transmission_thickness=data.get("transmission_thickness", 10.0),
         )
-        self.add_material(mat)
+        self.add_material(mat, save=save)
         return True
 
     def import_csv_catalog(self, catalog_file: str) -> int:
@@ -766,13 +787,18 @@ class MaterialDatabase:
                             ),
                             density=float(row.get("Density", 2.5)),
                         )
-                        self.add_material(mat)
+                        self.add_material(mat, save=False)
                         count += 1
                     except (ValueError, KeyError) as e:
                         logger.warning("Skipping invalid CSV row: %s", e)
                         continue
         except Exception as e:
             logger.error("Error importing CSV catalog: %s", e)
+
+        # One write for the whole batch, outside the parse guard so a write
+        # failure reaches the caller (#474).
+        if count:
+            self.save_database()
 
         return count
 
