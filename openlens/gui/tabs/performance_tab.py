@@ -322,6 +322,11 @@ class PerformanceTab(BaseTab):
                 )
             else:
                 logger.error("Import error in image simulation: %s", e)
+                QMessageBox.warning(
+                    self,
+                    "Dependency Missing",
+                    f"Image simulation requires matplotlib.\n\n{e}",
+                )
         except Exception as e:
             logger.error("Image simulation error: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to start image simulation: {e}")
