@@ -301,12 +301,14 @@ class PerformanceMetrics:
         # Hyperfocal distance
         H = f**2 / (f_number * circle_of_confusion) + f
 
-        # Near and far limits
+        # Near and far limits. The near formula is the exact lens-equation
+        # form on both sides of H; H/2 is only its value at s == H, so using
+        # it as a shortcut beyond H froze the near limit at 20530 mm while
+        # the true limit kept receding (#459).
+        near = (object_distance * (H - f)) / (H + object_distance - 2 * f)
         if object_distance < H:
-            near = (object_distance * (H - f)) / (H + object_distance - 2 * f)
             far = (object_distance * (H - f)) / (H - object_distance)
         else:
-            near = H / 2
             far = float("inf")
 
         dof = far - near if far != float("inf") else float("inf")

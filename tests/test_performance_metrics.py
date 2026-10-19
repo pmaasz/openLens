@@ -257,6 +257,80 @@ class TestBackFocalLengthForSystem(unittest.TestCase):
         self.assertAlmostEqual(bfl, lens.calculate_focal_length() - lens.thickness / 2, places=9)
 
 
+class TestDepthOfFieldBeyondHyperfocal(unittest.TestCase):
+    """#459: the near limit stays on the lens formula at and beyond H.
+
+    The old code returned ``H / 2`` for every object distance at or beyond
+    the hyperfocal distance. That is exact only at ``s == H``; beyond it the
+    near limit keeps moving away, and ``s(H-f)/(H+s-2f)`` is still the
+    correct expression.
+    """
+
+    def setUp(self):
+        self.lens = Lens(
+            name="DOF Lens",
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=-50.0,
+            thickness=5.0,
+            diameter=25.0,
+            refractive_index=1.5168,
+        )
+        self.calc = PerformanceMetrics(self.lens)
+
+    def _hyperfocal(self):
+        f = self.lens.calculate_focal_length()
+        f_number = self.calc.calculate_f_number()
+        return f, f**2 / (f_number * 0.03) + f
+
+    def _near(self, distance):
+        dof = self.calc.calculate_depth_of_field(object_distance=distance)
+        self.assertIsNotNone(dof)
+        return dof["near"]
+
+    def test_near_limit_beyond_hyperfocal_uses_the_formula_not_half_h(self):
+        f, H = self._hyperfocal()
+        distance = 5.0 * H
+
+        expected = distance * (H - f) / (H + distance - 2.0 * f)
+
+        self.assertAlmostEqual(self._near(distance), expected, places=6)
+        # The old branch reported H/2 here.
+        self.assertGreater(self._near(distance), H / 2.0 * 1.1)
+
+    def test_the_formula_holds_at_and_on_both_sides_of_h(self):
+        f, H = self._hyperfocal()
+
+        for factor in (0.5, 1.0, 5.0):
+            distance = factor * H
+            expected = distance * (H - f) / (H + distance - 2.0 * f)
+            with self.subTest(object_distance=f"{factor} H"):
+                self.assertAlmostEqual(self._near(distance), expected, places=6)
+
+    def test_near_limit_keeps_receding_beyond_the_hyperfocal_distance(self):
+        _, H = self._hyperfocal()
+
+        near_at_5h = self._near(5.0 * H)
+        near_at_10h = self._near(10.0 * H)
+
+        self.assertGreater(near_at_10h, near_at_5h)
+
+    def test_far_limit_is_infinite_only_at_or_beyond_hyperfocal(self):
+        _, H = self._hyperfocal()
+
+        self.assertNotEqual(
+            self.calc.calculate_depth_of_field(object_distance=0.999 * H)["far"],
+            float("inf"),
+        )
+        self.assertEqual(
+            self.calc.calculate_depth_of_field(object_distance=H)["far"],
+            float("inf"),
+        )
+        self.assertEqual(
+            self.calc.calculate_depth_of_field(object_distance=5.0 * H)["far"],
+            float("inf"),
+        )
+
+
 def run_tests():
     """Run all performance metrics tests"""
     print("=" * 70)
