@@ -760,20 +760,96 @@ class OpenLensWindow(QMainWindow):
             if self._stop_worker(getattr(dialog, '_pending_worker', None)):
                 self._retire_analysis_dialog(dialog)
 
+    def _worker_still_running(self, worker) -> bool:
+        """Whether a worker looks alive, treating unknown state as running.
+
+        This guards a prompt, not a shutdown. A thread whose state cannot be
+        queried might be running, and asking about a finished one costs a
+        keystroke while quietly discarding a long run costs the run - so the
+        conservative answer is "yes".
+        """
+        if worker is None:
+            return False
+        try:
+            return bool(worker.isRunning())
+        except Exception as e:
+            logger.debug("Could not query worker state: %s", e)
+            return True
+
+    def _running_work_count(self) -> int:
+        """How many background operations quitting would throw away.
+
+        Reaches exactly what _shutdown_workers reaches, so the prompt and the
+        shutdown cannot disagree about what is running. The optimizer is
+        counted from its own flag as well: _opt_is_running is set before the
+        QThread exists, and a run that has not started its thread yet is still
+        work in flight.
+        """
+        running = 0
+
+        opt_tab = getattr(self, '_opt_tab', None)
+        if opt_tab is not None:
+            if getattr(opt_tab, '_opt_is_running', False) or self._worker_still_running(
+                getattr(opt_tab, '_opt_worker', None)
+            ):
+                running += 1
+
+        tol_tab = getattr(self, '_tol_tab', None)
+        if tol_tab is not None:
+            for name in ("_mc_worker", "_inv_worker"):
+                if self._worker_still_running(getattr(tol_tab, name, None)):
+                    running += 1
+
+        for dialog in list(getattr(self, '_analysis_dialogs', []) or []):
+            if self._worker_still_running(getattr(dialog, '_pending_worker', None)):
+                running += 1
+
+        return running
+
+    def _confirm_close_with_work(self, running: int) -> bool:
+        """Ask before discarding running work. True means quit anyway.
+
+        Args:
+            running: How many operations are still in flight.
+
+        Returns:
+            True if the user chose to quit, False to keep working.
+        """
+        noun = "operation is" if running == 1 else "operations are"
+        answer = QMessageBox.question(
+            self,
+            "Quit OpenLens?",
+            f"{running} {noun} still running.\n\n"
+            "Quitting now stops it and discards the work in progress.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
     def closeEvent(self, event) -> None:
-        """Commit the last edit and stop every worker before the window goes.
+        """Commit the last edit, confirm lost work, then stop the workers.
 
         Edits are saved EDIT_COMMIT_DELAY_MS after the last change, so quitting
         inside that window dropped the final edit with nothing to say so. The
         pending edit is committed here first: it is the one thing on screen
         that is genuinely the user's and genuinely not yet on disk.
 
+        Work still in flight is different. An optimization, Monte Carlo run or
+        analysis that has been computing for minutes looks exactly like an
+        idle window, and quitting throws it away. Ask first; on No, ignore the
+        close and leave everything running (#528).
+
         Args:
-            event: The QCloseEvent. Accepted so the window closes.
+            event: The QCloseEvent. Accepted to close, ignored to stay open.
 
         Returns:
             None
         """
+        running = self._running_work_count()
+        if running and not self._confirm_close_with_work(running):
+            event.ignore()
+            return
+
         self._flush_pending_edit()
         self._shutdown_workers()
         event.accept()
