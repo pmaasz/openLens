@@ -21,6 +21,7 @@ from PySide6.QtGui import QKeySequence
 from openlens.lens import Lens
 from openlens.optical_system import OpticalSystem
 from openlens.database import LensInUseError
+from openlens.logging_setup import setup_logging, verbose_requested
 from openlens.paths import migrate_legacy_db, migrate_legacy_materials, resolve_db_path
 from openlens.gui.storage import LensStorage
 from openlens.gui.widgets import LensEditorWidget
@@ -1462,28 +1463,18 @@ Ctrl+6         Tolerancing
                         item, is_assembly=True))
 
 
-def _configure_logging() -> None:
-    """Send log records to stderr, so failures are visible to the user.
+def _configure_logging(verbose: bool = False) -> None:
+    """Install the shared logging setup before anything touches the filesystem.
 
-    Nothing called ``logging.basicConfig``, so every ``logger.error`` in the
-    app - including a save that silently failed - went only to Python's
-    last-resort handler. That is the difference between a user seeing why
-    their library could not be written and seeing nothing at all.
+    Library code logs failures instead of printing them (#478), so someone has
+    to decide where those records go. ``setup_logging`` sends them to stderr
+    and to a rotating file in the user data directory: a save that silently
+    failed is now visible in the terminal, and survives the window closing.
 
-    Idempotent: a second call must not double every message, which is why the
-    marker is our own handler rather than relying on ``basicConfig``.
+    Args:
+        verbose: Keep DEBUG records (the ``-v``/``--verbose`` flag).
     """
-    root = logging.getLogger()
-    if any(getattr(handler, "_openlens_handler", False) for handler in root.handlers):
-        return
-
-    handler = logging.StreamHandler()
-    handler._openlens_handler = True
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s")
-    )
-    root.addHandler(handler)
-    root.setLevel(logging.INFO)
+    setup_logging(verbose=verbose)
 
 
 def _handle_headless_flags(argv: Optional[list] = None) -> Optional[int]:
@@ -1513,10 +1504,11 @@ def _handle_headless_flags(argv: Optional[list] = None) -> Optional[int]:
         return 0
 
     if "--help" in args or "-h" in args:
-        print("usage: openlens [--version] [--help]")
+        print("usage: openlens [--version] [--help] [-v]")
         print()
         print("  --version   print the installed version and exit")
         print("  --help      print this message and exit")
+        print("  -v, --verbose   log debug messages")
         print()
         print("Run with no arguments to open the application.")
         return 0
@@ -1531,7 +1523,7 @@ def main() -> None:
     if exit_code is not None:
         raise SystemExit(exit_code)
 
-    _configure_logging()
+    _configure_logging(verbose_requested())
 
     # Relocate a database an older version left in the working directory, before
     # anything opens it. Launching from a desktop launcher or an IDE made the old

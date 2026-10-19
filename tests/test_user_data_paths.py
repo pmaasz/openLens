@@ -317,9 +317,12 @@ class TestTheCallersUseIt(unittest.TestCase):
         remaining = [
             line
             for line in result.stdout.splitlines()
-            if "DEFAULT_DB_FILE" not in line
-            and "startup.py:41" not in line
-            and not line.startswith("openlens/paths.py:")
+            if "DEFAULT_DB_FILE" not in line and not line.startswith("openlens/paths.py:")
+            # The startup dialog's docstring quotes the old literal to explain
+            # why it is gone; that is documentation, not a fallback path.
+            and not (
+                line.startswith("openlens/gui/dialogs/startup.py:") and '``"openlens.db"``' in line
+            )
         ]
         self.assertEqual(
             remaining,

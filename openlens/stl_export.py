@@ -427,9 +427,3 @@ def export_lens_stl(item: Any, filename: str, resolution: int = 50) -> int:
         filename,
         resolution,
     )
-
-
-if __name__ == "__main__":
-    exporter = STLExporter()
-    exporter.export_lens_to_stl(100, -100, 5, 50, "test_lens.stl")
-    print("Done")

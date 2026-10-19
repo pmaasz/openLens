@@ -3,6 +3,7 @@ OpenLens PySide6 Dialogs - Startup
 Fixed layout and styling based on user feedback.
 """
 
+import logging
 from typing import Any, List, Optional, Tuple
 
 from PySide6.QtWidgets import (
@@ -21,6 +22,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 
 from ...database import LensInUseError
+
+logger = logging.getLogger(__name__)
 
 
 class StartupDialog(QDialog):
@@ -57,7 +60,7 @@ class StartupDialog(QDialog):
         try:
             self._all_items = self._storage.load_lenses()
         except Exception as e:
-            print(f"Error loading database: {e}")
+            logger.warning("Could not load the lens library: %s", e)
             self._all_items = []
 
         self._setup_ui()

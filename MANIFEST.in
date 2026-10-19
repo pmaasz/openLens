@@ -17,6 +17,9 @@ recursive-include docs *.rst
 recursive-include docs *.py
 recursive-include docs Makefile
 
+# Include the runnable demos (the library modules no longer carry them)
+recursive-include examples *.py
+
 
 # Exclude compiled Python files
 global-exclude __pycache__
