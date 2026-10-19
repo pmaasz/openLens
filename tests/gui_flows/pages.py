@@ -120,13 +120,20 @@ class MainWindowPO:
         QApplication.processEvents()
 
     # -- performance flow (PerformanceTab) --
-    def calculate_performance(self):
+    def calculate_performance(self, timeout_ms: int = 30000):
         self.switch_tab("performance")
         tab = self.w._perf_tab
         self.click_button(tab, "Calculate Metrics")
+        # Metrics run in an AnalysisWorker. Reading the pane right away only
+        # gets the "Calculating…" placeholder; waiting for the worker's
+        # finished signal both proves the report was painted and keeps the
+        # window teardown from racing a live worker - which would open the
+        # quit prompt and block forever offscreen.
+        self.qtbot.waitUntil(lambda: tab._metrics_worker is None, timeout=timeout_ms)
         QApplication.processEvents()
         text = tab._perf_metrics_text.toPlainText()
         assert "Select a lens" not in text
+        assert not text.startswith("Calculating metrics"), text
         return text
 
     # -- assembly flow (AssemblyTab) --

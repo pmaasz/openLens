@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 from .base_tab import BaseTab
+from ..workers import AnalysisWorker
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,9 @@ class PerformanceTab(BaseTab):
         # enough: the editor edits a lens in place, so the same object can hold
         # a different design than it did when the metrics were run.
         self._cached_metrics_stamp = None
+        # The in-flight metrics computation. Held so a second click cannot
+        # stack another trace on top, and so quitting can stop it.
+        self._metrics_worker = None
 
         # Add the visualization widget
         from ..widgets import PerformanceVisualizationWidget
@@ -220,6 +224,71 @@ class PerformanceTab(BaseTab):
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(scroll)
 
+    def _current_system(self):
+        """The assembly or lens the tab analyses, or None if nothing is selected."""
+        return (
+            self._parent._current_assembly
+            if self._parent._current_assembly
+            else self._parent._current_lens
+        )
+
+    @staticmethod
+    def _wrap_in_system(active_system):
+        """Wrap a bare lens in an OpticalSystem for the analysis helpers.
+
+        Args:
+            active_system: A Lens or an OpticalSystem.
+
+        Returns:
+            An OpticalSystem; the input itself when it already is one.
+        """
+        from ...optical_system import OpticalSystem
+
+        if isinstance(active_system, OpticalSystem):
+            return active_system
+        system = OpticalSystem(name=active_system.name)
+        system.add_lens(active_system)
+        return system
+
+    def _selected_wavelength(self) -> float:
+        """Wavelength selected in the calculation parameters, in nanometres."""
+        wavelengths = [400, 450, 550, 650, 700]
+        return wavelengths[self._perf_wavelength.currentIndex()]
+
+    def _max_field_angle(self, system) -> float:
+        """Half-sensor field angle for the configured sensor size.
+
+        Field curves used to be computed over a hardcoded 20 degrees, which
+        has nothing to do with the system or the sensor the spot diagram and
+        ray fan use. Deriving it here makes all three describe the same field.
+
+        Args:
+            system: OpticalSystem whose focal length sets the angle.
+
+        Returns:
+            The field angle in degrees, or 0.0 when the focal length is
+            unknown (an afocal or invalid system).
+        """
+        fl = system.get_system_focal_length()
+        sensor_size = self._perf_sensor_size.value()
+        if fl and fl > 0:
+            return math.degrees(math.atan((sensor_size / 2.0) / fl))
+        return 0.0
+
+    def _analysis_fields(self, system) -> list:
+        """The three field angles shared by the spot diagram and ray fan."""
+        max_field = self._max_field_angle(system)
+        return [0, max_field * 0.7, max_field]
+
+    def _report_missing_matplotlib(self, error) -> None:
+        """Tell the user an analysis needs matplotlib rather than crash."""
+        logger.warning("Analysis plot dependency missing: %s", error)
+        QMessageBox.warning(
+            self,
+            "Dependency Missing",
+            "This analysis requires 'matplotlib'.\n" "Install it with 'pip install matplotlib'.",
+        )
+
     def _on_show_image_simulation(self) -> None:
         """Show Image Simulation Dialog with side-by-side view."""
         active_system = (
@@ -258,34 +327,36 @@ class PerformanceTab(BaseTab):
             QMessageBox.critical(self, "Analysis Error", f"Failed to start image simulation: {e}")
 
     def _on_calculate_performance_metrics(self) -> None:
-        """Calculate and display performance metrics for the active lens or assembly."""
-        active_system = (
-            self._parent._current_assembly
-            if self._parent._current_assembly
-            else self._parent._current_lens
-        )
+        """Calculate the metrics; the ray traces run off the GUI thread.
+
+        The report shows a status line immediately and is painted when the
+        worker finishes. A stale result is never published: if the design or
+        the selection changes while the trace runs, the tab says so instead of
+        showing numbers for a design that is no longer on screen.
+        """
+        active_system = self._current_system()
         if not active_system:
             self._perf_metrics_text.setPlainText("No system selected.")
             return
 
-        try:
+        if self._metrics_worker is not None and self._metrics_worker.isRunning():
+            self._parent._update_status("Metrics calculation is already running")
+            return
+
+        # Read the UI on the GUI thread; the worker must not touch widgets.
+        wavelength = self._selected_wavelength()
+        entrance_pupil = self._perf_entrance_pupil.value()
+        object_distance = self._perf_object_distance.value()
+        sensor_size = self._perf_sensor_size.value()
+        system = self._wrap_in_system(active_system)
+
+        def _compute():
             from ...aberrations import AberrationsCalculator
             from ...optical_system import OpticalSystem
 
-            # Prepare parameters
-            wavelengths = [400, 450, 550, 650, 700]
-            wavelength = wavelengths[self._perf_wavelength.currentIndex()]
-            entrance_pupil = self._perf_entrance_pupil.value()
-            object_distance = self._perf_object_distance.value()
-            sensor_size = self._perf_sensor_size.value()
-
-            # Wrap in OpticalSystem if it's just a lens
-            if not isinstance(active_system, OpticalSystem):
-                system = OpticalSystem(name=active_system.name)
-                system.add_lens(active_system)
-            else:
-                system = active_system
-
+            # Fingerprint before measuring: it must describe the design the
+            # report describes, not whatever the editor holds by the end.
+            stamp = metrics_fingerprint(active_system)
             calculator = AberrationsCalculator(system)
 
             # Get optical properties
@@ -374,249 +445,245 @@ RMS Wavefront Error: {_fmt(results.get('wfe_rms_waves'), '.3f')} waves
 Spot Size (RMS): {_fmt(results.get('spot_rms'), '.3f')} µm
 Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
 {validity_note}"""
-            self._perf_metrics_text.setPlainText(text)
+            return active_system, text, results, stamp
 
-            # Remember the result so refresh() can repaint without recomputing.
-            # Keyed on what the model *contains*, not on which object it is: the
-            # editor edits lenses in place, so identity alone cannot tell an
-            # edited lens from an untouched one.
-            self._cached_metrics_text = text
-            self._cached_metrics = results
+        self._perf_metrics_text.setPlainText(
+            "Calculating metrics…\nThe analysis runs in the background."
+        )
+        worker = AnalysisWorker(_compute, self)
+        self._metrics_worker = worker
+        worker.done.connect(lambda payload, w=worker: self._on_metrics_ready(w, payload))
+        worker.failed.connect(lambda message, w=worker: self._on_metrics_failed(w, message))
+        worker.finished.connect(lambda w=worker: self._on_metrics_finished(w))
+        worker.start()
+
+    def _on_metrics_ready(self, worker, payload) -> None:
+        """Publish a finished report if it still describes the current design."""
+        if self._metrics_worker is not worker:
+            # A newer run replaced this one; only its result is current.
+            return
+
+        measured, text, results, stamp = payload
+        active_system = self._current_system()
+        if active_system is None:
+            self._perf_metrics_text.setPlainText("No system selected.")
+            return
+
+        current = metrics_fingerprint(active_system)
+        if active_system is not measured or current != stamp:
+            # The design changed (or the selection moved) while the trace ran.
+            # Publishing the payload would silently show numbers for a design
+            # that is no longer on screen.
+            self._cached_metrics_text = None
+            self._cached_metrics = None
             self._cached_metrics_for = active_system
-            self._cached_metrics_stamp = metrics_fingerprint(active_system)
-
-            # Update visualization widget
+            self._cached_metrics_stamp = current
+            if active_system is measured:
+                message = (
+                    f"{active_system.name} has changed since these metrics were "
+                    "calculated.\nThey no longer describe this design - click "
+                    "'Calculate Metrics' to update them."
+                )
+            else:
+                message = (
+                    f"Metrics not yet calculated for {active_system.name}.\n"
+                    "Click 'Calculate Metrics' to run the analysis."
+                )
+            self._perf_metrics_text.setPlainText(message)
             if hasattr(self, "_perf_viz"):
                 self._perf_viz.update_lens(active_system)
-                self._perf_viz.update_metrics(results)
+            return
 
-            self._parent._update_status(f"Calculated metrics for {system.name}")
+        # Remember the result so refresh() can repaint without recomputing.
+        # Keyed on what the model *contains*, not on which object it is: the
+        # editor edits lenses in place, so identity alone cannot tell an
+        # edited lens from an untouched one.
+        self._perf_metrics_text.setPlainText(text)
+        self._cached_metrics_text = text
+        self._cached_metrics = results
+        self._cached_metrics_for = active_system
+        self._cached_metrics_stamp = stamp
 
-        except Exception as e:
-            logger.error("Performance calculation error: %s", e)
-            self._perf_metrics_text.setPlainText(f"Error calculating metrics: {e}")
+        # Update visualization widget
+        if hasattr(self, "_perf_viz"):
+            self._perf_viz.update_lens(active_system)
+            self._perf_viz.update_metrics(results)
+
+        self._parent._update_status(f"Calculated metrics for {active_system.name}")
+
+    def _on_metrics_failed(self, worker, message: str) -> None:
+        """Report a failed metrics run in the report pane."""
+        if self._metrics_worker is not worker:
+            return
+        logger.error("Performance calculation error: %s", message)
+        self._perf_metrics_text.setPlainText(f"Error calculating metrics: {message}")
+
+    def _on_metrics_finished(self, worker) -> None:
+        """Drop the finished worker so a later run can start cleanly."""
+        if self._metrics_worker is worker:
+            self._metrics_worker = None
 
     def _on_show_spot_diagram(self) -> None:
-        """Show spot diagram using ImageQualityAnalyzer for active system."""
-        active_system = (
-            self._parent._current_assembly
-            if self._parent._current_assembly
-            else self._parent._current_lens
-        )
+        """Show the spot diagram; the ray trace runs off the GUI thread."""
+        active_system = self._current_system()
         if not active_system:
             QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
 
         try:
             from ...analysis.psf_mtf import ImageQualityAnalyzer
-            from ...optical_system import OpticalSystem
-            from ..dialogs.analysis_plots import AnalysisPlotDialog
 
-            # Wrap in system if needed
-            if not isinstance(active_system, OpticalSystem):
-                system = OpticalSystem(name=active_system.name)
-                system.add_lens(active_system)
-            else:
-                system = active_system
-
-            analyzer = ImageQualityAnalyzer(system)
-
-            # Use current parameters from UI
-            wavelengths = [400, 450, 550, 650, 700]
-            wavelength = wavelengths[self._perf_wavelength.currentIndex()]
-
-            # Calculate field angle
-            fl = system.get_system_focal_length()
-            sensor_size = self._perf_sensor_size.value()
-            max_field = 0.0
-            if fl and fl > 0:
-                max_field = math.degrees(math.atan((sensor_size / 2.0) / fl))
-
-            # Perform multi-field spot analysis
-            fields = [0, max_field * 0.7, max_field]
+            system = self._wrap_in_system(active_system)
+            wavelength = self._selected_wavelength()
+            fields = self._analysis_fields(system)
             colors = ["#ffffff", "#00ff00", "#ff0000"]
 
-            dialog = AnalysisPlotDialog(f"Spot Diagram - {system.name}", self._parent)
-            ax = dialog.get_axes()
+            def _compute():
+                analyzer = ImageQualityAnalyzer(system)
+                return [
+                    (
+                        field,
+                        analyzer.calculate_spot_diagram(
+                            field_angle_deg=field, wavelength_nm=wavelength, num_rings=6
+                        ),
+                    )
+                    for field in fields
+                ]
 
-            for i, field in enumerate(fields):
-                # Request 6 rings for a clear spot without overcrowding (~37 rays)
-                spot_data = analyzer.calculate_spot_diagram(
-                    field_angle_deg=field, wavelength_nm=wavelength, num_rings=6
-                )
-                # Spot points are (y, z) - usually we plot Y vs Z or vice versa
-                z_pts = [p[1] * 1000 for p in spot_data]  # Sagittal (Z)
-                y_pts = [p[0] * 1000 for p in spot_data]  # Tangential (Y)
-                ax.plot(
-                    z_pts,
-                    y_pts,
-                    ".",
-                    color=colors[i],
-                    label=f"Field {field:.1f}°",
-                    markersize=3,
-                    alpha=0.6,
-                )
+            def _plot(ax, payload):
+                for index, (field, spot_data) in enumerate(payload):
+                    # Spot points are (y, z) - usually we plot Y vs Z or vice versa
+                    z_pts = [p[1] * 1000 for p in spot_data]  # Sagittal (Z)
+                    y_pts = [p[0] * 1000 for p in spot_data]  # Tangential (Y)
+                    ax.plot(
+                        z_pts,
+                        y_pts,
+                        ".",
+                        color=colors[index],
+                        label=f"Field {field:.1f}°",
+                        markersize=3,
+                        alpha=0.6,
+                    )
 
-            ax.set_aspect("equal")
-            ax.set_xlabel("Sagittal (µm)")
-            ax.set_ylabel("Tangential (µm)")
-            ax.set_title(f"Spot Diagram ({wavelength}nm)")
-            ax.legend(fontsize="small")
-            ax.grid(True, linestyle="--", alpha=0.3)
+                ax.set_aspect("equal")
+                ax.set_xlabel("Sagittal (µm)")
+                ax.set_ylabel("Tangential (µm)")
+                ax.set_title(f"Spot Diagram ({wavelength}nm)")
+                ax.legend(fontsize="small")
+                ax.grid(True, linestyle="--", alpha=0.3)
 
-            dialog.exec()
+            self._parent._open_analysis_dialog(f"Spot Diagram - {system.name}", _compute, _plot)
 
+        except ImportError as e:
+            self._report_missing_matplotlib(e)
         except Exception as e:
             logger.error("Spot diagram error: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate spot diagram: {e}")
 
     def _on_show_ray_fan(self) -> None:
-        """Show ray fan plot for active system."""
-        active_system = (
-            self._parent._current_assembly
-            if self._parent._current_assembly
-            else self._parent._current_lens
-        )
+        """Show the ray fan; the ray traces run off the GUI thread."""
+        active_system = self._current_system()
         if not active_system:
             QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
 
         try:
             from ...aberrations import AberrationsCalculator
-            from ...optical_system import OpticalSystem
-            from ..dialogs.analysis_plots import AnalysisPlotDialog
 
-            if not isinstance(active_system, OpticalSystem):
-                system = OpticalSystem(name=active_system.name)
-                system.add_lens(active_system)
-            else:
-                system = active_system
-
+            system = self._wrap_in_system(active_system)
+            wavelength = self._selected_wavelength()
+            fields = self._analysis_fields(system)
             calculator = AberrationsCalculator(system)
-
-            wavelengths = [400, 450, 550, 650, 700]
-            wavelength = wavelengths[self._perf_wavelength.currentIndex()]
-
-            dialog = AnalysisPlotDialog(f"Ray Fan - {system.name}", self._parent)
-            ax = dialog.get_axes()
-
-            # Calculate ray fan (transverse ray aberration vs pupil coordinate)
-            # Use 3 fields: 0, 0.7, 1.0
-            fl = system.get_system_focal_length()
-            sensor_size = self._perf_sensor_size.value()
-            max_field = 0.0
-            if fl and fl > 0:
-                max_field = math.degrees(math.atan((sensor_size / 2.0) / fl))
-
-            fields = [0, max_field * 0.7, max_field]
             colors = ["#ffffff", "#00ff00", "#ff0000"]
             styles = ["-", "--", ":"]
 
-            for i, field in enumerate(fields):
-                fan_data = calculator.calculate_ray_fan(
-                    field_angle_deg=field, wavelength_nm=wavelength
-                )
-                py = fan_data["pupil_coords"]
-                dy = fan_data["transverse_aberration"]
-                ax.plot(
-                    py,
-                    dy,
-                    color=colors[i],
-                    linestyle=styles[i],
-                    label=f"Field {field:.1f}°",
-                )
+            def _compute():
+                return [
+                    (
+                        field,
+                        calculator.calculate_ray_fan(
+                            field_angle_deg=field, wavelength_nm=wavelength
+                        ),
+                    )
+                    for field in fields
+                ]
 
-            ax.set_xlabel("Pupil Coordinate (Normalized)")
-            ax.set_ylabel("Transverse Aberration (mm)")
-            ax.set_title(f"Ray Fan - Tangential ({wavelength}nm)")
-            ax.axhline(0, color="white", linewidth=0.5, alpha=0.5)
-            ax.axvline(0, color="white", linewidth=0.5, alpha=0.5)
-            ax.legend(fontsize="small")
-            ax.grid(True, linestyle="--", alpha=0.3)
+            def _plot(ax, payload):
+                for index, (field, fan_data) in enumerate(payload):
+                    ax.plot(
+                        fan_data["pupil_coords"],
+                        fan_data["transverse_aberration"],
+                        color=colors[index],
+                        linestyle=styles[index],
+                        label=f"Field {field:.1f}°",
+                    )
 
-            dialog.exec()
+                ax.set_xlabel("Pupil Coordinate (Normalized)")
+                ax.set_ylabel("Transverse Aberration (mm)")
+                ax.set_title(f"Ray Fan - Tangential ({wavelength}nm)")
+                ax.axhline(0, color="white", linewidth=0.5, alpha=0.5)
+                ax.axvline(0, color="white", linewidth=0.5, alpha=0.5)
+                ax.legend(fontsize="small")
+                ax.grid(True, linestyle="--", alpha=0.3)
 
+            self._parent._open_analysis_dialog(f"Ray Fan - {system.name}", _compute, _plot)
+
+        except ImportError as e:
+            self._report_missing_matplotlib(e)
         except Exception as e:
             logger.error("Ray fan error: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate ray fan: {e}")
 
     def _on_show_field_curves(self) -> None:
-        """Show field curvature and distortion plots."""
-        active_system = (
-            self._parent._current_assembly
-            if self._parent._current_assembly
-            else self._parent._current_lens
-        )
+        """Show field curvature and distortion; the traces run in a worker."""
+        active_system = self._current_system()
         if not active_system:
             QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
 
         try:
             from ...aberrations import AberrationsCalculator
-            from ...optical_system import OpticalSystem
-            from ..dialogs.analysis_plots import AnalysisPlotDialog
 
-            if not isinstance(active_system, OpticalSystem):
-                system = OpticalSystem(name=active_system.name)
-                system.add_lens(active_system)
-            else:
-                system = active_system
-
+            system = self._wrap_in_system(active_system)
+            wavelength = self._selected_wavelength()
+            max_field = self._max_field_angle(system)
             calculator = AberrationsCalculator(system)
 
-            wavelengths = [400, 450, 550, 650, 700]
-            wavelength = wavelengths[self._perf_wavelength.currentIndex()]
+            def _compute():
+                angles, sag, tan = calculator.calculate_field_curvature(
+                    max_field_angle_deg=max_field, wavelength_nm=wavelength
+                )
+                dist_angles, dist = calculator.calculate_distortion_curve(
+                    max_field_angle_deg=max_field, wavelength_nm=wavelength
+                )
+                return angles, sag, tan, dist_angles, dist
 
-            dialog = AnalysisPlotDialog(f"Field Curves - {system.name}", self._parent)
+            def _plot(axes, payload):
+                ax1, ax2 = axes
+                angles, sag, tan, dist_angles, dist = payload
 
-            # Subplot 1: Field Curvature
-            ax1 = dialog.figure.add_subplot(121)
-            if self._parent._theme == "dark":
-                ax1.set_facecolor("#1e1e1e")
-                ax1.tick_params(colors="#e0e0e0")
-                ax1.xaxis.label.set_color("#e0e0e0")
-                ax1.yaxis.label.set_color("#e0e0e0")
-                ax1.title.set_color("#e0e0e0")
-                for spine in ax1.spines.values():
-                    spine.set_edgecolor("#3f3f3f")
+                ax1.plot(sag, angles, "b-", label="Sagittal")
+                ax1.plot(tan, angles, "r--", label="Tangential")
+                ax1.set_ylabel("Field Angle (deg)")
+                ax1.set_xlabel("Focus Shift (mm)")
+                ax1.set_title("Field Curvature")
+                ax1.legend(fontsize="x-small")
+                ax1.grid(True, linestyle="--", alpha=0.3)
 
-            # Field curves
-            max_field = 20.0  # Default
-            angles, sag, tan = calculator.calculate_field_curvature(
-                max_field_angle_deg=max_field, wavelength_nm=wavelength
+                ax2.plot(dist, dist_angles, "g-")
+                ax2.set_ylabel("Field Angle (deg)")
+                ax2.set_xlabel("Distortion (%)")
+                ax2.set_title("f-theta Distortion")
+                ax2.grid(True, linestyle="--", alpha=0.3)
+                ax2.axvline(0, color="white", linewidth=0.5, alpha=0.5)
+                ax2.figure.tight_layout()
+
+            self._parent._open_analysis_dialog(
+                f"Field Curves - {system.name}", _compute, _plot, columns=2
             )
-            ax1.plot(sag, angles, "b-", label="Sagittal")
-            ax1.plot(tan, angles, "r--", label="Tangential")
-            ax1.set_ylabel("Field Angle (deg)")
-            ax1.set_xlabel("Focus Shift (mm)")
-            ax1.set_title("Field Curvature")
-            ax1.legend(fontsize="x-small")
-            ax1.grid(True, linestyle="--", alpha=0.3)
 
-            # Subplot 2: Distortion
-            ax2 = dialog.figure.add_subplot(122)
-            if self._parent._theme == "dark":
-                ax2.set_facecolor("#1e1e1e")
-                ax2.tick_params(colors="#e0e0e0")
-                ax2.xaxis.label.set_color("#e0e0e0")
-                ax2.yaxis.label.set_color("#e0e0e0")
-                ax2.title.set_color("#e0e0e0")
-                for spine in ax2.spines.values():
-                    spine.set_edgecolor("#3f3f3f")
-
-            angles, dist = calculator.calculate_distortion_curve(
-                max_field_angle_deg=max_field, wavelength_nm=wavelength
-            )
-            ax2.plot(dist, angles, "g-")
-            ax2.set_ylabel("Field Angle (deg)")
-            ax2.set_xlabel("Distortion (%)")
-            ax2.set_title("f-theta Distortion")
-            ax2.grid(True, linestyle="--", alpha=0.3)
-            ax2.axvline(0, color="white", linewidth=0.5, alpha=0.5)
-
-            dialog.figure.tight_layout()
-            dialog.exec()
-
+        except ImportError as e:
+            self._report_missing_matplotlib(e)
         except Exception as e:
             logger.error("Field curves error: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate field curves: {e}")

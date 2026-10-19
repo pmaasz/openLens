@@ -57,6 +57,16 @@ def _pump(ms=0):
     loop.exec()
 
 
+def _calculate_metrics(tab):
+    """Run the explicit metrics path and wait for its worker to finish.
+
+    The calculation moved off the GUI thread in #465; the cache is populated
+    by the worker's done signal, so a test cannot assert on it immediately.
+    """
+    tab._on_calculate_performance_metrics()
+    _spin_until(lambda: getattr(tab, "_metrics_worker", None) is None)
+
+
 def _real_window():
     """One shared real window; building it is expensive."""
     global _window
@@ -93,7 +103,7 @@ class TestPerformanceTabRefreshIsNotComputational(_WindowCase):
         self.lens = self.window._current_lens
         self.tab.refresh()
         # Establish a baseline cache from the explicit path.
-        self.tab._on_calculate_performance_metrics()
+        _calculate_metrics(self.tab)
 
     def test_refresh_does_not_call_the_calculator(self):
         """The trace must not run on a refresh."""
@@ -168,7 +178,7 @@ class TestPerformanceTabRefreshIsNotComputational(_WindowCase):
         self.tab._cached_metrics_text = None
         self.tab._cached_metrics = None
         self.tab._cached_metrics_for = None
-        self.tab._on_calculate_performance_metrics()
+        _calculate_metrics(self.tab)
         self.assertIsNotNone(self.tab._cached_metrics_text)
         self.assertIsNotNone(self.tab._cached_metrics)
         self.assertIs(self.tab._cached_metrics_for, self.lens)

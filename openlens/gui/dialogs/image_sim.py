@@ -3,6 +3,7 @@ OpenLens Image Simulation Dialog
 Side-by-side comparison of original and simulated image
 """
 
+import logging
 import os
 from typing import TYPE_CHECKING, Optional
 
@@ -19,14 +20,21 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
+from ..workers import AnalysisWorker, stop_worker
+
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from PySide6.QtWidgets import QWidget
     from ...optical_system import OpticalSystem
 
+logger = logging.getLogger(__name__)
+
 
 class ImageSimulationDialog(QDialog):
     """Dialog for image simulation with side-by-side comparison."""
+
+    #: How long a running simulation gets to unwind before it is terminated.
+    _WORKER_STOP_TIMEOUT_MS = 3000
 
     def __init__(self, system: "OpticalSystem", parent: Optional["QWidget"] = None) -> None:
         """Initialize the dialog for simulating an image through a system.
@@ -96,6 +104,12 @@ class ImageSimulationDialog(QDialog):
         self._pan_start_xy = None  # (x, y) in display coords
         self._pan_start_lim = None  # (xlim, ylim)
         self._last_click_time = 0.0
+
+        # Holds the in-flight simulation so closing cannot collect a live
+        # QThread. accept()/Esc do not send a closeEvent, so both paths stop it.
+        self._pending_worker = None
+        self.finished.connect(lambda _result=0: self._stop_pending_worker())
+
         # Connect mouse events for intuitive zoom/pan (in addition to toolbar)
         self.canvas.mpl_connect("button_press_event", self._on_mouse_press)
         self.canvas.mpl_connect("button_release_event", self._on_mouse_release)
@@ -324,50 +338,96 @@ class ImageSimulationDialog(QDialog):
                 QMessageBox.critical(self, "Error", f"Failed to load image: {e}")
 
     def _on_run_simulation(self) -> None:
-        """Simulate the loaded original image and display the result."""
+        """Simulate the loaded image; the analysis runs in a worker thread.
+
+        ``simulate_image`` traces the PSF and convolves the image, which is
+        fast enough to look like a hang when it runs inside the button
+        handler. The status line is painted first and the result is drawn when
+        the worker reports back.
+        """
         if self._original_image is None:
+            return
+        if self._pending_worker is not None and self._pending_worker.isRunning():
             return
 
         try:
             from ...analysis.psf_mtf import ImageQualityAnalyzer
 
             analyzer = ImageQualityAnalyzer(self._system)
-
-            # Show "Calculating..." message
-            self._ax_sim.clear()
-            self._setup_axes(self._ax_sim, "Calculating Simulation...")
-            self.canvas.draw()
-
-            # Simulate
-            self._simulated_image = analyzer.simulate_image(self._original_image)
-
-            # Show results – keep view synchronized with original
-            # Save current view (so zoom is preserved across simulation)
-            try:
-                prev_xlim = self._ax_orig.get_xlim()
-                prev_ylim = self._ax_orig.get_ylim()
-                was_zoomed = not (
-                    abs(prev_xlim[1] - prev_xlim[0] - self._original_image.shape[1]) < 1
-                    and abs(prev_ylim[1] - prev_ylim[0] - self._original_image.shape[0]) < 1
-                )
-            except Exception:
-                was_zoomed = False
-                prev_xlim = prev_ylim = None
-
-            self._ax_sim.clear()
-            self._setup_axes(self._ax_sim, "Simulated Image")
-            # Re-establish sharing after clear (clear() keeps sharing but be explicit)
-            try:
-                self._ax_sim.sharex(self._ax_orig)
-                self._ax_sim.sharey(self._ax_orig)
-            except Exception:
-                pass
-            self._ax_sim.imshow(self._simulated_image)
-            # Restore synchronized view if user was zoomed, otherwise show full
-            if was_zoomed and prev_xlim is not None and prev_ylim is not None:
-                self._ax_orig.set_xlim(prev_xlim)
-                self._ax_orig.set_ylim(prev_ylim)
-            self.canvas.draw()
-
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Simulation failed: {e}")
+            return
+
+        original = self._original_image
+
+        # Show "Calculating..." message
+        self._ax_sim.clear()
+        self._setup_axes(self._ax_sim, "Calculating Simulation...")
+        self.canvas.draw()
+
+        worker = AnalysisWorker(lambda: analyzer.simulate_image(original), self)
+        self._pending_worker = worker
+        worker.done.connect(self._on_simulation_done)
+        worker.failed.connect(self._on_simulation_failed)
+        worker.finished.connect(lambda w=worker: self._on_worker_finished(w))
+        worker.start()
+
+    def _on_simulation_done(self, simulated) -> None:
+        """Paint the simulated image, keeping the user's zoom in sync."""
+        self._simulated_image = simulated
+
+        # Show results – keep view synchronized with original
+        # Save current view (so zoom is preserved across simulation)
+        try:
+            prev_xlim = self._ax_orig.get_xlim()
+            prev_ylim = self._ax_orig.get_ylim()
+            was_zoomed = not (
+                abs(prev_xlim[1] - prev_xlim[0] - self._original_image.shape[1]) < 1
+                and abs(prev_ylim[1] - prev_ylim[0] - self._original_image.shape[0]) < 1
+            )
+        except Exception:
+            was_zoomed = False
+            prev_xlim = prev_ylim = None
+
+        self._ax_sim.clear()
+        self._setup_axes(self._ax_sim, "Simulated Image")
+        # Re-establish sharing after clear (clear() keeps sharing but be explicit)
+        try:
+            self._ax_sim.sharex(self._ax_orig)
+            self._ax_sim.sharey(self._ax_orig)
+        except Exception:
+            pass
+        self._ax_sim.imshow(self._simulated_image)
+        # Restore synchronized view if user was zoomed, otherwise show full
+        if was_zoomed and prev_xlim is not None and prev_ylim is not None:
+            self._ax_orig.set_xlim(prev_xlim)
+            self._ax_orig.set_ylim(prev_ylim)
+        self.canvas.draw()
+
+    def _on_simulation_failed(self, message: str) -> None:
+        """Report a failed simulation without leaving the status line up."""
+        logger.error("Image simulation failed: %s", message)
+        QMessageBox.critical(self, "Error", f"Simulation failed: {message}")
+
+    def _on_worker_finished(self, worker) -> None:
+        """Drop the finished worker so a later run can start cleanly."""
+        if self._pending_worker is worker:
+            self._pending_worker = None
+
+    def _stop_pending_worker(self) -> None:
+        """Stop a simulation still running when the dialog closes.
+
+        Without this, closing the dialog mid-run destroys a live QThread and
+        ~QThread aborts the process. The reference is only dropped once the
+        thread is known to be finished.
+        """
+        worker = self._pending_worker
+        if worker is None:
+            return
+        if stop_worker(worker, self._WORKER_STOP_TIMEOUT_MS):
+            self._pending_worker = None
+
+    def closeEvent(self, event) -> None:  # type: ignore[no-untyped-def]
+        """Stop the running simulation before the dialog goes away."""
+        self._stop_pending_worker()
+        super().closeEvent(event)
