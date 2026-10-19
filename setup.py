@@ -56,16 +56,21 @@ setup(
     # is never exercised, and 3.7 is long past end of life.
     python_requires='>=3.10',
 
-    # Core dependencies. numpy is here because openlens.py imports
-    # src.analysis.plots at module load and that module imports numpy
-    # unconditionally - so a plain `pip install openlens` raised ImportError at
-    # startup. matplotlib stays optional: it is imported lazily inside
-    # functions, under try/except.
+    # Core dependencies. Only the GUI framework: numpy, matplotlib, scipy and
+    # Pillow are all soft, and every import of them is guarded with a
+    # *_AVAILABLE flag so the application starts and its core optics run
+    # without them.
+    #
+    # numpy used to be listed here, because src.analysis.plots and
+    # src.image_simulator imported it unguarded and openlens.py imports those
+    # at module level - so a plain `pip install openlens` raised ImportError at
+    # startup. Those imports are guarded now (#476), and the core works without
+    # it: Lens, the ray tracer and focal length all run. Listing it here made
+    # the guards dead code and silently narrowed what "optional" means.
     install_requires=[
         'PySide6>=6.0',
-        'numpy>=1.19.0',
     ],
-    
+
     # Optional dependencies for visualization / development
     extras_require={
         'visualization': ['matplotlib>=3.3.0', 'numpy>=1.19.0'],

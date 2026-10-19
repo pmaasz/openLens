@@ -1,3 +1,10 @@
+from __future__ import annotations
+
+# The annotations below are written against `np.ndarray`. Without this line they
+# are evaluated when each function is *defined*, and the optional-import guard
+# further down sets np = None when numpy is absent - so importing this module
+# raised "AttributeError: 'NoneType' object has no attribute 'ndarray'" instead
+# of simply reporting the missing dependency.
 from ..constants import (
     WAVELENGTH_GREEN,
     WAVELENGTH_C_LINE,
