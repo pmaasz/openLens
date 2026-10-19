@@ -285,7 +285,11 @@ class TestClearApertureExports(unittest.TestCase):
             os.unlink(step_path)
 
     def test_zemax_surfaces_use_clear_aperture(self):
-        """Zemax DIAM lines should use the clear aperture, not the OD."""
+        """Zemax DIAM lines should use the clear aperture, not the OD.
+
+        DIAM is a semi-diameter in Zemax, so a 36 mm clear aperture is
+        written as 18.0 - and must not be 20.0 (the 40 mm OD) or 36.0.
+        """
         from openlens.export_formats import ZemaxExporter
 
         _, lens = self._system_with_ca_lens()
@@ -295,8 +299,10 @@ class TestClearApertureExports(unittest.TestCase):
             ZemaxExporter.export_lens(lens, zmx_path)
             with open(zmx_path) as f:
                 content = f.read()
-            self.assertIn("DIAM 36.0", content)
-            self.assertIn("DIAM 34.0", content)
+            self.assertIn("DIAM 18.0", content)
+            self.assertIn("DIAM 17.0", content)
+            self.assertNotIn("DIAM 40.0", content)
+            self.assertNotIn("DIAM 20.0", content)
         finally:
             os.unlink(zmx_path)
 

@@ -57,7 +57,7 @@ class TestZemaxSystemExport(unittest.TestCase):
                 content = f.read()
             self.assertIn("MODE SEQ", content)
             self.assertIn("STOP", content)
-            self.assertIn("DIAM 20.0", content)
+            self.assertIn("DIAM 10.0", content)  # stop 20 mm -> 10 mm semi-diameter
             self.assertIn("GLAS BK7", content)
             # Two elements -> OBJ + 2x2 surfaces + STOP + image = 7 SURF blocks.
             self.assertEqual(content.count("SURF "), 7)
@@ -226,6 +226,242 @@ class TestZemaxSystemImportValidation(unittest.TestCase):
 # trust boundary it guarded no longer exists, so those tests went with it.
 # The Zemax half of #358 (per-element validation in
 # ZemaxSystemImporter) is unaffected and still covered above.
+
+
+def _import_text(text):
+    """Write a .zmx body to a temp file and import it."""
+    tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+    tmp.close()
+    try:
+        with open(tmp.name, "w") as f:
+            f.write(text)
+        return ZemaxSystemImporter.import_system(tmp.name)
+    finally:
+        os.unlink(tmp.name)
+
+
+def _singlet_zmx(front_diam="25.0", back_diam="25.0", front_stop=False, back_stop=False):
+    """A one-element FOREIGN .zmx body, with all parameters spelled out."""
+    front = "  STOP\n" if front_stop else ""
+    back = "  STOP\n" if back_stop else ""
+    return (
+        "VERS 200000\nMODE SEQ\nUNIT MM\n\n"
+        "SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\n"
+        f"SURF 1\n  TYPE STANDARD\n{front}  CURV 0.02\n  DISZ 5.0\n"
+        f"  DIAM {front_diam}\n  GLAS BK7\n\n"
+        f"SURF 2\n  TYPE STANDARD\n{back}  CURV -0.02\n  DIAM {back_diam}\n  DISZ 50.0\n\n"
+        "SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0.0\n"
+    )
+
+
+class TestZemaxStopAndDiameter(unittest.TestCase):
+    """#436: STOP is a surface flag, and DIAM is a semi-diameter."""
+
+    def test_stop_on_the_front_surface_does_not_drop_the_element(self):
+        """A front surface that is also the stop must still open an element."""
+        rebuilt = _import_text(_singlet_zmx(front_stop=True))
+
+        self.assertEqual(len(rebuilt.elements), 1)
+        lens = rebuilt.elements[0].lens
+        self.assertAlmostEqual(lens.radius_of_curvature_1, 50.0)
+        self.assertAlmostEqual(lens.thickness, 5.0)
+        self.assertEqual(lens.material, "BK7")
+
+    def test_stop_on_the_back_surface_does_not_drop_the_element(self):
+        """The same flag on the closing surface must not skip it either."""
+        rebuilt = _import_text(_singlet_zmx(back_stop=True))
+
+        self.assertEqual(len(rebuilt.elements), 1)
+        self.assertAlmostEqual(rebuilt.elements[0].lens.radius_of_curvature_2, -50.0)
+
+    def test_diam_is_read_as_a_semi_diameter(self):
+        """A foreign DIAM 12.5 is a 25 mm aperture, not a 12.5 mm lens."""
+        rebuilt = _import_text(_singlet_zmx(front_diam="12.5", back_diam="12.5"))
+
+        lens = rebuilt.elements[0].lens
+        self.assertEqual(lens.diameter, 25.0)
+        self.assertEqual(lens.clear_aperture_1, 25.0)
+        self.assertEqual(lens.clear_aperture_2, 25.0)
+
+    def test_stop_diam_is_read_as_a_semi_diameter(self):
+        """A STOP surface's DIAM 10 is a 20 mm stop."""
+        text = (
+            "VERS 200000\nMODE SEQ\nUNIT MM\n\n"
+            "SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\n"
+            "SURF 1\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 5.0\n"
+            "  DIAM 12.5\n  GLAS BK7\n\n"
+            "SURF 2\n  TYPE STANDARD\n  CURV -0.02\n  DIAM 12.5\n  DISZ 4.0\n\n"
+            "SURF 3\n  TYPE STANDARD\n  STOP\n  CURV 0.0\n  DIAM 10.0\n  DISZ 2.0\n\n"
+            "SURF 4\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 4.0\n"
+            "  DIAM 15.0\n  GLAS BK7\n\n"
+            "SURF 5\n  TYPE STANDARD\n  CURV -0.02\n  DIAM 15.0\n  DISZ 10.0\n\n"
+            "SURF 6\n  TYPE STANDARD\n"
+        )
+
+        rebuilt = _import_text(text)
+
+        self.assertEqual(len(rebuilt.elements), 2)
+        stop = rebuilt.get_aperture_stop()
+        self.assertIsNotNone(stop)
+        self.assertEqual(stop["diameter"], 20.0)
+
+    def test_export_writes_diam_as_a_semi_diameter(self):
+        """OpenLens stores full apertures; .zmx DIAM is half of them."""
+        path = _export_path(_system())
+        try:
+            with open(path) as f:
+                content = f.read()
+        finally:
+            os.unlink(path)
+
+        self.assertIn("DIAM 18.0", content)  # element 0 front CA 36 / 2
+        self.assertIn("DIAM 10.0", content)  # stop 20 / 2
+        self.assertNotIn("DIAM 36.0", content)
+
+    def test_single_lens_export_writes_diam_as_a_semi_diameter(self):
+        lens = Lens(
+            name="Single",
+            radius_of_curvature_1=51.5,
+            radius_of_curvature_2=-51.5,
+            thickness=5.0,
+            diameter=25.4,
+            material="BK7",
+        )
+        tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+        tmp.close()
+        try:
+            ZemaxExporter.export_lens(lens, tmp.name)
+            with open(tmp.name) as f:
+                content = f.read()
+        finally:
+            os.unlink(tmp.name)
+
+        self.assertIn("DIAM 12.7", content)
+        self.assertNotIn("DIAM 25.4", content)
+
+
+class TestZemaxParabolicSurfaces(unittest.TestCase):
+    """#436: a parabola needs both its vertex radius and CONI -1."""
+
+    @staticmethod
+    def _parabolic_lens():
+        return Lens(
+            name="Parabolic",
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=20.0,
+            material="BK7",
+            is_parabolic_1=True,
+            # Sag at the 10 mm semi-diameter. Vertex R = 10² / (2·1.25) = 40.
+            parabolic_sag_1=1.25,
+        )
+
+    def test_parabolic_surface_exports_vertex_radius_and_conic(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+        tmp.close()
+        try:
+            ZemaxExporter.export_lens(self._parabolic_lens(), tmp.name)
+            with open(tmp.name) as f:
+                content = f.read()
+        finally:
+            os.unlink(tmp.name)
+
+        self.assertIn("CURV 0.025", content)
+        self.assertIn("CONI -1", content)
+
+    def test_spherical_surface_exports_no_conic(self):
+        lens = self._parabolic_lens()
+        lens.is_parabolic_1 = False
+        tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+        tmp.close()
+        try:
+            ZemaxExporter.export_lens(lens, tmp.name)
+            with open(tmp.name) as f:
+                content = f.read()
+        finally:
+            os.unlink(tmp.name)
+
+        self.assertNotIn("CONI", content)
+
+    def test_parabolic_surface_round_trips(self):
+        """Exporting CONI -1 is only half the job; import must restore it."""
+        tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+        tmp.close()
+        try:
+            ZemaxExporter.export_lens(self._parabolic_lens(), tmp.name)
+            rebuilt = ZemaxSystemImporter.import_system(tmp.name)
+        finally:
+            os.unlink(tmp.name)
+
+        lens = rebuilt.elements[0].lens
+        self.assertTrue(lens.is_parabolic_1)
+        self.assertAlmostEqual(lens.parabolic_sag_1, 1.25)
+        self.assertAlmostEqual(lens.get_effective_radius_1(), 40.0)
+
+
+class TestZemaxMaterialsWithSpaces(unittest.TestCase):
+    """#436: 'Fused Silica' must not become 'Fused'."""
+
+    def test_foreign_material_name_keeps_every_word(self):
+        text = _singlet_zmx().replace("GLAS BK7", "GLAS Fused Silica")
+
+        rebuilt = _import_text(text)
+
+        lens = rebuilt.elements[0].lens
+        self.assertEqual(lens.material, "Fused Silica")
+        self.assertAlmostEqual(lens.refractive_index, 1.4585)
+
+    def test_material_name_lookup_ignores_case(self):
+        """Preserving case must not cost the catalog lookup."""
+        text = _singlet_zmx().replace("GLAS BK7", "GLAS fused silica")
+
+        rebuilt = _import_text(text)
+
+        lens = rebuilt.elements[0].lens
+        self.assertEqual(lens.material, "fused silica")
+        self.assertAlmostEqual(lens.refractive_index, 1.4585)
+
+    def test_export_quotes_a_material_name_with_spaces(self):
+        lens = Lens(
+            name="Silica",
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=20.0,
+            material="Fused Silica",
+        )
+        tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+        tmp.close()
+        try:
+            ZemaxExporter.export_lens(lens, tmp.name)
+            with open(tmp.name) as f:
+                content = f.read()
+        finally:
+            os.unlink(tmp.name)
+
+        self.assertIn('GLAS "Fused Silica"', content)
+
+    def test_quoted_material_name_round_trips(self):
+        lens = Lens(
+            name="Silica",
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=20.0,
+            material="Fused Silica",
+        )
+        tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+        tmp.close()
+        try:
+            ZemaxExporter.export_lens(lens, tmp.name)
+            rebuilt = ZemaxSystemImporter.import_system(tmp.name)
+        finally:
+            os.unlink(tmp.name)
+
+        imported = rebuilt.elements[0].lens
+        self.assertEqual(imported.material, "Fused Silica")
+        self.assertAlmostEqual(imported.refractive_index, 1.4585)
 
 
 if __name__ == "__main__":
