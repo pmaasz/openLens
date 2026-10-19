@@ -344,5 +344,63 @@ class TestSeriesECoatingSeed(unittest.TestCase):
         self.assertEqual(lenses[4].coating_label(2), "MgF2 SLAR")
 
 
+class TestCoatingCopiesAreDefensive(unittest.TestCase):
+    """#442: the getters and to_dict must not export the model's own layers.
+
+    ``get_coating_*`` copied only the outer list and ``to_dict`` returned the
+    lists themselves, so ``lens.get_coating_1()[0]["refractive_index"] = 99`` silently edited
+    the lens, bypassing ``set_coating`` and its ``modified_at`` update.
+    """
+
+    def setUp(self):
+        self.lens = Lens(
+            name="Coated",
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=-50.0,
+            thickness=5.0,
+            diameter=25.0,
+            refractive_index=1.5168,
+        )
+        self.lens.set_coating(1, _mgf2_stack())
+        self.lens.set_coating(2, _mgf2_stack())
+
+    def test_mutating_a_getter_layer_does_not_change_the_lens(self):
+        original_n = self.lens.coating_1[0]["refractive_index"]
+
+        self.lens.get_coating_1()[0]["refractive_index"] = 99.0
+
+        self.assertEqual(self.lens.coating_1[0]["refractive_index"], original_n)
+        self.assertEqual(self.lens.get_coating_1()[0]["refractive_index"], original_n)
+
+    def test_appending_to_a_getter_list_does_not_change_the_lens(self):
+        self.lens.get_coating_1().append({"name": "extra"})
+
+        self.assertEqual(len(self.lens.get_coating_1()), 1)
+
+    def test_each_getter_call_returns_fresh_layers(self):
+        first = self.lens.get_coating_1()
+        second = self.lens.get_coating_1()
+
+        self.assertIsNot(first, second)
+        self.assertIsNot(first[0], second[0])
+
+    def test_mutating_to_dict_coatings_does_not_change_the_lens(self):
+        original_n = self.lens.coating_1[0]["refractive_index"]
+
+        data = self.lens.to_dict()
+        data["coating_1"][0]["refractive_index"] = 99.0
+        data["coating_2"].append({"name": "extra"})
+
+        self.assertEqual(self.lens.coating_1[0]["refractive_index"], original_n)
+        self.assertEqual(len(self.lens.coating_2), 1)
+        self.assertIsNot(data["coating_1"][0], self.lens.coating_1[0])
+
+    def test_to_dict_still_round_trips_the_coatings(self):
+        clone = Lens.from_dict(self.lens.to_dict())
+
+        self.assertEqual(clone.get_coating_1(), self.lens.get_coating_1())
+        self.assertEqual(clone.get_coating_2(), self.lens.get_coating_2())
+
+
 if __name__ == "__main__":
     unittest.main()
