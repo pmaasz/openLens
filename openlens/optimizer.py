@@ -4,15 +4,16 @@ Optical System Optimization Engine
 Automatically optimize lens parameters to minimize aberrations and improve performance
 """
 
-from typing import List, Dict, Tuple, Callable, Optional
+from typing import List, Dict, Tuple, Callable, Optional, Any
 from dataclasses import dataclass, field
 import copy
 import math
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import logging
 
-from .constants import MIN_EDGE_THICKNESS
+from .constants import MIN_EDGE_THICKNESS, WAVELENGTH_GREEN
 from .lens import Lens
 from .optical_system import OpticalSystem
 from .aberrations import AberrationsCalculator
@@ -117,6 +118,12 @@ class MeritFunction:
             "min_air_gap": 0.1,
             "min_edge_clearance": 0.1,
         }
+        # Per-evaluation cache of calculate_all_aberrations results. Thread
+        # local because gradient descent evaluates perturbed designs in
+        # parallel threads on this same instance; each evaluate() call gets
+        # its own cache and drops it afterwards, so direct handler calls
+        # always compute fresh values.
+        self._eval_state = threading.local()
 
     # ------------------------------------------------------------------
     # Target evaluation helpers
@@ -135,11 +142,41 @@ class MeritFunction:
             return target.weight * 1e3
         return 0.0
 
+    def _all_aberrations(
+        self,
+        system: OpticalSystem,
+        object_distance_mm: Optional[float] = None,
+        field_angle_deg: float = 0.0,
+        wavelength_nm: float = WAVELENGTH_GREEN,
+    ) -> Dict[str, Any]:
+        """Return all-aberrations results, shared within one evaluation.
+
+        The spherical, coma and astigmatism targets each ran a full
+        ``calculate_all_aberrations`` pass, and coma and astigmatism use the
+        identical 5 degree field, so one merit evaluation paid for the same
+        computation twice. ``evaluate`` installs a cache for the duration of
+        one call (per thread, see ``MeritFunction.__init__``); outside such a
+        call nothing is cached, so a mutated system is never scored against
+        stale results.
+        """
+        cache = getattr(self._eval_state, "aberrations", None)
+        key = (object_distance_mm, field_angle_deg, wavelength_nm)
+        if cache is not None and key in cache:
+            return cache[key]
+
+        results = AberrationsCalculator(system).calculate_all_aberrations(
+            object_distance_mm=object_distance_mm,
+            field_angle_deg=field_angle_deg,
+            wavelength_nm=wavelength_nm,
+        )
+        if cache is not None:
+            cache[key] = results
+        return results
+
     def _eval_spherical(self, system: OpticalSystem, target: OptimizationTarget) -> float:
         if not system.elements:
             return INFEASIBLE_MERIT
-        calc = AberrationsCalculator(system)
-        results = calc.calculate_all_aberrations()
+        results = self._all_aberrations(system)
         value = results.get("spherical_aberration")
         if value is None:
             return INFEASIBLE_MERIT
@@ -148,8 +185,7 @@ class MeritFunction:
     def _eval_coma(self, system: OpticalSystem, target: OptimizationTarget) -> float:
         if not system.elements:
             return INFEASIBLE_MERIT
-        calc = AberrationsCalculator(system)
-        results = calc.calculate_all_aberrations(field_angle_deg=5.0)
+        results = self._all_aberrations(system, field_angle_deg=5.0)
         value = results.get("coma")
         if value is None:
             return INFEASIBLE_MERIT
@@ -158,8 +194,7 @@ class MeritFunction:
     def _eval_astigmatism(self, system: OpticalSystem, target: OptimizationTarget) -> float:
         if not system.elements:
             return INFEASIBLE_MERIT
-        calc = AberrationsCalculator(system)
-        results = calc.calculate_all_aberrations(field_angle_deg=5.0)
+        results = self._all_aberrations(system, field_angle_deg=5.0)
         value = results.get("astigmatism")
         if value is None:
             return INFEASIBLE_MERIT
@@ -353,26 +388,36 @@ class MeritFunction:
         """
         merit = self._penalty_physical(system)
 
-        for target in self.targets:
-            handler = self._TARGET_DISPATCH.get(target.name)
-            if handler is not None:
+        # The same for every target; it used to be rebuilt inside the loop.
+        statics = tuple(
+            getattr(getattr(MeritFunction, n), "__func__", getattr(MeritFunction, n))
+            for n in (
+                "_eval_chromatic",
+                "_eval_focal_length",
+                "_eval_system_length",
+                "_eval_rms_spot",
+                "_eval_mtf",
+            )
+        )
+
+        # The spherical/coma/astigmatism targets share one
+        # calculate_all_aberrations pass (coma and astigmatism use the same
+        # 5 degree field). The cache lives for this call only, per thread.
+        self._eval_state.aberrations = {}
+        try:
+            for target in self.targets:
+                handler = self._TARGET_DISPATCH.get(target.name)
+                if handler is None:
+                    continue
                 # handler may be a plain function (for staticmethods) or unbound method
                 # Compare underlying function via getattr to handle both
                 h = getattr(handler, "__func__", handler)
-                statics = tuple(
-                    getattr(getattr(MeritFunction, n), "__func__", getattr(MeritFunction, n))
-                    for n in (
-                        "_eval_chromatic",
-                        "_eval_focal_length",
-                        "_eval_system_length",
-                        "_eval_rms_spot",
-                        "_eval_mtf",
-                    )
-                )
                 if h in statics:
                     merit += handler(system, target)
                 else:
                     merit += handler(self, system, target)
+        finally:
+            self._eval_state.aberrations = None
 
         return merit
 
