@@ -89,6 +89,9 @@ _SYSTEM_SERIALIZED_KEYS = frozenset(
         "elements",
         "air_gaps",
         "metadata",
+        # Serialized by us, so it must not also be treated as a user setting
+        # that happens to have no home on the model.
+        "node_tree",
     }
 )
 
@@ -492,6 +495,18 @@ class OpticalSystem:
                 for e in self.elements
             ],
             "air_gaps": [{"thickness": g.thickness, "position": g.position} for g in self.air_gaps],
+            # The nesting itself.
+            #
+            # "elements" above is the *flattened* list, which is what every
+            # existing consumer reads: the database stores it, the GUI's Save As
+            # writes it, and LensStorage reads it. It cannot express which node
+            # is a child of which, so a doublet built inside a sub-assembly came
+            # back as two flat root-level elements and the structure the user
+            # built was gone - silently, and re-saved in the flattened form.
+            #
+            # Written alongside rather than instead of, so old readers keep
+            # working and old files keep loading.
+            "node_tree": self.root.to_dict(),
             # A copy, so the exported dict is not a live handle on the model.
             "metadata": dict(self.metadata),
         }
@@ -555,6 +570,11 @@ class OpticalSystem:
         # them from it), so set each child's position and rebuild. This format
         # is flat - it stores a list of elements and cannot represent a nested
         # assembly tree - so a nested assembly still comes back flattened.
+        node_tree = data.get("node_tree")
+        if node_tree:
+            system._restore_node_tree(node_tree, lens_lookup)
+            return system
+
         saved_positions = [elem_data.get("position") for elem_data in elements_data]
         if any(position is not None for position in saved_positions):
             for node, saved in zip(system.root.children, saved_positions):
@@ -564,6 +584,58 @@ class OpticalSystem:
             system._rebuild_from_tree()
 
         return system
+
+    def _restore_node_tree(self, tree: Dict[str, Any], lens_lookup: Optional[dict] = None):
+        """Rebuild the nesting recorded by :meth:`to_dict`.
+
+        Only used when ``node_tree`` is present. A file without it is an older
+        export and takes the flat path above, which is unchanged.
+
+        Args:
+            tree: The serialized root node.
+            lens_lookup: Optional shared Lens instances, matched on id.
+
+        Returns:
+            None
+        """
+        from .optical_node import OpticalAssembly, OpticalElement
+
+        def build(node_data: Dict[str, Any], parent):
+            kind = node_data.get("type")
+            position = node_data.get("position") or (0.0, 0.0, 0.0)
+            rotation = node_data.get("rotation") or (0.0, 0.0, 0.0)
+
+            if kind == "OpticalElement":
+                model_data = node_data.get("element_model")
+                model = Lens.from_dict(model_data) if model_data else Lens()
+                if lens_lookup:
+                    shared = lens_lookup.get(getattr(model, "id", None))
+                    if shared is not None:
+                        model = shared
+                node = OpticalElement(model, name=node_data.get("name", "Element"))
+            else:
+                # Anything that is not an element is a container. Defaulting
+                # this way means an unknown future node type round-trips as a
+                # group rather than being dropped - losing the subtree silently
+                # would be worse than not knowing its exact class.
+                node = OpticalAssembly(name=node_data.get("name", "Root"))
+
+            node.position = vec3(*(float(v) for v in position))
+            node.rotation = vec3(*(float(v) for v in rotation))
+            node.parent = parent
+            for child_data in node_data.get("children") or []:
+                node.children.append(build(child_data, node))
+            return node
+
+        rebuilt = build(tree, None)
+        # The saved root is a plain container. Reuse the system's own root so
+        # anything holding a reference to it keeps working.
+        self.root.children = list(rebuilt.children)
+        for child in self.root.children:
+            child.parent = self.root
+        self.root.position = rebuilt.position
+        self.root.rotation = rebuilt.rotation
+        self._rebuild_from_tree()
 
     @staticmethod
     def load(filename: str) -> Optional["OpticalSystem"]:
