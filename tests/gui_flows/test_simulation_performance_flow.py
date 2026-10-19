@@ -40,7 +40,8 @@ def test_simulation_ghost_path(main_window, qtbot):
 def test_performance_metrics_flow(main_window, qtbot):
     po = MainWindowPO(main_window, qtbot)
     text = po.calculate_performance()
-    assert len(text) > 50
+    # The report, not the "Calculating…" placeholder the worker paints first.
+    assert "Image Quality Metrics" in text
 
 
 def test_analysis_dialogs_smoke(main_window, qtbot, monkeypatch):
