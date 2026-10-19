@@ -11,6 +11,7 @@ from typing import Optional, List
 logger = logging.getLogger(__name__)
 
 from .lens import Lens
+from .logging_setup import setup_logging, verbose_requested
 from .paths import default_db_path, resolve_db_path
 from .validation import (
     ValidationError,
@@ -386,6 +387,7 @@ class LensManager:
 
 def main() -> None:
     """Main entry point for the interactive CLI lens editor."""
+    setup_logging(verbose=verbose_requested())
     manager = LensManager()
 
     print("=" * 60)

@@ -311,9 +311,12 @@ class TestLoggingIsConfigured(unittest.TestCase):
     def test_configure_logging_is_idempotent(self):
         """Calling it twice must not double every message."""
         openlens.__main__._configure_logging()
+        installed = len(logging.getLogger().handlers)
+
         openlens.__main__._configure_logging()
 
-        self.assertLessEqual(len(logging.getLogger().handlers), 1)
+        self.assertGreater(installed, 0)
+        self.assertEqual(len(logging.getLogger().handlers), installed)
 
 
 if __name__ == "__main__":
