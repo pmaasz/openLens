@@ -39,6 +39,12 @@ GRADIENT_PARALLEL_THRESHOLD = 4
 #: system, so unbounded fan-out would compete for memory rather than help.
 GRADIENT_MAX_WORKERS = 4
 
+#: Pupil grid used by the MTF merit. The interactive PSF/MTF traces the
+#: default 64x64 grid (~3200 rays); a 32x32 grid still resolves the shape of
+#: the MTF curve while cutting the ray count for every merit evaluation by
+#: four (#456).
+MTF_MERIT_GRID_SIZE = 32
+
 
 @dataclass
 class OptimizationVariable:
@@ -225,7 +231,7 @@ class MeritFunction:
             import numpy as np
 
             sensor = WavefrontSensor(system)
-            wavefront = sensor.get_pupil_wavefront()
+            wavefront = sensor.get_pupil_wavefront(grid_size=MTF_MERIT_GRID_SIZE)
 
             W = wavefront.W
             if getattr(W, "size", 0) == 0 or np.all(np.isnan(W)):

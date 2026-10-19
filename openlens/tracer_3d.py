@@ -3,7 +3,7 @@
 """
 
 import math
-from typing import List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from .ray import Ray3D, RefractionResult, OpticalIntersector
 from .vector3 import Vector3, vec3
@@ -24,6 +24,50 @@ from .geometry import LensGeometry
 if TYPE_CHECKING:
     from .lens import Lens
     from .optical_system import OpticalSystem
+
+
+def _lens_state_key(lens: "Lens") -> Tuple[object, ...]:
+    """Cheap snapshot of every lens value a ``LensRayTracer3D`` bakes in.
+
+    A prepared element tracer is only valid while the lens still holds the
+    values it was built from. The wavefront sensor swaps ``refractive_index``
+    for each wavelength and restores it afterwards, and the editor edits
+    lenses in place, so the batch validates against this key on every trace:
+    trusting callers to announce an edit would silently trace the previous
+    design.
+
+    Clear apertures are included because ``LensRayTracer3D`` snapshots them
+    into its aperture checks at construction time. Fresnel facets are not:
+    building them is O(zones), so a facet-shape edit has to call
+    ``SystemRayTracer3D.invalidate`` instead.
+
+    Args:
+        lens: Lens whose current optical state is snapshotted.
+
+    Returns:
+        An equality-comparable tuple of the lens values.
+    """
+    get_r1 = getattr(lens, "get_effective_radius_1", None)
+    get_r2 = getattr(lens, "get_effective_radius_2", None)
+    get_ca1 = getattr(lens, "get_clear_aperture_1", None)
+    get_ca2 = getattr(lens, "get_clear_aperture_2", None)
+    diameter = lens.diameter
+    return (
+        get_r1() if callable(get_r1) else lens.radius_of_curvature_1,
+        get_r2() if callable(get_r2) else lens.radius_of_curvature_2,
+        lens.thickness,
+        diameter,
+        lens.refractive_index,
+        bool(getattr(lens, "is_parabolic_1", False)),
+        bool(getattr(lens, "is_parabolic_2", False)),
+        float(getattr(lens, "parabolic_sag_1", 0.0)),
+        float(getattr(lens, "parabolic_sag_2", 0.0)),
+        bool(getattr(lens, "is_fresnel", False)),
+        getattr(lens, "fresnel_surface", None),
+        float(getattr(lens, "groove_pitch", 0.0)),
+        (get_ca1() if callable(get_ca1) else diameter) or diameter,
+        (get_ca2() if callable(get_ca2) else diameter) or diameter,
+    )
 
 
 class LensRayTracer3D:
@@ -58,12 +102,27 @@ class LensRayTracer3D:
         self.fresnel_facets_1 = LensGeometry.fresnel_facets(lens, 1)
         self.fresnel_facets_2 = LensGeometry.fresnel_facets(lens, 2)
 
+        # Snapshot for SystemRayTracer3D: a cached tracer may only be reused
+        # while the lens still matches the state this one was built from.
+        self._state_key = _lens_state_key(lens)
+
         if transform:
             self.transform = transform
         else:
             self.transform = Matrix4x4.from_translation(x_offset, 0, 0)
 
         self._calculate_geometry()
+
+    def matches(self, lens: "Lens") -> bool:
+        """Whether this tracer still describes *lens*'s current optical state.
+
+        Args:
+            lens: Lens to compare against the state snapshotted at construction.
+
+        Returns:
+            True when every baked-in lens value is unchanged.
+        """
+        return self._state_key == _lens_state_key(lens)
 
     def _calculate_geometry(self) -> None:
         """Calculate lens surface positions and centers in 3D using transform"""
@@ -514,14 +573,38 @@ class LensRayTracer3D:
 
 
 class SystemRayTracer3D:
-    """Ray tracer for multi-element optical systems in 3D"""
+    """Ray tracer for multi-element optical systems in 3D.
+
+    The scene - each element's transform and ``LensRayTracer3D`` - is prepared
+    on the first trace and reused for the rest of the batch. Building it per
+    ray dominated a pupil-grid trace: a 64x64 wavefront on a doublet spent
+    more time walking the node tree than refracting.
+
+    The prepared lens state is revalidated on every trace, so an edit or the
+    wavefront sensor's per-wavelength refractive-index swap is picked up
+    without the caller knowing the cache exists. Position and structure
+    changes are not re-walked - call :meth:`invalidate` after those.
+    """
 
     def __init__(self, optical_system: "OpticalSystem") -> None:
         self.system = optical_system
+        self._batch: Optional[Dict[str, Any]] = None
 
-    def trace_ray(self, ray: Ray3D) -> Ray3D:
-        """Trace a single ray through the entire system."""
+    def invalidate(self) -> None:
+        """Drop the prepared scene after a position or structure change.
 
+        Lens parameter changes, including the refractive index, are detected
+        automatically on the next trace. Moving or adding an element is not,
+        because checking would mean the full node walk the cache avoids.
+        """
+        self._batch = None
+
+    def _scene_is_current(self, batch: Dict[str, Any]) -> bool:
+        """Whether every cached element tracer still matches its lens."""
+        return all(tracer.matches(lens) for lens, tracer in batch["entries"])
+
+    def _prepare(self) -> Dict[str, Any]:
+        """Build the element tracers and stop geometry once per batch."""
         elements = []
         if hasattr(self.system, "root"):
             nodes = self.system.root.get_flat_list()
@@ -544,23 +627,38 @@ class SystemRayTracer3D:
         if stop_gap is not None and 0 <= stop_gap < len(flat_gaps):
             stop_x = flat_gaps[stop_gap].position
 
-        for idx, (lens, transform) in enumerate(elements):
+        self._batch = {
+            "entries": [
+                (lens, LensRayTracer3D(lens, transform=transform)) for lens, transform in elements
+            ],
+            "stop_gap": stop_gap,
+            "stop_semi": stop_semi,
+            "stop_x": stop_x,
+        }
+        return self._batch
+
+    def trace_ray(self, ray: Ray3D) -> Ray3D:
+        """Trace a single ray through the entire system."""
+        batch = self._batch
+        if batch is None or not self._scene_is_current(batch):
+            batch = self._prepare()
+
+        for idx, (_, tracer) in enumerate(batch["entries"]):
             if ray.terminated:
                 break
 
-            tracer = LensRayTracer3D(lens, transform=transform)
             tracer.trace_ray(ray, propagate_distance=0)
 
             if ray.terminated:
                 break
 
             if (
-                stop_gap is not None
-                and stop_semi is not None
-                and stop_x is not None
-                and stop_gap == idx
+                batch["stop_gap"] is not None
+                and batch["stop_semi"] is not None
+                and batch["stop_x"] is not None
+                and batch["stop_gap"] == idx
             ):
-                if not self._apply_stop(ray, stop_x, stop_semi):
+                if not self._apply_stop(ray, batch["stop_x"], batch["stop_semi"]):
                     break
 
         if not ray.terminated:

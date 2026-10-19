@@ -143,10 +143,11 @@ class WavefrontSensor:
                 # dispersion data to apply.
                 lens.wavelength = wavelength_nm
                 lens.refractive_index = lens.refractive_index_at(wavelength_nm)
-            # No tracer rebuild is needed: SystemRayTracer3D builds a
-            # LensRayTracer3D per element on every trace, and that reads the
-            # lens's index as it stands. Replacing the tracer would also
-            # discard one a caller had installed deliberately.
+            # No tracer rebuild is needed: the tracer's batch validates each
+            # element against the lens state it snapshotted - including the
+            # index set above - and rebuilds on the next trace. Replacing the
+            # tracer would also discard one a caller had installed
+            # deliberately.
             return self._compute_pupil_wavefront(
                 field_angle_deg=field_angle_deg,
                 wavelength_nm=wavelength_nm,

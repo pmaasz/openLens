@@ -240,5 +240,53 @@ class TestHealthyEvaluationUnchanged(unittest.TestCase):
         self.assertEqual(merit, INFEASIBLE_MERIT)
 
 
+class TestMtfMeritGrid(unittest.TestCase):
+    """#456: the merit must not trace the interactive 64x64 pupil grid.
+
+    The optimizer evaluates the MTF once per merit call. A 64x64 wavefront is
+    ~3200 rays; the shape of the MTF curve is already resolved at 32x32, and
+    the smaller grid cuts the ray count by four.
+    """
+
+    def setUp(self):
+        self.system = _system()
+
+    def test_grid_is_smaller_than_the_interactive_default(self):
+        grid = optimizer_module.MTF_MERIT_GRID_SIZE
+        self.assertLess(grid, 64)
+
+    def test_eval_mtf_asks_for_the_merit_grid(self):
+        import types
+
+        import numpy as np
+
+        created = []
+
+        class RecordingSensor:
+            def __init__(self, system):
+                self.system = system
+                self.calls = []
+                created.append(self)
+
+            def get_pupil_wavefront(self, **kwargs):
+                self.calls.append(kwargs)
+                return types.SimpleNamespace(W=np.ones((8, 8)))
+
+        original = optimizer_module.WavefrontSensor
+        optimizer_module.WavefrontSensor = RecordingSensor
+        try:
+            merit = MeritFunction._eval_mtf(self.system, _target("mtf"))
+        finally:
+            optimizer_module.WavefrontSensor = original
+
+        self.assertIsInstance(merit, float)
+        self.assertEqual(len(created), 1)
+        self.assertEqual(
+            created[0].calls,
+            [{"grid_size": optimizer_module.MTF_MERIT_GRID_SIZE}],
+            "the MTF merit traced the interactive pupil grid",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
