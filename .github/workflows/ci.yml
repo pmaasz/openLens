@@ -23,6 +23,10 @@ jobs:
         # E9/F63/F7/F82 are correctness findings - syntax errors, invalid
         # asserts/prints and undefined names. These must fail the build.
         run: flake8 openlens/ tests/ --max-line-length=100 --ignore=E203,W503 --select=E9,F63,F7,F82
+      - name: Linting (ruff, blind excepts)
+        # BLE001 keeps new broad `except` handlers out of the library; the
+        # boundaries and the #479 burn-down list live in ruff.toml.
+        run: ruff check openlens/ tests/
       - name: Linting (flake8, style - advisory)
         # The remaining ~500 style findings (E402, F401, E501, ...) are
         # tracked separately; once that cleanup lands this step drops

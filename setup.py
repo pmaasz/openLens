@@ -84,6 +84,9 @@ setup(
             # local hook, this extra and CI all run the same version. The
             # pre-commit config pins the same release.
             'black==26.5.1',
+            # One rule only (blind excepts, see ruff.toml); pinned like black
+            # so the gate cannot shift under the repository.
+            'ruff==0.17.1',
             'pylint>=2.12.0',
             'flake8>=4.0.0',
             'pre-commit>=2.20.0',

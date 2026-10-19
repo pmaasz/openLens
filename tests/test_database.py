@@ -3,6 +3,7 @@ Tests for openlens/database.py — DatabaseManager CRUD and transaction handling
 """
 
 import os
+import sqlite3
 import tempfile
 import unittest
 
@@ -262,10 +263,8 @@ class TestTransactions(unittest.TestCase):
     def test_save_lens_rolls_back_on_bad_data(self):
         self.db.save_lens(_make_lens_dict(lens_id="good"))
         bad = {"id": "bad"}
-        try:
+        with self.assertRaises(sqlite3.IntegrityError):
             self.db.save_lens(bad)
-        except Exception:
-            pass
         lenses = _load_lenses(self.db)
         ids = {r["id"] for r in lenses}
         self.assertIn("good", ids)

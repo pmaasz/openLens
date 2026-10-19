@@ -9,11 +9,20 @@ regression to placeholder (e.g. Airy/spot-area or hardcoded) estimates.
 
 import math
 import unittest
+from unittest import mock
 
 from openlens.aberrations import AberrationsCalculator
 from openlens.constants import WAVELENGTH_GREEN
 from openlens.lens import Lens
 from openlens.optical_system import OpticalSystem
+
+try:
+    import numpy as np
+
+    HAS_NUMPY = True
+except ImportError:  # pragma: no cover - environment guard
+    HAS_NUMPY = False
+    np = None  # type: ignore[assignment]
 
 
 def _biconvex(diameter: float) -> Lens:
@@ -131,6 +140,27 @@ class TestWavefrontSensor(unittest.TestCase):
         # Piston + tilt removed: mean residual ~ 0
         self.assertAlmostEqual(float(np.mean(valid)), 0.0, delta=1e-6)
         self.assertLess(float(np.sqrt(np.mean(valid**2))), 1.0)
+
+
+class TestPistonTiltFitFallback(unittest.TestCase):
+    """A failing plane fit degrades to piston removal and reports it."""
+
+    @unittest.skipUnless(HAS_NUMPY, "numpy not available")
+    def test_fit_failure_is_logged_and_still_returns_an_rms(self):
+        calculator = AberrationsCalculator(_biconvex(20.0))
+        with mock.patch(
+            "numpy.linalg.lstsq", side_effect=np.linalg.LinAlgError("svd did not converge")
+        ):
+            with self.assertLogs("openlens.aberrations", level="DEBUG") as captured:
+                result = calculator._calculate_wavefront_rms_waves(grid_size=16)
+        self.assertIsNotNone(result)
+        rms, residual = result
+        self.assertGreaterEqual(rms, 0.0)
+        self.assertGreaterEqual(len(residual), 10)
+        self.assertTrue(
+            any("Piston/tilt fit failed" in message for message in captured.output),
+            captured.output,
+        )
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ to add them.
 """
 
 import unittest
+from unittest import mock
 
 from openlens.aberrations import AberrationsCalculator
 from openlens.lens import Lens
@@ -235,6 +236,21 @@ class TestStrehlCacheReturnsFreshResults(unittest.TestCase):
         cached = next(iter(calculator._strehl_cache.values()))
 
         self.assertIs(self._strehl(calculator), cached)
+
+
+class TestStrehlKeyFailuresAreReported(unittest.TestCase):
+    """A state that cannot be snapshotted must bypass the cache loudly."""
+
+    def test_snapshot_failure_is_logged_and_bypasses_the_cache(self):
+        calculator = AberrationsCalculator(_lens())
+        with mock.patch.object(Lens, "to_dict", side_effect=TypeError("unserializable")):
+            with self.assertLogs("openlens.aberrations", level="DEBUG") as captured:
+                key = calculator._strehl_state_key(550.0, 32)
+        self.assertIsNone(key)
+        self.assertTrue(
+            any("cache key unavailable" in message for message in captured.output),
+            captured.output,
+        )
 
 
 if __name__ == "__main__":
