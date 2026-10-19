@@ -80,7 +80,10 @@ setup(
             'pytest-cov>=3.0.0',
             'pytest-qt>=4.2.0',
             'pytest-xdist>=3.0.0',
-            'black>=22.0.0',
+            # Pinned exactly: the formatting gate is only meaningful when the
+            # local hook, this extra and CI all run the same version. The
+            # pre-commit config pins the same release.
+            'black==26.5.1',
             'pylint>=2.12.0',
             'flake8>=4.0.0',
             'pre-commit>=2.20.0',
