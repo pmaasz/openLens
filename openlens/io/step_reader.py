@@ -23,9 +23,53 @@ _LITERAL_BODY = r"(?:[^']|'')*"
 _SOLID_RE = re.compile(rf"#(\d+)=MANIFOLD_SOLID_BREP\('({_LITERAL_BODY})',#?[\d.]+\);")
 _POINT_RE = re.compile(rf"#(\d+)=CARTESIAN_POINT\('{_LITERAL_BODY}',\(([^)]*)\)\);")
 
+# Encoding directives the writer emits for non-ASCII text: \X2\ is UTF-16
+# code units, \X4\ UTF-32 code points (only \X2\ is produced today).
+_X2_RE = re.compile(r"\\X2\\([0-9A-Fa-f]+)\\X0\\")
+_X4_RE = re.compile(r"\\X4\\([0-9A-Fa-f]+)\\X0\\")
+_X_ENCODINGS = ((_X2_RE, "utf-16-be"), (_X4_RE, "utf-32-be"))
+
 
 def _unescape(name: str) -> str:
-    return name.replace("''", "'")
+    """Undo the Part 21 escapes that ``StepWriter`` applies.
+
+    Scanned left to right rather than by ``str.replace``: the writer doubles a
+    literal backslash, so a name that literally contains ``\\X2\\00FC\\X0\\``
+    arrives as ``\\\\X2\\\\00FC\\\\X0\\\\`` and must come back as text. A
+    replacement pass that looked for ``\\X2\\`` first would decode the
+    doublings it happens to contain.
+    """
+    out: List[str] = []
+    i = 0
+    while i < len(name):
+        ch = name[i]
+        if ch == "'" and name.startswith("''", i):
+            out.append("'")
+            i += 2
+            continue
+        if ch == "\\":
+            if name.startswith("\\\\", i):
+                out.append("\\")
+                i += 2
+                continue
+            for pattern, encoding in _X_ENCODINGS:
+                match = pattern.match(name, i)
+                if match:
+                    try:
+                        out.append(bytes.fromhex(match.group(1)).decode(encoding))
+                    except (ValueError, UnicodeDecodeError):
+                        # A malformed directive is not a reason to drop the
+                        # name; keep it exactly as it was written.
+                        out.append(match.group(0))
+                    i = match.end()
+                    break
+            else:
+                out.append(ch)
+                i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 def read_step_solids(filename: str) -> List[Dict[str, Any]]:

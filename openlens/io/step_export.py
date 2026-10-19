@@ -29,14 +29,41 @@ class StepRef(int):
     """
 
 
+class StepEnum(str):
+    """A Part 21 enumeration, serialized bare as ``.T.``.
+
+    Enumerations must not be quoted, so they cannot be passed as ordinary
+    text: before this marker the writer guessed from the first character,
+    which also meant an ordinary name starting with ``.`` was silently
+    written as syntax.
+    """
+
+    def __new__(cls, value: str) -> "StepEnum":
+        if not (len(value) > 2 and value.startswith(".") and value.endswith(".")):
+            raise ValueError(f"not a Part 21 enumeration: {value!r}")
+        return super().__new__(cls, value)
+
+
+class StepDerived(str):
+    """Part 21's derived-attribute placeholder, serialized as ``*``.
+
+    ``*`` in an argument position means "not present in this mapping"; it is
+    not a string, and a name that is an asterisk must stay quoted.
+    """
+
+    def __new__(cls) -> "StepDerived":
+        return super().__new__(cls, "*")
+
+
+#: Enumeration values used by the exporter. ``STEP_FALSE`` exists for
+#: completeness; booleans render through the bool branch of _format_scalar.
+STEP_TRUE = StepEnum(".T.")
+STEP_FALSE = StepEnum(".F.")
+STEP_DERIVED = StepDerived()
+
+
 class StepWriter:
     """Helper to generate STEP file content."""
-
-    # Leading characters that mark a string as already-written STEP syntax:
-    # a reference (#12), an enum (.T.), a derived attribute (*) or an unset
-    # value ($). A single quote is NOT here: string literals are never
-    # pre-quoted at the call site, so quoting and escaping happen here only.
-    _TOKEN_PREFIXES = ("#", ".", "*", "$")
 
     def __init__(self):
         self.lines = []
@@ -47,29 +74,66 @@ class StepWriter:
         return self.id_counter
 
     @classmethod
+    def _escape_text(cls, text: str) -> str:
+        """Escape the body of a Part 21 string literal.
+
+        Three rules, none of which the writer used to apply:
+
+        - a literal apostrophe is doubled, Part 21's only escape inside a
+          literal (and what ``step_reader`` expects back);
+        - a literal backslash is doubled, because a single backslash starts
+          an escape sequence;
+        - non-ASCII characters are encoded as ``\\X2\\<UTF-16BE>\\X0\\``.
+          Part 21 text is ASCII; a raw ``ü`` makes the file invalid.
+          Adjacent non-ASCII characters share one directive.
+        """
+        parts: List[str] = []
+        hex_run: List[str] = []
+
+        def flush_hex() -> None:
+            if hex_run:
+                parts.append("\\X2\\" + "".join(hex_run) + "\\X0\\")
+                hex_run.clear()
+
+        for ch in text:
+            if ch == "\\":
+                flush_hex()
+                parts.append("\\\\")
+            elif ch == "'":
+                flush_hex()
+                parts.append("''")
+            elif ord(ch) < 128:
+                flush_hex()
+                parts.append(ch)
+            else:
+                hex_run.append(ch.encode("utf-16-be").hex().upper())
+        flush_hex()
+        return "".join(parts)
+
+    @classmethod
     def _format_text(cls, text: str) -> str:
         """Render a string argument as a quoted, escaped STEP literal.
 
-        Apostrophes inside the text are doubled, which is Part 21's only
-        escape inside a literal and what ``step_reader`` expects back. Without
-        it a name like ``Bob's 50mm PCX`` closes its literal early and the
-        rest of the entity - and every entity after it - is malformed.
+        Always quoted: this used to return strings that started with ``#``,
+        ``.``, ``*`` or ``$``, or that ``float()`` could parse, unquoted on
+        the guess that they were pre-written syntax. Names like ``50``,
+        ``Infinity`` and ``#3 doublet`` are text, and guessing turned them
+        into a real number or a dangling reference. Syntax now travels as
+        ``StepRef``/``StepEnum``/``StepDerived`` markers or Python types.
+
         ``&``, ``<`` and ``>`` need no escape: Part 21 text files carry them
         literally.
         """
-        if text.startswith(cls._TOKEN_PREFIXES):
-            return text
-        try:
-            float(text)
-        except ValueError:
-            return "'" + text.replace("'", "''") + "'"
-        return text
+        return "'" + cls._escape_text(text) + "'"
 
     @classmethod
     def _format_scalar(cls, arg: Any) -> str:
         """Render one argument value in ISO-10303-21 syntax."""
         if isinstance(arg, StepRef):
             return f"#{int(arg)}"
+        # Before str and bool/int: the markers subclass str.
+        if isinstance(arg, (StepEnum, StepDerived)):
+            return str(arg)
         if isinstance(arg, bool):  # must precede int: bool subclasses it
             return ".T." if arg else ".F."
         if isinstance(arg, str):
@@ -334,10 +398,10 @@ class StepExporter:
         # A single EDGE_CURVE with same start/end vertex on a circle is allowed in some schemas,
         # but robust exporters use 2 semicircles or just declare it as an EDGE_LOOP with one edge.
         # Let's try single edge.
-        edge1 = self.writer.add_entity("EDGE_CURVE", ["edge1", v_e1, v_e1, circle1, ".T."])
+        edge1 = self.writer.add_entity("EDGE_CURVE", ["edge1", v_e1, v_e1, circle1, STEP_TRUE])
 
         # EDGE_CURVE for Edge 2
-        edge2 = self.writer.add_entity("EDGE_CURVE", ["edge2", v_e2, v_e2, circle2, ".T."])
+        edge2 = self.writer.add_entity("EDGE_CURVE", ["edge2", v_e2, v_e2, circle2, STEP_TRUE])
 
         # Longitudinal Seam Edge (connecting e1 to e2 along cylinder)
         # Line segment
@@ -350,7 +414,7 @@ class StepExporter:
             ],
         )
         edge_seam = self.writer.add_entity(
-            "EDGE_CURVE", ["edge_seam", v_e1, v_e2, line_seam, ".T."]
+            "EDGE_CURVE", ["edge_seam", v_e1, v_e2, line_seam, STEP_TRUE]
         )
 
         # --- Loops ---
@@ -362,7 +426,11 @@ class StepExporter:
             "EDGE_LOOP",
             [
                 "loop1",
-                [self.writer.add_entity("ORIENTED_EDGE", ["*", "*", edge1, ".T."])],
+                [
+                    self.writer.add_entity(
+                        "ORIENTED_EDGE", [STEP_DERIVED, STEP_DERIVED, edge1, STEP_TRUE]
+                    )
+                ],
             ],
         )
 
@@ -371,7 +439,11 @@ class StepExporter:
             "EDGE_LOOP",
             [
                 "loop2",
-                [self.writer.add_entity("ORIENTED_EDGE", ["*", "*", edge2, ".T."])],
+                [
+                    self.writer.add_entity(
+                        "ORIENTED_EDGE", [STEP_DERIVED, STEP_DERIVED, edge2, STEP_TRUE]
+                    )
+                ],
             ],
         )
 
@@ -431,9 +503,9 @@ class StepExporter:
             "ADVANCED_FACE",
             [
                 "face1",
-                [self.writer.add_entity("FACE_BOUND", ["b1", loop1, ".T."])],
+                [self.writer.add_entity("FACE_BOUND", ["b1", loop1, STEP_TRUE])],
                 surf1,
-                ".T.",
+                STEP_TRUE,
             ],
         )
 
@@ -442,9 +514,9 @@ class StepExporter:
             "ADVANCED_FACE",
             [
                 "face2",
-                [self.writer.add_entity("FACE_BOUND", ["b2", loop2, ".T."])],
+                [self.writer.add_entity("FACE_BOUND", ["b2", loop2, STEP_TRUE])],
                 surf2,
-                ".T.",
+                STEP_TRUE,
             ],
         )
 
@@ -458,10 +530,10 @@ class StepExporter:
         # But let's try just listing the bounds.
         # One bound is the front circle, one is the back.
 
-        b3_1 = self.writer.add_entity("FACE_BOUND", ["b3_1", loop1, ".T."])
-        b3_2 = self.writer.add_entity("FACE_BOUND", ["b3_2", loop2, ".T."])
+        b3_1 = self.writer.add_entity("FACE_BOUND", ["b3_1", loop1, STEP_TRUE])
+        b3_2 = self.writer.add_entity("FACE_BOUND", ["b3_2", loop2, STEP_TRUE])
 
-        face3 = self.writer.add_entity("ADVANCED_FACE", ["face3", [b3_1, b3_2], surf3, ".T."])
+        face3 = self.writer.add_entity("ADVANCED_FACE", ["face3", [b3_1, b3_2], surf3, STEP_TRUE])
 
         # --- Shell ---
         shell = self.writer.add_entity("CLOSED_SHELL", ["shell", [face1, face2, face3]])
@@ -504,10 +576,12 @@ class StepExporter:
         def _edge(label: str, circle_id: int, z: float, r: float):
             pe = self.writer.add_entity("CARTESIAN_POINT", [f"{label}_p", (r, 0.0, z)])
             ve = self.writer.add_entity("VERTEX_POINT", [f"{label}_v", pe])
-            return self.writer.add_entity("EDGE_CURVE", [f"{label}", ve, ve, circle_id, ".T."])
+            return self.writer.add_entity("EDGE_CURVE", [f"{label}", ve, ve, circle_id, STEP_TRUE])
 
         def _loop(label: str, edge_id: int):
-            oriented = self.writer.add_entity("ORIENTED_EDGE", ["*", "*", edge_id, ".T."])
+            oriented = self.writer.add_entity(
+                "ORIENTED_EDGE", [STEP_DERIVED, STEP_DERIVED, edge_id, STEP_TRUE]
+            )
             return self.writer.add_entity("EDGE_LOOP", [f"{label}", [oriented]])
 
         c_top_out = _circle(f"{name}_to", z1, r_outer)
@@ -536,11 +610,11 @@ class StepExporter:
             [
                 f"{name}_ft",
                 [
-                    self.writer.add_entity("FACE_BOUND", [f"{name}_bt1", loop_top_out, ".T."]),
-                    self.writer.add_entity("FACE_BOUND", [f"{name}_bt2", loop_top_in, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bt1", loop_top_out, STEP_TRUE]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bt2", loop_top_in, STEP_TRUE]),
                 ],
                 plane_top,
-                ".T.",
+                STEP_TRUE,
             ],
         )
 
@@ -554,11 +628,11 @@ class StepExporter:
             [
                 f"{name}_fb",
                 [
-                    self.writer.add_entity("FACE_BOUND", [f"{name}_bb1", loop_bot_out, ".T."]),
-                    self.writer.add_entity("FACE_BOUND", [f"{name}_bb2", loop_bot_in, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bb1", loop_bot_out, STEP_TRUE]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bb2", loop_bot_in, STEP_TRUE]),
                 ],
                 plane_bot,
-                ".T.",
+                STEP_TRUE,
             ],
         )
 
@@ -572,11 +646,11 @@ class StepExporter:
             [
                 f"{name}_fo",
                 [
-                    self.writer.add_entity("FACE_BOUND", [f"{name}_bo1", loop_top_out, ".T."]),
-                    self.writer.add_entity("FACE_BOUND", [f"{name}_bo2", loop_bot_out, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bo1", loop_top_out, STEP_TRUE]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bo2", loop_bot_out, STEP_TRUE]),
                 ],
                 surf_outer,
-                ".T.",
+                STEP_TRUE,
             ],
         )
         surf_inner = self.writer.add_entity("CYLINDRICAL_SURFACE", [f"{name}_ci", ax_cyl, r_inner])
@@ -585,11 +659,11 @@ class StepExporter:
             [
                 f"{name}_fi",
                 [
-                    self.writer.add_entity("FACE_BOUND", [f"{name}_bi1", loop_top_in, ".T."]),
-                    self.writer.add_entity("FACE_BOUND", [f"{name}_bi2", loop_bot_in, ".T."]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bi1", loop_top_in, STEP_TRUE]),
+                    self.writer.add_entity("FACE_BOUND", [f"{name}_bi2", loop_bot_in, STEP_TRUE]),
                 ],
                 surf_inner,
-                ".T.",
+                STEP_TRUE,
             ],
         )
 

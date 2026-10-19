@@ -11,7 +11,14 @@ import re
 import tempfile
 import unittest
 
-from openlens.io.step_export import StepExporter, StepWriter
+from openlens.io.step_export import (
+    STEP_DERIVED,
+    STEP_TRUE,
+    StepDerived,
+    StepEnum,
+    StepExporter,
+    StepWriter,
+)
 
 
 class TestStepWriter(unittest.TestCase):
@@ -43,16 +50,17 @@ class TestStepWriter(unittest.TestCase):
         self.assertIn("#1=CARTESIAN_POINT", content)
 
     def test_numeric_and_string_arguments_rendered(self):
-        """Floats render unquoted, plain strings get quoted, refs pass through"""
-        self.writer.add_entity("ADVANCED_FACE", ["Name", 1.5, "#12", ".T."])
+        """Floats render unquoted, real text is quoted, markers carry syntax."""
+        target = self.writer.add_entity("CARTESIAN_POINT", ["p", (0.0, 0.0, 0.0)])
+        self.writer.add_entity("ADVANCED_FACE", ["Name", 1.5, target, STEP_TRUE])
         path = self._write_to_tmp()
         with open(path) as f:
             content = f.read()
-        line = re.search(r"#1=ADVANCED_FACE\((.*)\);", content).group(1)
+        line = re.search(r"#2=ADVANCED_FACE\((.*)\);", content).group(1)
         args = [a.strip() for a in line.split(",")]
         self.assertEqual(args[0], "'Name'")
         self.assertTrue(args[1].startswith("1.5"))  # floats render 6-decimal
-        self.assertEqual(args[2], "#12")
+        self.assertEqual(args[2], f"#{int(target)}")
         self.assertEqual(args[3], ".T.")
 
     def test_entity_id_from_add_entity_written_as_reference(self):
@@ -152,13 +160,68 @@ class TestStepWriter(unittest.TestCase):
         for face in shell.group(2).split(","):
             self.assertTrue(face.strip().startswith("#"), f"shell face {face!r} is not a ref")
 
-    def test_special_tokens_pass_through(self):
-        """'*' (derived), '$' (unset) are emitted verbatim"""
-        self.writer.add_entity("SOMETHING", ["*", "$"])
+    def test_derived_and_unset_markers_render_as_syntax(self):
+        """'*' (derived) and '$' (unset, Python None) are markers, not text."""
+        self.writer.add_entity("SOMETHING", [STEP_DERIVED, None])
         path = self._write_to_tmp()
         with open(path) as f:
             content = f.read()
         self.assertIn("#1=SOMETHING(*,$);", content)
+
+    def test_text_that_looks_like_a_number_is_quoted(self):
+        """A name is a name: '50', 'Infinity' and 'nan' must not become numbers.
+
+        ``float()`` parses all three, so guessing from the string turned the
+        solid name into a real number and produced an unreadable entity.
+        """
+        for name in ("50", "Infinity", "nan", "-1", "1e3", "  50  "):
+            with self.subTest(name=name):
+                self.writer = StepWriter()
+                self.writer.add_entity("X", [name])
+                self.assertEqual(self.writer.lines[-1], f"#1=X('{name}');")
+
+    def test_text_that_looks_like_syntax_is_quoted(self):
+        """A name starting with # . * or $ is text, not a pre-written token."""
+        for name in ("#3 doublet", ".T.", "*star lens", "$var"):
+            with self.subTest(name=name):
+                self.writer = StepWriter()
+                self.writer.add_entity("X", [name])
+                self.assertEqual(self.writer.lines[-1], f"#1=X('{name}');")
+
+    def test_enum_marker_renders_verbatim(self):
+        self.writer.add_entity("X", [StepEnum(".F.")])
+        self.assertEqual(self.writer.lines[-1], "#1=X(.F.);")
+
+    def test_enum_marker_rejects_text_that_is_not_an_enumeration(self):
+        for value in ("T", "true", ".", ""):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    StepEnum(value)
+
+    def test_derived_marker_is_distinct_from_text(self):
+        self.assertEqual(str(StepDerived()), "*")
+
+    def test_backslash_is_doubled(self):
+        """A backslash starts an escape in Part 21; a literal one must be ``\\\\``."""
+        self.writer.add_entity("X", [r"C:\lens"])
+        self.assertEqual(self.writer.lines[-1], r"#1=X('C:\\lens');")
+
+    def test_apostrophe_and_backslash_together(self):
+        self.writer.add_entity("X", ["Bob's \\ lens"])
+        self.assertEqual(self.writer.lines[-1], r"#1=X('Bob''s \\ lens');")
+
+    def test_non_ascii_text_is_encoded(self):
+        """Part 21 has no raw non-ASCII; ``\\X2\\`` takes UTF-16 code units."""
+        self.writer.add_entity("X", ["f=50mm \u00fc"])
+        self.assertEqual(self.writer.lines[-1], r"#1=X('f=50mm \X2\00FC\X0\');")
+
+    def test_non_bmp_text_is_encoded_as_a_surrogate_pair(self):
+        self.writer.add_entity("X", ["\U0001f600"])
+        self.assertEqual(self.writer.lines[-1], r"#1=X('\X2\D83DDE00\X0\');")
+
+    def test_a_run_of_non_ascii_shares_one_directive(self):
+        self.writer.add_entity("X", ["\u00fc\u00f6"])
+        self.assertEqual(self.writer.lines[-1], r"#1=X('\X2\00FC00F6\X0\');")
 
     def test_apostrophe_in_literal_is_doubled(self):
         """Part 21 escapes an apostrophe by doubling it.
@@ -282,6 +345,81 @@ class TestStepExporterReuse(unittest.TestCase):
         lines = self._export_once()
         ids = [int(line[1 : line.index("=")]) for line in lines]
         self.assertEqual(ids, list(range(1, len(ids) + 1)))
+
+    def test_orientation_markers_are_not_quoted(self):
+        """The real export must use the markers, not strings that look like them.
+
+        A call site passing ``".T."`` as plain text would now be quoted
+        (``'.T.'``) - valid Part 21 for a name, silently wrong for an
+        orientation flag. Both export paths are checked: the lens solid and
+        the housing tube, which carry separate call sites.
+        """
+        lens_content = "\n".join(self._export_once())
+
+        tube_exporter = StepExporter()
+        tube_exporter._export_tube_solid("Tube", 0.0, 5.0, 10.0, 12.0)
+        tube_content = "\n".join(tube_exporter.writer.lines)
+
+        for label, content in (("lens", lens_content), ("tube", tube_content)):
+            with self.subTest(export=label):
+                self.assertIn(".T.", content)
+                self.assertNotIn("'.T.'", content)
+                self.assertIn("(*,", content)
+                self.assertNotIn("'*'", content)
+
+
+class TestStepWriterTextRoundTrip(unittest.TestCase):
+    """Export then read back: the reader must decode what the writer encoded.
+
+    ``step_reader`` is the import-back check for our own writer, so it is the
+    place that proves the escaping is reversible rather than merely valid.
+    """
+
+    def _round_trip(self, name):
+        from openlens.io.step_reader import read_step_solids
+        from openlens.lens import Lens
+        from openlens.optical_system import OpticalSystem
+
+        system = OpticalSystem(name="Escaping")
+        system.add_lens(
+            Lens(
+                name=name,
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=20.0,
+            )
+        )
+        fd, path = tempfile.mkstemp(suffix=".step")
+        os.close(fd)
+        self.addCleanup(os.unlink, path)
+        StepExporter(system).export(path)
+
+        solids = read_step_solids(path)
+        self.assertEqual(len(solids), 1)
+        return solids[0]["name"]
+
+    def test_non_ascii_name_round_trips(self):
+        name = "Lens \u00fc \u00b5m"
+        self.assertEqual(self._round_trip(name), name)
+
+    def test_non_bmp_name_round_trips(self):
+        name = "Lens \U0001f600"
+        self.assertEqual(self._round_trip(name), name)
+
+    def test_backslash_name_round_trips(self):
+        name = "C:\\lens\\"
+        self.assertEqual(self._round_trip(name), name)
+
+    def test_a_literal_x2_directive_in_a_name_round_trips(self):
+        """Text that looks like an encoding directive must survive as text.
+
+        The writer doubles its backslashes, so the reader has to scan left to
+        right - a ``\\X2\\...`` search anywhere in the literal would decode a
+        name that never encoded anything.
+        """
+        name = "\\X2\\00FC\\X0\\"
+        self.assertEqual(self._round_trip(name), name)
 
 
 if __name__ == "__main__":
