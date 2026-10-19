@@ -18,12 +18,26 @@ from openlens.lens import Lens
 MATERIAL_DB_AVAILABLE = True
 
 
+def _temp_catalog(testcase):
+    """A MaterialDatabase backed by a throwaway file.
+
+    ``db_path=None`` is not "in memory": it is the application's real user
+    catalog, and add_material() writes the whole file back. These tests add
+    materials, so they need a file of their own.
+    """
+    handle, path = tempfile.mkstemp(suffix=".json")
+    os.close(handle)
+    os.unlink(path)  # missing file = built-ins only, the fresh-install case
+    testcase.addCleanup(lambda: os.path.exists(path) and os.unlink(path))
+    return MaterialDatabase(db_path=path)
+
+
 class TestMaterialDatabase(unittest.TestCase):
     """Test material database functionality"""
 
     def setUp(self):
         """Setup test database"""
-        self.db = MaterialDatabase(db_path=None)  # In-memory
+        self.db = _temp_catalog(self)
 
     def test_database_initialization(self):
         """Test that database initializes with built-in materials"""
@@ -83,7 +97,7 @@ class TestRefractiveIndex(unittest.TestCase):
     """Test wavelength and temperature dependent refractive index"""
 
     def setUp(self):
-        self.db = MaterialDatabase(db_path=None)
+        self.db = _temp_catalog(self)
 
     def test_refractive_index_at_d_line(self):
         """Test that refractive index at d-line matches catalog value"""
@@ -173,7 +187,7 @@ class TestTransmission(unittest.TestCase):
     """Test transmission data"""
 
     def setUp(self):
-        self.db = MaterialDatabase(db_path=None)
+        self.db = _temp_catalog(self)
 
     def test_transmission_in_visible(self):
         """Test that transmission is high in visible range"""
@@ -254,7 +268,7 @@ class TestMaterialProperties(unittest.TestCase):
 
 class TestMaterialDatabaseExtended(unittest.TestCase):
     def setUp(self):
-        self.db = MaterialDatabase(db_path=None)  # In-memory DB
+        self.db = _temp_catalog(self)
         self.test_data_dir = os.path.join(os.path.dirname(__file__), "data")
 
     def test_import_agf(self):

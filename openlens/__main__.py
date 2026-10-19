@@ -21,7 +21,7 @@ from PySide6.QtGui import QKeySequence
 from openlens.lens import Lens
 from openlens.optical_system import OpticalSystem
 from openlens.database import LensInUseError
-from openlens.paths import migrate_legacy_db, resolve_db_path
+from openlens.paths import migrate_legacy_db, migrate_legacy_materials, resolve_db_path
 from openlens.gui.storage import LensStorage
 from openlens.gui.widgets import LensEditorWidget
 from openlens.gui.tabs import (SimulationTab, PerformanceTab,
@@ -1475,6 +1475,15 @@ def main() -> None:
         migrate_legacy_db()
     except Exception as e:
         logger.warning("Could not migrate a legacy database: %s", e)
+
+    # The material catalog moved from data/materials.json beside the package to
+    # the per-user data directory. Copy an existing one once, before the first
+    # MaterialDatabase is constructed, so custom glasses do not appear to vanish
+    # on upgrade. A copy: the checkout's file is left untouched.
+    try:
+        migrate_legacy_materials()
+    except Exception as e:
+        logger.warning("Could not migrate a legacy material catalog: %s", e)
 
     app = QApplication(sys.argv)
     app.setStyle('Fusion')

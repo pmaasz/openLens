@@ -123,6 +123,27 @@ jobs:
               sys.exit('the wheel installed a top-level package named src')
           print('no top-level src package: OK')
           "
+      - name: The default material catalog is writable on a fresh install
+        # It defaulted to <package>/../data/materials.json: not shipped, and on
+        # an installed copy inside site-packages, so the first add_material
+        # either failed without root or polluted the venv. A fresh install must
+        # have the built-in catalog and write user edits under its data dir.
+        run: |
+          DATA_DIR=$(mktemp -d)
+          OPENLENS_DATA_DIR="$DATA_DIR" /tmp/verify/bin/python -c "
+          import pathlib
+          from openlens.material_database import MaterialDatabase, MaterialProperties
+          from openlens.paths import default_materials_path
+
+          db = MaterialDatabase()
+          assert db.materials, 'a fresh install has no built-in materials'
+          db.add_material(MaterialProperties(name='CI_GLASS', catalog='CI', nd=1.5, vd=60.0))
+          path = default_materials_path()
+          assert path.parent == pathlib.Path('$DATA_DIR'), path
+          assert path.is_file(), path
+          assert 'site-packages' not in str(path), path
+          print('fresh-install catalog:', path)
+          "
 
   no-optional-deps:
     name: Core without optional deps

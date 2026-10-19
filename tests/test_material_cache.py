@@ -1,5 +1,6 @@
+import os
+import tempfile
 import unittest
-import math
 
 from openlens.material_database import MaterialDatabase, MaterialProperties
 
@@ -7,7 +8,13 @@ from openlens.material_database import MaterialDatabase, MaterialProperties
 class TestMaterialCache(unittest.TestCase):
 
     def setUp(self):
-        self.db = MaterialDatabase()
+        # A file of this test's own: the default path is the real user catalog,
+        # and add_material() below writes the whole file back.
+        handle, path = tempfile.mkstemp(suffix=".json")
+        os.close(handle)
+        os.unlink(path)
+        self.addCleanup(lambda: os.path.exists(path) and os.unlink(path))
+        self.db = MaterialDatabase(db_path=path)
 
         # Add a custom test material
         # Use small non-zero C1 so the term is included
