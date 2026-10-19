@@ -57,6 +57,119 @@ except ImportError:
     if "np" not in locals():
         np = DummyNumpy()
 
+# Bessel functions of the first kind. scipy is the fast path; the numpy
+# fallbacks below take over without it, and they are defined unconditionally
+# (not only inside the ImportError branch) so both paths stay importable and
+# testable in any environment.
+#
+# The fallbacks evaluate whole arrays with numpy masks. The versions this
+# replaced walked arr.flat in Python and recursed once per element, so a
+# default 256x256 PSF made 65,536 interpreter-level calls to the series loop
+# (#477). The scalar fast path is kept for scalar callers.
+#
+# The analytic encircled energy needs J0 as well as J1:
+#     EE(v) = 1 - J0(v)^2 - J1(v)^2
+
+
+def _is_array_like(x: Any) -> bool:
+    """True when *x* should be handed to the vectorised path."""
+    return hasattr(x, "__len__")
+
+
+def _j0_series(ax: Any) -> Any:
+    """Series branch of J0 for an array of non-negative arguments < 8."""
+    y = (ax * ax) / 4.0
+    total = np.ones_like(ax)
+    term = total
+    for k in range(1, 30):
+        term = -term * y / (k * k)
+        total = total + term
+    return total
+
+
+def _j0_scalar(x: float) -> float:
+    """Scalar J0: series for |x| < 8, asymptotic beyond (J0 is even)."""
+    ax = abs(float(x))
+    if ax < 8.0:
+        term = 1.0
+        total = 1.0
+        y = (ax * ax) / 4.0
+        for k in range(1, 60):
+            term = -term * y / (k * k)
+            total += term
+            if abs(term) < 1e-18 * abs(total):
+                break
+        return total
+    return math.sqrt(2.0 / (math.pi * ax)) * math.cos(ax - math.pi / 4.0)
+
+
+def _j0_fallback(x: Any) -> Any:
+    """Bessel J0 without scipy, vectorised for arrays.
+
+    Series (x^2/4)^k / (k!)^2 for |x| < 8, asymptotic
+    sqrt(2/(pi x)) * cos(x - pi/4) beyond. The argument is folded to its
+    absolute value because J0 is even, which also keeps the asymptotic
+    square root real for negative inputs.
+    """
+    if _is_array_like(x):
+        arr = np.asarray(x, dtype=float)
+        ax = np.abs(arr)
+        safe_ax = np.where(ax < 1e-12, 1.0, ax)
+        small = _j0_series(ax)
+        large = np.sqrt(2.0 / (np.pi * safe_ax)) * np.cos(safe_ax - np.pi / 4.0)
+        return np.where(ax < 8.0, small, large)
+    return _j0_scalar(x)
+
+
+def _j1_series(ax: Any) -> Any:
+    """Series branch of J1 for an array of non-negative arguments < 8."""
+    term = ax / 2.0
+    total = term
+    for m in range(1, 30):
+        term = term * (-(ax * ax) / (4.0 * m * (m + 1.0)))
+        total = total + term
+    return total
+
+
+def _j1_scalar(x: float) -> float:
+    """Scalar J1: series for |x| < 8, asymptotic beyond (J1 is odd)."""
+    xv = float(x)
+    if abs(xv) < 1e-12:
+        return 0.0
+    ax = abs(xv)
+    sign = 1.0 if xv >= 0.0 else -1.0
+    if ax < 8.0:
+        # Series: J1(x) = sum_{m=0}^\infty (-1)^m (x/2)^{2m+1} / (m! (m+1)!)
+        term = ax / 2.0
+        total = term  # m=0
+        for m in range(1, 30):
+            term *= -(ax * ax) / (4.0 * m * (m + 1))
+            total += term
+            if abs(term) < 1e-14 * abs(total):
+                break
+        return sign * total
+    # Asymptotic: J1(x) ~ sqrt(2/(pi*x)) * cos(x - 3*pi/4)
+    return sign * math.sqrt(2.0 / (math.pi * ax)) * math.cos(ax - 3.0 * math.pi / 4.0)
+
+
+def _j1_fallback(x: Any) -> Any:
+    """Bessel J1 without scipy, vectorised for arrays.
+
+    Series (x/2)^(2m+1) / (m! (m+1)!) for |x| < 8, asymptotic
+    sqrt(2/(pi x)) * cos(x - 3*pi/4) beyond; the sign is carried through
+    because J1 is odd.
+    """
+    if _is_array_like(x):
+        arr = np.asarray(x, dtype=float)
+        ax = np.abs(arr)
+        sign = np.where(arr < 0.0, -1.0, 1.0)
+        safe_ax = np.where(ax < 1e-12, 1.0, ax)
+        small = sign * _j1_series(ax)
+        large = sign * np.sqrt(2.0 / (np.pi * safe_ax)) * np.cos(safe_ax - 3.0 * np.pi / 4.0)
+        return np.where(ax < 8.0, small, large)
+    return _j1_scalar(x)
+
+
 # Optional scipy import for Bessel functions
 try:
     from scipy.special import j0, j1  # Bessel functions of first kind
@@ -64,69 +177,9 @@ try:
     SCIPY_AVAILABLE = True
 except ImportError:
     SCIPY_AVAILABLE = False
+    j0 = _j0_fallback
+    j1 = _j1_fallback
     logger.warning("scipy not available. Diffraction calculations will use approximations.")
-
-    # The analytic encircled energy needs J0 as well as J1:
-    #     EE(v) = 1 - J0(v)^2 - J1(v)^2
-    # Without a fallback this raised NameError in precisely the environment
-    # the fallback below exists to serve - and CI installs no scipy, so
-    # "this code path already needed scipy" was not true of the *import*.
-    def j0(x):
-        """Fallback for Bessel J0, vectorised by recursion like j1.
-
-        Series expansion (x^2/4)^k / (k!)^2 for |x| < 8, asymptotic
-        sqrt(2/(pi x)) * cos(x - pi/4) beyond.
-        """
-        if hasattr(x, "__len__") or isinstance(x, np.ndarray):
-            arr = np.asarray(x, dtype=float)
-            res = np.zeros_like(arr, dtype=float)
-            for i, val in enumerate(arr.flat):
-                res.flat[i] = j0(float(val))
-            return res
-        xv = float(x)
-        if abs(xv) < 8.0:
-            term = 1.0
-            total = 1.0
-            y = (xv * xv) / 4.0
-            for k in range(1, 60):
-                term = -term * y / (k * k)
-                total += term
-                if abs(term) < 1e-18 * abs(total):
-                    break
-            return total
-        return math.sqrt(2.0 / (math.pi * xv)) * math.cos(xv - math.pi / 4.0)
-
-    # Fallback approximation for j1(x) Bessel function
-    # Uses series expansion for |x|<8 and asymptotic form for larger x
-    def j1(x):
-        """Accurate fallback for Bessel J1."""
-        # Handle array-like via numpy vectorization
-        if hasattr(x, "__len__") or isinstance(x, np.ndarray):
-            arr = np.asarray(x, dtype=float)
-            # Vectorize recursively
-            res = np.zeros_like(arr, dtype=float)
-            for i, val in enumerate(arr.flat):
-                res.flat[i] = j1(float(val))
-            return res
-        xv = float(x)
-        if abs(xv) < 1e-12:
-            return 0.0
-        ax = abs(xv)
-        sign = 1.0 if xv >= 0 else -1.0
-        if ax < 8.0:
-            # Series: J1(x) = sum_{m=0}^\infty (-1)^m (x/2)^{2m+1} / (m! (m+1)!)
-            term = ax / 2.0
-            total = term  # m=0
-            # iterative
-            for m in range(1, 30):
-                term *= -(ax * ax) / (4.0 * m * (m + 1))
-                total += term
-                if abs(term) < 1e-14 * abs(total):
-                    break
-            return sign * total
-        else:
-            # Asymptotic: J1(x) ~ sqrt(2/(pi*x)) * cos(x - 3*pi/4)
-            return sign * math.sqrt(2.0 / (math.pi * ax)) * math.cos(ax - 3 * math.pi / 4.0)
 
 
 # Optional matplotlib import
