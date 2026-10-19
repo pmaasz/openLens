@@ -29,8 +29,8 @@ if PYSIDE_AVAILABLE:
 
     QApplication.instance() or QApplication([])
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _lens(radius=60.0):
@@ -50,7 +50,7 @@ class _Fixture(unittest.TestCase):
     """A stand-in main window with the parts the tab actually reaches for."""
 
     def setUp(self):
-        from src.gui.tabs.optimization_tab import OptimizationTab
+        from openlens.gui.tabs.optimization_tab import OptimizationTab
 
         outer = self
 
@@ -90,13 +90,13 @@ class _Fixture(unittest.TestCase):
                 self.saved += 1
 
             def _set_current_item(self, item, is_assembly=False):
-                # Mirrors openlens.py's _set_current_item, deliberately
+                # Mirrors openlens/__main__.py's _set_current_item, deliberately
                 # *unfaithfully in one direction*: the real lens branch reloads
                 # the editor and the real assembly branch sets `_optical_system`
                 # (via _load_assembly), but neither touches
                 # `_assembly_tab_widget._optical_system`. Making the stub do so
                 # would hide a real defect - that field is what
-                # openlens.py:570 reads when the assembly editor reports a
+                # openlens/__main__.py:570 reads when the assembly editor reports a
                 # modification, so if it still points at the superseded system
                 # the user's edits land on the wrong object.
                 outer.recorded = item
@@ -216,7 +216,7 @@ class TestResetRestoresAnAssembly(_Fixture):
         )
 
     def test_the_assembly_tab_is_pointed_at_the_original(self):
-        """openlens.py:570 reads this when the assembly editor reports a change.
+        """openlens/__main__.py:570 reads this when the assembly editor reports a change.
 
         If it still points at the system that was replaced, the user's next
         edit lands on an object that is no longer in the library.
@@ -317,7 +317,7 @@ class TestApplyAndResetShareOnePath(_Fixture):
     def test_both_call_the_same_folding_helper(self):
         import inspect
 
-        from src.gui.tabs.optimization_tab import OptimizationTab
+        from openlens.gui.tabs.optimization_tab import OptimizationTab
 
         apply_src = inspect.getsource(OptimizationTab._on_apply_optimization)
         reset_src = inspect.getsource(OptimizationTab._on_reset_optimization)

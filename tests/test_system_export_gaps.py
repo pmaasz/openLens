@@ -25,9 +25,9 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 
-from src.export_formats import OpticStudioExporter, SVGExporter, _gap_before
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.export_formats import OpticStudioExporter, SVGExporter, _gap_before
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _lens(name, r1=50.0, r2=-50.0, thickness=5.0, index=1.5):

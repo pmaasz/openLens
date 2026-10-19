@@ -1,7 +1,7 @@
 Ray Tracer Module
 =================
 
-.. automodule:: src.ray_tracer
+.. automodule:: openlens.ray_tracer
    :members:
    :undoc-members:
    :show-inheritance:

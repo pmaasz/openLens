@@ -1,7 +1,7 @@
 Base Tab
 ========
 
-.. automodule:: src.gui.tabs.base_tab
+.. automodule:: openlens.gui.tabs.base_tab
    :members:
    :undoc-members:
    :show-inheritance:

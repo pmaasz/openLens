@@ -16,8 +16,8 @@ RAY_START_OFFSET_MM``); this brings the single-lens tracer in line.
 import math
 import unittest
 
-from src.lens import Lens
-from src.tracer_2d import LensRayTracer
+from openlens.lens import Lens
+from openlens.tracer_2d import LensRayTracer
 
 
 def _flat_lens():
@@ -149,7 +149,7 @@ class TestSystemTracerAgreement(unittest.TestCase):
     """The system tracer already did this right; keep the two consistent."""
 
     def test_a_single_element_system_matches_the_lens_tracer(self):
-        from src.optical_system import OpticalSystem
+        from openlens.optical_system import OpticalSystem
 
         system = OpticalSystem(name="One")
         system.add_lens(_positive_lens(), air_gap_before=40.0)

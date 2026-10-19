@@ -93,7 +93,7 @@ refractometer/XRF for glass.
 
 ## 6. Built-in OpenLens example
 
-The prescription above ships with OpenLens via `src/seed_data.py`:
+The prescription above ships with OpenLens via `openlens/seed_data.py`:
 
 * Six individual lens rows (`nikon-series-e-50mm-l1…l5`, diameters
   28/28/28/26/26/26 mm chosen so front clear aperture matches f/1.8 and
@@ -101,7 +101,7 @@ The prescription above ships with OpenLens via `src/seed_data.py`:
 * One assembly row (`nikon-series-e-50mm-assembly`) with patent air gaps
   `[0.095, 1.55, 8.82, 0.0, 0.095]` (L4a–L4b cemented).
 * Seeding is idempotent and never overwrites existing rows. It runs on
-  GUI startup (`openlens.py:main`) and for the default CLI database
+  GUI startup (`openlens/__main__.py:main`) and for the default CLI database
   (`LensManager` with `openlens.db`). Temp/test databases are untouched;
   call `ensure_nikon_series_e_example(db_or_path)` explicitly to seed
   any other file.

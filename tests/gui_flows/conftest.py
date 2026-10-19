@@ -15,8 +15,8 @@ if os.environ.get("DISPLAY", "") == "" and sys.platform.startswith("linux"):
 
 try:
     from PySide6.QtWidgets import QApplication
-    from openlens import OpenLensWindow
-    from src.gui.storage import LensStorage
+    from openlens.__main__ import OpenLensWindow
+    from openlens.gui.storage import LensStorage
 
     PYSIDE_AVAILABLE = True
 except ImportError:

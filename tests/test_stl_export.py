@@ -3,11 +3,11 @@ import os
 import struct
 import sys
 
-# Add src to path
+# Add the repo root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.lens import Lens
-from src.stl_export import export_lens_stl, STLExporter
+from openlens.lens import Lens
+from openlens.stl_export import export_lens_stl, STLExporter
 
 
 class TestSTLExport(unittest.TestCase):

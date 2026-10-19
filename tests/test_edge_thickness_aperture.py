@@ -24,8 +24,8 @@ Note check_physical_feasibility owns that probe, not validate_lens_parameters.
 import math
 import unittest
 
-from src.lens import Lens
-from src.validation import check_physical_feasibility, validate_lens_parameters
+from openlens.lens import Lens
+from openlens.validation import check_physical_feasibility, validate_lens_parameters
 
 
 def _sag(radius, h):
@@ -134,7 +134,7 @@ class TestFeasibilityHonoursTheClearAperture(unittest.TestCase):
 
 class TestGeometryMinimumThickness(unittest.TestCase):
     def test_renders_and_reports_a_thickness(self):
-        from src.geometry import LensGeometry
+        from openlens.geometry import LensGeometry
 
         lens = _lens(r1=100.0, r2=-100.0, t=8.0, d=25.0, ca1=10.0, ca2=10.0)
         thickness = LensGeometry._minimum_thickness(lens)

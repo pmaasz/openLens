@@ -29,7 +29,7 @@ except ImportError as _e:
     PYSIDE_AVAILABLE = False
     _PYSIDE_ERROR = _e
 
-from src.lens import Lens
+from openlens.lens import Lens
 
 if PYSIDE_AVAILABLE:
     app = QApplication.instance()
@@ -48,7 +48,7 @@ if not PYSIDE_AVAILABLE:  # pragma: no cover - environment guard
 @unittest.skipUnless(PYSIDE_AVAILABLE, "PySide6 not available")
 class _OptimizationTabFixture(unittest.TestCase):
     def setUp(self):
-        from src.gui.tabs.optimization_tab import OptimizationTab
+        from openlens.gui.tabs.optimization_tab import OptimizationTab
 
         class _Parent:
             def __init__(self, lens):
@@ -79,7 +79,7 @@ class _OptimizationTabFixture(unittest.TestCase):
         self.tab.deleteLater()
 
     def _all_variables(self):
-        from src.gui.tabs.optimization_tab import OptimizationVariable, _sag_bounds
+        from openlens.gui.tabs.optimization_tab import OptimizationVariable, _sag_bounds
 
         variables = []
         lens = self.parent._current_lens
@@ -210,7 +210,7 @@ class TestCooperativeCancellation(_OptimizationTabFixture):
         # The worker only consults isInterruptionRequested() inside that
         # callback, so a run that keeps calling it is guaranteed to observe the
         # request.
-        from src.global_optimizer import GlobalOptimizer
+        from openlens.global_optimizer import GlobalOptimizer
 
         original = GlobalOptimizer.optimize
 
@@ -238,7 +238,7 @@ class TestCooperativeCancellation(_OptimizationTabFixture):
         self.assertNotIn("failed", emitted)
 
     def test_callback_raises_the_cancel_exception(self):
-        from src.gui.tabs.optimization_tab import OptimizationCancelled
+        from openlens.gui.tabs.optimization_tab import OptimizationCancelled
 
         worker = self._start()
         worker.requestInterruption()

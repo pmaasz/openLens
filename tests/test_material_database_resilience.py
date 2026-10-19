@@ -14,7 +14,7 @@ import os
 import tempfile
 import unittest
 
-from src.material_database import MaterialDatabase
+from openlens.material_database import MaterialDatabase
 
 _GOOD = {"name": "N-BK7", "catalog": "SCHOTT", "nd": 1.5168, "vd": 64.17}
 

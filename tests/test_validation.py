@@ -4,7 +4,7 @@ Tests for validation module
 
 import unittest
 
-from src.validation import (
+from openlens.validation import (
     ValidationError,
     validate_radius,
     validate_thickness,
@@ -443,7 +443,7 @@ class TestPhysicalFeasibility(unittest.TestCase):
 
     def test_check_default_lens_feasible(self):
         """Default geometry (R=+-100, t=5, D=40) has positive edge thickness"""
-        from src.constants import (
+        from openlens.constants import (
             DEFAULT_RADIUS_1,
             DEFAULT_RADIUS_2,
             DEFAULT_THICKNESS,
@@ -480,7 +480,7 @@ class TestSchemaValidation(unittest.TestCase):
 
     def test_validate_lens_data_schema_valid(self):
         """Test that valid lens data passes validation"""
-        from src.validation import validate_lens_data_schema
+        from openlens.validation import validate_lens_data_schema
 
         valid_data = {
             "name": "Test Lens",
@@ -497,7 +497,7 @@ class TestSchemaValidation(unittest.TestCase):
 
     def test_validate_lens_data_schema_missing_field(self):
         """Test detection of missing required fields"""
-        from src.validation import validate_lens_data_schema
+        from openlens.validation import validate_lens_data_schema
 
         invalid_data = {
             "name": "Test Lens",
@@ -512,7 +512,7 @@ class TestSchemaValidation(unittest.TestCase):
 
     def test_validate_lens_data_schema_wrong_type(self):
         """Test detection of wrong value types"""
-        from src.validation import validate_lens_data_schema
+        from openlens.validation import validate_lens_data_schema
 
         invalid_data = {
             "name": "Test Lens",
@@ -527,7 +527,7 @@ class TestSchemaValidation(unittest.TestCase):
 
     def test_validate_lenses_json_schema_valid(self):
         """Test validation of lenses array"""
-        from src.validation import validate_lenses_json_schema
+        from openlens.validation import validate_lenses_json_schema
 
         valid_array = [
             {
@@ -552,7 +552,7 @@ class TestSchemaValidation(unittest.TestCase):
 
     def test_validate_lenses_json_schema_not_array(self):
         """Test rejection of non-array root"""
-        from src.validation import validate_lenses_json_schema
+        from openlens.validation import validate_lenses_json_schema
 
         with self.assertRaises(ValidationError):
             validate_lenses_json_schema({"not": "an array"})

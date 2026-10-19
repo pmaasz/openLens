@@ -1,7 +1,7 @@
 Tooltip
 =======
 
-.. automodule:: src.gui.tooltip
+.. automodule:: openlens.gui.tooltip
    :members:
    :undoc-members:
    :show-inheritance:
@@ -16,7 +16,7 @@ Example Usage
 
 .. code-block:: python
 
-    from src.gui.tooltip import ToolTip
+    from openlens.gui.tooltip import ToolTip
     import tkinter as tk
 
     root = tk.Tk()

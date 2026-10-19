@@ -15,8 +15,8 @@ list and the tree in step.
 
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 class TestRefreshReferencesUpdatesTheTree(unittest.TestCase):

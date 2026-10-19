@@ -12,12 +12,12 @@ tests use off-axis heights only.
 import math
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.ray import Ray, Ray3D, RefractionResult
-from src.tracer_2d import LensRayTracer, SystemRayTracer
-from src.tracer_3d import LensRayTracer3D, SystemRayTracer3D
-from src.vector3 import vec3
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.ray import Ray, Ray3D, RefractionResult
+from openlens.tracer_2d import LensRayTracer, SystemRayTracer
+from openlens.tracer_3d import LensRayTracer3D, SystemRayTracer3D
+from openlens.vector3 import vec3
 
 
 def _biconvex(diameter=25.0, **overrides):

@@ -1,7 +1,7 @@
 Comparison Tab
 ==============
 
-.. automodule:: src.gui.tabs.comparison_tab
+.. automodule:: openlens.gui.tabs.comparison_tab
    :members:
    :undoc-members:
    :show-inheritance:

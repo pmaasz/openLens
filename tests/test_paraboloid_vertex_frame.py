@@ -23,10 +23,10 @@ its own frame and is already correct, rather than against hard-coded numbers.
 import math
 import unittest
 
-from src.lens import Lens
-from src.ray_tracer import Ray, LensRayTracer, Ray3D, LensRayTracer3D
-from src.transform import Matrix4x4
-from src.vector3 import vec3
+from openlens.lens import Lens
+from openlens.ray_tracer import Ray, LensRayTracer, Ray3D, LensRayTracer3D
+from openlens.transform import Matrix4x4
+from openlens.vector3 import vec3
 
 
 def _parabolic_lens(front=False, back=True, thickness=5.0):

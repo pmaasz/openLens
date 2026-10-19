@@ -7,9 +7,12 @@ source tree via ``pip install -e .``. The evidence lives in ``setup.py``, so
 these tests read the config it would hand to setuptools and assert that the
 distribution it describes is coherent.
 
-The headline defect: ``openlens=openlens:main`` points at the top-level
-``openlens.py``, which ``find_packages()`` does not include and nothing listed
-it as a module, so the ``openlens`` command was missing from a real install.
+The headline defect this suite was written for: ``openlens=openlens:main``
+pointed at a top-level ``openlens/__main__.py``, which ``find_packages()`` does not
+include and nothing listed as a module, so the command was missing from a real
+install. The entry module now lives inside the ``openlens`` package, and the
+suite additionally pins that nothing outside that package is shipped - the
+distribution used to install a top-level ``src`` into site-packages.
 """
 
 import ast
@@ -54,8 +57,8 @@ def _discover_packages():
 
 
 def _declared_version():
-    """The version from src/__init__.py, as setup.py's get_version() reads it."""
-    with open(os.path.join(REPO_ROOT, "src", "__init__.py"), encoding="utf-8") as f:
+    """The version from openlens/__init__.py, as setup.py's get_version() reads it."""
+    with open(os.path.join(REPO_ROOT, "openlens", "__init__.py"), encoding="utf-8") as f:
         for line in f:
             if line.startswith("__version__"):
                 return line.split("=", 1)[1].strip().strip('"').strip("'")
@@ -137,8 +140,7 @@ class TestConsoleScriptsAreShipped(unittest.TestCase):
             missing,
             [],
             f"console script targets {missing} cannot be imported from a real "
-            f"install: find_packages() only finds packages, so a top-level "
-            f"module like openlens.py must be listed in py_modules",
+            f"install: the top-level package they belong to is not shipped",
         )
 
     def test_the_gui_entry_point_target_exists_on_disk(self):
@@ -146,7 +148,7 @@ class TestConsoleScriptsAreShipped(unittest.TestCase):
             with self.subTest(module=module):
                 self.assertTrue(
                     os.path.exists(os.path.join(REPO_ROOT, *module.split(".")) + ".py"),
-                    f"{module}.py does not exist, so its console script " f"cannot work",
+                    f"{module}.py does not exist, so its console script cannot work",
                 )
 
     def test_every_declared_package_exists(self):
@@ -184,8 +186,8 @@ class TestInstallRequirementsMatchReality(unittest.TestCase):
     def test_numpy_is_not_a_hard_requirement(self):
         """It was, for exactly one reason: unguarded imports.
 
-        This assertion was added when src/analysis/plots.py imported numpy at
-        module level and openlens.py imported that module unconditionally - so a
+        This assertion was added when openlens/analysis/plots.py imported numpy at
+        module level and the GUI entry module imported it unconditionally - so a
         plain `pip install openlens` raised ImportError at startup.
 
         Those imports are guarded now (#476), and the core does not need numpy:
@@ -216,7 +218,7 @@ class TestInstallRequirementsMatchReality(unittest.TestCase):
     def test_the_startup_import_is_unguarded(self):
         """Guards the premise: if numpy were made optional, this requirement
         could move to an extra."""
-        with open(os.path.join(REPO_ROOT, "src", "analysis", "plots.py")) as handle:
+        with open(os.path.join(REPO_ROOT, "openlens", "analysis", "plots.py")) as handle:
             tree = ast.parse(handle.read())
 
         guarded = False

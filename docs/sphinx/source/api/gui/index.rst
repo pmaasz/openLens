@@ -1,7 +1,7 @@
 GUI Package
 ===========
 
-The ``src.gui`` package provides modular GUI components for the OpenLens application.
+The ``openlens.gui`` package provides modular GUI components for the OpenLens application.
 
 .. toctree::
    :maxdepth: 2
@@ -28,5 +28,5 @@ Import GUI components directly from the package:
 
 .. code-block:: python
 
-    from src.gui import ToolTip, ThemeManager, LensStorage
-    from src.gui.tabs import SelectionTab, EditorTab, SimulationTab
+    from openlens.gui import ToolTip, ThemeManager, LensStorage
+    from openlens.gui.tabs import SelectionTab, EditorTab, SimulationTab

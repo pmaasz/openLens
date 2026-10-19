@@ -3,13 +3,13 @@ import math
 import sys
 import os
 
-# Add src to path
+# Add the repo root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.analysis import SpotDiagram
-from src.optical_system import OpticalSystem, create_doublet
-from src.lens import Lens
-from src.constants import NM_TO_MM
+from openlens.analysis import SpotDiagram
+from openlens.optical_system import OpticalSystem, create_doublet
+from openlens.lens import Lens
+from openlens.constants import NM_TO_MM
 
 
 class TestSpotDiagram(unittest.TestCase):

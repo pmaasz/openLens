@@ -27,7 +27,7 @@ preset must reflect less than the uncoated surface at the design wavelength.**
 
 import unittest
 
-from src.coating_designer import CoatingDesigner
+from openlens.coating_designer import CoatingDesigner
 
 DESIGN_WL = 550.0
 BAND = (400.0, 700.0)

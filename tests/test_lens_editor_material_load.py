@@ -15,8 +15,8 @@ import unittest
 
 from PySide6.QtWidgets import QApplication
 
-from src.gui.widgets.lens_editor import CUSTOM_MATERIAL, LensEditorWidget
-from src.lens import Lens
+from openlens.gui.widgets.lens_editor import CUSTOM_MATERIAL, LensEditorWidget
+from openlens.lens import Lens
 
 _APP = QApplication.instance() or QApplication([])
 

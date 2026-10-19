@@ -19,8 +19,8 @@ unchanged by a run, and unchanged even when the run hits an error.
 
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _assembly():
@@ -58,7 +58,7 @@ class TestAsSystemCopiesTheTarget(unittest.TestCase):
     """_as_system must hand the worker its own design."""
 
     def test_an_assembly_is_copied(self):
-        from src.gui.tabs.tolerancing_tab import _as_system
+        from openlens.gui.tabs.tolerancing_tab import _as_system
 
         original = _assembly()
         before = _radii(original)
@@ -70,7 +70,7 @@ class TestAsSystemCopiesTheTarget(unittest.TestCase):
 
     def test_a_copy_is_independent(self):
         """Perturbing the copy must not move the original."""
-        from src.gui.tabs.tolerancing_tab import _as_system
+        from openlens.gui.tabs.tolerancing_tab import _as_system
 
         original = _assembly()
         copied = _as_system(original)
@@ -82,7 +82,7 @@ class TestAsSystemCopiesTheTarget(unittest.TestCase):
         )
 
     def test_a_bare_lens_is_copied(self):
-        from src.gui.tabs.tolerancing_tab import _as_system
+        from openlens.gui.tabs.tolerancing_tab import _as_system
 
         lens = Lens(name="Solo", radius_of_curvature_1=50.0)
 
@@ -92,7 +92,7 @@ class TestAsSystemCopiesTheTarget(unittest.TestCase):
 
     def test_the_copy_keeps_the_tree_and_flat_list_in_step(self):
         """refresh_references pairs nodes to elements by lens identity."""
-        from src.gui.tabs.tolerancing_tab import _as_system
+        from openlens.gui.tabs.tolerancing_tab import _as_system
 
         copied = _as_system(_assembly())
 
@@ -108,7 +108,7 @@ class TestMonteCarloLeavesTheDesignAlone(unittest.TestCase):
     """The caller's design must survive a run untouched."""
 
     def setUp(self):
-        from src.tolerancing import MonteCarloAnalyzer, ToleranceOperand, ToleranceType
+        from openlens.tolerancing import MonteCarloAnalyzer, ToleranceOperand, ToleranceType
 
         self.system = _assembly()
         self.before = _radii(self.system)
@@ -130,7 +130,7 @@ class TestMonteCarloLeavesTheDesignAlone(unittest.TestCase):
 
     def test_a_failing_trial_does_not_leave_the_design_perturbed(self):
         """The restore has to be in a finally block."""
-        from src.tolerancing import MonteCarloAnalyzer
+        from openlens.tolerancing import MonteCarloAnalyzer
 
         analyzer = MonteCarloAnalyzer(self.system, self.tolerances, seed=1)
 
@@ -159,7 +159,7 @@ class TestInverseSensitivityLeavesTheDesignAlone(unittest.TestCase):
     """The same guarantee for the inverse-sensitivity worker."""
 
     def setUp(self):
-        from src.tolerancing import InverseSensitivityAnalyzer, ToleranceOperand, ToleranceType
+        from openlens.tolerancing import InverseSensitivityAnalyzer, ToleranceOperand, ToleranceType
 
         self.system = _assembly()
         self.before = _radii(self.system)
@@ -180,7 +180,7 @@ class TestInverseSensitivityLeavesTheDesignAlone(unittest.TestCase):
         self.assertEqual(_radii(self.system), self.before)
 
     def test_a_failing_trial_does_not_leave_the_design_perturbed(self):
-        import src.tolerancing as tolerancing_module
+        import openlens.tolerancing as tolerancing_module
 
         analyzer = self.analyzer
 

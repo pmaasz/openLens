@@ -12,14 +12,14 @@ except ImportError:
 # Only attempt imports if numpy is available to avoid crash
 if NUMPY_AVAILABLE:
     try:
-        from src.lens import Lens
-        from src.optical_system import OpticalSystem
-        from src.analysis.psf_mtf import ImageQualityAnalyzer
+        from openlens.lens import Lens
+        from openlens.optical_system import OpticalSystem
+        from openlens.analysis.psf_mtf import ImageQualityAnalyzer
     except ImportError:
         sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-        from src.lens import Lens
-        from src.optical_system import OpticalSystem
-        from src.analysis.psf_mtf import ImageQualityAnalyzer
+        from openlens.lens import Lens
+        from openlens.optical_system import OpticalSystem
+        from openlens.analysis.psf_mtf import ImageQualityAnalyzer
 
 
 class TestImageQualityAnalyzer(unittest.TestCase):
@@ -97,9 +97,9 @@ class TestSimulateImageInputs(unittest.TestCase):
     def setUp(self):
         if not NUMPY_AVAILABLE:
             self.skipTest("Numpy not available")
-        from src.lens import Lens
-        from src.optical_system import OpticalSystem
-        from src.analysis.psf_mtf import ImageQualityAnalyzer
+        from openlens.lens import Lens
+        from openlens.optical_system import OpticalSystem
+        from openlens.analysis.psf_mtf import ImageQualityAnalyzer
 
         system = OpticalSystem()
         system.add_lens(
@@ -173,9 +173,9 @@ class TestDiffractionFrequencyScale(unittest.TestCase):
     def setUp(self):
         if not NUMPY_AVAILABLE:
             self.skipTest("Numpy not available")
-        from src.lens import Lens
-        from src.optical_system import OpticalSystem
-        from src.analysis.psf_mtf import ImageQualityAnalyzer
+        from openlens.lens import Lens
+        from openlens.optical_system import OpticalSystem
+        from openlens.analysis.psf_mtf import ImageQualityAnalyzer
 
         self.system = OpticalSystem()
         self.system.add_lens(

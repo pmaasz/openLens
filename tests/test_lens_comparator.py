@@ -6,8 +6,8 @@ Functional tests for Lens Comparison Mode
 import sys
 
 import unittest
-from src.lens import Lens
-from src.lens_comparator import LensComparator, ComparisonResult
+from openlens.lens import Lens
+from openlens.lens_comparator import LensComparator, ComparisonResult
 
 
 class TestLensComparator(unittest.TestCase):

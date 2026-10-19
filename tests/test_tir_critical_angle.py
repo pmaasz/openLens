@@ -9,7 +9,7 @@ Critical angle: theta_c = arcsin(n_air / n_BK7) = arcsin(1 / 1.5168)
 import math
 import unittest
 
-from src.ray_tracer import RefractionResult, Ray
+from openlens.ray_tracer import RefractionResult, Ray
 
 N_BK7 = 1.5168
 CRITICAL_DEG = math.degrees(math.asin(1.0 / N_BK7))  # 41.2354...

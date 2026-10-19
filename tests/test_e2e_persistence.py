@@ -11,9 +11,9 @@ import math
 import json
 import sqlite3
 
-from src.database import DatabaseManager
-from src.optical_system import OpticalSystem, create_doublet
-from src.lens import Lens
+from openlens.database import DatabaseManager
+from openlens.optical_system import OpticalSystem, create_doublet
+from openlens.lens import Lens
 
 
 class TestEndToEndPersistence(unittest.TestCase):

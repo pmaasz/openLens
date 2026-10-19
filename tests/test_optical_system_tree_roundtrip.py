@@ -21,9 +21,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.lens import Lens
-from src.optical_node import OpticalAssembly, OpticalElement
-from src.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optical_node import OpticalAssembly, OpticalElement
+from openlens.optical_system import OpticalSystem
 
 
 def _lens(name="L", radius=50.0):
@@ -326,8 +326,8 @@ class TestTheSystemStillBehavesLikeASystem(_TreeFixture):
 
         back = OpticalSystem.from_dict(system.to_dict())
 
-        from src.ray_tracer import SystemRayTracer
-        from src.ray import Ray
+        from openlens.ray_tracer import SystemRayTracer
+        from openlens.ray import Ray
 
         def trace(target):
             tracer = SystemRayTracer(target)

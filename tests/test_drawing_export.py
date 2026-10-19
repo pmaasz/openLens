@@ -2,12 +2,12 @@ import unittest
 import os
 import sys
 
-# Add src to path
+# Add the repo root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.optical_system import OpticalSystem
-from src.lens import Lens
-from src.io.export import ISO10110Generator
+from openlens.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.io.export import ISO10110Generator
 
 
 class TestDrawingExport(unittest.TestCase):

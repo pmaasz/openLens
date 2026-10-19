@@ -7,9 +7,9 @@ Tests extreme input values, boundary conditions, and error handling
 import unittest
 import math
 
-from src.lens import Lens
-from src.ray_tracer import RefractionResult, Ray, LensRayTracer
-from src.aberrations import AberrationsCalculator
+from openlens.lens import Lens
+from openlens.ray_tracer import RefractionResult, Ray, LensRayTracer
+from openlens.aberrations import AberrationsCalculator
 
 
 class TestExtremeInputValues(unittest.TestCase):

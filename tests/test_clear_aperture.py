@@ -6,10 +6,10 @@ import sqlite3
 import tempfile
 import unittest
 
-from src.database import SCHEMA_VERSION, DatabaseManager
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.validation import (
+from openlens.database import SCHEMA_VERSION, DatabaseManager
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.validation import (
     ValidationError,
     validate_bevel,
     validate_clear_aperture,
@@ -243,7 +243,7 @@ class TestClearApertureExports(unittest.TestCase):
 
     def test_iso_table_shows_clear_aperture(self):
         """ISO SVG table should gain a CA column with per-surface values."""
-        from src.io.export import ISO10110Generator
+        from openlens.io.export import ISO10110Generator
 
         system, _ = self._system_with_ca_lens()
         svg = ISO10110Generator(system)._render_svg(800, 600)
@@ -253,7 +253,7 @@ class TestClearApertureExports(unittest.TestCase):
 
     def test_step_solid_name_carries_aperture_data(self):
         """STEP solids should label non-default CA/bevel in the name."""
-        from src.io.step_export import StepExporter
+        from openlens.io.step_export import StepExporter
 
         system, _ = self._system_with_ca_lens()
         with tempfile.NamedTemporaryFile(suffix=".step", delete=False, mode="w") as tmp:
@@ -269,7 +269,7 @@ class TestClearApertureExports(unittest.TestCase):
 
     def test_step_default_lens_keeps_plain_name(self):
         """Lenses without CA/bevel should keep their plain STEP name."""
-        from src.io.step_export import StepExporter
+        from openlens.io.step_export import StepExporter
 
         system = OpticalSystem(name="Plain System")
         system.add_lens(Lens(name="Plain", diameter=40.0))
@@ -286,7 +286,7 @@ class TestClearApertureExports(unittest.TestCase):
 
     def test_zemax_surfaces_use_clear_aperture(self):
         """Zemax DIAM lines should use the clear aperture, not the OD."""
-        from src.export_formats import ZemaxExporter
+        from openlens.export_formats import ZemaxExporter
 
         _, lens = self._system_with_ca_lens()
         with tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w") as tmp:

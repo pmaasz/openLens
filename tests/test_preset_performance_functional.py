@@ -6,10 +6,10 @@ Comprehensive functional tests for preset library and performance metrics
 import sys
 import unittest
 
-from src.preset_library import PresetLibrary, LensPreset, get_preset_library
-from src.performance_metrics import PerformanceMetrics
-from src.lens import Lens
-from src.optical_system import create_doublet
+from openlens.preset_library import PresetLibrary, LensPreset, get_preset_library
+from openlens.performance_metrics import PerformanceMetrics
+from openlens.lens import Lens
+from openlens.optical_system import create_doublet
 
 
 class TestPresetLibrary(unittest.TestCase):

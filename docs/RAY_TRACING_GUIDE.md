@@ -179,7 +179,7 @@ This creates PNG images in the `ray_tracing_demos/` directory.
 
 For more information about the ray tracing implementation, see:
 - `RAYTRACING_IMPLEMENTATION.md` - Technical implementation details
-- `src/ray_tracer.py` - Source code with documentation
+- `openlens/ray_tracer.py` - Source code with documentation
 - `tests/test_ray_tracer.py` - Unit tests with examples
 
 ## Feedback and Issues

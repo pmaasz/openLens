@@ -290,9 +290,9 @@ Event Flow:
 ```
 openLens/
 │
-├── openlens.py                    # Main entry point
+├── openlens/__main__.py                    # Main entry point
 │
-├── src/                           # Source code
+├── openlens/                           # Source code
 │   │
 │   ├── __init__.py               # Package initialization
 │   │
@@ -348,7 +348,7 @@ openLens/
 
 ### 1. Lens Class
 
-**File:** `src/lens_editor.py`
+**File:** `openlens/lens_editor.py`
 
 **Responsibilities:**
 - Store lens physical parameters
@@ -370,7 +370,7 @@ openLens/
 
 ### 2. Material Database
 
-**File:** `src/material_database.py`
+**File:** `openlens/material_database.py`
 
 **Responsibilities:**
 - Store optical material properties
@@ -390,7 +390,7 @@ openLens/
 
 ### 3. Ray Tracer
 
-**File:** `src/ray_tracer.py`
+**File:** `openlens/ray_tracer.py`
 
 **Responsibilities:**
 - Trace rays through optical surfaces
@@ -414,7 +414,7 @@ openLens/
 
 ### 4. Aberrations Calculator
 
-**File:** `src/aberrations.py`
+**File:** `openlens/aberrations.py`
 
 **Responsibilities:**
 - Calculate five Seidel aberrations
@@ -435,7 +435,7 @@ openLens/
 
 ### 5. GUI Application
 
-**File:** `src/lens_editor_gui.py`
+**File:** `openlens/lens_editor_gui.py`
 
 **Responsibilities:**
 - User interface (Tkinter)
@@ -456,7 +456,7 @@ openLens/
 
 ### 6. Optical System
 
-**File:** `src/optical_system.py`
+**File:** `openlens/optical_system.py`
 
 **Responsibilities:**
 - Manage multi-element systems

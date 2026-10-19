@@ -25,9 +25,9 @@ except ImportError as _e:
     PYSIDE_AVAILABLE = False
     _PYSIDE_ERROR = _e
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.tolerancing import ToleranceOperand, ToleranceType
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.tolerancing import ToleranceOperand, ToleranceType
 
 if not PYSIDE_AVAILABLE:  # pragma: no cover - environment guard
 
@@ -84,7 +84,7 @@ class TestTolerancingAssemblies(unittest.TestCase):
         return system
 
     def _tab(self, target, element_index=1):
-        from src.gui.tabs.tolerancing_tab import TolerancingTab
+        from openlens.gui.tabs.tolerancing_tab import TolerancingTab
 
         operands = [ToleranceOperand(element_index, ToleranceType.RADIUS_1, -0.01, 0.01)]
         tab = TolerancingTab()
@@ -158,7 +158,7 @@ class TestTolerancingAssemblies(unittest.TestCase):
         self.assertEqual(len(getattr(target, "elements", None) or [target]), 2)
 
     def test_nothing_selected_reports_instead_of_silently_returning(self):
-        from src.gui.tabs.tolerancing_tab import TolerancingTab
+        from openlens.gui.tabs.tolerancing_tab import TolerancingTab
 
         tab = TolerancingTab()
         tab._parent = _Parent(None, [])
@@ -170,7 +170,7 @@ class TestTolerancingAssemblies(unittest.TestCase):
 
     def test_worker_keeps_an_assembly_intact(self):
         """A bare-lens wrapper would discard elements and gaps."""
-        from src.gui.tabs.tolerancing_tab import _as_system
+        from openlens.gui.tabs.tolerancing_tab import _as_system
 
         system = self._doublet()
         copied = _as_system(system)

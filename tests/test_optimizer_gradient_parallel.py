@@ -5,15 +5,15 @@ Regression cover for #321: the perturbations used to be spread across a
 meant pickling the whole optimizer per task, giving every child a private copy
 of the merit cache, and forking from inside a ``QThread`` that owns live Qt
 state - under ``spawn`` the child re-imports ``__main__``, which for
-``python3 openlens.py`` starts a second Qt application.
+``python3 openlens/__main__.py`` starts a second Qt application.
 """
 
 import unittest
 
-from src import optimizer as optimizer_module
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.optimizer import (
+from openlens import optimizer as optimizer_module
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.optimizer import (
     GRADIENT_MAX_WORKERS,
     GRADIENT_PARALLEL_THRESHOLD,
     LensOptimizer,

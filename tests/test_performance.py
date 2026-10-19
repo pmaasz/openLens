@@ -7,9 +7,9 @@ Tests system behavior under load and with large datasets
 import unittest
 import time
 
-from src.lens import Lens
-from src.ray_tracer import LensRayTracer
-from src.aberrations import AberrationsCalculator, analyze_lens_quality
+from openlens.lens import Lens
+from openlens.ray_tracer import LensRayTracer
+from openlens.aberrations import AberrationsCalculator, analyze_lens_quality
 
 
 class TestPerformance(unittest.TestCase):

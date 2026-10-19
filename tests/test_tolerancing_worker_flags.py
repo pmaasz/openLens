@@ -65,7 +65,7 @@ class _UncertainWorker:
 @unittest.skipUnless(PYSIDE_AVAILABLE, "PySide6 not available")
 class _TabFixture(unittest.TestCase):
     def setUp(self):
-        from src.gui.tabs.tolerancing_tab import TolerancingTab
+        from openlens.gui.tabs.tolerancing_tab import TolerancingTab
 
         self.tab = TolerancingTab()
 
@@ -172,7 +172,7 @@ class TestWorkersAreParented(unittest.TestCase):
     """An unparented QThread can be destroyed while it runs, aborting the process."""
 
     def test_both_worker_classes_accept_a_parent(self):
-        from src.gui.tabs.tolerancing_tab import (
+        from openlens.gui.tabs.tolerancing_tab import (
             InverseSensitivityWorker,
             MonteCarloWorker,
         )
@@ -220,11 +220,11 @@ class TestRunHandlersWireTheRightSlots(unittest.TestCase):
     """The crash came from the wiring, so the wiring is what is tested."""
 
     def setUp(self):
-        import src.gui.tabs.tolerancing_tab as module
-        from src.gui.tabs.tolerancing_tab import TolerancingTab
+        import openlens.gui.tabs.tolerancing_tab as module
+        from openlens.gui.tabs.tolerancing_tab import TolerancingTab
 
-        from src.lens import Lens
-        from src.tolerancing import ToleranceOperand, ToleranceType
+        from openlens.lens import Lens
+        from openlens.tolerancing import ToleranceOperand, ToleranceType
 
         self.module = module
         _RecordingWorker.instances = []

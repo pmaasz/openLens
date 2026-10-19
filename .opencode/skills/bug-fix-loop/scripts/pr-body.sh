@@ -52,7 +52,7 @@ lines += [
     "",
     "- [ ] Added a regression test that fails before this change and passes after",
     "- [ ] `QT_QPA_PLATFORM=offscreen OPENLENS_SKIP_SLOW=1 python3 -m unittest discover -s tests -t .`",
-    "- [ ] `black --line-length=100 src/ tests/ --check`",
+    "- [ ] `black --line-length=100 --exclude 'openlens/__main__.py' openlens/ tests/ --check`",
     "",
     "## Checklist",
     "",

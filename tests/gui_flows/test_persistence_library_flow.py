@@ -16,7 +16,7 @@ pytestmark = requires_pyside
 
 
 def _rows_for(window, lens_id):
-    from src.gui.storage import LensStorage
+    from openlens.gui.storage import LensStorage
 
     return [x for x in LensStorage(window._db_path).load_lenses() if x.id == lens_id]
 

@@ -10,7 +10,7 @@ class TestLensClassification(unittest.TestCase):
     """Test lens type classification"""
 
     def setUp(self):
-        from src.lens import Lens
+        from openlens.lens import Lens
 
         self.lens = Lens()
 
@@ -55,7 +55,7 @@ class TestLensCalculation(unittest.TestCase):
     """Test lens optical calculations"""
 
     def setUp(self):
-        from src.lens import Lens
+        from openlens.lens import Lens
 
         self.lens = Lens()
 

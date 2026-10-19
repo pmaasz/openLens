@@ -15,7 +15,7 @@ index it was given.
 
 import unittest
 
-from src.lens import Lens
+from openlens.lens import Lens
 
 
 class TestUnknownMaterialKeepsItsIndex(unittest.TestCase):

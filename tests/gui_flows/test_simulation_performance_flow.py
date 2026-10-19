@@ -48,7 +48,7 @@ def test_analysis_dialogs_smoke(main_window, qtbot, monkeypatch):
 
     Dialogs are exec()'d in production; here we auto-accept them.
     """
-    from src.gui.dialogs import AnalysisPlotDialog
+    from openlens.gui.dialogs import AnalysisPlotDialog
 
     monkeypatch.setattr(AnalysisPlotDialog, "exec", lambda self: 0)
     po = MainWindowPO(main_window, qtbot)

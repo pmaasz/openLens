@@ -1,10 +1,10 @@
 import math
 import unittest
 
-from src.geometry import LensGeometry
-from src.lens import Lens
-from src.ray_tracer import LensRayTracer, LensRayTracer3D, Ray, Ray3D
-from src.vector3 import vec3
+from openlens.geometry import LensGeometry
+from openlens.lens import Lens
+from openlens.ray_tracer import LensRayTracer, LensRayTracer3D, Ray, Ray3D
+from openlens.vector3 import vec3
 
 
 class TestFresnelGeometry(unittest.TestCase):

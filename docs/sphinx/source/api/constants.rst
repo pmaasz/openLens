@@ -1,7 +1,7 @@
 Constants Module
 ================
 
-.. automodule:: src.constants
+.. automodule:: openlens.constants
    :members:
    :undoc-members:
    :show-inheritance:

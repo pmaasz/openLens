@@ -8,7 +8,7 @@ diffraction branches returned y_axis/z_axis/raw_count. `plot_psf` reads
 
     KeyError: 'z_axis'
 
-openlens.py calls calculate_psf and plot_psf back to back, so any fully
+openlens/__main__.py calls calculate_psf and plot_psf back to back, so any fully
 blocked design turned the PSF dialog into "Failed to calculate PSF: 'z_axis'".
 
 The contract is now asserted in one place (PSF_KEYS / _psf_result) rather
@@ -19,9 +19,9 @@ import unittest
 
 import numpy as np
 
-from src.analysis.psf_mtf import ImageQualityAnalyzer
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.analysis.psf_mtf import ImageQualityAnalyzer
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _analyzer():
@@ -108,7 +108,7 @@ class TestPlotPSFConsumesEveryBranch(unittest.TestCase):
     def _plot(self, psf):
         import matplotlib.pyplot as plt
 
-        from src.analysis.plots import plot_psf
+        from openlens.analysis.plots import plot_psf
 
         fig, ax = plt.subplots()
         try:

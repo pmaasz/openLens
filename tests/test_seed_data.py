@@ -1,11 +1,11 @@
-"""Tests for src/seed_data.py — Nikon Series E 50mm example seeding."""
+"""Tests for openlens/seed_data.py — Nikon Series E 50mm example seeding."""
 
 import os
 import tempfile
 import unittest
 
-from src.database import DatabaseManager
-from src.seed_data import (
+from openlens.database import DatabaseManager
+from openlens.seed_data import (
     NIKON_SERIES_E_ASSEMBLY_ID,
     NIKON_SERIES_E_LENS_IDS,
     build_nikon_series_e_lenses,
@@ -78,7 +78,7 @@ class TestEnsureSeedData(unittest.TestCase):
 
     def test_ensure_does_not_overwrite_user_edits(self):
         """Pre-existing seed lens rows should keep user modifications."""
-        from src.lens import Lens
+        from openlens.lens import Lens
 
         edited = Lens(
             name="My custom L1",

@@ -28,8 +28,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.lens import Lens
-from src.optical_node import (
+from openlens.lens import Lens
+from openlens.optical_node import (
     MODIFIER_REGISTRY,
     OpticalAssembly,
     OpticalElement,
@@ -37,7 +37,7 @@ from src.optical_node import (
     modifier_from_dict,
     register_modifier,
 )
-from src.optical_system import OpticalSystem
+from openlens.optical_system import OpticalSystem
 
 
 def _lens(name="A"):
@@ -225,7 +225,7 @@ class TestUnknownModifiersArePreservedNotDropped(unittest.TestCase):
             def emit(self, record):
                 records.append(record)
 
-        logger = logging.getLogger("src.optical_node")
+        logger = logging.getLogger("openlens.optical_node")
         previous = logger.level
         logger.setLevel(logging.WARNING)
         handler = _Capture()
@@ -311,7 +311,9 @@ class TestUnknownModifiersArePreservedNotDropped(unittest.TestCase):
 
 class TestTheStaleTodoIsGone(unittest.TestCase):
     def test_no_todo_remains(self):
-        source = (Path(__file__).resolve().parent.parent / "src" / "optical_node.py").read_text()
+        source = (
+            Path(__file__).resolve().parent.parent / "openlens" / "optical_node.py"
+        ).read_text()
 
         self.assertNotIn(
             "TODO: Serialize modifiers",

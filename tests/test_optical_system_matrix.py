@@ -8,8 +8,8 @@ on ``Lens`` itself.
 
 import unittest
 
-from src.lens import Lens
-from src.optical_system import (
+from openlens.lens import Lens
+from openlens.optical_system import (
     OpticalSystem,
     create_doublet,
     AchromaticDoubletDesigner,

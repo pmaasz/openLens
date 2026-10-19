@@ -65,7 +65,7 @@ class TestWithoutMatplotlib(unittest.TestCase):
 
     def test_flag_is_false(self):
         result = _run_without_matplotlib("""
-            from src.diffraction import MATPLOTLIB_AVAILABLE
+            from openlens.diffraction import MATPLOTLIB_AVAILABLE
             print('FLAG', MATPLOTLIB_AVAILABLE)
             """)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -74,7 +74,7 @@ class TestWithoutMatplotlib(unittest.TestCase):
     def test_plot_methods_do_not_raise(self):
         """Regression: NameError: name 'plt' is not defined."""
         result = _run_without_matplotlib("""
-            from src.diffraction import DiffractionCalculator
+            from openlens.diffraction import DiffractionCalculator
             c = DiffractionCalculator()
             for name in %r:
                 try:
@@ -91,7 +91,7 @@ class TestWithoutMatplotlib(unittest.TestCase):
     def test_every_plot_method_is_guarded(self):
         result = _run_without_matplotlib("""
             import inspect
-            from src.diffraction import DiffractionCalculator
+            from openlens.diffraction import DiffractionCalculator
             for name, fn in sorted(vars(DiffractionCalculator).items()):
                 if not name.startswith('plot_'):
                     continue
@@ -105,7 +105,7 @@ class TestWithoutMatplotlib(unittest.TestCase):
     def test_numerical_api_still_works(self):
         """Only plotting is disabled, not the physics."""
         result = _run_without_matplotlib("""
-            from src.diffraction import DiffractionCalculator
+            from openlens.diffraction import DiffractionCalculator
             c = DiffractionCalculator()
             airy = c.airy_disk_radius(50.0, 25.0)
             assert 1.34 < airy < 1.35, airy
@@ -139,7 +139,7 @@ class TestWithMatplotlib(unittest.TestCase):
             self.skipTest("matplotlib not installed")
 
     def test_flag_is_true(self):
-        from src.diffraction import MATPLOTLIB_AVAILABLE
+        from openlens.diffraction import MATPLOTLIB_AVAILABLE
 
         self.assertTrue(MATPLOTLIB_AVAILABLE)
 
@@ -147,7 +147,7 @@ class TestWithMatplotlib(unittest.TestCase):
         import os
         import tempfile
 
-        from src.diffraction import DiffractionCalculator
+        from openlens.diffraction import DiffractionCalculator
 
         handle, path = tempfile.mkstemp(suffix=".png")
         os.close(handle)
@@ -159,7 +159,7 @@ class TestWithMatplotlib(unittest.TestCase):
         import os
         import tempfile
 
-        from src.diffraction import DiffractionCalculator
+        from openlens.diffraction import DiffractionCalculator
 
         handle, path = tempfile.mkstemp(suffix=".png")
         os.close(handle)
@@ -171,7 +171,7 @@ class TestWithMatplotlib(unittest.TestCase):
         import os
         import tempfile
 
-        from src.diffraction import DiffractionCalculator
+        from openlens.diffraction import DiffractionCalculator
 
         handle, path = tempfile.mkstemp(suffix=".png")
         os.close(handle)

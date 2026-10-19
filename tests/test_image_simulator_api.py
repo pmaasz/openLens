@@ -17,9 +17,9 @@ import unittest
 
 import numpy as np
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.image_simulator import ImageSimulator, SCIPY_AVAILABLE
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.image_simulator import ImageSimulator, SCIPY_AVAILABLE
 
 
 def _system(r1=50.0, r2=-50.0, diameter=20.0, thickness=5.0, n=1.5):

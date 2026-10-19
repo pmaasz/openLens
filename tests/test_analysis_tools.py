@@ -9,13 +9,13 @@ except ImportError:
     HAS_NUMPY = False
     np = None
 
-from src.optical_system import OpticalSystem
-from src.lens import Lens
-from src.analysis.geometric import GeometricTraceAnalysis
+from openlens.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.analysis.geometric import GeometricTraceAnalysis
 
 # ImageQualityAnalyzer depends on numpy, but importing it should now be safe
 try:
-    from src.analysis.psf_mtf import ImageQualityAnalyzer
+    from openlens.analysis.psf_mtf import ImageQualityAnalyzer
 except ImportError:
     ImageQualityAnalyzer = None
 
@@ -65,9 +65,9 @@ class TestAnalysisTools(unittest.TestCase):
 
     def test_sagittal_focus_meets_chief_ray(self):
         """Sagittal focus is the skew-line meeting with the chief ray."""
-        from src.ray_tracer import Ray3D
-        from src.vector3 import vec3
-        from src.analysis.geometric import _sagittal_focus_on_chief_ray
+        from openlens.ray_tracer import Ray3D
+        from openlens.vector3 import vec3
+        from openlens.analysis.geometric import _sagittal_focus_on_chief_ray
 
         chief = Ray3D(vec3(0, 0, 0), vec3(1, 0, 0))
         # Skew ray crossing z=0 exactly at x=10 must focus there.
@@ -77,9 +77,9 @@ class TestAnalysisTools(unittest.TestCase):
 
     def test_sagittal_focus_parallel_returns_none(self):
         """Parallel skew rays have no finite sagittal focus."""
-        from src.ray_tracer import Ray3D
-        from src.vector3 import vec3
-        from src.analysis.geometric import _sagittal_focus_on_chief_ray
+        from openlens.ray_tracer import Ray3D
+        from openlens.vector3 import vec3
+        from openlens.analysis.geometric import _sagittal_focus_on_chief_ray
 
         chief = Ray3D(vec3(0, 0, 0), vec3(1, 0, 0))
         sag = Ray3D(vec3(0, 0, 1), vec3(1, 0, 0))

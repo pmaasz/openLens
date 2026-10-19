@@ -10,7 +10,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _utils import skip_slow
 
-from src.optimizer import (
+from openlens.optimizer import (
     OptimizationVariable,
     OptimizationTarget,
     MeritFunction,
@@ -18,8 +18,8 @@ from src.optimizer import (
     create_doublet_optimizer,
     OptimizationResult,
 )
-from src.optical_system import OpticalSystem, create_doublet
-from src.lens import Lens
+from openlens.optical_system import OpticalSystem, create_doublet
+from openlens.lens import Lens
 
 
 @skip_slow

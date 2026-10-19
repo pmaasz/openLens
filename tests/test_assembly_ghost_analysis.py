@@ -2,9 +2,9 @@
 import unittest
 import math
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.analysis.ghost import GhostAnalyzer, GhostPath
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.analysis.ghost import GhostAnalyzer, GhostPath
 
 
 class TestAssemblyGhostAnalysis(unittest.TestCase):

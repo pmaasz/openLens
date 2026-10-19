@@ -7,7 +7,7 @@ refresh_lens_list ended with
     if self._assembly_lens_list.count() == 0:
         QTimer.singleShot(100, self.refresh_lens_list)
 
-No retry cap, no cancellation, no give-up state. openlens.py sets
+No retry cap, no cancellation, no give-up state. openlens/__main__.py sets
 self._lenses = [] on the database-load failure path, so a library that never
 fills woke the Qt event loop 10x/second for the entire session: measurable
 constant CPU, and it hid the real problem behind a permanently empty list.
@@ -39,7 +39,7 @@ except ImportError as _e:  # pragma: no cover - environment guard
     PYSIDE_AVAILABLE = False
     _PYSIDE_ERROR = _e
 
-from src.lens import Lens
+from openlens.lens import Lens
 
 if PYSIDE_AVAILABLE:
     _app = QApplication.instance()
@@ -80,7 +80,7 @@ def _pump(ms):
 @unittest.skipUnless(PYSIDE_AVAILABLE, "PySide6 not available")
 class _AssemblyTabFixture(unittest.TestCase):
     def setUp(self):
-        from src.gui.tabs.assembly_tab import AssemblyTab
+        from openlens.gui.tabs.assembly_tab import AssemblyTab
 
         self.tab = AssemblyTab()
         self.tab._parent = _Parent()

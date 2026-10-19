@@ -31,9 +31,9 @@ done.
 import time
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.optimizer import LensOptimizer, OptimizationTarget, OptimizationVariable
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.optimizer import LensOptimizer, OptimizationTarget, OptimizationVariable
 
 
 def _system():

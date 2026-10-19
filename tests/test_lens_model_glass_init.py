@@ -19,8 +19,8 @@ same intent disagreed.
 
 import unittest
 
-from src.constants import WAVELENGTH_D_LINE
-from src.lens import Lens
+from openlens.constants import WAVELENGTH_D_LINE
+from openlens.lens import Lens
 
 
 class TestModelGlassModeStartsWithItsOwnIndex(unittest.TestCase):

@@ -3,9 +3,9 @@
 import math
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.tolerancing import (
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.tolerancing import (
     TOLERANCE_GRADES,
     MonteCarloAnalyzer,
     ToleranceOperand,
@@ -152,7 +152,7 @@ class TestNewOperandApplication(unittest.TestCase):
 class TestCompensators(unittest.TestCase):
     def test_focus_compensator_recovers_defocus(self):
         """Refocus should beat the uncompensated trial mean."""
-        from src.analysis.spot_diagram import SpotDiagram
+        from openlens.analysis.spot_diagram import SpotDiagram
 
         def build():
             system = OpticalSystem(name="Focus")

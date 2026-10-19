@@ -13,14 +13,14 @@ import json
 from _utils import skip_slow
 import tempfile
 
-from src.lens import Lens
-from src.material_database import MaterialDatabase, get_material_database
-from src.optical_system import OpticalSystem, create_doublet
-from src.preset_library import PresetLibrary, get_preset_library
-from src.performance_metrics import PerformanceMetrics
-from src.lens_comparator import LensComparator
-from src.coating_designer import CoatingDesigner
-from src.aberrations import AberrationsCalculator
+from openlens.lens import Lens
+from openlens.material_database import MaterialDatabase, get_material_database
+from openlens.optical_system import OpticalSystem, create_doublet
+from openlens.preset_library import PresetLibrary, get_preset_library
+from openlens.performance_metrics import PerformanceMetrics
+from openlens.lens_comparator import LensComparator
+from openlens.coating_designer import CoatingDesigner
+from openlens.aberrations import AberrationsCalculator
 
 
 @skip_slow

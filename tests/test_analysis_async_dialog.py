@@ -17,8 +17,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QEventLoop, QTimer
 
-from src.analysis.plots import plot_ghost_analysis
-from src.gui.dialogs.analysis_plots import (
+from openlens.analysis.plots import plot_ghost_analysis
+from openlens.gui.dialogs.analysis_plots import (
     AnalysisPlotDialog,
     AnalysisWorker,
     show_computing_dialog,

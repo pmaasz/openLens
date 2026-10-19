@@ -4,7 +4,7 @@ Tests for constants module
 
 import unittest
 
-from src.constants import (
+from openlens.constants import (
     # Optical constants
     WAVELENGTH_D_LINE,
     WAVELENGTH_C_LINE,

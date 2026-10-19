@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tests for the shared lens outline (src/geometry.py).
+Tests for the shared lens outline (openlens/geometry.py).
 
 Lens.get_sag_1/2 is the single source of truth for every sag evaluation
 (optimizer, validation, renderers, exporters); LensGeometry.lens_outline
@@ -11,15 +11,15 @@ the math and the render/export agreement.
 import math
 import unittest
 
-from src.constants import (
+from openlens.constants import (
     COLOR_LENS_BAD,
     COLOR_LENS_FILL,
     COLOR_LENS_R1,
     COLOR_LENS_R2,
     COLOR_LENS_RIM,
 )
-from src.geometry import LensGeometry
-from src.lens import Lens
+from openlens.geometry import LensGeometry
+from openlens.lens import Lens
 
 try:
     import matplotlib
@@ -27,8 +27,8 @@ try:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    from src.analysis.plots import draw_system_outline
-    from src.optical_system import OpticalSystem
+    from openlens.analysis.plots import draw_system_outline
+    from openlens.optical_system import OpticalSystem
 
     HAS_MPL = True
 except ImportError:

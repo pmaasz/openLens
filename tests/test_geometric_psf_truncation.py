@@ -21,9 +21,9 @@ import unittest
 
 import numpy as np
 
-from src.analysis.psf_mtf import ImageQualityAnalyzer
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.analysis.psf_mtf import ImageQualityAnalyzer
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _doublet():
@@ -109,7 +109,7 @@ class TestGeometricPsfKeepsItsEnergy(unittest.TestCase):
         calc = ImageQualityAnalyzer(_doublet())
         # The cap is a module constant, not a class attribute; shrink it so
         # the sizing rule cannot rescue a wide spot.
-        import src.analysis.psf_mtf as module
+        import openlens.analysis.psf_mtf as module
 
         saved = module.GEOMETRIC_WINDOW_MAX_MM
         module.GEOMETRIC_WINDOW_MAX_MM = 0.05

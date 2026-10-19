@@ -6,8 +6,8 @@ Tests for ray tracing engine
 import unittest
 import math
 
-from src.lens import Lens
-from src.ray_tracer import RefractionResult, Ray, LensRayTracer
+from openlens.lens import Lens
+from openlens.ray_tracer import RefractionResult, Ray, LensRayTracer
 
 
 class TestRay(unittest.TestCase):
@@ -292,7 +292,7 @@ class TestLensRayTracer(unittest.TestCase):
 
     def test_parallel_fan_explicit_fill(self):
         """Legacy viz-style fill narrows the fan explicitly."""
-        from src.constants import APERTURE_FILL_FACTOR
+        from openlens.constants import APERTURE_FILL_FACTOR
 
         tracer = LensRayTracer(self.biconvex)
         rays = tracer.trace_parallel_rays(num_rays=5, fill=APERTURE_FILL_FACTOR)

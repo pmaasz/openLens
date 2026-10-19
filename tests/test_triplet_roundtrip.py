@@ -10,7 +10,7 @@ import os
 import tempfile
 import unittest
 
-from src.optical_system import OpticalSystem, create_triplet
+from openlens.optical_system import OpticalSystem, create_triplet
 
 
 class TestTripletRoundTrip(unittest.TestCase):

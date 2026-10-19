@@ -25,10 +25,10 @@ import sqlite3
 import tempfile
 import unittest
 
-from src.database import DatabaseManager
-from src.gui.storage import LensStorage
-from src.lens import _LENS_SERIALIZED_KEYS, Lens
-from src.optical_system import _SYSTEM_SERIALIZED_KEYS, OpticalSystem
+from openlens.database import DatabaseManager
+from openlens.gui.storage import LensStorage
+from openlens.lens import _LENS_SERIALIZED_KEYS, Lens
+from openlens.optical_system import _SYSTEM_SERIALIZED_KEYS, OpticalSystem
 
 TOLERANCES = [
     {"operand": "radius", "index": 0, "surface": 1, "target": 100.0, "tolerance": 0.05},

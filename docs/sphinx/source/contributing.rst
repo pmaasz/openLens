@@ -295,8 +295,8 @@ Run formatters before committing:
 
 .. code-block:: bash
 
-   black src/ tests/
-   flake8 src/ tests/
+   black openlens/ tests/
+   flake8 openlens/ tests/
 
 Import Organization
 """""""""""""""""""
@@ -450,7 +450,7 @@ Use ``unittest`` framework with descriptive test names:
 .. code-block:: python
 
    import unittest
-   from src.lens import Lens
+   from openlens.lens import Lens
 
    class TestLensCalculations(unittest.TestCase):
        """Test focal length calculations."""
@@ -791,8 +791,8 @@ Project Structure
 .. code-block:: text
 
    openLens/
-   ├── openlens.py               # Main entry point
-   ├── src/                      # Main source code
+   ├── openlens/__main__.py               # Main entry point
+   ├── openlens/                      # Main source code
    │   ├── lens.py              # Core Lens class
    │   ├── lens_editor.py       # CLI application, LensManager
    │   ├── lens_editor_gui.py   # Main GUI application

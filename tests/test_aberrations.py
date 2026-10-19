@@ -5,9 +5,9 @@ Tests for lens aberrations calculator
 
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.aberrations import AberrationsCalculator, analyze_lens_quality
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.aberrations import AberrationsCalculator, analyze_lens_quality
 import math
 
 
@@ -271,7 +271,7 @@ class TestAberrationsCalculator(unittest.TestCase):
 
     def test_singlet_system_coma_agree(self):
         """Same optics as singlet or system must give the same coma."""
-        from src.optical_system import OpticalSystem
+        from openlens.optical_system import OpticalSystem
 
         system = OpticalSystem(name="wrapped")
         system.add_lens(self.biconvex)
@@ -296,7 +296,7 @@ class TestAberrationsCalculator(unittest.TestCase):
 
     def test_system_lsa_uses_paraxial_reference(self):
         """System LSA must match the y=0.001 paraxial focus (~-6.87)."""
-        from src.optical_system import OpticalSystem
+        from openlens.optical_system import OpticalSystem
 
         lens = Lens(
             name="LSA ref",

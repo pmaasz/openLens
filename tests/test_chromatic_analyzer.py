@@ -6,8 +6,8 @@ Tests wavelength-dependent calculations and chromatic aberration analysis
 
 import unittest
 
-from src.chromatic_analyzer import ChromaticAnalyzer, ChromaticResult
-from src.material_database import MaterialDatabase, MaterialProperties
+from openlens.chromatic_analyzer import ChromaticAnalyzer, ChromaticResult
+from openlens.material_database import MaterialDatabase, MaterialProperties
 import math
 
 
@@ -173,7 +173,7 @@ class TestChromaticAnalyzer(unittest.TestCase):
 
     def test_analyze_lens_thick_focal_lengths(self):
         """Focal lengths must use the thick lensmaker equation."""
-        from src.lens import Lens
+        from openlens.lens import Lens
 
         lens_params = {
             "radius1": 50.0,

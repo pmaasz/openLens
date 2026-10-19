@@ -1,7 +1,7 @@
 Selection Tab
 =============
 
-.. automodule:: src.gui.tabs.selection_tab
+.. automodule:: openlens.gui.tabs.selection_tab
    :members:
    :undoc-members:
    :show-inheritance:

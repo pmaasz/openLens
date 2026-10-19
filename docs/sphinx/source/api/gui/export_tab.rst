@@ -1,7 +1,7 @@
 Export Tab
 ==========
 
-.. automodule:: src.gui.tabs.export_tab
+.. automodule:: openlens.gui.tabs.export_tab
    :members:
    :undoc-members:
    :show-inheritance:

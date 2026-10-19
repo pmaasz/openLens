@@ -23,7 +23,7 @@ catalog values as well as the guards.
 import dataclasses
 import unittest
 
-from src.material_database import MaterialDatabase
+from openlens.material_database import MaterialDatabase
 
 
 def _variant(base, **overrides):
@@ -76,7 +76,7 @@ class TestSellmeierGuards(unittest.TestCase):
 
     def test_lens_with_a_bad_catalog_entry_still_traces(self):
         """The reported blast radius: the exception reached the GUI."""
-        from src.lens import Lens
+        from openlens.lens import Lens
 
         self._install("ZERODEN", C1=0.25)
         lens = Lens(

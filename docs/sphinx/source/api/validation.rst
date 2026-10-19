@@ -1,7 +1,7 @@
 Validation Module
 =================
 
-.. automodule:: src.validation
+.. automodule:: openlens.validation
    :members:
    :undoc-members:
    :show-inheritance:

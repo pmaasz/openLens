@@ -3,12 +3,12 @@ import math
 import sys
 import os
 
-# Add src to path
+# Add the repo root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.lens import Lens
-from src.ray_tracer import Ray, LensRayTracer, Ray3D, LensRayTracer3D, SystemRayTracer3D
-from src.vector3 import Vector3, vec3
+from openlens.lens import Lens
+from openlens.ray_tracer import Ray, LensRayTracer, Ray3D, LensRayTracer3D, SystemRayTracer3D
+from openlens.vector3 import Vector3, vec3
 
 
 class TestRayTracer3D(unittest.TestCase):
@@ -52,7 +52,7 @@ class TestRayTracer3D(unittest.TestCase):
 
     def test_outward_normals_all_quadrants(self):
         """Front normals face -axis, back normals +axis, for every curvature."""
-        from src.transform import Matrix4x4
+        from openlens.transform import Matrix4x4
 
         for r1, r2 in [(60.0, -60.0), (-60.0, 60.0)]:
             lens = Lens(
@@ -111,7 +111,7 @@ class TestRayTracer3D(unittest.TestCase):
 
     def test_aperture_vignettes_beyond_rim(self):
         """Rays outside D/2 miss; rim rays pass (unified tolerance)."""
-        from src.ray_tracer import RefractionResult
+        from openlens.ray_tracer import RefractionResult
 
         lens = Lens(
             radius_of_curvature_1=60.0,
@@ -287,7 +287,7 @@ class TestRayTracer3D(unittest.TestCase):
         """A ray whose line misses the back surface must be MISSED, never a
         phantom REFRACTED with stale origin/direction (and a flipped index).
         """
-        from src.ray_tracer import RefractionResult
+        from openlens.ray_tracer import RefractionResult
 
         # Back sphere: center (10 - 100, 0, 0), radius 100. A +x ray at
         # height 150 misses it outright (closest approach 150 > 100).
@@ -307,7 +307,7 @@ class TestRayTracer3D(unittest.TestCase):
 
     def test_normal_ray_still_refracts_at_back_surface(self):
         """Guard against over-deletion: ordinary rays refract normally."""
-        from src.ray_tracer import RefractionResult
+        from openlens.ray_tracer import RefractionResult
 
         ray = Ray3D(vec3(-50, 5, 0), vec3(1, 0, 0))
         self.assertEqual(

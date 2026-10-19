@@ -40,7 +40,7 @@ class LensPreset:
 
 
 # ---------------------------------------------------------------------------
-# Catalogue presets migrated from the retired src/preset_lenses.py.
+# Catalogue presets migrated from the retired openlens/preset_lenses.py.
 #
 # That module exported a second get_preset_library() with the same name and
 # the same intent but the opposite shape: a factory returning a fresh

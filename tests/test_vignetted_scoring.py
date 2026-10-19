@@ -15,11 +15,11 @@ import unittest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.analysis import SpotDiagram
-from src.optical_system import OpticalSystem
-from src.lens import Lens
-from src.optimizer import MeritFunction, OptimizationTarget, INFEASIBLE_MERIT
-from src.tolerancing import (
+from openlens.analysis import SpotDiagram
+from openlens.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optimizer import MeritFunction, OptimizationTarget, INFEASIBLE_MERIT
+from openlens.tolerancing import (
     InverseSensitivityAnalyzer,
     MonteCarloAnalyzer,
     ToleranceOperand,

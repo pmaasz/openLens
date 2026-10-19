@@ -114,7 +114,7 @@ If requested, check that external URLs in the documentation are accessible.
 This subagent should be invoked:
 
 - After editing any file in `docs/sphinx/source/`
-- After editing docstrings in `src/` (affects API docs)
+- After editing docstrings in `openlens/` (affects API docs)
 - Before generating documentation
 - When explicitly requested by the user
 

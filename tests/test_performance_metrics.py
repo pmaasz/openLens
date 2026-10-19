@@ -6,9 +6,9 @@ Functional tests for Performance Metrics Dashboard
 import sys
 
 import unittest
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.performance_metrics import PerformanceMetrics
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.performance_metrics import PerformanceMetrics
 
 
 class TestPerformanceMetrics(unittest.TestCase):

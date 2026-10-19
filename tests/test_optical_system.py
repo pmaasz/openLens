@@ -9,14 +9,14 @@ import tempfile
 import json
 import math
 
-from src.optical_system import (
+from openlens.optical_system import (
     OpticalSystem,
     AchromaticDoubletDesigner,
     create_doublet,
     create_triplet,
     AirGap,
 )
-from src.lens import Lens
+from openlens.lens import Lens
 
 
 class TestOpticalSystem(unittest.TestCase):

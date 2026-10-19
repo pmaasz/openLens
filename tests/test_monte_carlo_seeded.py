@@ -9,9 +9,9 @@ the RNG consumption order against silent drift.
 
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.tolerancing import MonteCarloAnalyzer, ToleranceOperand, ToleranceType
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.tolerancing import MonteCarloAnalyzer, ToleranceOperand, ToleranceType
 
 from _utils import skip_slow
 

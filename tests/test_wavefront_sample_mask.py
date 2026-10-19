@@ -28,9 +28,9 @@ import unittest
 
 import numpy as np
 
-from src.analysis.diffraction_psf import DiffractionPSFCalculator, WavefrontSensor
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.analysis.diffraction_psf import DiffractionPSFCalculator, WavefrontSensor
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 
 def _system():
@@ -65,7 +65,7 @@ class _ScriptedTracer:
     """
 
     def __init__(self, system, chief="good"):
-        from src.ray_tracer import SystemRayTracer3D
+        from openlens.ray_tracer import SystemRayTracer3D
 
         self._real = SystemRayTracer3D(system)
         self.chief = chief
@@ -125,7 +125,7 @@ class TestSteepRayIsMarkedInvalid(unittest.TestCase):
     def test_ray_without_forward_x_is_not_a_zero_opd(self):
         sensor = WavefrontSensor(_system())
 
-        from src.ray_tracer import SystemRayTracer3D
+        from openlens.ray_tracer import SystemRayTracer3D
 
         class _SteepTracer:
             """Grid rays get no axial component at all."""
@@ -135,7 +135,7 @@ class TestSteepRayIsMarkedInvalid(unittest.TestCase):
                 self.calls = 0
 
             def trace_ray(self, ray):
-                from src.vector3 import vec3
+                from openlens.vector3 import vec3
 
                 self.calls += 1
                 if self.calls > _CHIEF_RAY_CALL:

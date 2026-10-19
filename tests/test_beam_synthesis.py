@@ -10,11 +10,11 @@ except ImportError:
     np = None
     NUMPY_AVAILABLE = False
 
-from src.analysis.beam_synthesis import GaussianBeam, NUMPY_AVAILABLE
-from src.vector3 import vec3
-from src.ray_tracer import Ray3D
-from src.optical_system import OpticalSystem, Lens
-from src.constants import WAVELENGTH_GREEN, NM_TO_MM
+from openlens.analysis.beam_synthesis import GaussianBeam, NUMPY_AVAILABLE
+from openlens.vector3 import vec3
+from openlens.ray_tracer import Ray3D
+from openlens.optical_system import OpticalSystem, Lens
+from openlens.constants import WAVELENGTH_GREEN, NM_TO_MM
 
 
 class TestGaussianBeam(unittest.TestCase):
@@ -165,7 +165,7 @@ class TestBeamSynthesisPropagation(unittest.TestCase):
 
     @staticmethod
     def _propagator():
-        from src.analysis.beam_synthesis import BeamSynthesisPropagator
+        from openlens.analysis.beam_synthesis import BeamSynthesisPropagator
 
         system = OpticalSystem(name="BSP")
         system.add_lens(
@@ -200,7 +200,7 @@ class TestBeamSynthesisPropagation(unittest.TestCase):
         self.assertFalse(np.allclose(at_green, at_blue))
 
     def test_empty_system_returns_empty_arrays(self):
-        from src.analysis.beam_synthesis import BeamSynthesisPropagator
+        from openlens.analysis.beam_synthesis import BeamSynthesisPropagator
 
         prop = BeamSynthesisPropagator(OpticalSystem(name="Empty"))
         result = prop.propagate_to_image(grid_size=4, detector_pixels=4)

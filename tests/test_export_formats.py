@@ -9,12 +9,12 @@ import os
 import unittest
 import tempfile
 import json
-from src.lens import Lens
-from src.export_formats import ZemaxExporter, PrescriptionExporter
+from openlens.lens import Lens
+from openlens.export_formats import ZemaxExporter, PrescriptionExporter
 
 # Check if SVG exporter exists
 try:
-    from src.export_formats import SVGExporter
+    from openlens.export_formats import SVGExporter
 
     SVG_AVAILABLE = True
 except ImportError:
@@ -104,7 +104,7 @@ class TestOpticStudioExport(unittest.TestCase):
 
     def test_export_opticstudio(self):
         """Test exporting to OpticStudio format"""
-        from src.export_formats import OpticStudioExporter
+        from openlens.export_formats import OpticStudioExporter
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             filename = f.name

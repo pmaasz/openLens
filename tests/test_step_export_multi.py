@@ -10,23 +10,23 @@ import unittest
 import tempfile
 import math
 
-from src.optical_system import OpticalSystem, create_doublet
+from openlens.optical_system import OpticalSystem, create_doublet
 
 try:
     from io.step_export import StepExporter
 except ImportError:
     # Handle the case where io is not a package (due to python built-in 'io' shadowing)
     try:
-        from src.io.step_export import StepExporter
+        from openlens.io.step_export import StepExporter
     except ImportError:
         # Another fallback for standard layout
         import sys
         import os
 
-        sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "io"))
+        sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "openlens", "io"))
         from step_export import StepExporter
 
-from src.lens import Lens
+from openlens.lens import Lens
 
 
 class TestStepExporterMultiBody(unittest.TestCase):

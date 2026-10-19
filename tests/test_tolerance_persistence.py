@@ -11,9 +11,9 @@ table as if nothing had been configured.
 import unittest
 
 import openlens
-from openlens import OpenLensWindow
-from src.lens import Lens
-from src.tolerancing import (
+from openlens.__main__ import OpenLensWindow
+from openlens.lens import Lens
+from openlens.tolerancing import (
     ToleranceOperand,
     ToleranceType,
     deserialize_operands,

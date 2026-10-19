@@ -1,7 +1,7 @@
 Tab Components
 ==============
 
-The ``src.gui.tabs`` package provides wrapper classes for the main window tabs.
+The ``openlens.gui.tabs`` package provides wrapper classes for the main window tabs.
 
 .. toctree::
    :maxdepth: 1
@@ -27,7 +27,7 @@ All tabs inherit from ``BaseTab``:
 
 .. code-block:: python
 
-    from src.gui.tabs import BaseTab
+    from openlens.gui.tabs import BaseTab
 
     class CustomTab(BaseTab):
         def setup(self) -> None:

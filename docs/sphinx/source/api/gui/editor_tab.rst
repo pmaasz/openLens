@@ -1,7 +1,7 @@
 Editor Tab
 ==========
 
-.. automodule:: src.gui.tabs.editor_tab
+.. automodule:: openlens.gui.tabs.editor_tab
    :members:
    :undoc-members:
    :show-inheritance:

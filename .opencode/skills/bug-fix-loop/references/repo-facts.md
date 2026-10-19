@@ -147,6 +147,6 @@ Check `git status` before every commit. Real databases in the working tree
 
 ## Tests live in `tests/`
 
-Roughly 56 modules mirroring `src/`. Match the existing module for the code
+Roughly 56 modules mirroring `openlens/`. Match the existing module for the code
 under test and follow its `setUp`/`test_<what>_<condition>_<result>` style.
 `tests/gui_flows/` holds pytest-based user-flow QA with visual regression.

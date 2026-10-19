@@ -17,16 +17,16 @@ Every algorithm must satisfy BOTH:
 import math
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.optimizer import (
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.optimizer import (
     LensOptimizer,
     OptimizationTarget,
     OptimizationVariable,
 )
-from src.desensitization import DesensitizationOptimizer
-from src.global_optimizer import GlobalOptimizer
-from src.tolerancing import ToleranceOperand, ToleranceType
+from openlens.desensitization import DesensitizationOptimizer
+from openlens.global_optimizer import GlobalOptimizer
+from openlens.tolerancing import ToleranceOperand, ToleranceType
 
 TARGET_F = 80.0
 CONVERGENCE_RATIO = 0.5  # required improvement factor

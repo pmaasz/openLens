@@ -1,7 +1,7 @@
 Export Module
 =============
 
-.. automodule:: src.io.export
+.. automodule:: openlens.io.export
    :members:
    :undoc-members:
    :show-inheritance:

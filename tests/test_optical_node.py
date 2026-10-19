@@ -2,13 +2,13 @@ import unittest
 import sys
 import os
 
-# Add src to path
-sys.path.append(os.path.abspath("src"))
+# Add the repo root to path
+sys.path.append(os.path.abspath("openlens"))
 
-from src.optical_node import OpticalNode, OpticalElement, OpticalAssembly
-from src.optical_system import OpticalSystem, LensElement
-from src.lens import Lens
-from src.vector3 import vec3
+from openlens.optical_node import OpticalNode, OpticalElement, OpticalAssembly
+from openlens.optical_system import OpticalSystem, LensElement
+from openlens.lens import Lens
+from openlens.vector3 import vec3
 
 
 class TestOpticalNode(unittest.TestCase):

@@ -26,12 +26,12 @@ and Ray3D.propagate with a zero distance.
 
 import unittest
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
-from src.ray import Ray, Ray3D
-from src.tracer_2d import LensRayTracer
-from src.tracer_3d import SystemRayTracer3D
-from src.vector3 import vec3
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
+from openlens.ray import Ray, Ray3D
+from openlens.tracer_2d import LensRayTracer
+from openlens.tracer_3d import SystemRayTracer3D
+from openlens.vector3 import vec3
 
 
 def _cemented_doublet():

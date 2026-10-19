@@ -4,7 +4,7 @@ SVG output must escape interpolated names and materials.
 
 Lens and system names come from untrusted JSON (validate_lens_name accepts
 any string up to 100 chars) and were interpolated straight into SVG text
-nodes with no escaping anywhere in src/.
+nodes with no escaping anywhere in openlens/.
 
 A name of '</text><script>alert(1)</script>' produced a file that was both
 script-bearing when opened in a browser and structurally invalid XML - and a
@@ -18,10 +18,10 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 
-from src.export_formats import SVGExporter
-from src.io.export import ISO10110Generator
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.export_formats import SVGExporter
+from openlens.io.export import ISO10110Generator
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 SVG_NS = "{http://www.w3.org/2000/svg}"
 

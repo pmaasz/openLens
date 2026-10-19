@@ -1,7 +1,7 @@
 Material Database Module
 ========================
 
-.. automodule:: src.material_database
+.. automodule:: openlens.material_database
    :members:
    :undoc-members:
    :show-inheritance:

@@ -35,7 +35,7 @@ class StartupDialog(QDialog):
         empty list when the database cannot be read.
 
         Args:
-            storage: Optional :class:`~src.gui.storage.LensStorage` to use.
+            storage: Optional :class:`~openlens.gui.storage.LensStorage` to use.
                 Injected rather than constructed here so the dialog operates on
                 the same database as the rest of the app; hard-coding
                 ``"openlens.db"`` meant it deleted from a different file than

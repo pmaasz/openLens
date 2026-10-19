@@ -17,7 +17,7 @@ try:
     from PySide6.QtWidgets import QApplication
     from PySide6.QtTest import QTest
     from PySide6.QtCore import Qt
-    from openlens import OpenLensWindow
+    from openlens.__main__ import OpenLensWindow
 
     PYSIDE_AVAILABLE = True
 except ImportError as _e:
@@ -26,8 +26,8 @@ except ImportError as _e:
     PYSIDE_AVAILABLE = False
     _PYSIDE_ERROR = _e
 
-from src.lens import Lens
-from src.optical_system import OpticalSystem
+from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 
 if not PYSIDE_AVAILABLE:
 
@@ -129,7 +129,7 @@ else:
 
         def setUp(self):
             """Create a standalone editor widget."""
-            from src.gui.widgets.lens_editor import LensEditorWidget
+            from openlens.gui.widgets.lens_editor import LensEditorWidget
 
             self.widget = LensEditorWidget()
 
@@ -358,7 +358,7 @@ else:
 
         def test_editor_viz_renders(self):
             """Lens editor 2D view renders the whole battery."""
-            from src.gui.widgets.lens_viz_2d import LensViz2DWidget
+            from openlens.gui.widgets.lens_viz_2d import LensViz2DWidget
 
             for lens in self._battery():
                 widget = LensViz2DWidget()
@@ -367,7 +367,7 @@ else:
 
         def test_parabolic_hides_radius_handles(self):
             """No r1/r2 drag handles while the surface is parabolic."""
-            from src.gui.widgets.lens_viz_2d import LensViz2DWidget
+            from openlens.gui.widgets.lens_viz_2d import LensViz2DWidget
 
             widget = LensViz2DWidget()
             widget.resize(400, 300)
@@ -392,7 +392,7 @@ else:
 
         def test_3d_viz_renders_fresnel(self):
             """The revolved 3D mesh includes the stepped radial profile."""
-            from src.gui.widgets.lens_viz_3d import _3DVisualizationWidget
+            from openlens.gui.widgets.lens_viz_3d import _3DVisualizationWidget
 
             lens = Lens(
                 radius_of_curvature_1=100.0,
@@ -414,7 +414,7 @@ else:
 
         def test_simulation_viz_renders(self):
             """Simulation view renders single lenses and systems."""
-            from src.gui.widgets.simulation_viz import SimulationVisualizationWidget
+            from openlens.gui.widgets.simulation_viz import SimulationVisualizationWidget
 
             for lens in self._battery():
                 widget = SimulationVisualizationWidget()
@@ -430,7 +430,7 @@ else:
 
         def test_assembly_viz_renders(self):
             """Assembly view renders a mixed system."""
-            from src.gui.widgets.assembly_viz import AssemblyVisualizationWidget
+            from openlens.gui.widgets.assembly_viz import AssemblyVisualizationWidget
 
             system = OpticalSystem(name="Smoke System")
             for lens in self._battery():
@@ -449,7 +449,7 @@ else:
             deferred library load is left to fire (or not) on its own so
             the adoption guard is exercised the way production hits it.
             """
-            from src.gui.storage import LensStorage
+            from openlens.gui.storage import LensStorage
 
             self.temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
             self.window = OpenLensWindow()
@@ -467,7 +467,7 @@ else:
 
         def _rows_for(self, lens_id):
             """Fresh-read rows for one lens id from the temp database."""
-            from src.gui.storage import LensStorage
+            from openlens.gui.storage import LensStorage
 
             return [x for x in LensStorage(self.temp_db).load_lenses() if x.id == lens_id]
 
@@ -543,7 +543,7 @@ else:
 
         def setUp(self):
             """Standalone optimization tab (no parent refresh needed)."""
-            from src.gui.tabs.optimization_tab import OptimizationTab
+            from openlens.gui.tabs.optimization_tab import OptimizationTab
 
             self.tab = OptimizationTab()
 
@@ -582,7 +582,7 @@ else:
 
         def test_key_builder(self):
             """Single format site produces the legacy key strings."""
-            from src.gui.tabs.optimization_tab import OptVarKey
+            from openlens.gui.tabs.optimization_tab import OptVarKey
 
             self.assertEqual(OptVarKey.SAG1.at(2), "ps1_2")
             self.assertEqual(OptVarKey.R1.at(0), "r1_0")

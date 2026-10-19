@@ -26,7 +26,7 @@ import struct
 import tempfile
 import unittest
 
-from src.stl_export import STLExporter
+from openlens.stl_export import STLExporter
 
 
 def _sag(radius, y):

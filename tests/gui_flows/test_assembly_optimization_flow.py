@@ -46,8 +46,8 @@ def test_assembly_builder_flow(main_window, qtbot):
 def test_optimization_collect_and_fast_run_flow(main_window, qtbot):
     """Refresh -> collect -> tiny optimizer run (model-level, not 100-iter GUI)."""
 
-    from src.optimizer import LensOptimizer
-    from src.optical_system import OpticalSystem
+    from openlens.optimizer import LensOptimizer
+    from openlens.optical_system import OpticalSystem
 
     po = MainWindowPO(main_window, qtbot)
     po.new_lens()
@@ -82,7 +82,7 @@ def test_optimization_collect_and_fast_run_flow(main_window, qtbot):
 
 
 def test_tolerancing_default_set_and_small_monte_carlo(main_window, qtbot):
-    from src.tolerancing import MonteCarloAnalyzer
+    from openlens.tolerancing import MonteCarloAnalyzer
 
     po = MainWindowPO(main_window, qtbot)
     po.new_lens()
@@ -105,7 +105,7 @@ def test_tolerancing_default_set_and_small_monte_carlo(main_window, qtbot):
         operands = list(tab._tol_operands)
     # Model-level smoke with few trials keeps the flow fast and deterministic.
     if operands:
-        from src.optical_system import OpticalSystem as _OS
+        from openlens.optical_system import OpticalSystem as _OS
 
         system = _OS(name="QA Tol")
         system.add_lens(lens)

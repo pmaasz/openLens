@@ -183,10 +183,10 @@ The script will:
 5. **Run the application:**
    ```bash
    # GUI version (recommended)
-   python3 openlens.py
+   python3 -m openlens
    
    # OR CLI version
-   python3 -m src.lens_editor
+   python3 -m openlens.lens_editor
    ```
 
 6. **When done, deactivate virtual environment (if used):**
@@ -349,8 +349,8 @@ pytest -n auto tests/
 
 ```
 openLens/
-├── openlens.py              # PySide6 GUI entry point (main window)
-├── src/                     # Source package
+├── openlens/__main__.py              # PySide6 GUI entry point (main window)
+├── openlens/                     # Source package
 │   ├── __init__.py
 │   ├── lens.py              # Core Lens model
 │   ├── optical_system.py    # Multi-element systems
@@ -386,16 +386,16 @@ This occurs when running on a headless server or via SSH without X11 forwarding.
 - **For remote headless servers**: Use a virtual display:
   ```bash
   sudo apt-get install xvfb
-  xvfb-run python3 openlens.py
+  xvfb-run python3 -m openlens
   ```
   or force Qt's offscreen platform for testing:
   ```bash
-  QT_QPA_PLATFORM=offscreen python3 openlens.py
+  QT_QPA_PLATFORM=offscreen python3 -m openlens
   ```
 - **WSL users**: Install an X server like VcXsrv or X410, then:
   ```bash
   export DISPLAY=:0
-  python3 openlens.py
+  python3 -m openlens
   ```
 
 ### Issue: PySide6 not found

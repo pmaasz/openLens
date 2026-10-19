@@ -35,8 +35,8 @@ if PYSIDE_AVAILABLE:
 
     QApplication.instance() or QApplication([])
 
-from src.gui.tabs.performance_tab import metrics_fingerprint
-from src.lens import Lens
+from openlens.gui.tabs.performance_tab import metrics_fingerprint
+from openlens.lens import Lens
 
 
 def _lens(radius=60.0):
@@ -111,7 +111,7 @@ class TestFingerprintTracksWhatTheLensIs(unittest.TestCase):
 @unittest.skipUnless(PYSIDE_AVAILABLE, "PySide6 not available")
 class _TabFixture(unittest.TestCase):
     def setUp(self):
-        from src.gui.tabs.performance_tab import PerformanceTab
+        from openlens.gui.tabs.performance_tab import PerformanceTab
 
         # BaseTab hands its parent to QWidget, so the stand-in has to be one.
         class _Parent(QWidget):

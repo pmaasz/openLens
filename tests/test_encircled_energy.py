@@ -20,7 +20,7 @@ import unittest
 
 import numpy as np
 
-from src.diffraction import DiffractionCalculator
+from openlens.diffraction import DiffractionCalculator
 
 FOCAL_LENGTH_MM = 100.0
 APERTURE_MM = 25.0

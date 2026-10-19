@@ -1,6 +1,6 @@
 # GUI Flow QA (replaces manual click-through)
 
-Automated coverage for the 12 manual user flows in `openlens.py:OpenLensWindow`.
+Automated coverage for the 12 manual user flows in `openlens/__main__.py:OpenLensWindow`.
 Headless-safe (`QT_QPA_PLATFORM=offscreen`), hermetic temp DB per test.
 
 ## Layout

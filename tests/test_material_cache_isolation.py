@@ -28,7 +28,7 @@ import os
 import tempfile
 import unittest
 
-from src.material_database import MaterialDatabase, MaterialProperties
+from openlens.material_database import MaterialDatabase, MaterialProperties
 
 
 def _live_instances():
