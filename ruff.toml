@@ -1,0 +1,35 @@
+# Ruff backs exactly one rule for OpenLens: BLE001, "do not catch blind
+# exceptions" (`except Exception`, `except BaseException`, bare `except`).
+# Formatting stays on black and the rest of the linting stays on flake8, so
+# nothing else is selected here.
+#
+# Handlers that clean up and re-raise are not flagged by ruff, so the
+# database rollback paths stay clean automatically.
+#
+# Exemptions come in two kinds:
+#
+# 1. Event-loop and process boundaries. A broad catch here is deliberate:
+#    it keeps the window or the CLI alive and reports the failure. The
+#    handlers log the error, so the traceback is still reachable.
+#
+# 2. The burn-down baseline below (#479). Each entry is a file that still
+#    carries pre-existing broad handlers that need narrowing or removal;
+#    delete the entry once the file is clean.
+
+[lint]
+select = ["BLE001"]
+
+[lint.per-file-ignores]
+# Event-loop / CLI boundaries (deliberate broad catches):
+"openlens/__main__.py" = ["BLE001"]
+"openlens/lens_editor.py" = ["BLE001"]
+"openlens/gui/**" = ["BLE001"]
+# Burn-down baseline (#479) - remove an entry when its file is cleaned:
+"openlens/aberrations.py" = ["BLE001"]
+"openlens/tolerancing.py" = ["BLE001"]
+"openlens/optimizer.py" = ["BLE001"]
+"openlens/material_database.py" = ["BLE001"]
+"openlens/tracer_3d.py" = ["BLE001"]
+"openlens/optical_system.py" = ["BLE001"]
+"openlens/validation.py" = ["BLE001"]
+"openlens/analysis/diffraction_psf.py" = ["BLE001"]

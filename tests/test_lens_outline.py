@@ -10,6 +10,7 @@ the math and the render/export agreement.
 
 import math
 import unittest
+from unittest import mock
 
 from openlens.constants import (
     COLOR_LENS_BAD,
@@ -190,6 +191,24 @@ class TestPlotsAgreement(unittest.TestCase):
             self.assertEqual(len(drawn_x), len(expected_x))
             for actual, expected in zip(drawn_x, expected_x):
                 self.assertEqual(actual, expected)
+        finally:
+            plt.close(fig)
+
+    def test_a_failing_fill_is_logged_and_the_outlines_still_draw(self):
+        """A degenerate fill polygon is reported, not silently skipped."""
+        lens = make_lens()
+        system = OpticalSystem("t")
+        system.add_lens(lens)
+        fig, ax = plt.subplots()
+        try:
+            with mock.patch("matplotlib.patches.Polygon", side_effect=ValueError("degenerate")):
+                with self.assertLogs("openlens.analysis.plots", level="DEBUG") as captured:
+                    draw_system_outline(ax, system)
+            self.assertTrue(
+                any("Skipping lens fill" in message for message in captured.output),
+                captured.output,
+            )
+            self.assertGreaterEqual(len(ax.lines), 1)
         finally:
             plt.close(fig)
 

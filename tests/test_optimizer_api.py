@@ -68,11 +68,8 @@ class TestLensOptimizerAPI(unittest.TestCase):
         optimizer = LensOptimizer(self.system, self.variables, self.targets)
 
         # Manually evaluate merit to check for crash
-        try:
-            merit = optimizer._evaluate_design([50.0])
-            self.assertIsInstance(merit, float)
-        except Exception as e:
-            self.fail(f"Merit evaluation failed with exception: {e}")
+        merit = optimizer._evaluate_design([50.0])
+        self.assertIsInstance(merit, float)
 
 
 if __name__ == "__main__":

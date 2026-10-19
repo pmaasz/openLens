@@ -680,7 +680,11 @@ class AberrationsCalculator:
                 _r(wavelength_nm),
                 grid_size,
             )
-        except Exception:
+        except (AttributeError, TypeError, ValueError) as e:
+            # The cache is an optimisation: a lens that cannot be
+            # snapshotted simply recomputes. Log it so a permanently cold
+            # cache is visible rather than silent.
+            logger.debug("Strehl cache key unavailable: %s", e)
             return None
 
     def _calculate_wavefront_rms_waves(
@@ -764,7 +768,10 @@ class AberrationsCalculator:
             design = np.column_stack([np.ones_like(w), yn, zn])
             coeffs, _, _, _ = np.linalg.lstsq(design, w, rcond=None)
             w_resid = w - design @ coeffs
-        except Exception:
+        except (TypeError, ValueError, np.linalg.LinAlgError) as e:
+            # Fall back to piston removal only; say so, because a fit that
+            # keeps failing inflates the reported RMS wavefront error.
+            logger.debug("Piston/tilt fit failed (%s); removing piston only", e)
             w_resid = w - float(np.mean(w))
 
         rms = float(np.sqrt(np.mean(w_resid**2)))

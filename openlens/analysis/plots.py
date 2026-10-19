@@ -7,7 +7,10 @@ analyzer output. Everything lives next to the analyzer classes in
 openlens/analysis/ instead of inline in window code.
 """
 
+import logging
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 # matplotlib and numpy are soft dependencies: the application must start and
 # run its core features without them. openlens.py imports this module at module
@@ -73,8 +76,11 @@ def draw_system_outline(ax, system: OpticalSystem) -> None:
                 alpha=0.3,
             )
             ax.add_patch(poly)
-        except Exception:
-            pass
+        except (ImportError, TypeError, ValueError) as e:
+            # A degenerate profile (mismatched edge data, non-finite
+            # vertices) must not stop the outlines from being drawn, but a
+            # silently skipped fill hides the cause.
+            logger.debug("Skipping lens fill: %s", e)
 
         front_color = COLOR_LENS_BAD if bad else COLOR_LENS_R1
         back_color = COLOR_LENS_BAD if bad else COLOR_LENS_R2

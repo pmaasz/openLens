@@ -98,10 +98,7 @@ class TestDoubletOptimizerStartsInsideItsBounds(unittest.TestCase):
 
     def test_the_back_focal_length_survives_a_short_optimisation(self):
         """The real check: the optimiser must not wreck the lens."""
-        try:
-            self.optimizer.optimize(max_iterations=5)
-        except Exception as e:  # pragma: no cover - reported below
-            self.fail(f"the optimiser raised: {e}")
+        self.optimizer.optimize(max_iterations=5)
 
         doublet = self.optimizer.system
         crown = doublet.elements[0].lens
