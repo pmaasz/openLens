@@ -1,3 +1,4 @@
+import copy
 import logging
 import math
 import sqlite3
@@ -341,11 +342,11 @@ class Lens:
 
     def get_coating_1(self) -> List[Dict[str, Any]]:
         """Coating stack of surface 1 ([] = uncoated)."""
-        return list(self.coating_1) if self.coating_1 else []
+        return copy.deepcopy(self.coating_1) if self.coating_1 else []
 
     def get_coating_2(self) -> List[Dict[str, Any]]:
         """Coating stack of surface 2 ([] = uncoated)."""
-        return list(self.coating_2) if self.coating_2 else []
+        return copy.deepcopy(self.coating_2) if self.coating_2 else []
 
     def set_coating(self, surface: int, layers) -> None:
         """Set the coating stack of one surface.
@@ -560,8 +561,8 @@ class Lens:
             "clear_aperture_2": self.clear_aperture_2,
             "bevel_1": self.bevel_1,
             "bevel_2": self.bevel_2,
-            "coating_1": self.coating_1,
-            "coating_2": self.coating_2,
+            "coating_1": copy.deepcopy(self.coating_1),
+            "coating_2": copy.deepcopy(self.coating_2),
             "created_at": self.created_at,
             "modified_at": self.modified_at,
             # A copy: to_dict must not hand out a live reference to the
