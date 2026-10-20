@@ -202,13 +202,13 @@ New "Aberrations Analysis" section includes:
 INTERPRETATION:
 • Spherical Aberration: Moderate
   (0.0015 mm - rays focus at different points)
-  
+
 • Chromatic Aberration: Significant
   (1.5203 mm - visible color fringing)
-  
+
 • Distortion: Pincushion
   (0.23% - straight lines appear curved outward)
-  
+
 • Resolution Limit: 2.62 μm (diffraction-limited spot size)
 
 ═══════════════════════════════════════════════════════

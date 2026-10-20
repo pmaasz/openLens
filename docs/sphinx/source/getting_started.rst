@@ -32,7 +32,7 @@ Requirements
 Optional dependencies for advanced features:
 
 - matplotlib - Enhanced visualization
-- numpy - Numerical computations  
+- numpy - Numerical computations
 - scipy - Advanced optical calculations
 - Pillow - Image export
 

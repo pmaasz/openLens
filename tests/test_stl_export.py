@@ -1,6 +1,5 @@
 import unittest
 import os
-import struct
 import sys
 
 # Add the repo root to path

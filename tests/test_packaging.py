@@ -86,9 +86,10 @@ class TestThePackageNameIsNotGeneric(unittest.TestCase):
             # Computed by find_packages(include=[...]); assert the include
             # pattern, since that is what constrains it.
             source = _setup_py()
-            self.assertIn(
-                "find_packages(include=['openlens', 'openlens.*'])",
+            self.assertRegex(
                 source,
+                r"find_packages\(\s*include\s*=\s*\[\s*['\"]openlens['\"]\s*,"
+                r"\s*['\"]openlens\.\*['\"]\s*\]\s*\)",
                 "find_packages() is unconstrained, so a stray top-level "
                 "directory can be installed as a package again",
             )

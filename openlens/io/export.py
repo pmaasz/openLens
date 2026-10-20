@@ -33,16 +33,16 @@ class ISO10110Generator:
         # Header
         lines = [
             f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">',
-            f"<defs>",
-            f"<style>",
-            f"  .lens {{ fill: #E0E0E0; stroke: black; stroke-width: 2; opacity: 0.8; }}",
-            f"  .axis {{ stroke: black; stroke-width: 1; stroke-dasharray: 5,5; }}",
-            f"  .text {{ font-family: Arial; font-size: 12px; }}",
-            f"  .title {{ font-family: Arial; font-size: 16px; font-weight: bold; }}",
-            f"  .table {{ fill: none; stroke: black; stroke-width: 1; }}",
-            f"</style>",
-            f"</defs>",
-            f'<rect width="100%" height="100%" fill="white"/>',
+            "<defs>",
+            "<style>",
+            "  .lens {{ fill: #E0E0E0; stroke: black; stroke-width: 2; opacity: 0.8; }}",
+            "  .axis {{ stroke: black; stroke-width: 1; stroke-dasharray: 5,5; }}",
+            "  .text {{ font-family: Arial; font-size: 12px; }}",
+            "  .title {{ font-family: Arial; font-size: 16px; font-weight: bold; }}",
+            "  .table {{ fill: none; stroke: black; stroke-width: 1; }}",
+            "</style>",
+            "</defs>",
+            '<rect width="100%" height="100%" fill="white"/>',
             f'<text x="20" y="30" class="title">ISO 10110 Drawing: '
             f"{escape(str(self.system.name))}</text>",
             f'<text x="20" y="50" class="text">Date: {datetime.now().strftime("%Y-%m-%d")}</text>',
@@ -100,7 +100,8 @@ class ISO10110Generator:
 
             # Label
             lines.append(
-                f'<text x="{pos_x}" y="{center_y + lens.diameter/2*scale + 20}" class="text" text-anchor="middle">L{i+1}</text>'
+                f'<text x="{pos_x}" y="{center_y + lens.diameter/2*scale + 20}" '
+                f'class="text" text-anchor="middle">L{i+1}</text>'
             )
 
         # Draw ISO Table Block
@@ -130,7 +131,6 @@ class ISO10110Generator:
             return 10.0
 
         # Bounds
-        min_x = 0
         max_x = self.system.elements[-1].position + self.system.elements[-1].thickness
         max_diam = max(e.lens.diameter for e in self.system.elements)
 
@@ -176,7 +176,10 @@ class ISO10110Generator:
         row_h = 18
         total_h = 24 + len(rows) * row_h + 6
         parts = [
-            f'<rect x="{x}" y="{y}" width="{w}" height="{total_h}" fill="white" stroke="black" stroke-width="1.5"/>',
+            (
+                f'<rect x="{x}" y="{y}" width="{w}" height="{total_h}" '
+                f'fill="white" stroke="black" stroke-width="1.5"/>'
+            ),
             f'<text x="{x + 8}" y="{y + 17}" class="text" font-weight="bold">TITLE BLOCK</text>',
         ]
         for i, (key, value) in enumerate(rows):
@@ -289,7 +292,8 @@ class ISO10110Generator:
 
         # Background
         lines.append(
-            f'<rect x="{x}" y="{y}" width="{w}" height="{total_h}" fill="white" stroke="black" stroke-width="1"/>'
+            f'<rect x="{x}" y="{y}" width="{w}" height="{total_h}" fill="white" '
+            f'stroke="black" stroke-width="1"/>'
         )
 
         # Headers
@@ -298,7 +302,8 @@ class ISO10110Generator:
 
         # Draw Header Row
         lines.append(
-            f'<line x1="{x}" y1="{y+header_h}" x2="{x+w}" y2="{y+header_h}" stroke="black" stroke-width="1"/>'
+            f'<line x1="{x}" y1="{y+header_h}" x2="{x+w}" y2="{y+header_h}" '
+            f'stroke="black" stroke-width="1"/>'
         )
         for i, header in enumerate(headers):
             lines.append(
@@ -315,7 +320,8 @@ class ISO10110Generator:
             # Surface 1 (Front)
             lines.append(f'<text x="{col_x[0]}" y="{curr_y}" class="text">{surf_idx}</text>')
             lines.append(
-                f'<text x="{col_x[1]}" y="{curr_y}" class="text">{lens.radius_of_curvature_1:.2f}</text>'
+                f'<text x="{col_x[1]}" y="{curr_y}" '
+                f'class="text">{lens.radius_of_curvature_1:.2f}</text>'
             )
             lines.append(
                 f'<text x="{col_x[2]}" y="{curr_y}" class="text">{lens.thickness:.2f}</text>'
@@ -328,7 +334,8 @@ class ISO10110Generator:
                 f'<text x="{col_x[4]}" y="{curr_y}" class="text">{lens.diameter:.2f}</text>'
             )
             lines.append(
-                f'<text x="{col_x[5]}" y="{curr_y}" class="text">{lens.get_clear_aperture_1():.2f}</text>'
+                f'<text x="{col_x[5]}" y="{curr_y}" '
+                f'class="text">{lens.get_clear_aperture_1():.2f}</text>'
             )
             lines.append(
                 f'<text x="{col_x[6]}" y="{curr_y}" class="text">'
@@ -343,7 +350,8 @@ class ISO10110Generator:
             # Surface 2 (Back)
             lines.append(f'<text x="{col_x[0]}" y="{curr_y}" class="text">{surf_idx}</text>')
             lines.append(
-                f'<text x="{col_x[1]}" y="{curr_y}" class="text">{lens.radius_of_curvature_2:.2f}</text>'
+                f'<text x="{col_x[1]}" y="{curr_y}" '
+                f'class="text">{lens.radius_of_curvature_2:.2f}</text>'
             )
             # Thickness is usually to next surface. For single lens, it's air?
             # Let's put "-" for back surface thickness unless we have air gap info
@@ -353,7 +361,8 @@ class ISO10110Generator:
                 f'<text x="{col_x[4]}" y="{curr_y}" class="text">{lens.diameter:.2f}</text>'
             )
             lines.append(
-                f'<text x="{col_x[5]}" y="{curr_y}" class="text">{lens.get_clear_aperture_2():.2f}</text>'
+                f'<text x="{col_x[5]}" y="{curr_y}" '
+                f'class="text">{lens.get_clear_aperture_2():.2f}</text>'
             )
             lines.append(
                 f'<text x="{col_x[6]}" y="{curr_y}" class="text">'

@@ -42,7 +42,7 @@ class TestPerformance(unittest.TestCase):
         start_time = time.time()
 
         for _ in range(10000):
-            focal_length = lens.calculate_focal_length()
+            lens.calculate_focal_length()
 
         elapsed = time.time() - start_time
 
@@ -62,7 +62,7 @@ class TestPerformance(unittest.TestCase):
 
         # Trace 100 sets of rays
         for _ in range(100):
-            rays = tracer.trace_parallel_rays(num_rays=10)
+            tracer.trace_parallel_rays(num_rays=10)
 
         elapsed = time.time() - start_time
 
@@ -77,7 +77,7 @@ class TestPerformance(unittest.TestCase):
         start_time = time.time()
 
         for _ in range(100):
-            results = calc.calculate_all_aberrations()
+            calc.calculate_all_aberrations()
 
         elapsed = time.time() - start_time
 
@@ -173,7 +173,7 @@ class TestStressTests(unittest.TestCase):
 
         # Calculate properties for all
         for lens in lenses:
-            focal_length = lens.calculate_focal_length()
+            lens.calculate_focal_length()
             # Just verify it completes
 
         self.assertEqual(len(lenses), 50)
@@ -200,7 +200,7 @@ class TestMemoryUsage(unittest.TestCase):
 
         # Trace many times
         for _ in range(100):
-            rays = tracer.trace_parallel_rays(num_rays=50)
+            tracer.trace_parallel_rays(num_rays=50)
             # Discard rays
 
         # Should complete without memory issues
@@ -232,7 +232,7 @@ class TestScalability(unittest.TestCase):
 
         for num_rays in ray_counts:
             start = time.time()
-            rays = tracer.trace_parallel_rays(num_rays=num_rays)
+            tracer.trace_parallel_rays(num_rays=num_rays)
             elapsed = time.time() - start
             times.append(elapsed)
 
@@ -260,7 +260,7 @@ class TestScalability(unittest.TestCase):
 
             start = time.time()
             for angle in angles:
-                results = calc.calculate_all_aberrations(field_angle=angle)
+                calc.calculate_all_aberrations(field_angle=angle)
             elapsed = time.time() - start
 
             # Should complete in reasonable time

@@ -3,7 +3,6 @@
 Comprehensive functional tests for preset library and performance metrics
 """
 
-import sys
 import unittest
 
 from openlens.preset_library import PresetLibrary, LensPreset, get_preset_library

@@ -42,7 +42,8 @@ class TestTolerancing(unittest.TestCase):
             0, ToleranceType.RADIUS_1, -1.0, 1.0, distribution="gaussian", std_dev=0.1
         )
         val = tol_g.generate_value()
-        # High probability of being within range, but theoretically unbounded (though clipped in code)
+        # High probability of being within range, but theoretically unbounded
+        # (though clipped in code).
         self.assertTrue(-1.0 <= val <= 1.0)
 
     def test_monte_carlo_run(self):

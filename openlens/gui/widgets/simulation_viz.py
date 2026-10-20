@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPainter, QPen, QBrush
+from PySide6.QtGui import QColor
 import logging
 import math
 from typing import Optional, TYPE_CHECKING, Union
@@ -496,7 +496,6 @@ class SimulationVisualizationWidget(QWidget):
 
             if pattern == "Star":
                 for i in range(8):
-                    angle = i * math.pi / 4
                     x2 = cx_img + 80 * (1 if i % 2 else 0.5) * (1 if i < 4 else -1)
                     y2 = cy_img + 80 * (1 if i % 2 else 0.5) * (1 if (i % 8) < 4 else -1)
                     painter.drawLine(cx_img, cy_img, int(x2), int(y2))

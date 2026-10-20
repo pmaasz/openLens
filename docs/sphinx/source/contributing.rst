@@ -1,7 +1,7 @@
 Contributing
 ============
 
-Thank you for your interest in contributing to OpenLens! This comprehensive guide 
+Thank you for your interest in contributing to OpenLens! This comprehensive guide
 covers everything you need to know to contribute effectively.
 
 .. contents:: Table of Contents
@@ -14,7 +14,7 @@ Code of Conduct
 Our Pledge
 ^^^^^^^^^^
 
-We are committed to providing a welcoming and inclusive environment for all 
+We are committed to providing a welcoming and inclusive environment for all
 contributors, regardless of experience level, background, or identity.
 
 Expected Behavior
@@ -37,7 +37,7 @@ Unacceptable Behavior
 Enforcement
 ^^^^^^^^^^^
 
-Violations can be reported to the project maintainers. All reports will be 
+Violations can be reported to the project maintainers. All reports will be
 reviewed and investigated promptly and fairly.
 
 Getting Started
@@ -152,7 +152,7 @@ Found a bug? Here's how to fix it:
 
 1. **Check existing issues**: Search for similar bug reports
 2. **Create an issue**: If it doesn't exist, describe the bug with:
-   
+
    - Steps to reproduce
    - Expected behavior
    - Actual behavior
@@ -177,13 +177,13 @@ New Features
 Want to add a feature? Follow this process:
 
 1. **Discuss first**: Open an issue to discuss the feature
-   
+
    - Explain the use case
    - Describe proposed solution
    - Get maintainer feedback
 
 2. **Design**: Think about:
-   
+
    - API design
    - Integration with existing code
    - Performance implications
@@ -286,7 +286,7 @@ Code Formatting
 .. code-block:: python
 
    # Good:
-   def calculate_focal_length(radius1, radius2, thickness, 
+   def calculate_focal_length(radius1, radius2, thickness,
                               refractive_index):
        """Calculate focal length using lensmaker's equation."""
        power = (refractive_index - 1) * (1/radius1 - 1/radius2)
@@ -460,7 +460,7 @@ Use ``unittest`` framework with descriptive test names:
 
    class TestLensCalculations(unittest.TestCase):
        """Test focal length calculations."""
-       
+
        def setUp(self):
            """Set up test fixtures."""
            self.lens = Lens(
@@ -469,18 +469,18 @@ Use ``unittest`` framework with descriptive test names:
                n=1.5,
                thickness=5.0
            )
-       
+
        def test_biconvex_focal_length_positive(self):
            """Biconvex lens should have positive focal length."""
            focal_length = self.lens.calculate_focal_length()
            self.assertGreater(focal_length, 0)
            self.assertAlmostEqual(focal_length, 50.0, places=1)
-       
+
        def test_invalid_radius_raises_validation_error(self):
            """Invalid radius should raise ValidationError."""
            with self.assertRaises(ValidationError):
                Lens(radius_1=0, radius_2=-50.0, n=1.5, thickness=5.0)
-       
+
        def tearDown(self):
            """Clean up after tests."""
            pass
@@ -628,7 +628,7 @@ Creating the PR
       git push origin 223-vertex-collapse
 
 2. **Open PR on GitHub**:
-   
+
    - Go to the repository
    - Click "New Pull Request"
    - Select your branch
@@ -644,7 +644,7 @@ Creating the PR
       Bad: "Fix bug"
 
 4. **PR Description**: Include:
-   
+
    - **What**: What does this PR do?
    - **Why**: Why is this change needed?
    - **How**: How does it work?
@@ -725,7 +725,7 @@ Follow these conventions:
    # Examples:
    feat: Add spherical aberration calculator
 
-   Implements Seidel spherical aberration calculation using 
+   Implements Seidel spherical aberration calculation using
    surface contributions and ray height analysis.
 
    Closes #45
@@ -903,5 +903,5 @@ Getting Help
 License
 -------
 
-By contributing to OpenLens, you agree that your contributions will be licensed 
+By contributing to OpenLens, you agree that your contributions will be licensed
 under the MIT License.

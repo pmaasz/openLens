@@ -245,7 +245,6 @@ class GlobalOptimizer(LensOptimizer):
         Genetic Algorithm global optimization.
         Uses real-valued encoding.
         """
-        n_vars = len(self.variables)
 
         # Initialize population
         population = []

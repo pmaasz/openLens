@@ -4,7 +4,7 @@ Multi-element optical system design
 Supports compound lenses, doublets, triplets with air gaps
 """
 
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 import copy
 import math
@@ -18,7 +18,6 @@ from .constants import (
     WAVELENGTH_D_LINE,
     WAVELENGTH_C_LINE,
     WAVELENGTH_F_LINE,
-    WAVELENGTH_GREEN,
     DEFAULT_MATERIAL_INDICES,
 )
 from .optical_node import (
@@ -956,7 +955,6 @@ def create_triplet(focal_length: float = 100.0, diameter: float = 50.0) -> Optic
 
     f1 = focal_length * 0.75
     f2 = -focal_length * 0.5
-    f3 = focal_length * 0.75
 
     # Calculate radii
     # Lens 1 (BK7): Equiconvex

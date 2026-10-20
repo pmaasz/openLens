@@ -4,13 +4,12 @@ Refine StepExporter to handle multi-body assemblies.
 Iterates through all elements in an OpticalSystem and generates discrete solids.
 """
 
-import sys
 import os
+import sys
 import unittest
 import tempfile
-import math
 
-from openlens.optical_system import OpticalSystem, create_doublet
+from openlens.optical_system import create_doublet
 
 try:
     from io.step_export import StepExporter
@@ -20,9 +19,6 @@ except ImportError:
         from openlens.io.step_export import StepExporter
     except ImportError:
         # Another fallback for standard layout
-        import sys
-        import os
-
         sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "openlens", "io"))
         from step_export import StepExporter
 

@@ -6,7 +6,7 @@ import os
 sys.path.append(os.path.abspath("openlens"))
 
 from openlens.optical_node import OpticalNode, OpticalElement, OpticalAssembly
-from openlens.optical_system import OpticalSystem, LensElement
+from openlens.optical_system import OpticalSystem
 from openlens.lens import Lens
 from openlens.vector3 import vec3
 

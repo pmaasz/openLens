@@ -9,7 +9,7 @@ Supports AP203/AP214 geometry (Manifold Solid B-Rep).
 """
 
 from datetime import datetime
-from typing import List, Any, Dict, Optional, Tuple
+from typing import List, Any, Optional
 from ..atomic import atomic_write_text
 
 
@@ -363,9 +363,9 @@ class StepExporter:
 
         # --- Points ---
         # Vertex 1 (on axis)
-        p_v1 = self.writer.add_entity("CARTESIAN_POINT", ["v1", (0.0, 0.0, z_offset)])
+        self.writer.add_entity("CARTESIAN_POINT", ["v1", (0.0, 0.0, z_offset)])
         # Vertex 2 (on axis)
-        p_v2 = self.writer.add_entity("CARTESIAN_POINT", ["v2", (0.0, 0.0, z_offset + thick)])
+        self.writer.add_entity("CARTESIAN_POINT", ["v2", (0.0, 0.0, z_offset + thick)])
 
         # Edge Point 1 (Start of edge loop 1) at (h, 0, z_edge1)
         p_e1 = self.writer.add_entity("CARTESIAN_POINT", ["e1", (h, 0.0, z_edge1)])
@@ -413,9 +413,7 @@ class StepExporter:
                 self.writer.add_entity("VECTOR", ["dir_z", self.dir_z, 1.0]),
             ],
         )
-        edge_seam = self.writer.add_entity(
-            "EDGE_CURVE", ["edge_seam", v_e1, v_e2, line_seam, STEP_TRUE]
-        )
+        self.writer.add_entity("EDGE_CURVE", ["edge_seam", v_e1, v_e2, line_seam, STEP_TRUE])
 
         # --- Loops ---
         # Loop 1 (Front Face boundary)
@@ -706,7 +704,7 @@ class StepExporter:
         for sid in shape_ids:
             rep_items.append(f"#{sid}")
 
-        shape_rep = self.writer.add_entity(
+        self.writer.add_entity(
             "ADVANCED_BREP_SHAPE_REPRESENTATION",
             ["lens_geom", tuple(rep_items), self.geom_context],
         )

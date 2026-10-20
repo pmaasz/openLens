@@ -46,7 +46,7 @@ Total Tests: **344 tests**
 
 ### 3. Edge Case Tests (`test_edge_cases.py`) - **NEW**
 - **26 tests** covering extreme scenarios:
-  
+
 #### Extreme Input Values
   - Zero radius of curvature
   - Very large/small radii (1e10, 0.1mm)
@@ -116,7 +116,7 @@ Total Tests: **344 tests**
 - **Optical System** (`test_optical_system.py`, `test_optical_system_functional.py`)
   - Multi-element systems
   - System-level ray tracing
-  
+
 - **Comparator** (`test_lens_comparator.py`, `test_comparator_coating_functional.py`)
   - Side-by-side lens comparison
   - Coating design and analysis

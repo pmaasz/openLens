@@ -487,7 +487,6 @@ class ImageQualityAnalyzer:
         # Freq resolution df = Fs / N
         # Freqs = k * df
 
-        fs = 1.0 / (psf_data["step_size"])  # samples per mm
         freqs = np.fft.fftfreq(num_pixels, d=psf_data["step_size"])
 
         # Take only positive frequencies up to max_freq
@@ -760,7 +759,8 @@ class ImageQualityAnalyzer:
             # Calculate PSF for this channel
             # Use Diffraction PSF for realistic results if possible?
             # Or Geometric? Let's default to Geometric for speed unless specifically asked.
-            # Actually, Geometric PSF is often sparse (dots). Convolving with sparse dots looks like multiple images.
+            # Actually, Geometric PSF is often sparse (dots). Convolving with
+            # sparse dots looks like multiple images.
             # Diffraction PSF is smoother. Let's use Diffraction.
 
             psf_data = self.calculate_psf(

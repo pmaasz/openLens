@@ -10,7 +10,7 @@ import unittest
 import tempfile
 import json
 from openlens.lens import Lens
-from openlens.export_formats import ZemaxExporter, PrescriptionExporter
+from openlens.export_formats import ZemaxExporter
 
 # Check if SVG exporter exists
 try:

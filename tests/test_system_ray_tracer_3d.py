@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 import unittest
-import math
 
 from openlens.lens import Lens
 from openlens.optical_system import OpticalSystem
-from openlens.ray_tracer import Ray3D, SystemRayTracer3D, Vector3, vec3, Matrix4x4
+from openlens.ray_tracer import Ray3D, SystemRayTracer3D, vec3
 
 
 class TestSystemRayTracer3D(unittest.TestCase):

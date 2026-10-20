@@ -122,7 +122,8 @@ class GaussianBeam:
     def propagate(self, distance: float) -> None:
         """Propagate beam by physical distance d."""
         # Assuming q is defined relative to the local medium (q = z + i*zR)
-        # Propagation just adds distance to the real part (curvature radius changes, waist size grows)
+        # Propagation just adds distance to the real part (curvature radius
+        # changes, waist size grows)
         self.advance_q(distance)
         self.ray.propagate(distance)
 
@@ -193,7 +194,8 @@ class BeamSynthesisPropagator:
         detector_pixels: int = 64,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Decompose pupil into Gaussian beamlets, propagate them, and sum coherent field at image plane.
+        Decompose pupil into Gaussian beamlets, propagate them, and sum the
+        coherent field at the image plane.
 
         Returns:
             Y, Z grids (detector) and Intensity map.

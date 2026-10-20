@@ -553,7 +553,7 @@ materials = {
 class MyAnalyzer:
     def __init__(self, lens):
         self.lens = lens
-    
+
     def analyze(self):
         # Your analysis logic
         return results
@@ -590,7 +590,7 @@ def export_to_my_format(lens, filename):
 
 ### Optimization Strategies
 
-1. **Caching**: 
+1. **Caching**:
    - Lens calculations cached until properties change
    - Material database uses memoization
 
@@ -664,7 +664,7 @@ tests/
 
 ### Planned Enhancements
 
-1. **Plugin System**: 
+1. **Plugin System**:
    - Dynamic module loading
    - Third-party analysis tools
 
@@ -717,6 +717,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** February 2026  
+**Document Version:** 1.0
+**Last Updated:** February 2026
 **Maintainer:** openlens Development Team

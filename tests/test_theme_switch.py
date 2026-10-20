@@ -30,7 +30,7 @@ try:
     from PySide6.QtWidgets import QApplication
 
     PYSIDE_AVAILABLE = True
-except ImportError as _pyside_error:  # pragma: no cover - depends on install
+except ImportError:  # pragma: no cover - depends on install
     QApplication = None  # type: ignore
     PYSIDE_AVAILABLE = False
 

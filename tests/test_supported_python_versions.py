@@ -49,7 +49,10 @@ class TestSupportedPythonVersions(unittest.TestCase):
 
     def test_setup_declares_the_minimum(self):
         setup_py = (REPO_ROOT / "setup.py").read_text(encoding="utf-8")
-        self.assertIn(f"python_requires='>={SUPPORTED_MINIMUM}'", setup_py)
+        self.assertRegex(
+            setup_py,
+            rf"python_requires\s*=\s*['\"]>={re.escape(SUPPORTED_MINIMUM)}['\"]",
+        )
 
     def test_ci_exercises_the_advertised_versions(self):
         workflows = "\n".join(

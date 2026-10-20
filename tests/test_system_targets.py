@@ -30,7 +30,7 @@ try:
     from openlens.gui.tabs import performance_tab, simulation_tab, tolerancing_tab
 
     PYSIDE_AVAILABLE = True
-except ImportError as _pyside_error:  # pragma: no cover - depends on install
+except ImportError:  # pragma: no cover - depends on install
     QApplication = None  # type: ignore
     OpenLensWindow = None  # type: ignore
     performance_tab = simulation_tab = tolerancing_tab = None  # type: ignore

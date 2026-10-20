@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Tests for Matrix4x4, including the inverse used by the 3D tracer."""
 
-import math
 import unittest
 
 from openlens.transform import Matrix4x4

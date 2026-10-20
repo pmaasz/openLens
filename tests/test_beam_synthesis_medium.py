@@ -225,7 +225,6 @@ class TestGracefulDegradationWithoutNumpy(unittest.TestCase):
         self.assertIn("OK", result.stdout)
 
     def test_shim_provides_the_names_the_module_uses(self):
-        import inspect
 
         import openlens.analysis.beam_synthesis as module
 

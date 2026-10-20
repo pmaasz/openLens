@@ -395,23 +395,23 @@ class MechanicalDesigner:
         step = 1
         for i, cell in enumerate(self.lens_cells):
             instructions.append(f"{step}. Install Lens {i+1} into Cell {i+1}")
-            instructions.append(f"   - Clean lens surfaces")
-            instructions.append(f"   - Insert lens into cell")
-            instructions.append(f"   - Secure with retaining ring")
+            instructions.append("   - Clean lens surfaces")
+            instructions.append("   - Insert lens into cell")
+            instructions.append("   - Secure with retaining ring")
             instructions.append("")
             step += 1
 
             if i < len(self.spacers):
                 instructions.append(f"{step}. Add Spacer {i+1} ({self.spacers[i].thickness:.2f}mm)")
-                instructions.append(f"   - Verify spacer thickness with calipers")
-                instructions.append(f"   - Thread onto previous cell")
+                instructions.append("   - Verify spacer thickness with calipers")
+                instructions.append("   - Thread onto previous cell")
                 instructions.append("")
                 step += 1
 
         if self.mounts:
             instructions.append(f"{step}. Attach mount adapter")
             instructions.append(f"   - Thread {self.mounts[0].mount_type} adapter")
-            instructions.append(f"   - Torque to specification")
+            instructions.append("   - Torque to specification")
             instructions.append("")
 
         instructions.append("Quality Checks:")
@@ -481,7 +481,7 @@ class MechanicalDesigner:
                         {
                             "type": "clearance",
                             "location": f"Spacer {i+1}",
-                            "message": f"Spacer OD exceeds cell OD",
+                            "message": "Spacer OD exceeds cell OD",
                         }
                     )
 

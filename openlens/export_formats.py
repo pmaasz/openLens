@@ -2,7 +2,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-#!/usr/bin/env python3
 """
 Export to professional optical design formats
 Zemax, OpticStudio, SVG technical drawings
@@ -147,18 +146,21 @@ class OpticStudioExporter:
             f.write("SURFACE DATA DETAIL\n")
             f.write("-" * 40 + "\n")
             f.write(
-                f"{'Surface':<10} {'Type':<12} {'Radius':<14} {'Thickness':<12} {'Glass':<10} {'Diameter':<10}\n"
+                f"{'Surface':<10} {'Type':<12} {'Radius':<14} {'Thickness':<12} "
+                f"{'Glass':<10} {'Diameter':<10}\n"
             )
             f.write("-" * 70 + "\n")
 
             # Object surface
             f.write(
-                f"{'OBJ':<10} {'STANDARD':<12} {'Infinity':<14} {'Infinity':<12} {'':<10} {'':<10}\n"
+                f"{'OBJ':<10} {'STANDARD':<12} {'Infinity':<14} {'Infinity':<12} "
+                f"{'':<10} {'':<10}\n"
             )
 
             # Stop surface (entrance pupil at front surface)
             f.write(
-                f"{'STO':<10} {'STANDARD':<12} {'Infinity':<14} {'0.0000':<12} {'':<10} {lens.diameter:<10.4f}\n"
+                f"{'STO':<10} {'STANDARD':<12} {'Infinity':<14} {'0.0000':<12} {'':<10} "
+                f"{lens.diameter:<10.4f}\n"
             )
 
             # Front surface
@@ -168,7 +170,8 @@ class OpticStudioExporter:
                 else "Infinity"
             )
             f.write(
-                f"{'1':<10} {'STANDARD':<12} {r1_str:<14} {lens.thickness:<12.4f} {lens.material:<10} {lens.get_clear_aperture_1():<10.4f}\n"
+                f"{'1':<10} {'STANDARD':<12} {r1_str:<14} {lens.thickness:<12.4f} "
+                f"{lens.material:<10} {lens.get_clear_aperture_1():<10.4f}\n"
             )
 
             # Back surface
@@ -178,7 +181,8 @@ class OpticStudioExporter:
                 else "Infinity"
             )
             f.write(
-                f"{'2':<10} {'STANDARD':<12} {r2_str:<14} {'100.0000':<12} {'':<10} {lens.get_clear_aperture_2():<10.4f}\n"
+                f"{'2':<10} {'STANDARD':<12} {r2_str:<14} {'100.0000':<12} {'':<10} "
+                f"{lens.get_clear_aperture_2():<10.4f}\n"
             )
 
             # Image surface
@@ -231,7 +235,8 @@ class OpticStudioExporter:
                 gap_before = _gap_before(system, i)
                 if gap_before > 0:
                     f.write(
-                        f"{surf_num:<10} {'STANDARD':<12} {'Infinity':<14} {gap_before:<12.4f} {'':<10}\n"
+                        f"{surf_num:<10} {'STANDARD':<12} {'Infinity':<14} "
+                        f"{gap_before:<12.4f} {'':<10}\n"
                     )
                     surf_num += 1
 
@@ -242,7 +247,8 @@ class OpticStudioExporter:
                     else "Infinity"
                 )
                 f.write(
-                    f"{surf_num:<10} {'STANDARD':<12} {r1_str:<14} {lens.thickness:<12.4f} {lens.material:<10}\n"
+                    f"{surf_num:<10} {'STANDARD':<12} {r1_str:<14} "
+                    f"{lens.thickness:<12.4f} {lens.material:<10}\n"
                 )
                 surf_num += 1
 
@@ -317,7 +323,10 @@ class SVGExporter:
         large_arc = 0  # Always use small arc for lens surfaces
         sweep = 1 if is_left_surface else 0
 
-        return f"M {x_top:.2f} {y_top:.2f} A {radius:.2f} {radius:.2f} 0 {large_arc} {sweep} {x_bottom:.2f} {y_bottom:.2f}"
+        return (
+            f"M {x_top:.2f} {y_top:.2f} A {radius:.2f} {radius:.2f} "
+            f"0 {large_arc} {sweep} {x_bottom:.2f} {y_bottom:.2f}"
+        )
 
     @staticmethod
     def _get_surface_x(radius: float, half_diameter: float, base_x: float, is_front: bool) -> float:
@@ -386,7 +395,8 @@ class SVGExporter:
             # SVG header
             f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
             f.write(
-                f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">\n'
+                f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" '
+                f'height="{height}" viewBox="0 0 {width} {height}">\n'
             )
             f.write("  <defs>\n")
             f.write("    <style>\n")
@@ -398,7 +408,8 @@ class SVGExporter:
                 "      .label { font-family: Arial, sans-serif; font-size: 12px; fill: #333333; }\n"
             )
             f.write(
-                "      .title { font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; fill: #333333; }\n"
+                "      .title { font-family: Arial, sans-serif; font-size: 14px; "
+                "font-weight: bold; fill: #333333; }\n"
             )
             f.write("    </style>\n")
             f.write("  </defs>\n")
@@ -473,7 +484,6 @@ class SVGExporter:
                 path_parts.append(f"L {front_bot_x:.2f} {bot_y:.2f}")
             else:
                 # Curved surface using quadratic bezier approximation
-                r1_scaled = abs(r1) * scale
                 # Control point for quadratic bezier
                 if r1 > 0:  # Convex
                     ctrl_x = front_x
@@ -490,7 +500,6 @@ class SVGExporter:
             if abs(r2) > 1e9:  # Flat surface
                 path_parts.append(f"L {back_top_x:.2f} {top_y:.2f}")
             else:
-                r2_scaled = abs(r2) * scale
                 if r2 < 0:  # Convex back
                     ctrl_x = back_x
                 else:  # Concave back
@@ -514,7 +523,8 @@ class SVGExporter:
                 for ray_y in ray_y_positions:
                     # Simplified parallel rays
                     f.write(
-                        f'  <line x1="{margin}" y1="{cy + ray_y}" x2="{front_top_x}" y2="{cy + ray_y}" class="ray"/>\n'
+                        f'  <line x1="{margin}" y1="{cy + ray_y}" x2="{front_top_x}" '
+                        f'y2="{cy + ray_y}" class="ray"/>\n'
                     )
                 f.write("\n")
 
@@ -522,12 +532,14 @@ class SVGExporter:
             if show_labels:
                 # Diameter label
                 f.write(
-                    f'  <text x="{margin + 10}" y="{cy - half_diameter - 5}" class="label">∅{lens.diameter:.1f}mm</text>\n'
+                    f'  <text x="{margin + 10}" y="{cy - half_diameter - 5}" '
+                    f'class="label">∅{lens.diameter:.1f}mm</text>\n'
                 )
 
                 # Thickness label
                 f.write(
-                    f'  <text x="{cx}" y="{cy + half_diameter + 20}" class="label" text-anchor="middle">t={lens.thickness:.1f}mm</text>\n'
+                    f'  <text x="{cx}" y="{cy + half_diameter + 20}" class="label" '
+                    f'text-anchor="middle">t={lens.thickness:.1f}mm</text>\n'
                 )
 
                 # Material label
@@ -541,7 +553,8 @@ class SVGExporter:
                 fl = lens.calculate_focal_length()
                 if fl:
                     f.write(
-                        f'  <text x="{width - margin - 10}" y="{cy - 10}" class="label" text-anchor="end">f={fl:.1f}mm</text>\n'
+                        f'  <text x="{width - margin - 10}" y="{cy - 10}" class="label" '
+                        f'text-anchor="end">f={fl:.1f}mm</text>\n'
                     )
 
             f.write("\n")
@@ -562,7 +575,8 @@ class SVGExporter:
             f.write("      .lens-stroke { stroke: #0066cc; stroke-width: 2; fill: none; }\n")
             f.write("      .axis { stroke: #999999; stroke-width: 1; stroke-dasharray: 5,5; }\n")
             f.write(
-                "      .title { font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; }\n"
+                "      .title { font-family: Arial, sans-serif; font-size: 14px; "
+                "font-weight: bold; }\n"
             )
             f.write("    </style>\n")
             f.write("  </defs>\n")
@@ -609,10 +623,12 @@ class SVGExporter:
 
                 # Simple rectangle for each lens (simplified)
                 f.write(
-                    f'  <rect x="{x_pos}" y="{cy - h}" width="{t}" height="{h * 2}" class="lens-fill"/>\n'
+                    f'  <rect x="{x_pos}" y="{cy - h}" width="{t}" height="{h * 2}" '
+                    f'class="lens-fill"/>\n'
                 )
                 f.write(
-                    f'  <rect x="{x_pos}" y="{cy - h}" width="{t}" height="{h * 2}" class="lens-stroke"/>\n'
+                    f'  <rect x="{x_pos}" y="{cy - h}" width="{t}" height="{h * 2}" '
+                    f'class="lens-stroke"/>\n'
                 )
 
                 x_pos += t

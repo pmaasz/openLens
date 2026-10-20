@@ -7,9 +7,6 @@ Verifies that complex nested assemblies are correctly persisted in the database.
 import unittest
 import os
 import tempfile
-import math
-import json
-import sqlite3
 
 from openlens.database import DatabaseManager
 from openlens.optical_system import OpticalSystem, create_doublet

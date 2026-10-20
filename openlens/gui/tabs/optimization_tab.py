@@ -683,8 +683,6 @@ class OptimizationTab(BaseTab):
         if not self._parent:
             return
 
-        from ...global_optimizer import GlobalOptimizer
-
         active_target = self._active_target()
         if not active_target:
             self._opt_results_text.setPlainText("No system selected.")
@@ -785,7 +783,7 @@ class OptimizationTab(BaseTab):
         from ...optical_system import OpticalSystem
 
         if result.success:
-            text = f"Optimization Successful!\n\n"
+            text = "Optimization Successful!\n\n"
             text += f"Final Merit Function: {result.final_merit:.4f}\n"
             text += f"Iterations: {result.iterations}\n\n"
             text += "Optimized Values (Preview):\n"

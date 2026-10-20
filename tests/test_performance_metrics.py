@@ -144,7 +144,7 @@ class TestPerformanceMetrics(unittest.TestCase):
         self.assertIn("mtf_cutoff_lpmm", metrics)
         self.assertIn("field_of_view_deg", metrics)
 
-        print(f"✓ All metrics calculated successfully")
+        print("✓ All metrics calculated successfully")
         print(f"  - Focal length: {metrics['effective_focal_length']:.2f} mm")
         print(f"  - F-number: f/{metrics['f_number']:.2f}")
         print(f"  - Resolution: {metrics['resolution_um']:.3f} μm")
@@ -162,7 +162,7 @@ class TestPerformanceMetrics(unittest.TestCase):
         self.assertIn("F-Number", report)
         self.assertIn("Resolution", report)
 
-        print(f"✓ Metrics report formatted successfully")
+        print("✓ Metrics report formatted successfully")
         print(report)
 
 

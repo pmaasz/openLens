@@ -7,7 +7,7 @@ Calculate coating thickness and reflectivity for optical coatings
 import cmath
 import math
 from dataclasses import dataclass
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Dict, Any
 
 
 @dataclass

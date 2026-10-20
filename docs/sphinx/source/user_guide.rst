@@ -157,18 +157,18 @@ Using the Material Database
    from openlens.material_database import MaterialDatabase
 
    db = MaterialDatabase()
-   
+
    # Get material by name
    bk7 = db.get_material("BK7")
    print(f"BK7 refractive index: {bk7['n']}")
-   
+
    # List all materials
    materials = db.list_materials()
 
 Ray Tracing
 -----------
 
-The OpenLens ray tracing system allows you to visualize how light rays travel 
+The OpenLens ray tracing system allows you to visualize how light rays travel
 through optical lenses.
 
 Using Ray Tracing in the GUI
@@ -180,7 +180,7 @@ Step 1: Select or Create a Lens
 1. Open the OpenLens application
 2. Go to the **"Lens Selection"** tab
 3. Either:
-   
+
    - Select an existing lens from the list, OR
    - Create a new lens using the **"Editor"** tab
 
@@ -189,14 +189,14 @@ Step 2: Configure Simulation Parameters
 
 1. Navigate to the **"Simulation"** tab
 2. Set the simulation parameters:
-   
+
    - **Number of Rays**: How many light rays to trace (recommended: 10-20)
-     
+
      - Fewer rays = faster rendering, clearer visualization
      - More rays = more detailed, denser visualization
-   
+
    - **Ray Angle**: Controls the type of ray source
-     
+
      - ``0°`` = Parallel rays (collimated beam, like sunlight)
      - ``>0°`` = Point source rays (diverging from a point)
 
@@ -205,15 +205,15 @@ Step 3: Run the Simulation
 
 1. Click the **"Run Simulation"** button
 2. The visualization will display:
-   
+
    - **Lens outline** (light blue filled area with blue border)
    - **Optical axis** (dashed gray line)
    - **Ray paths** (colored lines showing light propagation)
-     
+
      - Red = Edge rays (at the top and bottom of the lens)
      - Green = Center ray (along the optical axis)
      - Orange = Interior rays
-   
+
    - **Focal point** (green circle, if rays converge)
 
 Step 4: Interpret the Results
@@ -291,8 +291,8 @@ Each ray visualization shows:
 Spherical Aberration
 """"""""""""""""""""
 
-You may notice that edge rays don't converge to exactly the same point as 
-center rays. This is **spherical aberration**, a real optical phenomenon 
+You may notice that edge rays don't converge to exactly the same point as
+center rays. This is **spherical aberration**, a real optical phenomenon
 where rays at different heights focus at different distances.
 
 Ray Tracing Tips
@@ -434,7 +434,7 @@ After running a simulation in the GUI, you can:
 1. Switch to the **"Aberrations"** tab
 2. Click **"Analyze Aberrations"**
 3. View detailed optical quality metrics including:
-   
+
    - Spherical aberration
    - Chromatic aberration
    - Coma, astigmatism, distortion
@@ -511,7 +511,7 @@ Common Issues
 
 **No focal point found for converging lens**
 
-- **Solution**: This may indicate high spherical aberration or the focal point 
+- **Solution**: This may indicate high spherical aberration or the focal point
   is outside the simulation bounds
 
 **Visualization is cluttered**

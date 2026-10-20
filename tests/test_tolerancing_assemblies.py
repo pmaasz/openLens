@@ -55,7 +55,9 @@ class _Parent:
 
 
 @unittest.skipUnless(PYSIDE_AVAILABLE, "PySide6 not available")
-class TestTolerancingAssemblies(unittest.TestCase):
+class TestTolerancingAssemblies(unittest.TestCase):  # noqa: F811
+    # The conditional stub above registers a visible skip without PySide6;
+    # this is the real class, not an accidental redefinition.
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication(sys.argv)

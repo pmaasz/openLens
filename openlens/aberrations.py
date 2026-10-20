@@ -34,7 +34,6 @@ def _all_valid(*values) -> bool:
 
 
 # Import ray tracer for exact calculations
-from .ray_tracer import LensRayTracer, Ray
 
 # Import constants
 from .constants import (
@@ -346,7 +345,8 @@ class AberrationsCalculator:
             )
 
             # Extract metrics at the requested field_angle
-            # fc_data['tan_focus_shift_mm'] etc are lists, we want the last element if we sampled up to field_angle
+            # fc_data['tan_focus_shift_mm'] etc are lists; we want the last
+            # element if we sampled up to field_angle
             field_curv = fc_data["tan_focus_shift_mm"][-1] if fc_data["tan_focus_shift_mm"] else 0.0
             dist = fc_data["distortion_pct"][-1] if fc_data["distortion_pct"] else 0.0
 
@@ -721,12 +721,9 @@ class AberrationsCalculator:
 
         if self.is_system:
             system = self.target
-            saved_states = []
         else:
             system = OpticalSystem(name=getattr(self.lens, "name", "singlet"))
             system.add_lens(self.lens)
-            saved_states = None  # single shared lens; saved below
-
         # Temporarily set lens indices to the requested wavelength.
         saved = [
             (element.lens, element.lens.wavelength, element.lens.refractive_index)
@@ -1019,8 +1016,6 @@ class AberrationsCalculator:
         if results.get("error"):
             return f"Error: {results['error']}"
 
-        f = results["focal_length"]
-
         def _metric(key: str, spec: str = ".4f", suffix: str = "") -> str:
             """Format one metric, or say it could not be measured.
 
@@ -1062,6 +1057,8 @@ class AberrationsCalculator:
             name = self.lens.name
             material = self.lens.material
 
+        trend_labels = ("Negligible", "Moderate", "Significant")
+
         summary = f"""
 ╔═══════════════════════════════════════════════════════════════╗
 ║              LENS ABERRATIONS ANALYSIS                        ║
@@ -1090,10 +1087,10 @@ class AberrationsCalculator:
 ╚═══════════════════════════════════════════════════════════════╝
 
 INTERPRETATION:
-• Spherical Aberration: {_trend('spherical', 0.001, 0.01, ['Negligible', 'Moderate', 'Significant'])}
+• Spherical Aberration: {_trend('spherical', 0.001, 0.01, trend_labels)}
   {_detail('spherical', '.4f', 'mm')}
 
-• Chromatic Aberration: {_trend('chromatic', 0.1, 0.5, ['Negligible', 'Moderate', 'Significant'])}
+• Chromatic Aberration: {_trend('chromatic', 0.1, 0.5, trend_labels)}
   {_detail('chromatic', '.4f', 'mm')}
 
 • Distortion: {_trend('distortion', 0.1, 1e9, ['None', 'None', 'Present'])}

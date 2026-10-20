@@ -14,7 +14,6 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 
 from .constants import MIN_EDGE_THICKNESS, WAVELENGTH_GREEN
-from .lens import Lens
 from .optical_system import OpticalSystem
 from .aberrations import AberrationsCalculator
 from .analysis import SpotDiagram

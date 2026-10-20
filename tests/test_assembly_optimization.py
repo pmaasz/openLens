@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import unittest
-import math
 
 from openlens.lens import Lens
 from openlens.optical_system import OpticalSystem
@@ -47,7 +46,8 @@ class TestAssemblyOptimization(unittest.TestCase):
         )
 
         # Target: Focal length of 40mm
-        # Combined system focal length is roughly 1/(1/50 + 1/50 - 10/2500) = 1/(0.04 - 0.004) = 1/0.036 ≈ 27.7mm
+        # Combined system focal length is roughly
+        # 1/(1/50 + 1/50 - 10/2500) = 1/(0.04 - 0.004) = 1/0.036 ≈ 27.7mm
         # Targeting 40mm should drive L2 R1 to a larger (flatter) value or even concave.
         target = OptimizationTarget(
             name="focal_length", target_value=40.0, weight=1.0, target_type="target"

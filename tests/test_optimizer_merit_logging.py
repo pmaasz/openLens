@@ -57,7 +57,6 @@ class TestNoGlobalsLookup(unittest.TestCase):
     def test_no_runtime_globals_calls_remain(self):
         """The only occurrence left is inside an explanatory comment."""
         import inspect
-        import re
 
         source = inspect.getsource(optimizer_module)
         # Strip comments before looking for a real call.

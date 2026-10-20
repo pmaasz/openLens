@@ -9,14 +9,13 @@ import os
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import json
 from _utils import skip_slow
 import tempfile
 
 from openlens.lens import Lens
-from openlens.material_database import MaterialDatabase, get_material_database
+from openlens.material_database import get_material_database
 from openlens.optical_system import OpticalSystem, create_doublet
-from openlens.preset_library import PresetLibrary, get_preset_library
+from openlens.preset_library import get_preset_library
 from openlens.performance_metrics import PerformanceMetrics
 from openlens.lens_comparator import LensComparator
 from openlens.coating_designer import CoatingDesigner
@@ -85,8 +84,8 @@ class TestPresetWorkflow(unittest.TestCase):
         lens2 = preset2.lens
 
         # Step 3: Calculate metrics for both
-        metrics1 = PerformanceMetrics(lens1)
-        metrics2 = PerformanceMetrics(lens2)
+        PerformanceMetrics(lens1)
+        PerformanceMetrics(lens2)
 
         f1 = lens1.calculate_focal_length()
         f2 = lens2.calculate_focal_length()
@@ -166,20 +165,11 @@ class TestCoatingDesignWorkflow(unittest.TestCase):
 
     def test_coating_design_and_analysis_workflow(self):
         """E2E: Design coating, analyze reflectivity"""
-        # Step 1: Create lens
-        lens = Lens(
-            radius_of_curvature_1=100,
-            radius_of_curvature_2=-100,
-            thickness=5,
-            diameter=50,
-            material="BK7",
-        )
-
-        # Step 2: Get substrate index from material database
+        # Step 1: Get substrate index from material database
         mat_db = get_material_database()
         substrate_n = mat_db.get_refractive_index("BK7", 550)
 
-        # Step 3: Design single-layer AR coating
+        # Step 2: Design single-layer AR coating
         designer = CoatingDesigner(substrate_index=substrate_n)
         single_layer = designer.design_single_layer_ar(wavelength_nm=550)
 
@@ -231,10 +221,7 @@ class TestMaterialSelectionWorkflow(unittest.TestCase):
 
     def test_material_comparison_workflow(self):
         """E2E: Compare lenses with different materials"""
-        # Step 1: Get material database
-        mat_db = get_material_database()
-
-        # Step 2: Create same lens design with different materials
+        # Step 1: Create same lens design with different materials
         materials = ["BK7", "SF11", "F2"]
         lenses = []
 
@@ -295,7 +282,6 @@ class TestCompleteProductionWorkflow(unittest.TestCase):
         """E2E: Complete workflow from design to export"""
         # Step 1: Start with preset
         lib = get_preset_library()
-        preset = lib.get_preset("100mm Plano-Convex")
         lens = lib.get_lens_copy("100mm Plano-Convex")
 
         self.assertIsNotNone(lens)

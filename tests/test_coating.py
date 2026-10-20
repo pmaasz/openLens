@@ -1,6 +1,5 @@
 """Tests for per-surface coatings (todo item 3)."""
 
-import json
 import os
 import sqlite3
 import tempfile

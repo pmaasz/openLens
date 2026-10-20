@@ -1,7 +1,6 @@
 import unittest
 from openlens.optical_system import OpticalSystem, Lens
-from openlens.analysis.ghost import GhostAnalyzer, GhostPath
-from openlens.vector3 import vec3
+from openlens.analysis.ghost import GhostAnalyzer
 from openlens.constants import WAVELENGTH_GREEN, NM_TO_MM
 
 

@@ -216,7 +216,8 @@ class GeometricTraceAnalysis:
             wavelength_nm: Wavelength in nm.
 
         Returns:
-            Dictionary with arrays for field angles, tangential/sagittal focus shift, and distortion %.
+            Dictionary with arrays for field angles, tangential/sagittal focus
+            shift, and distortion %.
         """
         # Trace at the requested wavelength (indices restored on exit).
         saved_state = self._apply_wavelength(wavelength_nm)

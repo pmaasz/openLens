@@ -5,7 +5,6 @@ Tests the Lens class and LensManager functionality
 """
 
 import unittest
-import json
 import os
 import tempfile
 from datetime import datetime
@@ -377,9 +376,9 @@ class TestDataIntegrity(unittest.TestCase):
         )
 
         # Should not crash
-        focal_length = lens.calculate_focal_length()
-        lens_dict = lens.to_dict()
-        lens_str = str(lens)
+        lens.calculate_focal_length()
+        lens.to_dict()
+        str(lens)
 
         self.assertIsNotNone(lens)
 

@@ -1,10 +1,9 @@
 import unittest
-import math
 
 from openlens.analysis.environmental import EnvironmentalAnalyzer
 from openlens.optical_system import OpticalSystem
 from openlens.lens import Lens
-from openlens.material_database import get_material_database, MaterialProperties
+from openlens.material_database import get_material_database
 
 
 class TestEnvironmental(unittest.TestCase):
@@ -86,7 +85,8 @@ class TestEnvironmental(unittest.TestCase):
         # n_new = n_orig * (n_air_1 / n_air_2)
         expected_n = n_orig * (n_air_1 / n_air_2)
 
-        # Need to allow some tolerance because get_refractive_index recalculates exactly from Sellmeier
+        # Allow some tolerance because get_refractive_index recalculates
+        # exactly from Sellmeier.
         # whereas n_orig is just nominal nd.
         # But wait, EnvironmentalAnalyzer calls get_refractive_index first to get n_rel_T.
         # So it uses the calculated value, not hardcoded 1.5168.

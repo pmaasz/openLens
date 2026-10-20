@@ -144,32 +144,32 @@ The script will:
    ```bash
    # Create virtual environment
    python3 -m venv venv
-   
+
    # Activate virtual environment
    # On Linux/macOS:
    source venv/bin/activate
-   
+
    # On Windows:
    venv\Scripts\activate
    ```
 
 3. **Install optional dependencies:**
-   
+
    **For full features (recommended):**
    ```bash
    pip install matplotlib numpy
    ```
-   
+
    **For advanced features:**
    ```bash
    pip install scipy Pillow
    ```
-   
+
    **Or install all optional dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
-   
+
    Note: The application works without these, with features gracefully disabled.
 
 4. **Verify Python and PySide6:**
@@ -184,7 +184,7 @@ The script will:
    ```bash
    # GUI version (recommended)
    python3 -m openlens
-   
+
    # OR CLI version
    python3 -m openlens.lens_editor
    ```
@@ -215,19 +215,19 @@ The script will:
 
 - **Biconvex**: Both surfaces curve outward (R1 > 0, R2 < 0)
   - Use: General magnification, converging light
-  
+
 - **Biconcave**: Both surfaces curve inward (R1 < 0, R2 > 0)
   - Use: Diverging light, beam expansion
-  
+
 - **Plano-Convex**: One flat, one convex surface (R1 or R2 = ∞)
   - Use: Focusing, collimation
-  
+
 - **Plano-Concave**: One flat, one concave surface
   - Use: Light divergence, beam expansion
-  
+
 - **Meniscus Convex**: Crescent shape, thicker at center
   - Use: Correcting aberrations
-  
+
 - **Meniscus Concave**: Crescent shape, thinner at center
   - Use: Special optical applications
 

@@ -14,7 +14,6 @@ Every algorithm must satisfy BOTH:
        the merit definition: merit = (f - target)^2 * weight)
 """
 
-import math
 import unittest
 
 from openlens.lens import Lens

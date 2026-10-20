@@ -10,11 +10,11 @@ cd "$SCRIPT_DIR"
 if [ -d "venv" ]; then
     echo "Activating virtual environment..."
     source venv/bin/activate
-    
+
     # Launch the application
     echo "Launching OpenLens GUI..."
     python3 -m openlens
-    
+
     # Deactivate when done
     deactivate
 else

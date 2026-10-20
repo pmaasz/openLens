@@ -45,9 +45,10 @@ except ImportError:
     PIL_AVAILABLE = False
     logger.warning("PIL/Pillow not available. Image loading disabled.")
 
-# Try importing scipy (optional)
+# Is scipy importable? Probe it here, but import the kernels lazily inside the
+# functions that need them so a missing scipy cannot break module import.
 try:
-    from scipy.ndimage import gaussian_filter, gaussian_filter1d, zoom, sobel
+    import scipy.ndimage  # noqa: F401 - availability probe; functions import lazily
 
     SCIPY_AVAILABLE = True
 except ImportError:
