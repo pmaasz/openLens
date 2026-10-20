@@ -20,7 +20,6 @@ DOC_FILES = (
     "requirements.txt",
     "docs/CONTRIBUTING.md",
     "docs/API_DOCUMENTATION.md",
-    "docs/PROJECT_SUMMARY.md",
     "docs/sphinx/source/contributing.rst",
     "docs/sphinx/source/getting_started.rst",
 )

@@ -190,6 +190,12 @@ Want to add a feature? Follow this process:
 
 #### 📚 Documentation
 
+Sphinx is the source of truth: new pages go into `docs/sphinx/source/` and must
+be listed in a `toctree` in `index.rst`. Do not add new Markdown files under
+`docs/`; the remaining ones exist for old links and mirror their RST
+counterpart. Status snapshots belong in `CHANGELOG.md` and the issue tracker,
+not in a "what is done" page.
+
 Documentation improvements are always welcome:
 
 - **Fix typos and grammar**

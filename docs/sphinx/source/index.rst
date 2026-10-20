@@ -11,6 +11,7 @@ and simulating optical lenses.
 
    getting_started
    user_guide
+   nikon_series_e_50mm
 
 .. toctree::
    :maxdepth: 2
