@@ -7,9 +7,8 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from openlens.analysis import SpotDiagram
-from openlens.optical_system import OpticalSystem, create_doublet
+from openlens.optical_system import OpticalSystem
 from openlens.lens import Lens
-from openlens.constants import NM_TO_MM
 
 
 class TestSpotDiagram(unittest.TestCase):

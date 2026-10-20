@@ -46,7 +46,7 @@ sim_ax.set_ylim(-30, 30)
 sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.3)
 sim_ax.set_xlabel('Position (mm)', fontsize=10, color='#e0e0e0')
 sim_ax.set_ylabel('Height (mm)', fontsize=10, color='#e0e0e0')
-sim_ax.set_title('Ray Tracing Test - Click "Run" to trace rays', 
+sim_ax.set_title('Ray Tracing Test - Click "Run" to trace rays',
                  fontsize=12, color='#e0e0e0')
 sim_ax.grid(True, alpha=0.2, color='#3f3f3f')
 sim_ax.set_aspect('equal')
@@ -82,32 +82,32 @@ test_lens = Lens(name="Test Biconvex",
 def run_test_simulation():
     """Run a test simulation"""
     print("Running simulation...")
-    
+
     # Create tracer
     tracer = LensRayTracer(test_lens)
-    
+
     # Trace rays
     rays = tracer.trace_parallel_rays(num_rays=11)
     focal_point = tracer.find_focal_point(rays)
     outline = tracer.get_lens_outline()
-    
+
     print(f"  Traced {len(rays)} rays")
     print(f"  Focal point: {focal_point}")
-    
+
     # Clear and redraw
     sim_ax.clear()
     sim_ax.set_facecolor('#1e1e1e')
-    
+
     # Draw lens
     if outline:
         xs = [p[0] for p in outline]
         ys = [p[1] for p in outline]
         sim_ax.fill(xs, ys, color='lightblue', alpha=0.3, label='Lens')
         sim_ax.plot(xs, ys, color='blue', linewidth=2)
-    
+
     # Draw optical axis
     sim_ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.5)
-    
+
     # Draw rays
     for i, ray in enumerate(rays):
         xs = [p[0] for p in ray.path]
@@ -115,24 +115,24 @@ def run_test_simulation():
         color = 'red' if i == 0 or i == len(rays)-1 else 'orange'
         alpha = 0.8 if i == len(rays)//2 else 0.6
         sim_ax.plot(xs, ys, color=color, linewidth=1.5, alpha=alpha)
-    
+
     # Draw focal point
     if focal_point:
         fx, fy = focal_point
         sim_ax.plot(fx, fy, 'go', markersize=10, label=f'Focal Point ({fx:.1f} mm)', zorder=5)
         sim_ax.axvline(x=fx, color='green', linestyle=':', linewidth=1, alpha=0.5)
-    
+
     # Style
     sim_ax.set_xlabel('Position (mm)', fontsize=10, color='#e0e0e0')
     sim_ax.set_ylabel('Height (mm)', fontsize=10, color='#e0e0e0')
     sim_ax.set_title(f'Ray Tracing: {test_lens.name}\n{len(rays)} rays traced',
                     fontsize=11, color='#e0e0e0')
-    sim_ax.legend(loc='best', fontsize=9, facecolor='#2e2e2e', 
+    sim_ax.legend(loc='best', fontsize=9, facecolor='#2e2e2e',
                  edgecolor='#3f3f3f', labelcolor='#e0e0e0')
     sim_ax.grid(True, alpha=0.3, color='#3f3f3f')
     sim_ax.set_aspect('equal')
     sim_ax.tick_params(colors='#e0e0e0', labelsize=9)
-    
+
     # Refresh
     print("  Drawing to canvas...")
     sim_canvas.draw()

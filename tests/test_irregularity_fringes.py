@@ -135,7 +135,6 @@ class TestIrregularityDrawsAreNotDropped(unittest.TestCase):
     """The user-visible consequence: the perturbation reaches the lens."""
 
     def _run_with_irregularity(self, seed):
-        import random
 
         from openlens.tolerancing import MonteCarloAnalyzer, ToleranceOperand, ToleranceType
 

@@ -201,7 +201,6 @@ class ImageSimulationDialog(QDialog):
             x1 = x0 + new_w
             # y is inverted: ylim[0] is top (h-0.5), ylim[1] is bottom (-0.5)
             y0 = max(-0.5, min(ydata - new_h / 2, h - 0.5 - new_h))
-            y1 = y0 + new_h
             # Preserve inverted order
             if ylim[0] > ylim[1]:
                 self._ax_orig.set_xlim(x0, x1)
@@ -286,7 +285,6 @@ class ImageSimulationDialog(QDialog):
                 new_x1 = w - 0.5
                 new_x0 = new_x1 - view_w
             # Clamp y (inverted)
-            view_h = new_y1 - new_y0
             # y is inverted, but clamping same
             y_min, y_max = -0.5, h - 0.5
             low, high = (y_max, y_min) if y0 > y1 else (y_min, y_max)

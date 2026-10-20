@@ -40,7 +40,9 @@ if not PYSIDE_AVAILABLE:  # pragma: no cover - environment guard
 
 
 @unittest.skipUnless(PYSIDE_AVAILABLE, "PySide6 not available")
-class TestOptimizationVariableSelection(unittest.TestCase):
+class TestOptimizationVariableSelection(unittest.TestCase):  # noqa: F811
+    # The conditional stub above registers a visible skip without PySide6;
+    # this is the real class, not an accidental redefinition.
     def setUp(self):
         self.app = QApplication.instance() or QApplication(sys.argv)
         from openlens.__main__ import OpenLensWindow

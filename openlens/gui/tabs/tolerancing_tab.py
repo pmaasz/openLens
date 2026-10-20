@@ -97,7 +97,6 @@ class MonteCarloWorker(QThread):
     def run(self) -> None:
         """Run the Monte Carlo analysis in this thread and emit ``finished``
         with a report and raw results, or ``failed`` on error."""
-        from ...optical_system import OpticalSystem
         from ...tolerancing import ToleranceOperand as _Operand
         from ...tolerancing import ToleranceType as _Type
 
@@ -115,7 +114,7 @@ class MonteCarloWorker(QThread):
                 criterion_limit=self.criterion,
             )
 
-            text = f"=== MONTE CARLO RESULTS ===\n\n"
+            text = "=== MONTE CARLO RESULTS ===\n\n"
             text += f"Total Trials: {results['trials']}\n"
             text += f"Passed (Yield): {results['yield']:.1f}%\n"
             text += f"Nominal RMS: {results['nominal']:.4f} mm\n"
@@ -163,7 +162,6 @@ class InverseSensitivityWorker(QThread):
     def run(self) -> None:
         """Run the inverse sensitivity analysis in this thread and emit
         ``finished`` with a report, or ``failed`` on error."""
-        from ...optical_system import OpticalSystem
 
         try:
             system = _as_system(self.current_lens)
@@ -172,7 +170,7 @@ class InverseSensitivityWorker(QThread):
 
             results = analyzer.optimize_limits(target_yield_criterion=self.criterion, method="rss")
 
-            text = f"=== INVERSE SENSITIVITY RESULTS ===\n\n"
+            text = "=== INVERSE SENSITIVITY RESULTS ===\n\n"
             text += f"Target Yield Criterion: {self.criterion} mm RMS\n\n"
             text += "Suggested Limits (RSS budget):\n"
             text += "-" * 55 + "\n"

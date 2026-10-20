@@ -1,7 +1,7 @@
 Architecture
 ============
 
-This document provides a comprehensive architectural overview of the OpenLens 
+This document provides a comprehensive architectural overview of the OpenLens
 optical design system.
 
 .. contents:: Table of Contents
@@ -407,7 +407,7 @@ Core Components
 
 1. Generate initial rays (parallel or point source)
 2. For each ray:
-   
+
    - Check aperture intersection
    - Find sphere intersection
    - Calculate surface normal
@@ -549,7 +549,7 @@ Adding New Analysis Modules
    class MyAnalyzer:
        def __init__(self, lens):
            self.lens = lens
-       
+
        def analyze(self):
            # Your analysis logic
            return results
@@ -587,23 +587,23 @@ Performance Considerations
 Optimization Strategies
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-1. **Caching**: 
-   
+1. **Caching**:
+
    - Lens calculations cached until properties change
    - Material database uses memoization
 
 2. **Lazy Evaluation**:
-   
+
    - Ray tracing only on demand
    - Aberrations calculated when requested
 
 3. **Vectorization**:
-   
+
    - NumPy arrays for ray tracing (batch processing)
    - Vectorized Snell's law calculations
 
 4. **Progressive Rendering**:
-   
+
    - 3D visualization uses level-of-detail
    - Ray count adjustable for speed vs accuracy
 
@@ -637,28 +637,28 @@ Future Architecture Plans
 Planned Enhancements
 ^^^^^^^^^^^^^^^^^^^^
 
-1. **Plugin System**: 
-   
+1. **Plugin System**:
+
    - Dynamic module loading
    - Third-party analysis tools
 
 2. **Cloud Integration**:
-   
+
    - Remote material databases
    - Lens library sharing
 
 3. **GPU Acceleration**:
-   
+
    - CUDA ray tracing
    - Parallel aberration calculations
 
 4. **Web Interface**:
-   
+
    - Browser-based GUI
    - REST API backend
 
 5. **Machine Learning**:
-   
+
    - Lens optimization with ML
    - Aberration prediction
 

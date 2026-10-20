@@ -182,7 +182,8 @@ class WavefrontSensor:
         ``lens.update_refractive_index()`` first (and restore afterwards).
 
         Returns:
-            WavefrontError object containing Y, Z grids (pupil coords) and W (wavefront error in waves)
+            WavefrontError object containing Y, Z grids (pupil coords) and W
+            (wavefront error in waves)
         """
         if not NUMPY_AVAILABLE:
             empty = []

@@ -147,7 +147,7 @@ class TestLensComparator(unittest.TestCase):
         comparator.add_lens(self.lens3)
 
         # Must compare first
-        results = comparator.compare()
+        comparator.compare()
 
         # Rank by focal length (ascending = shortest first)
         ranked = comparator.rank_by_parameter("focal_length", ascending=True)
@@ -165,7 +165,7 @@ class TestLensComparator(unittest.TestCase):
         comparator.add_lens(self.lens2)
 
         # Must compare first
-        results = comparator.compare()
+        comparator.compare()
 
         differences = comparator.get_parameter_differences()
 
@@ -179,7 +179,7 @@ class TestLensComparator(unittest.TestCase):
         print("✓ Highlighted differences successfully")
 
         if differences:
-            print(f"  Significant differences found:")
+            print("  Significant differences found:")
             for param, info in differences.items():
                 print(f"    - {param}: {info}")
 

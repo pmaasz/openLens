@@ -1,0 +1,26 @@
+[flake8]
+# black and flake8 disagree about these two. E226 (missing whitespace around
+# an arithmetic operator) is already in pycodestyle's default ignore list; the
+# old CI command overrode the defaults with --ignore and accidentally enabled
+# it.
+max-line-length = 100
+extend-ignore = E203,W503
+
+per-file-ignores =
+    # Tests configure sys.path, OPENLENS_* data dirs and QT_QPA_PLATFORM before
+    # importing openlens, so the imports deliberately follow module-level code.
+    tests/*: E402
+    # These modules set up their logger and optional-dependency guards before
+    # importing local modules; moving the imports changes import-time behavior.
+    openlens/__main__.py: E402
+    openlens/aberrations.py: E402
+    openlens/analysis/beam_synthesis.py: E402
+    openlens/analysis/plots.py: E402
+    openlens/analysis/psf_mtf.py: E402
+    openlens/analysis/spot_diagram.py: E402
+    openlens/export_formats.py: E402
+    openlens/gui/storage.py: E402
+    openlens/io/step_export.py: E402
+    openlens/lens_editor.py: E402
+    openlens/lens.py: E402
+    openlens/seed_data.py: E402

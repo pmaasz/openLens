@@ -6,13 +6,10 @@ Comprehensive functional tests for multi-element optical systems
 import sys
 import os
 import unittest
-import json
 import tempfile
 
 from openlens.optical_system import (
     OpticalSystem,
-    LensElement,
-    AirGap,
     AchromaticDoubletDesigner,
     create_doublet,
     create_triplet,

@@ -10,7 +10,6 @@ table as if nothing had been configured.
 
 import unittest
 
-import openlens
 from openlens.__main__ import OpenLensWindow
 from openlens.lens import Lens
 from openlens.tolerancing import (

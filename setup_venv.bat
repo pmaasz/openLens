@@ -3,9 +3,9 @@ REM openlens Setup Script for Windows
 REM Automates the virtual environment setup process
 
 echo ========================================================================
-echo                                                                        
+echo
 echo              openlens - Virtual Environment Setup
-echo                                                                        
+echo
 echo ========================================================================
 echo.
 

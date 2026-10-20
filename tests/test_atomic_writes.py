@@ -164,8 +164,6 @@ class TestExportsUseAtomicWrites(unittest.TestCase):
         )
         exporter = StepExporter(system)
 
-        original = exporter._export_lens_solid
-
         def explode(*args, **kwargs):
             raise RuntimeError("geometry exploded mid-export")
 

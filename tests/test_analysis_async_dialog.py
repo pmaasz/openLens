@@ -127,7 +127,6 @@ class TestPlotAsync(unittest.TestCase):
         def _slow():
             started["v"] = True
             # Busy-wait: stands in for a multi-second ray trace.
-            deadline = QEventLoop()  # unused; keep the import honest
             total = 0
             while total < 3_000_000:
                 total += 1

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 import unittest
-import math
 
 from openlens.lens import Lens
 from openlens.optical_system import OpticalSystem
-from openlens.analysis.ghost import GhostAnalyzer, GhostPath
+from openlens.analysis.ghost import GhostAnalyzer
 
 
 class TestAssemblyGhostAnalysis(unittest.TestCase):
@@ -55,7 +54,8 @@ class TestAssemblyGhostAnalysis(unittest.TestCase):
         print(f"Found {len(ghosts)} ghost paths.")
         for g in ghosts:
             print(
-                f"Path ({g.reflection_1_index}, {g.reflection_2_index}) - Intensity: {g.intensity:.2e}"
+                f"Path ({g.reflection_1_index}, {g.reflection_2_index}) - Intensity: "
+                f"{g.intensity:.2e}"
             )
             self.assertGreater(len(g.rays), 0)
 
@@ -65,7 +65,8 @@ class TestAssemblyGhostAnalysis(unittest.TestCase):
         )
         # Actually, in a 4-surface system, index 2 is L2 front, index 1 is L1 back.
         # This is a common ghost path.
-        # Note: Depending on coatings and intensity, it might be very weak, but here it should be traced.
+        # Note: depending on coatings and intensity it might be very weak, but
+        # here it should be traced.
         self.assertTrue(
             found_inter_element,
             "Did not find inter-element ghost path (L2 Front -> L1 Back)",

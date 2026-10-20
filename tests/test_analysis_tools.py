@@ -1,5 +1,4 @@
 import unittest
-import math
 
 try:
     import numpy as np

@@ -3,7 +3,6 @@ Functional tests for Interactive Ray Tracer, Image Simulator, and Mechanical Des
 """
 
 import unittest
-from pathlib import Path
 
 # numpy is required by the modules under test
 try:
@@ -16,12 +15,10 @@ except ImportError:
 if OPTIONAL_DEPS_AVAILABLE:
     from openlens.interactive_ray_tracer import (
         InteractiveRayTracer,
-        InteractiveRay,
         RayManipulator,
     )
     from openlens.image_simulator import ImageSimulator, SCIPY_AVAILABLE
     from openlens.mechanical_designer import MechanicalDesigner, LensMount, LensCell, Spacer
-    from openlens.lens import Lens as _Lens
     from openlens.optical_system import OpticalSystem
 
 
@@ -559,8 +556,8 @@ class TestIntegration(unittest.TestCase):
 
         # Setup ray tracer
         tracer = InteractiveRayTracer(optical_system)
-        ray1 = tracer.add_ray((0, 0, 0), (1, 0, 0))
-        ray2 = tracer.add_ray((0, 1, 0), (1, 0, 0.1))
+        tracer.add_ray((0, 0, 0), (1, 0, 0))
+        tracer.add_ray((0, 1, 0), (1, 0, 0.1))
 
         # Setup image simulator
         simulator = ImageSimulator(optical_system)
@@ -576,7 +573,6 @@ class TestIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     if OPTIONAL_DEPS_AVAILABLE:
-        import pytest
 
         unittest.main(verbosity=2)
     else:

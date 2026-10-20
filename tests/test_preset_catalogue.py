@@ -24,7 +24,6 @@ It replaces tests/test_preset_lenses.py, which tested the deleted module's
 dict-based API.
 """
 
-import math
 import unittest
 
 from openlens.constants import LARGE_NUMBER

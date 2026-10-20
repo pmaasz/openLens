@@ -6,15 +6,11 @@ Test multi-element optical systems
 import unittest
 import os
 import tempfile
-import json
-import math
 
 from openlens.optical_system import (
     OpticalSystem,
-    AchromaticDoubletDesigner,
     create_doublet,
     create_triplet,
-    AirGap,
 )
 from openlens.lens import Lens
 

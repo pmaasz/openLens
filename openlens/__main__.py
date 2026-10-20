@@ -13,8 +13,18 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                               QLabel, QTabWidget, QStatusBar, QFileDialog, QMessageBox)
+from PySide6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QTabWidget,
+    QStatusBar,
+    QFileDialog,
+    QMessageBox,
+)
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 
@@ -25,13 +35,22 @@ from openlens.logging_setup import setup_logging, verbose_requested
 from openlens.paths import migrate_legacy_db, migrate_legacy_materials, resolve_db_path
 from openlens.gui.storage import LensStorage
 from openlens.gui.widgets import LensEditorWidget
-from openlens.gui.tabs import (SimulationTab, PerformanceTab,
-                          AssemblyTab, OptimizationTab, TolerancingTab)
+from openlens.gui.tabs import (
+    SimulationTab,
+    PerformanceTab,
+    AssemblyTab,
+    OptimizationTab,
+    TolerancingTab,
+)
 from openlens.gui.dialogs import StartupDialog, require_analysis_plot_dialog
 from openlens.gui.workers import stop_worker
 from openlens.gui.theme import (
-    DARK, LIGHT, get_app_stylesheet, get_menubar_qss,
-    get_status_bar_qss, get_tab_widget_qss,
+    DARK,
+    LIGHT,
+    get_app_stylesheet,
+    get_menubar_qss,
+    get_status_bar_qss,
+    get_tab_widget_qss,
 )
 from openlens.stl_export import export_lens_stl
 from openlens.io.step_export import StepExporter
@@ -40,8 +59,11 @@ from openlens.analysis.ghost import GhostAnalyzer
 from openlens.analysis.psf_mtf import ImageQualityAnalyzer
 from openlens.analysis.diffraction_psf import WavefrontSensor
 from openlens.analysis.plots import (
-    apply_dark_axis_theme, plot_ghost_analysis,
-    plot_mtf, plot_psf, plot_wavefront,
+    apply_dark_axis_theme,
+    plot_ghost_analysis,
+    plot_mtf,
+    plot_psf,
+    plot_wavefront,
 )
 from openlens.tolerancing import deserialize_operands, serialize_operands
 
@@ -60,6 +82,7 @@ def _report_missing_plot_dependency(parent, exc) -> None:
         "Dependency Missing",
         f"{exc}\n\nThe rest of OpenLens works without it.",
     )
+
 
 #: Quiet period (ms) after the last edit before a burst is committed. Long
 #: enough to coalesce a typed word, short enough to still feel immediate.
@@ -85,11 +108,8 @@ class OpenLensWindow(QMainWindow):
     tabbed editor area, and SQLite persistence. Tabs are refreshed via
     :meth:`_update_all_tabs` whenever the active model changes.
     """
-    
-    def __init__(
-            self,
-            action: Optional[str] = None,
-            data: Optional[Any] = None) -> None:
+
+    def __init__(self, action: Optional[str] = None, data: Optional[Any] = None) -> None:
         """Create the main window and load its state.
 
         Args:
@@ -100,14 +120,14 @@ class OpenLensWindow(QMainWindow):
                 (a Lens or OpticalSystem); ignored for "create_*" actions.
         """
         super().__init__()
-        
+
         self._action = action
         self._data = data
-        self._theme = 'dark'
-        
+        self._theme = "dark"
+
         self.setWindowTitle("OpenLens - Optical Lens Design")
         self.setMinimumSize(1000, 700)
-        
+
         # Initialize database. The status callback is what makes a storage-layer
         # failure visible: LensStorage otherwise reports errors into a no-op
         # lambda, and the window used to claim "Saved to database" regardless.
@@ -128,15 +148,15 @@ class OpenLensWindow(QMainWindow):
         # library load drops (rather than adopts) these when saved members
         # exist, so reopening shows the user's work instead of a blank lens.
         self._ephemeral_ids = set()
-        
+
         self._setup_ui()
         self._create_menu()
-        
+
         # Defer database loading to keep startup responsive
         QTimer.singleShot(0, self._load_from_database)
-        
+
         self._handle_startup(action, data)
-    
+
     def _notify_problem(self, title: str, text: str) -> None:
         """Raise a non-blocking error box.
 
@@ -165,23 +185,29 @@ class OpenLensWindow(QMainWindow):
         # A pending edit must reach disk before the library is read back, or
         # reopening the app would show the pre-edit state.
         self._flush_pending_edit()
-        
+
         self._update_status("Loading library...")
         try:
             all_items = self._storage.load_lenses()
-            
+
             self._lenses = []
             self._assemblies = []
-            
+
             for item in all_items:
-                if hasattr(item, 'elements') and hasattr(item, 'air_gaps'):
+                if hasattr(item, "elements") and hasattr(item, "air_gaps"):
                     self._assemblies.append(item)
                 else:
                     self._lenses.append(item)
-            
-            logger.info("Loaded %d lenses and %d assemblies from database",
-                        len(self._lenses), len(self._assemblies))
-            self._update_status(f"Loaded library: {len(self._lenses)} lenses, {len(self._assemblies)} assemblies")
+
+            logger.info(
+                "Loaded %d lenses and %d assemblies from database",
+                len(self._lenses),
+                len(self._assemblies),
+            )
+            self._update_status(
+                f"Loaded library: {len(self._lenses)} lenses, "
+                f"{len(self._assemblies)} assemblies"
+            )
 
             # Never orphan working state: this load runs deferred after startup
             # created an (unsaved) default, and open_* actions append unsaved
@@ -223,7 +249,7 @@ class OpenLensWindow(QMainWindow):
 
             # Update tabs that depend on the loaded library
             self._update_all_tabs()
-            
+
         except Exception as e:
             logger.error("Failed to load from database: %s", e)
             self._lenses = []
@@ -240,7 +266,7 @@ class OpenLensWindow(QMainWindow):
                 "The library has been emptied. Edits you make now cannot be "
                 "saved until this is resolved.",
             )
-    
+
     def _sync_tolerances_to_metadata(self, target=None) -> None:
         """Persist the working tolerance set onto the model that owns it.
 
@@ -260,9 +286,9 @@ class OpenLensWindow(QMainWindow):
             target = self._active_target()
         if target is None:
             return
-        if not hasattr(target, 'metadata') or target.metadata is None:
+        if not hasattr(target, "metadata") or target.metadata is None:
             target.metadata = {}
-        target.metadata['tolerances'] = serialize_operands(self._tol_operands)
+        target.metadata["tolerances"] = serialize_operands(self._tol_operands)
 
     def _use_tolerances_for(self, target) -> None:
         """Point the working tolerance set at ``target``.
@@ -286,7 +312,7 @@ class OpenLensWindow(QMainWindow):
         if self._tol_operands_target is not None:
             self._sync_tolerances_to_metadata(self._tol_operands_target)
         self._tol_operands = deserialize_operands(
-            (getattr(target, 'metadata', None) or {}).get('tolerances')
+            (getattr(target, "metadata", None) or {}).get("tolerances")
         )
         self._tol_operands_target = target
 
@@ -314,21 +340,20 @@ class OpenLensWindow(QMainWindow):
             # Ensure uniqueness by ID before saving to avoid duplicate keys or state conflicts
             unique_items = {}
             for item in all_items:
-                if hasattr(item, 'id'):
+                if hasattr(item, "id"):
                     unique_items[item.id] = item
 
             # unique_items is every stored object, so a lens missing from it
             # that an assembly still holds really is an assembly member - and
             # load_all hides those, which is what keeps an assembly's lenses
             # from reappearing as standalone library lenses after a reload.
-            if not self._storage.save_lenses(list(unique_items.values()),
-                                             reconcile=reconcile,
-                                             library_snapshot=True):
+            if not self._storage.save_lenses(
+                list(unique_items.values()), reconcile=reconcile, library_snapshot=True
+            ):
                 # save_lenses swallowed the exception, so its own report is the
                 # only place the real reason survives.
                 self._report_save_failure(
-                    getattr(self._storage, "last_error", None)
-                    or "the database rejected the save"
+                    getattr(self._storage, "last_error", None) or "the database rejected the save"
                 )
                 return False
 
@@ -357,7 +382,7 @@ class OpenLensWindow(QMainWindow):
             "Your edits are not being stored. Further attempts will be "
             "reported in the status bar until a save succeeds.",
         )
-    
+
     def _handle_startup(self, action: Optional[str], data: Optional[Any]) -> None:
         """Handle startup action"""
         if action == "create_lens":
@@ -375,23 +400,23 @@ class OpenLensWindow(QMainWindow):
         else:
             self._load_default_lens()
             self._update_status("Loaded default lens")
-    
+
     def _update_status(self, message: str) -> None:
         """Update status bar message"""
-        if hasattr(self, '_status_label'):
+        if hasattr(self, "_status_label"):
             self._status_label.setText(message)
-        if hasattr(self, '_status_bar'):
+        if hasattr(self, "_status_bar"):
             self._status_bar.showMessage(message)
-    
+
     def _load_lens_from_data(self, data: Any) -> None:
         """Load lens or assembly from saved data"""
         from openlens.optical_system import OpticalSystem
 
         # Check if the item already exists in the library by ID
         existing = None
-        if hasattr(data, 'id'):
+        if hasattr(data, "id"):
             for item in self._lenses + self._assemblies:
-                if getattr(item, 'id', None) == data.id:
+                if getattr(item, "id", None) == data.id:
                     existing = item
                     break
 
@@ -418,13 +443,13 @@ class OpenLensWindow(QMainWindow):
             self._show_lens_editor(True)
         elif isinstance(data, dict):
             # Fallback for dict data
-            data_id = data.get('id')
+            data_id = data.get("id")
             for item in self._lenses + self._assemblies:
-                if getattr(item, 'id', None) == data_id:
+                if getattr(item, "id", None) == data_id:
                     existing = item
                     break
-            
-            if data.get('type') == 'OpticalSystem':
+
+            if data.get("type") == "OpticalSystem":
                 if not existing:
                     system = OpticalSystem.from_dict(data)
                     self._assemblies.append(system)
@@ -445,40 +470,40 @@ class OpenLensWindow(QMainWindow):
         else:
             self._load_default_lens()
             return
-        
+
         if self._current_lens:
             self._lens_editor.load_lens(self._current_lens)
-        
+
         self._update_all_tabs()
-    
+
     def _setup_ui(self) -> None:
         """Setup the main UI"""
         central = QWidget()
         self.setCentralWidget(central)
-        
+
         # Main layout
         main_layout = QVBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         # Top: Main content area
         content = QWidget()
         content_layout = QHBoxLayout(content)
         content_layout.setContentsMargins(5, 5, 5, 5)
-        
+
         # Right: Editor with visualization
         self._editor_widget = None  # Will be LensEditorWidget
-        
+
         content_layout.addWidget(self._create_editor_area())
-        
+
         main_layout.addWidget(content, 1)
-        
+
         # Status bar
         self._status_bar = QStatusBar()
         self._status_bar.setStyleSheet(get_status_bar_qss(self._theme))
         self._status_label = QLabel("Ready")
         self._status_bar.addWidget(self._status_label)
         self.setStatusBar(self._status_bar)
-        
+
         # Analysis dialogs awaiting/lacking an in-flight worker. Held so a
         # live QThread is never garbage-collected (see _open_analysis_dialog).
         self._analysis_dialogs = []
@@ -495,36 +520,37 @@ class OpenLensWindow(QMainWindow):
         # single list on the window, so it must only ever be stamped onto the
         # model it was built for - see _use_tolerances_for.
         self._tol_operands_target = None
-        
+
         self._update_status("Welcome to OpenLens")
 
-    
     def _create_editor_area(self) -> QTabWidget:
         """Create the main editor area with tabs"""
         self._editor_tabs = QTabWidget()
         self._editor_tabs.setStyleSheet(get_tab_widget_qss(self._theme))
-        
+
         # Lens Editor tab (always visible)
         self._lens_editor = LensEditorWidget(self)
         self._lens_editor.lens_modified.connect(self._on_lens_modified)
         self._editor_tabs.addTab(self._lens_editor, "Lens Editor")
-        
+
         # Assembly Editor tab (initially hidden - only shown when editing assembly)
         self._assembly_tab_widget = AssemblyTab(self)
         self._assembly_tab_widget.data_updated.connect(self._on_assembly_modified)
-        self._assembly_tab_index = self._editor_tabs.addTab(self._assembly_tab_widget, "Assembly Editor")
+        self._assembly_tab_index = self._editor_tabs.addTab(
+            self._assembly_tab_widget, "Assembly Editor"
+        )
         self._editor_tabs.setTabVisible(self._assembly_tab_index, False)
-        
+
         # Other tabs
         self._sim_tab = SimulationTab(self)
         self._editor_tabs.addTab(self._sim_tab, "Simulation")
-        
+
         self._perf_tab = PerformanceTab(self)
         self._editor_tabs.addTab(self._perf_tab, "Performance")
-        
+
         self._opt_tab = OptimizationTab(self)
         self._editor_tabs.addTab(self._opt_tab, "Optimization")
-        
+
         self._tol_tab = TolerancingTab(self)
         self._editor_tabs.addTab(self._tol_tab, "Tolerancing")
 
@@ -560,7 +586,7 @@ class OpenLensWindow(QMainWindow):
             return
         self._editor_tabs.setCurrentIndex(index)
         self._update_status(name)
-    
+
     def _on_lens_modified(self, lens: Lens) -> None:
         """Handle lens modification from editor widget"""
         self._schedule_edit_commit(f"Updated: {lens.name}")
@@ -580,7 +606,7 @@ class OpenLensWindow(QMainWindow):
             status: Status line to show when the deferred commit runs.
         """
         self._pending_edit_status = status
-        if getattr(self, '_edit_timer', None) is None:
+        if getattr(self, "_edit_timer", None) is None:
             self._edit_timer = QTimer(self)
             self._edit_timer.setSingleShot(True)
             self._edit_timer.timeout.connect(self._commit_pending_edit)
@@ -589,7 +615,7 @@ class OpenLensWindow(QMainWindow):
 
     def _commit_pending_edit(self) -> None:
         """Flush a debounced edit: persist, then refresh the tabs."""
-        status = getattr(self, '_pending_edit_status', None)
+        status = getattr(self, "_pending_edit_status", None)
         self._pending_edit_status = None
         try:
             # reconcile=False: the periodic full reconcile is the expensive
@@ -608,7 +634,7 @@ class OpenLensWindow(QMainWindow):
         Called before actions that read what is on disk (File > Open, New) so
         a pending save is never silently dropped.
         """
-        if getattr(self, '_edit_timer', None) is not None and self._edit_timer.isActive():
+        if getattr(self, "_edit_timer", None) is not None and self._edit_timer.isActive():
             self._edit_timer.stop()
             self._commit_pending_edit()
 
@@ -617,31 +643,30 @@ class OpenLensWindow(QMainWindow):
         # Ensure we are saving the actual modified system
         modified_system = self._assembly_tab_widget._optical_system
         self._current_assembly = modified_system
-        
+
         # Update the reference in self._assemblies to the new state
         for i, asm in enumerate(self._assemblies):
             if asm.id == modified_system.id:
                 self._assemblies[i] = modified_system
                 break
-                
-        self._schedule_edit_commit(
-            f"Assembly updated: {self._current_assembly.name if self._current_assembly else 'Unknown'}"
-        )
+
+        assembly_name = self._current_assembly.name if self._current_assembly else "Unknown"
+        self._schedule_edit_commit(f"Assembly updated: {assembly_name}")
 
     def _show_assembly_editor(self, show: bool = True) -> None:
         """Show/hide assembly editor tab"""
-        if hasattr(self, '_assembly_tab_index'):
+        if hasattr(self, "_assembly_tab_index"):
             self._editor_tabs.setTabVisible(self._assembly_tab_index, show)
-    
+
     def _show_lens_editor(self, show: bool = True) -> None:
         """Show lens editor tab"""
         self._editor_tabs.setTabVisible(0, show)
-    
+
     def _create_menu(self) -> None:
         """Create menu bar"""
         menubar = self.menuBar()
         menubar.setStyleSheet(get_menubar_qss(self._theme))
-        
+
         # File menu
         file_menu = menubar.addMenu("File")
         file_menu.addAction("New Lens", self._on_new_lens, QKeySequence.New)
@@ -649,46 +674,50 @@ class OpenLensWindow(QMainWindow):
         file_menu.addAction("Save", self._on_save, QKeySequence("Ctrl+S"))
         file_menu.addAction("Save As...", self._on_save_as, QKeySequence("Ctrl+Shift+S"))
         file_menu.addSeparator()
-        
+
         # Export submenu
         export_menu = file_menu.addMenu("Export")
         export_menu.addAction("Export to STL...", self._on_export_stl)
         export_menu.addAction("Export to STEP...", self._on_export_step)
         export_menu.addAction("Export to ISO 10110...", self._on_export_iso10110)
         export_menu.addAction("Export Report...", self._on_export_report)
-        
+
         file_menu.addSeparator()
         file_menu.addAction("Exit", self.close, QKeySequence.Quit)
-        
+
         # Edit menu
         edit_menu = menubar.addMenu("Edit")
-        edit_menu.addAction("Delete Lens", self._confirm_and_delete_lens, QKeySequence("Ctrl+Delete"))
+        edit_menu.addAction(
+            "Delete Lens", self._confirm_and_delete_lens, QKeySequence("Ctrl+Delete")
+        )
         edit_menu.addSeparator()
         edit_menu.addAction("Duplicate Lens", self._on_duplicate_lens, QKeySequence("Ctrl+D"))
-        
+
         # Preferences menu
         prefs_menu = menubar.addMenu("Preferences")
-        prefs_menu.addAction("Toggle Dark/Light Theme", self._on_toggle_theme, QKeySequence("Ctrl+T"))
-        
+        prefs_menu.addAction(
+            "Toggle Dark/Light Theme", self._on_toggle_theme, QKeySequence("Ctrl+T")
+        )
+
         # Lens menu (quick switch). Rebuilt every time it opens so it
         # reflects the deferred database load and any library changes.
         self._lens_menu = menubar.addMenu("Lens")
         self._lens_menu.aboutToShow.connect(self._rebuild_lens_menu)
 
-# View menu
+        # View menu
         view_menu = menubar.addMenu("View")
         view_menu_2d = view_menu.addMenu("2D View")
         view_menu_2d.addAction("Top", lambda: self._set_viz_mode("2D"))
         view_menu_2d.addAction("Side", lambda: self._set_viz_mode("side"))
-        
+
         view_menu.addSeparator()
         view_menu.addAction("Reset Window", self._on_reset_window, QKeySequence("Ctrl+0"))
-        
+
         # Help menu
         help_menu = menubar.addMenu("Help")
         help_menu.addAction("About", self._on_about)
         help_menu.addAction("Keyboard Shortcuts", self._on_show_shortcuts)
-    
+
     def _set_current_item(self, item: Any, is_assembly: bool = False) -> None:
         """Set current item (lens or assembly)"""
         if is_assembly:
@@ -706,36 +735,36 @@ class OpenLensWindow(QMainWindow):
             self._lens_editor.load_lens(item)
             self._update_all_tabs()
             self._update_status(f"Selected: {item.name}")
-    
+
     def _load_assembly(self, assembly: OpticalSystem) -> None:
         """Load assembly into assembly editor"""
         # Assigned unconditionally: the old hasattr guard meant this attribute
         # only existed on some paths, so the window and the Assembly Editor
         # could disagree about which system is current.
         self._optical_system = assembly
-        if hasattr(self, '_assembly_viz'):
+        if hasattr(self, "_assembly_viz"):
             self._assembly_viz.update_system(assembly)
-        if hasattr(self, '_system_list'):
+        if hasattr(self, "_system_list"):
             self._update_system_list()
-    
+
     def _update_all_tabs(self) -> None:
         """Update all tab displays for current lens or assembly"""
         if not self._current_lens and not self._current_assembly:
             return
-        
-        if hasattr(self, '_sim_tab'):
+
+        if hasattr(self, "_sim_tab"):
             self._sim_tab.refresh()
-        
-        if hasattr(self, '_opt_tab'):
+
+        if hasattr(self, "_opt_tab"):
             self._opt_tab.refresh()
-            
-        if hasattr(self, '_tol_tab'):
+
+        if hasattr(self, "_tol_tab"):
             self._tol_tab.refresh()
-            
-        if hasattr(self, '_perf_tab'):
+
+        if hasattr(self, "_perf_tab"):
             self._perf_tab.refresh()
-            
-        if hasattr(self, '_assembly_tab_widget'):
+
+        if hasattr(self, "_assembly_tab_widget"):
             self._assembly_tab_widget.refresh()
 
     def _stop_worker(self, worker, timeout_ms: int = 3000) -> bool:
@@ -763,27 +792,27 @@ class OpenLensWindow(QMainWindow):
         still running" message. The optimizer has its own stop path, which is
         reused so the two cannot disagree about how a worker is stopped.
         """
-        opt_tab = getattr(self, '_opt_tab', None)
+        opt_tab = getattr(self, "_opt_tab", None)
         if opt_tab is not None:
             try:
                 opt_tab._on_stop_optimization()
             except Exception as e:
                 logger.warning("Could not stop optimizer: %s", e)
 
-        tol_tab = getattr(self, '_tol_tab', None)
+        tol_tab = getattr(self, "_tol_tab", None)
         if tol_tab is not None:
             for name in ("_mc_worker", "_inv_worker"):
                 if self._stop_worker(getattr(tol_tab, name, None)):
                     # Only safe to drop once the thread is known to be done.
                     setattr(tol_tab, name, None)
 
-        perf_tab = getattr(self, '_perf_tab', None)
+        perf_tab = getattr(self, "_perf_tab", None)
         if perf_tab is not None:
-            if self._stop_worker(getattr(perf_tab, '_metrics_worker', None)):
+            if self._stop_worker(getattr(perf_tab, "_metrics_worker", None)):
                 perf_tab._metrics_worker = None
 
-        for dialog in list(getattr(self, '_analysis_dialogs', []) or []):
-            if self._stop_worker(getattr(dialog, '_pending_worker', None)):
+        for dialog in list(getattr(self, "_analysis_dialogs", []) or []):
+            if self._stop_worker(getattr(dialog, "_pending_worker", None)):
                 self._retire_analysis_dialog(dialog)
 
     def _worker_still_running(self, worker) -> bool:
@@ -813,26 +842,26 @@ class OpenLensWindow(QMainWindow):
         """
         running = 0
 
-        opt_tab = getattr(self, '_opt_tab', None)
+        opt_tab = getattr(self, "_opt_tab", None)
         if opt_tab is not None:
-            if getattr(opt_tab, '_opt_is_running', False) or self._worker_still_running(
-                getattr(opt_tab, '_opt_worker', None)
+            if getattr(opt_tab, "_opt_is_running", False) or self._worker_still_running(
+                getattr(opt_tab, "_opt_worker", None)
             ):
                 running += 1
 
-        tol_tab = getattr(self, '_tol_tab', None)
+        tol_tab = getattr(self, "_tol_tab", None)
         if tol_tab is not None:
             for name in ("_mc_worker", "_inv_worker"):
                 if self._worker_still_running(getattr(tol_tab, name, None)):
                     running += 1
 
-        perf_tab = getattr(self, '_perf_tab', None)
+        perf_tab = getattr(self, "_perf_tab", None)
         if perf_tab is not None:
-            if self._worker_still_running(getattr(perf_tab, '_metrics_worker', None)):
+            if self._worker_still_running(getattr(perf_tab, "_metrics_worker", None)):
                 running += 1
 
-        for dialog in list(getattr(self, '_analysis_dialogs', []) or []):
-            if self._worker_still_running(getattr(dialog, '_pending_worker', None)):
+        for dialog in list(getattr(self, "_analysis_dialogs", []) or []):
+            if self._worker_still_running(getattr(dialog, "_pending_worker", None)):
                 running += 1
 
         return running
@@ -885,7 +914,6 @@ class OpenLensWindow(QMainWindow):
         self._shutdown_workers()
         event.accept()
 
-    
     def _on_new_lens(self) -> None:
         """Create new lens"""
         # Don't let a debounced edit lose the current target out from under
@@ -899,7 +927,7 @@ class OpenLensWindow(QMainWindow):
         self._lens_editor.load_lens(lens)
         self._update_all_tabs()
         self._update_status(f"Created: {lens.name}")
-    
+
     def _on_new_assembly(self) -> None:
         """Create new assembly"""
         asm = OpticalSystem(name=f"Assembly {len(self._assemblies) + 1}")
@@ -911,15 +939,17 @@ class OpenLensWindow(QMainWindow):
         self._editor_tabs.setCurrentIndex(1)
         self._update_all_tabs()
         self._update_status(f"Created: {asm.name}")
-    
+
     def _notify_delete_blocked(self, error: LensInUseError) -> None:
         """Tell the user a lens cannot be deleted while assemblies use it."""
         logger.error("Deletion refused: %s", error)
         QMessageBox.warning(
-            self, "Lens is in use",
+            self,
+            "Lens is in use",
             "This lens is still used by the following assemblies:\n\n"
             + "\n".join(f"  • {name}" for _, name in error.assemblies)
-            + "\n\nRemove it from those assemblies first.")
+            + "\n\nRemove it from those assemblies first.",
+        )
 
     def _deletable_item(self):
         """The item Delete Lens would really remove, or None.
@@ -985,8 +1015,7 @@ class OpenLensWindow(QMainWindow):
             return
         except Exception as e:
             logger.error("Database delete failed for %s: %s", item.id, e)
-            QMessageBox.critical(self, "Delete failed",
-                                 f"Could not delete '{item.name}': {e}")
+            QMessageBox.critical(self, "Delete failed", f"Could not delete '{item.name}': {e}")
             return
 
         if self._current_lens:
@@ -1022,14 +1051,14 @@ class OpenLensWindow(QMainWindow):
             # Neither a lens nor an assembly is current: nothing to re-point,
             # and the old .index(None) would have raised ValueError.
             self._update_status("Deleted assembly")
-    
+
     def _on_open(self) -> None:
         """Open from database - just reload"""
         self._load_from_database()
         if self._current_lens:
             self._lens_editor.load_lens(self._current_lens)
         self._update_status("Reloaded from database")
-    
+
     def _on_save(self) -> None:
         """Save to database"""
         # Settle any debounced edit first, so the explicit save does not race a
@@ -1049,45 +1078,49 @@ class OpenLensWindow(QMainWindow):
                     # If not found (e.g. it was a new lens not yet added correctly)
                     self._lenses.append(self._current_lens)
         elif self._editor_tabs.currentIndex() == self._assembly_tab_index:
-             # Force sync from assembly tab state before saving
-             self._current_assembly = self._assembly_tab_widget._optical_system
-             # Ensure it's in the list
-             if self._current_assembly:
+            # Force sync from assembly tab state before saving
+            self._current_assembly = self._assembly_tab_widget._optical_system
+            # Ensure it's in the list
+            if self._current_assembly:
                 for i, asm in enumerate(self._assemblies):
                     if asm.id == self._current_assembly.id:
                         self._assemblies[i] = self._current_assembly
                         break
                 else:
                     self._assemblies.append(self._current_assembly)
-                    
+
         if self._save_to_database():
             self._update_status("Saved to database")
-    
+
     def _on_save_as(self) -> None:
         """Save lens with new filename"""
         if not self._current_lens:
             return
-        
+
         filepath, _ = QFileDialog.getSaveFileName(
-            self, "Save Lens As", f"{self._current_lens.name}.json", 
-            "JSON Files (*.json);;All Files (*)"
+            self,
+            "Save Lens As",
+            f"{self._current_lens.name}.json",
+            "JSON Files (*.json);;All Files (*)",
         )
-        
+
         if not filepath:
             return
-        
+
         try:
             data = self._current_lens.to_dict()
-            with open(filepath, 'w') as f:
+            with open(filepath, "w") as f:
                 json.dump(data, f, indent=2)
-                
+
         except Exception as e:
             logger.error("Failed to save file: %s", e)
             QMessageBox.critical(self, "Error", f"Failed to save file: {e}")
-    
+
     def _on_about(self) -> None:
         """Show about dialog"""
-        QMessageBox.about(self, "About OpenLens",
+        QMessageBox.about(
+            self,
+            "About OpenLens",
             "OpenLens - Optical Lens Design\n\n"
             "Version 2.0 (PySide6)\n\n"
             "A modern optical lens design and simulation tool.\n\n"
@@ -1097,8 +1130,9 @@ class OpenLensWindow(QMainWindow):
             "- Performance metrics\n"
             "- Optimization\n"
             "- Tolerancing\n\n"
-            "Migrated from Tkinter to PySide6")
-    
+            "Migrated from Tkinter to PySide6",
+        )
+
     def _on_show_shortcuts(self) -> None:
         """Show keyboard shortcuts"""
         shortcuts = """
@@ -1116,14 +1150,14 @@ Ctrl+Delete    Delete Lens
 
 Tab Switching:
 Ctrl+1         Lens Editor
-Ctrl+2         Assembly Editor  
+Ctrl+2         Assembly Editor
 Ctrl+3         Simulation
 Ctrl+4         Performance
 Ctrl+5         Optimization
 Ctrl+6         Tolerancing
 """
         QMessageBox.information(self, "Keyboard Shortcuts", shortcuts)
-    
+
     def _on_duplicate_lens(self) -> None:
         """Duplicate current lens"""
         if not self._current_lens:
@@ -1132,8 +1166,8 @@ Ctrl+6         Tolerancing
         data = self._current_lens.to_dict()
         # Pop identity so the constructor mints a fresh uuid4 id;
         # keeping the id would collide with the original on INSERT OR REPLACE.
-        data.pop('id', None)
-        data['name'] = f"{self._current_lens.name} (copy)"
+        data.pop("id", None)
+        data["name"] = f"{self._current_lens.name} (copy)"
         new_lens = Lens.from_dict(data)
 
         self._lenses.append(new_lens)
@@ -1142,7 +1176,7 @@ Ctrl+6         Tolerancing
         self._update_all_tabs()
         self._save_to_database()
         self._update_status(f"Duplicated: {new_lens.name}")
-    
+
     def _on_toggle_theme(self) -> None:
         """Toggle between dark and light theme"""
         theme = LIGHT if self._theme == DARK else DARK
@@ -1182,18 +1216,17 @@ Ctrl+6         Tolerancing
         """Apply the dark application stylesheet."""
         self._apply_theme(DARK)
 
-    
     def _on_reset_window(self) -> None:
         """Reset window to default size and position"""
         self.resize(1000, 700)
         self.move(50, 50)
         self._update_status("Window reset")
-    
+
     def _set_viz_mode(self, mode: str) -> None:
         """Set visualization view mode"""
-        if hasattr(self, '_lens_editor') and self._lens_editor:
-            viz = getattr(self._lens_editor, '_viz_widget', None)
-            if viz and hasattr(viz, 'set_view_mode'):
+        if hasattr(self, "_lens_editor") and self._lens_editor:
+            viz = getattr(self._lens_editor, "_viz_widget", None)
+            if viz and hasattr(viz, "set_view_mode"):
                 viz.set_view_mode(mode)
         self._update_status(f"View: {mode}")
 
@@ -1218,15 +1251,14 @@ Ctrl+6         Tolerancing
         target = self._active_target()
         if not target:
             return
-            
+
         filepath, _ = QFileDialog.getSaveFileName(
-            self, "Export to STL", f"{target.name}.stl", 
-            "STL Files (*.stl);;All Files (*)"
+            self, "Export to STL", f"{target.name}.stl", "STL Files (*.stl);;All Files (*)"
         )
-        
+
         if not filepath:
             return
-            
+
         try:
             system = self._ensure_system(target)
             export_lens_stl(system, filepath)
@@ -1240,17 +1272,16 @@ Ctrl+6         Tolerancing
         target = self._active_target()
         if not target:
             return
-            
+
         filepath, _ = QFileDialog.getSaveFileName(
-            self, "Export to STEP", f"{target.name}.step", 
-            "STEP Files (*.step);;All Files (*)"
+            self, "Export to STEP", f"{target.name}.step", "STEP Files (*.step);;All Files (*)"
         )
-        
+
         if not filepath:
             return
-            
+
         try:
-            
+
             system = self._ensure_system(target)
 
             from openlens.mechanical_designer import MechanicalDesigner
@@ -1261,7 +1292,11 @@ Ctrl+6         Tolerancing
             self._update_status(f"Exported to STEP: {os.path.basename(filepath)}")
         except ImportError as e:
             logger.error("STEP export failed with ImportError: %s", e)
-            QMessageBox.warning(self, "Export Error", "STEP export requires additional dependencies (e.g. pythonocc-core).")
+            QMessageBox.warning(
+                self,
+                "Export Error",
+                "STEP export requires additional dependencies (e.g. pythonocc-core).",
+            )
         except Exception as e:
             logger.error("STEP export failed: %s", e)
             QMessageBox.critical(self, "Export Error", f"Failed to export STEP: {e}")
@@ -1271,19 +1306,21 @@ Ctrl+6         Tolerancing
         target = self._active_target()
         if not target:
             return
-            
+
         filepath, _ = QFileDialog.getSaveFileName(
-            self, "Export ISO 10110 Drawing", f"{target.name}_drawing.svg", 
-            "SVG Files (*.svg);;All Files (*)"
+            self,
+            "Export ISO 10110 Drawing",
+            f"{target.name}_drawing.svg",
+            "SVG Files (*.svg);;All Files (*)",
         )
-        
+
         if not filepath:
             return
-            
+
         try:
-            
+
             system = self._ensure_system(target)
-                
+
             generator = ISO10110Generator(system)
             generator.generate_svg(filepath)
             self._update_status(f"Exported drawing to: {os.path.basename(filepath)}")
@@ -1296,22 +1333,21 @@ Ctrl+6         Tolerancing
         target = self._active_target()
         if not target:
             return
-            
+
         filepath, _ = QFileDialog.getSaveFileName(
-            self, "Export Report", f"{target.name}_report.txt", 
-            "Text Files (*.txt);;All Files (*)"
+            self, "Export Report", f"{target.name}_report.txt", "Text Files (*.txt);;All Files (*)"
         )
-        
+
         if not filepath:
             return
-            
+
         try:
-            with open(filepath, 'w') as f:
-                f.write(f"OpenLens Design Report\n")
-                f.write(f"======================\n\n")
+            with open(filepath, "w") as f:
+                f.write("OpenLens Design Report\n")
+                f.write("======================\n\n")
                 f.write(f"Name: {target.name}\n")
                 f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-                
+
                 if isinstance(target, Lens):
                     f.write("Type: Single Lens Element\n")
                     f.write(f"Radius 1: {target.radius_of_curvature_1} mm\n")
@@ -1326,7 +1362,7 @@ Ctrl+6         Tolerancing
                         f.write(f"  Position: {elem.position} mm\n")
                         f.write(f"  Thickness: {elem.lens.thickness} mm\n")
                         f.write(f"  Material: {elem.lens.material}\n")
-            
+
             self._update_status(f"Report exported to: {os.path.basename(filepath)}")
         except Exception as e:
             logger.error("Report export failed: %s", e)
@@ -1422,7 +1458,7 @@ Ctrl+6         Tolerancing
 
             def _draw_psf(ax, psf_data):
                 # Apply dark theme to axes if needed
-                if getattr(self, '_theme', 'dark') == 'dark':
+                if getattr(self, "_theme", "dark") == "dark":
                     apply_dark_axis_theme(ax)
                 plot_psf(ax, psf_data)
 
@@ -1467,9 +1503,7 @@ Ctrl+6         Tolerancing
             def _draw_wavefront(ax, wf):
                 plot_wavefront(ax, wf.W)
 
-            self._open_analysis_dialog(
-                "Wavefront Analysis", _compute_wavefront, _draw_wavefront
-            )
+            self._open_analysis_dialog("Wavefront Analysis", _compute_wavefront, _draw_wavefront)
         except ImportError as e:
             _report_missing_plot_dependency(self, e)
         except Exception as e:
@@ -1483,7 +1517,7 @@ Ctrl+6         Tolerancing
         self._lenses.append(lens)
         self._current_lens = lens
         self._current_assembly = None
-        if hasattr(self, '_lens_editor'):
+        if hasattr(self, "_lens_editor"):
             self._lens_editor.load_lens(lens)
         self._update_all_tabs()
 
@@ -1519,8 +1553,7 @@ Ctrl+6         Tolerancing
             action = menu.addAction(lens.name)
             action.setCheckable(True)
             action.setChecked(lens is self._current_lens)
-            action.triggered.connect(
-                lambda checked=False, item=lens: self._set_current_item(item))
+            action.triggered.connect(lambda checked=False, item=lens: self._set_current_item(item))
 
         if self._assemblies:
             menu.addSeparator()
@@ -1531,8 +1564,8 @@ Ctrl+6         Tolerancing
                 action.setCheckable(True)
                 action.setChecked(asm is self._current_assembly)
                 action.triggered.connect(
-                    lambda checked=False, item=asm: self._set_current_item(
-                        item, is_assembly=True))
+                    lambda checked=False, item=asm: self._set_current_item(item, is_assembly=True)
+                )
 
 
 def _configure_logging(verbose: bool = False) -> None:
@@ -1616,7 +1649,7 @@ def main() -> None:
         logger.warning("Could not migrate a legacy material catalog: %s", e)
 
     app = QApplication(sys.argv)
-    app.setStyle('Fusion')
+    app.setStyle("Fusion")
 
     # Set dark theme
     app.setStyleSheet(get_app_stylesheet(DARK))
@@ -1633,18 +1666,17 @@ def main() -> None:
 
     startup = StartupDialog()
     result = startup.exec()
-    
+
     if result == 0:
         return
-    
+
     action, data = startup.get_result()
-    
+
     window = OpenLensWindow(action=action, data=data)
     window.show()
-    
+
     sys.exit(app.exec())
 
 
 if __name__ == "__main__":
     main()
-

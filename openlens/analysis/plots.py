@@ -8,7 +8,6 @@ openlens/analysis/ instead of inline in window code.
 """
 
 import logging
-from typing import List
 
 from ..constants import (
     COLOR_BG_DARK,

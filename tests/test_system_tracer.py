@@ -1,5 +1,4 @@
 import unittest
-import math
 
 from openlens.constants import RAY_EXIT_PROPAGATION_2D_MM
 from openlens.optical_system import OpticalSystem, create_doublet

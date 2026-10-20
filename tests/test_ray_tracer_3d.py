@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from openlens.lens import Lens
 from openlens.ray_tracer import Ray, LensRayTracer, Ray3D, LensRayTracer3D, SystemRayTracer3D
-from openlens.vector3 import Vector3, vec3
+from openlens.vector3 import vec3
 
 
 class TestRayTracer3D(unittest.TestCase):

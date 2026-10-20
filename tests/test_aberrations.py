@@ -343,7 +343,8 @@ class TestAberrationsCalculator(unittest.TestCase):
         field_curv = calc._calculate_field_curvature(focal_length)
 
         # Field curvature (Petzval radius) has same sign as focal length
-        # For positive lens, Petzval surface curves towards the lens (typically positive radius in this convention)
+        # For a positive lens, the Petzval surface curves towards the lens
+        # (typically a positive radius in this convention).
         self.assertGreater(field_curv, 0)
 
     def test_airy_disk_calculation(self):
@@ -505,7 +506,8 @@ class TestAberrationsBehavior(unittest.TestCase):
         results_small = calc_small.calculate_all_aberrations(field_angle_deg=5.0)
         results_large = calc_large.calculate_all_aberrations(field_angle_deg=5.0)
 
-        # Spherical aberration (LSA) scales roughly quadratically with aperture diameter (∝ D^2) for LSA.
+        # Spherical aberration (LSA) scales roughly quadratically with the
+        # aperture diameter (∝ D^2).
         # (Transverse SA scales with D^3, Wavefront error with D^4)
         # Since diameter doubled, LSA should increase by factor of roughly 4.
         ratio = abs(results_large["spherical_aberration"]) / abs(
@@ -589,7 +591,7 @@ class TestAberrationsBehavior(unittest.TestCase):
         self.assertGreaterEqual(len(quality_poor["issues"]), len(quality_good["issues"]))
 
     def test_field_curvature_sign(self):
-        """Test that field curvature has correct sign (Petzval radius has same sign as focal length)"""
+        """Field curvature sign: Petzval radius matches the focal-length sign."""
         lens = Lens(
             name="Test",
             radius_of_curvature_1=100.0,

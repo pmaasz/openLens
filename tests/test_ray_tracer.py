@@ -201,7 +201,7 @@ class TestLensRayTracer(unittest.TestCase):
         tracer = LensRayTracer(self.biconvex)
         rays = tracer.trace_parallel_rays(num_rays=10)
 
-        focal_point = tracer.find_focal_point(rays)
+        tracer.find_focal_point(rays)
 
         # Check that rays were traced (even if focal point calculation has issues)
         self.assertGreater(len(rays), 0)
@@ -219,8 +219,6 @@ class TestLensRayTracer(unittest.TestCase):
         self.assertGreater(len(rays), 0)
 
         # Check initial and final heights exist
-        initial_heights = [ray.path[0][1] for ray in rays]
-        final_heights = [ray.path[-1][1] for ray in rays]
 
         # Verify we have path data
         for ray in rays:

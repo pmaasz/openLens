@@ -28,7 +28,7 @@ try:
     from openlens.__main__ import OpenLensWindow
 
     PYSIDE_AVAILABLE = True
-except ImportError as _pyside_error:  # pragma: no cover - depends on install
+except ImportError:  # pragma: no cover - depends on install
     QApplication = QTest = Qt = None  # type: ignore
     main_window = None  # type: ignore
     OpenLensWindow = None  # type: ignore

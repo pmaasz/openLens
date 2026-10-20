@@ -8,38 +8,40 @@ import sys
 
 # Add the repository root to the path for autodoc. The package is `openlens`,
 # so this is the directory that contains it - not the package directory itself.
-sys.path.insert(0, os.path.abspath('../../..'))
+sys.path.insert(0, os.path.abspath("../../.."))
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
+
 def get_version():
     """Extract version from openlens/__init__.py."""
     conf_dir = os.path.dirname(__file__)
-    init_path = os.path.abspath(os.path.join(conf_dir, '../../../openlens/__init__.py'))
-    with open(init_path, 'r', encoding='utf-8') as f:
+    init_path = os.path.abspath(os.path.join(conf_dir, "../../../openlens/__init__.py"))
+    with open(init_path, "r", encoding="utf-8") as f:
         for line in f:
-            if line.startswith('__version__'):
-                return line.split('=')[1].strip().strip('"').strip("'")
+            if line.startswith("__version__"):
+                return line.split("=")[1].strip().strip('"').strip("'")
     return "0.1.0"
 
-project = 'OpenLens'
-copyright = '2024, OpenLens Contributors'
-author = 'OpenLens Contributors'
+
+project = "OpenLens"
+copyright = "2024, OpenLens Contributors"
+author = "OpenLens Contributors"
 release = get_version()
-version = '.'.join(release.split('.')[:2])
+version = ".".join(release.split(".")[:2])
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.autosummary',
-    'sphinx.ext.napoleon',
-    'sphinx.ext.viewcode',
-    'sphinx.ext.intersphinx',
-    'sphinx.ext.todo',
-    'sphinx.ext.coverage',
+    "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.viewcode",
+    "sphinx.ext.intersphinx",
+    "sphinx.ext.todo",
+    "sphinx.ext.coverage",
 ]
 
 # Napoleon settings for Google-style docstrings
@@ -58,39 +60,39 @@ napoleon_type_aliases = None
 
 # Autodoc settings
 autodoc_default_options = {
-    'members': True,
-    'member-order': 'bysource',
-    'special-members': '__init__',
-    'undoc-members': True,
-    'exclude-members': '__weakref__',
-    'show-inheritance': True,
+    "members": True,
+    "member-order": "bysource",
+    "special-members": "__init__",
+    "undoc-members": True,
+    "exclude-members": "__weakref__",
+    "show-inheritance": True,
 }
-autodoc_typehints = 'description'
-autodoc_mock_imports = ['matplotlib', 'numpy', 'scipy', 'PIL']
+autodoc_typehints = "description"
+autodoc_mock_imports = ["matplotlib", "numpy", "scipy", "PIL"]
 
 # Autosummary settings
 autosummary_generate = True
 
 # Intersphinx mapping
 intersphinx_mapping = {
-    'python': ('https://docs.python.org/3', None),
+    "python": ("https://docs.python.org/3", None),
 }
 
-templates_path = ['_templates']
+templates_path = ["_templates"]
 exclude_patterns = []
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'sphinx_rtd_theme'
-html_static_path = ['_static']
+html_theme = "sphinx_rtd_theme"
+html_static_path = ["_static"]
 
 # Theme options
 html_theme_options = {
-    'navigation_depth': 4,
-    'titles_only': False,
-    'collapse_navigation': False,
-    'sticky_navigation': True,
+    "navigation_depth": 4,
+    "titles_only": False,
+    "collapse_navigation": False,
+    "sticky_navigation": True,
 }
 
 # -- Options for todo extension ----------------------------------------------

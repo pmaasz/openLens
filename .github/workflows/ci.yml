@@ -18,11 +18,11 @@ jobs:
       - name: Install dev deps
         run: pip install -e .[dev]
       - name: Formatting (black)
-        run: black --line-length=100 --exclude 'openlens/__main__\.py' openlens/ tests/ --check
-      - name: Linting (flake8, blocking)
-        # E9/F63/F7/F82 are correctness findings - syntax errors, invalid
-        # asserts/prints and undefined names. These must fail the build.
-        run: flake8 openlens/ tests/ --max-line-length=100 --ignore=E203,W503 --select=E9,F63,F7,F82
+        run: black --line-length=100 openlens/ tests/ --check
+      - name: Linting (flake8)
+        # Full style gate. .flake8 records the deliberate import ordering
+        # (E402) and the black-compatible ignores; everything else must pass.
+        run: flake8 openlens/ tests/
       - name: Linting (ruff, blind excepts)
         # BLE001 keeps new broad `except` handlers out of the library; the
         # boundaries and the #479 burn-down list live in ruff.toml.
@@ -32,18 +32,12 @@ jobs:
         # pre-existing errors; everything else must pass. Remove an entry when
         # that module is clean - never add one to hide a new error.
         run: mypy
-      - name: Linting (flake8, style - advisory)
-        # The remaining ~500 style findings (E402, F401, E501, ...) are
-        # tracked separately; once that cleanup lands this step drops
-        # --exit-zero and becomes the blocking gate.
-        run: flake8 openlens/ tests/ --max-line-length=100 --ignore=E203,W503 --exit-zero
       - name: Pre-commit hooks
-        # Advisory for now: the whitespace/file-ending hooks still flag
-        # pre-existing files, so the run would fail for unrelated reasons.
+        # Blocking: the whitespace/file-ending hooks are clean, and flake8
+        # reads .flake8 instead of having its ignores overridden on the CLI.
         uses: pre-commit/action@v3.0.1
         with:
           extra_args: --all-files
-        continue-on-error: true
 
   test:
     name: Test (py${{ matrix.python-version }})

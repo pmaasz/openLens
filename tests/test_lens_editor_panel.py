@@ -24,7 +24,7 @@ try:
     from openlens.lens import Lens
 
     PYSIDE_AVAILABLE = True
-except ImportError as _pyside_error:  # pragma: no cover - depends on install
+except ImportError:  # pragma: no cover - depends on install
     QApplication = QGroupBox = QScrollArea = None  # type: ignore
     LensEditorWidget = Lens = None  # type: ignore
     PYSIDE_AVAILABLE = False

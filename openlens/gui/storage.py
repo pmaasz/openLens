@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 from ..lens import Lens
 from ..optical_system import OpticalSystem
-from ..database import DatabaseManager, LensInUseError
+from ..database import DatabaseManager
 from ..paths import resolve_db_path
 
 

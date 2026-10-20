@@ -1,8 +1,8 @@
 # OpenLens Testing Guide
 
 > **Note**: This content has been migrated to Sphinx documentation.
-> For the most up-to-date version, please see the Testing section in 
-> `docs/sphinx/source/contributing.rst` or build the Sphinx documentation 
+> For the most up-to-date version, please see the Testing section in
+> `docs/sphinx/source/contributing.rst` or build the Sphinx documentation
 > with `cd docs/sphinx && make html`.
 
 This document describes the functional tests for the OpenLens application.
@@ -155,12 +155,12 @@ class TestNewFeature(unittest.TestCase):
         """Set up test fixtures"""
         # Initialize test data
         pass
-    
+
     def tearDown(self):
         """Clean up after tests"""
         # Remove temporary files
         pass
-    
+
     def test_feature_behavior(self):
         """Test description"""
         # Arrange

@@ -399,11 +399,20 @@ class PerformanceTab(BaseTab):
                     )
                     if chromatic.get("bfl_d") is not None:
                         bfl_F = chromatic.get("bfl_F")
-                        chromatic_text += f"  BFL (F=486nm): {f'{bfl_F:.3f}' if bfl_F is not None else 'N/A'} mm\n"
+                        chromatic_text += (
+                            f"  BFL (F=486nm): "
+                            f"{f'{bfl_F:.3f}' if bfl_F is not None else 'N/A'} mm\n"
+                        )
                         bfl_d = chromatic.get("bfl_d")
-                        chromatic_text += f"  BFL (d=587nm): {f'{bfl_d:.3f}' if bfl_d is not None else 'N/A'} mm\n"
+                        chromatic_text += (
+                            f"  BFL (d=587nm): "
+                            f"{f'{bfl_d:.3f}' if bfl_d is not None else 'N/A'} mm\n"
+                        )
                         bfl_C = chromatic.get("bfl_C")
-                        chromatic_text += f"  BFL (C=656nm): {f'{bfl_C:.3f}' if bfl_C is not None else 'N/A'} mm\n"
+                        chromatic_text += (
+                            f"  BFL (C=656nm): "
+                            f"{f'{bfl_C:.3f}' if bfl_C is not None else 'N/A'} mm\n"
+                        )
 
             # Surface the calculator's own validity verdict, so a value that
             # could not be measured is visibly absent rather than silently 0.

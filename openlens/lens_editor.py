@@ -158,7 +158,7 @@ class LensManager:
         self.lenses.append(lens)
         self.save_lenses()
 
-        print(f"\n✓ Lens created successfully!")
+        print("\n✓ Lens created successfully!")
         print(lens)
         return lens
 
@@ -286,7 +286,7 @@ class LensManager:
             lens.modified_at = datetime.now().isoformat()
             self.save_lenses()
 
-            print(f"\n✓ Lens updated successfully!")
+            print("\n✓ Lens updated successfully!")
             print(lens)
 
         except (ValueError, IndexError):
@@ -350,7 +350,7 @@ class LensManager:
 
                 self.lenses.pop(idx - 1)
                 self.save_lenses()
-                print(f"✓ Lens deleted successfully!")
+                print("✓ Lens deleted successfully!")
             else:
                 print("Deletion cancelled.")
 

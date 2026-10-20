@@ -4,7 +4,7 @@ import math
 try:
     import numpy as np
     from openlens.ray_tracer import Ray3D, HAS_POLARIZATION
-    from openlens.vector3 import vec3, Vector3
+    from openlens.vector3 import vec3
     from openlens.polarization import PolarizationCalculator
 
     HAS_NUMPY = True
@@ -101,7 +101,6 @@ class TestPolarizationRayTracing(unittest.TestCase):
 
         # Normal incidence
         incident_dir = vec3(0, -1, 0)
-        s_vec = vec3(0, 0, 1)  # Arbitrary s
 
         pol_array = np.array([0, 0, 1], dtype=complex)  # s-polarized
 

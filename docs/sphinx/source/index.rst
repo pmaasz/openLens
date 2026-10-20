@@ -1,8 +1,8 @@
 OpenLens Documentation
 ======================
 
-OpenLens is an interactive optical lens design and simulation tool for single 
-glass lens elements. It provides a comprehensive GUI for designing, analyzing, 
+OpenLens is an interactive optical lens design and simulation tool for single
+glass lens elements. It provides a comprehensive GUI for designing, analyzing,
 and simulating optical lenses.
 
 .. toctree::

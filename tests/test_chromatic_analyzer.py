@@ -7,8 +7,7 @@ Tests wavelength-dependent calculations and chromatic aberration analysis
 import unittest
 
 from openlens.chromatic_analyzer import ChromaticAnalyzer, ChromaticResult
-from openlens.material_database import MaterialDatabase, MaterialProperties
-import math
+from openlens.material_database import MaterialDatabase
 
 
 class TestChromaticAnalyzer(unittest.TestCase):

@@ -3,7 +3,7 @@
 > **Note**: This content has been replaced by auto-generated Sphinx documentation.
 > For the most up-to-date API reference, please see `docs/sphinx/source/api/`
 > or build the Sphinx documentation with `cd docs/sphinx && make html`.
-> 
+>
 > The Sphinx documentation uses autodoc to generate API documentation directly
 > from the source code docstrings, ensuring accuracy and up-to-date information.
 
@@ -744,7 +744,7 @@ focal_point = tracer.find_focal_point(rays)
 if focal_point is not None:
     print(f"Focal point: {focal_point[0]:.2f} mm")
     print(f"Calculated focal length: {lens.calculate_focal_length():.2f} mm")
-    
+
     # Calculate spot size at focus
     spot_size = 0
     for ray in rays:
@@ -895,7 +895,7 @@ rays = tracer.trace_parallel_rays()
 
 if not rays:
     print("Warning: No rays successfully traced")
-    
+
 focal_point = tracer.find_focal_point(rays)
 if focal_point is None:
     print("Warning: Could not determine focal point")

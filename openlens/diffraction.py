@@ -509,7 +509,8 @@ class DiffractionCalculator:
         plt.xlabel("Radius (μm)")
         plt.ylabel("Normalized Intensity")
         plt.title(
-            f"Airy Diffraction Pattern\n(f={focal_length}mm, D={aperture_diameter}mm, λ={self.wavelength*1e9:.0f}nm)"
+            f"Airy Diffraction Pattern\n(f={focal_length}mm, D={aperture_diameter}mm, "
+            f"λ={self.wavelength*1e9:.0f}nm)"
         )
         plt.grid(True, alpha=0.3)
         plt.legend()
@@ -572,7 +573,8 @@ class DiffractionCalculator:
         ax2.legend()
 
         plt.suptitle(
-            f"Point Spread Function Analysis\n(f={focal_length}mm, D={aperture_diameter}mm, λ={self.wavelength*1e9:.0f}nm)"
+            f"Point Spread Function Analysis\n(f={focal_length}mm, "
+            f"D={aperture_diameter}mm, λ={self.wavelength*1e9:.0f}nm)"
         )
         plt.tight_layout()
 
@@ -633,7 +635,8 @@ class DiffractionCalculator:
         plt.xlabel("Radius (μm)")
         plt.ylabel("Encircled Energy (%)")
         plt.title(
-            f"Encircled Energy Curve\n(f={focal_length}mm, D={aperture_diameter}mm, λ={self.wavelength*1e9:.0f}nm)"
+            f"Encircled Energy Curve\n(f={focal_length}mm, D={aperture_diameter}mm, "
+            f"λ={self.wavelength*1e9:.0f}nm)"
         )
         plt.grid(True, alpha=0.3)
         plt.legend()

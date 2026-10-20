@@ -281,7 +281,7 @@ radius_of_curvature = 50.0
 # Use 4 spaces for indentation (no tabs)
 
 # Good:
-def calculate_focal_length(radius1, radius2, thickness, 
+def calculate_focal_length(radius1, radius2, thickness,
                           refractive_index):
     """Calculate focal length using lensmaker's equation."""
     power = (refractive_index - 1) * (1/radius1 - 1/radius2)
@@ -299,16 +299,16 @@ def calculate_focal_length(radius1,radius2,thickness,refractive_index):
 def calculate_optical_power(focal_length):
     """
     Calculate optical power in diopters.
-    
+
     Args:
         focal_length (float): Focal length in millimeters
-    
+
     Returns:
         float: Optical power in diopters (D)
-    
+
     Raises:
         ValueError: If focal_length is zero
-    
+
     Example:
         >>> power = calculate_optical_power(100.0)
         >>> print(f"{power:.2f} D")
@@ -388,23 +388,23 @@ if __name__ == "__main__":
 ```python
 class Lens:
     """A single optical lens element."""
-    
+
     def __init__(self, name, radius1, radius2):
         """Initialize lens with parameters."""
         # Public attributes
         self.name = name
         self.radius1 = radius1
         self.radius2 = radius2
-        
+
         # Private attributes
         self._cached_focal_length = None
-    
+
     def calculate_focal_length(self):
         """Calculate and cache focal length."""
         if self._cached_focal_length is None:
             self._cached_focal_length = self._compute_focal_length()
         return self._cached_focal_length
-    
+
     def _compute_focal_length(self):
         """Internal calculation method."""
         # Implementation
@@ -452,7 +452,7 @@ from lens_editor import Lens
 
 class TestLensCalculations(unittest.TestCase):
     """Test focal length calculations."""
-    
+
     def setUp(self):
         """Set up test fixtures."""
         self.lens = Lens(
@@ -461,19 +461,19 @@ class TestLensCalculations(unittest.TestCase):
             radius_of_curvature_2=-100.0,
             thickness=5.0
         )
-    
+
     def test_biconvex_focal_length(self):
         """Test focal length for biconvex lens."""
         focal_length = self.lens.calculate_focal_length()
         self.assertAlmostEqual(focal_length, 97.58, places=2)
-    
+
     def test_negative_radius_raises_no_error(self):
         """Test that negative radius is valid."""
         lens = Lens(radius_of_curvature_1=-50.0)
         # Should not raise exception
         focal_length = lens.calculate_focal_length()
         self.assertIsNotNone(focal_length)
-    
+
     def tearDown(self):
         """Clean up after tests."""
         pass
@@ -572,14 +572,14 @@ through optical elements using Snell's law and vector mathematics.
 class RayTracer:
     """
     Trace rays through optical systems.
-    
+
     The RayTracer class handles ray propagation through lenses,
     applying physical laws of refraction and reflection.
-    
+
     Attributes:
         lens (Lens): The lens to trace rays through
         wavelength (float): Wavelength of light in nm
-    
+
     Example:
         >>> tracer = RayTracer(my_lens)
         >>> rays = tracer.trace_parallel_rays(num_rays=21)
@@ -589,13 +589,13 @@ class RayTracer:
 def trace_ray(self, ray):
     """
     Trace a single ray through the lens.
-    
+
     Args:
         ray (Ray): Initial ray to trace
-    
+
     Returns:
         Ray: Ray with updated path after tracing
-    
+
     Raises:
         ValueError: If ray direction is not normalized
     """
@@ -734,7 +734,7 @@ Describe the tests you ran
 ### After Merge
 
 - **Delete branch**: Clean up your feature branch
-- **Update local**: 
+- **Update local**:
   ```bash
   git checkout main
   git pull upstream main
@@ -903,7 +903,7 @@ chore: Maintenance tasks
 # Examples:
 feat: Add spherical aberration calculator
 
-Implements Seidel spherical aberration calculation using 
+Implements Seidel spherical aberration calculation using
 surface contributions and ray height analysis.
 
 Closes #45
@@ -1018,6 +1018,6 @@ Your contributions make openlens better for everyone. Whether you're fixing a ty
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** February 2026  
+**Document Version:** 1.0
+**Last Updated:** February 2026
 **Maintained by:** openlens Development Team

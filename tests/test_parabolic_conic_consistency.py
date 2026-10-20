@@ -84,7 +84,6 @@ class TestHitLiesOnTheNormalsConic(unittest.TestCase):
 
     def test_the_a_used_equals_the_a_the_normal_uses(self):
         lens = _parabolic(clear_aperture=10.0)
-        tracer = LensRayTracer(lens)
         self.assertAlmostEqual(
             _conic_a(lens),
             lens.parabolic_sag_1 / ((lens.diameter / 2.0) ** 2),

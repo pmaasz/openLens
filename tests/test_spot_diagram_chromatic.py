@@ -1,3 +1,4 @@
+import importlib.util
 import unittest
 import sys
 import os
@@ -11,12 +12,7 @@ from openlens.analysis import SpotDiagram
 from openlens.constants import WAVELENGTH_F_LINE, WAVELENGTH_D_LINE, WAVELENGTH_C_LINE
 
 # Mock material database for testing
-try:
-    from openlens.material_database import get_material_database
-
-    HAS_DB = True
-except ImportError:
-    HAS_DB = False
+HAS_DB = importlib.util.find_spec("openlens.material_database") is not None
 
 
 class TestSpotDiagramChromatic(unittest.TestCase):
@@ -62,11 +58,13 @@ class TestSpotDiagramChromatic(unittest.TestCase):
         res_F = self.analyzer.trace_spot(wavelength_nm=WAVELENGTH_F_LINE, num_rings=3)
         res_C = self.analyzer.trace_spot(wavelength_nm=WAVELENGTH_C_LINE, num_rings=3)
 
-        # If dispersion is working, the focal points (and thus spot sizes at a fixed plane) should differ
+        # If dispersion is working, the focal points (and thus spot sizes at a
+        # fixed plane) should differ.
         # Or specifically, the rays should have different paths.
 
         # Let's check the ray endpoints relative to paraxial focus of d-line
-        # trace_spot automatically finds the "best" focus for that wavelength if image_plane_x is None.
+        # trace_spot automatically finds the "best" focus for that wavelength
+        # if image_plane_x is None.
         # So image_plane_x should differ due to longitudinal chromatic aberration.
 
         plane_F = res_F["image_plane_x"]

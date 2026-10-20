@@ -28,7 +28,6 @@ except ImportError as _e:
     PYSIDE_AVAILABLE = False
     _PYSIDE_ERROR = _e
 
-from openlens.lens import Lens
 
 if not PYSIDE_AVAILABLE:
 

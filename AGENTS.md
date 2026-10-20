@@ -67,7 +67,7 @@ pytest -n auto tests/
 ### Linting
 ```bash
 pre-commit run --all-files    # Run all pre-commit hooks
-black --exclude 'openlens/__main__.py' openlens/ tests/ --check   # Check formatting (entry module is pre-existing, unformatted)
+black openlens/ tests/ --check   # Check formatting
 flake8 openlens/ tests/            # Run linter
 ```
 

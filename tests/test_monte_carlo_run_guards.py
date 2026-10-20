@@ -135,7 +135,7 @@ class TestTraceFailureDoesNotAbortTheRun(unittest.TestCase):
     def test_results_are_never_vacuously_perfect(self):
         _BoomSpotDiagram.install(fail_after=1, test=self)
         analyzer = MonteCarloAnalyzer(_system(), _ops(), seed=1)
-        stats = analyzer.run(num_trials=4)
+        analyzer.run(num_trials=4)
         for result in analyzer.results:
             self.assertFalse(result["passed"])
 

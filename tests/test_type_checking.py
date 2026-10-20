@@ -61,7 +61,7 @@ class TestMyPyConfiguration(unittest.TestCase):
 class TestTheGateRuns(unittest.TestCase):
     def test_the_dev_extra_installs_mypy(self):
         setup_py = SETUP_PY.read_text(encoding="utf-8")
-        dev_extra = re.search(r"'dev':\s*\[(.*?)\n\s*\],", setup_py, re.DOTALL)
+        dev_extra = re.search(r"['\"]dev['\"]:\s*\[(.*?)\n\s*\],", setup_py, re.DOTALL)
         self.assertIsNotNone(dev_extra, "no dev extras block in setup.py")
         self.assertIn("mypy==", dev_extra.group(1))
 

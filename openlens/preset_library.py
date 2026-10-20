@@ -8,8 +8,7 @@ import uuid
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 
-from .constants import LARGE_NUMBER
-from .lens import Lens, _is_flat
+from .lens import Lens
 
 #: Radius marking a flat surface.
 #:
