@@ -639,6 +639,10 @@ class OpenLensWindow(QMainWindow):
 
     def _show_assembly_editor(self, show: bool = True) -> None:
         """Show/hide assembly editor tab"""
+        if show and hasattr(self, "_lens_editor"):
+            # Undo targets lens properties; with an assembly active the lens
+            # editor is hidden, so a stale history must not mutate it unseen.
+            self._lens_editor.undo_stack.clear()
         if hasattr(self, "_assembly_tab_index"):
             self._editor_tabs.setTabVisible(self._assembly_tab_index, show)
 
@@ -671,6 +675,15 @@ class OpenLensWindow(QMainWindow):
 
         # Edit menu
         edit_menu = menubar.addMenu("Edit")
+        # The actions stay bound to the editor's stack, so their enabled state
+        # and text ("Undo Edit radius of curvature 1") track the history.
+        self._undo_action = self._lens_editor.undo_stack.createUndoAction(self, "Undo")
+        self._undo_action.setShortcut(QKeySequence.Undo)
+        self._redo_action = self._lens_editor.undo_stack.createRedoAction(self, "Redo")
+        self._redo_action.setShortcut(QKeySequence.Redo)
+        edit_menu.addAction(self._undo_action)
+        edit_menu.addAction(self._redo_action)
+        edit_menu.addSeparator()
         edit_menu.addAction(
             "Delete Lens", self._confirm_and_delete_lens, QKeySequence("Ctrl+Delete")
         )
