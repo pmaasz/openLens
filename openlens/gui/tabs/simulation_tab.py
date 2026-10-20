@@ -22,7 +22,13 @@ from PySide6.QtCore import Qt
 
 from .base_tab import BaseTab
 from ..widgets.simulation_viz import SimulationVisualizationWidget
-from ...constants import WAVELENGTH_GREEN, WAVELENGTH_PRESETS
+from ...analysis.environmental import EnvironmentalAnalyzer
+from ...constants import (
+    ABSOLUTE_ZERO_C,
+    DEFAULT_TEMPERATURE,
+    WAVELENGTH_GREEN,
+    WAVELENGTH_PRESETS,
+)
 
 #: The wavelengths offered in the picker, as ``(nm, label)``. Both the numbers
 #: and their order come from ``constants.WAVELENGTH_PRESETS``, so the
@@ -109,6 +115,23 @@ class SimulationTab(BaseTab):
 
         controls_layout.addWidget(source_group)
 
+        # Environment: applied to a temporary copy for each run, so the stored
+        # lens/assembly keeps its nominal 20 °C geometry and index.
+        environment_group = QGroupBox("Environment")
+        environment_layout = QFormLayout(environment_group)
+        self._sim_temperature = QDoubleSpinBox()
+        self._sim_temperature.setRange(ABSOLUTE_ZERO_C, 200.0)
+        self._sim_temperature.setDecimals(2)
+        self._sim_temperature.setSingleStep(5.0)
+        self._sim_temperature.setValue(DEFAULT_TEMPERATURE)
+        self._sim_temperature.setSuffix(" °C")
+        self._sim_temperature.setToolTip(
+            f"Operating temperature in Celsius. The lower limit is 0 K "
+            f"({ABSOLUTE_ZERO_C:g} °C)."
+        )
+        environment_layout.addRow("Temperature:", self._sim_temperature)
+        controls_layout.addWidget(environment_group)
+
         # Selected wavelengths: the picker above chooses one, Add appends it
         # here, and the simulation traces every entry.
         wavelength_group = QGroupBox("Wavelengths")
@@ -182,9 +205,12 @@ class SimulationTab(BaseTab):
             angle = self._sim_angle.value()
             source_height = self._sim_source_height.value()
             show_ghosts = self._ghost_analysis.isChecked()
+            conditioned = EnvironmentalAnalyzer.condition_at_temperature(
+                active_system, self._sim_temperature.value()
+            )
 
             self._sim_viz.run_simulation(
-                active_system,
+                conditioned,
                 num_rays,
                 angle,
                 source_height,

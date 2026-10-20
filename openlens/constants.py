@@ -75,6 +75,7 @@ DEFAULT_THICKNESS = 5.0
 DEFAULT_DIAMETER = 40.0
 DEFAULT_PROPAGATION_DISTANCE = 100.0  # mm — free-space propagation before first surface
 DEFAULT_TEMPERATURE = 20.0  # degrees Celsius
+ABSOLUTE_ZERO_C = -273.15  # 0 K; temperatures are always Celsius in the UI
 
 # ==================== Ray Tracing Constants ====================
 
