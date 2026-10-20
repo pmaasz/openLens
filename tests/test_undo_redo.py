@@ -61,6 +61,20 @@ class TestLensEditorUndo(unittest.TestCase):
         self.assertEqual(self.lens.radius_of_curvature_1, 150.0)
         self.assertEqual(self.editor._r1_input.value(), 150.0)
 
+    def test_a_conic_edit_can_be_undone_and_redone(self):
+        self.editor._conic1_input.setValue(-0.5)
+
+        self.assertEqual(self.lens.conic_constant_1, -0.5)
+        self.assertTrue(self.editor.undo_stack.canUndo())
+
+        self.editor.undo_stack.undo()
+        self.assertEqual(self.lens.conic_constant_1, 0.0)
+        self.assertEqual(self.editor._conic1_input.value(), 0.0)
+
+        self.editor.undo_stack.redo()
+        self.assertEqual(self.lens.conic_constant_1, -0.5)
+        self.assertEqual(self.editor._conic1_input.value(), -0.5)
+
     def test_consecutive_name_edits_merge_into_one_command(self):
         self.editor._name_input.setText("N")
         self.editor._name_input.setText("Ne")

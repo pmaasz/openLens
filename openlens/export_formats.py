@@ -16,6 +16,7 @@ from .optical_system import OpticalSystem
 from .atomic import atomic_write_text
 from .constants import (
     DEFAULT_MATERIAL_INDICES,
+    EPSILON,
     MAX_RADIUS_OF_CURVATURE,
     REFRACTIVE_INDEX_BK7,
 )
@@ -72,8 +73,9 @@ class ZemaxExporter:
             # A parabolic surface is CONI -1 at its vertex radius, not a
             # standard sphere at the nominal radius.
             f.write(f"  CURV {_zemax_curv(lens.get_effective_radius_1())}\n")
-            if lens.is_parabolic_1:
-                f.write("  CONI -1\n")
+            conic = _zemax_conic(lens.is_parabolic_1, lens.conic_constant_1)
+            if conic is not None:
+                f.write(f"  CONI {conic:g}\n")
             f.write(f"  DISZ {lens.thickness}\n")
             f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_1())}\n")
             f.write(f"  GLAS {_zemax_material(lens.material)}\n")
@@ -86,8 +88,9 @@ class ZemaxExporter:
             f.write("SURF 2\n")
             f.write("  TYPE STANDARD\n")
             f.write(f"  CURV {_zemax_curv(lens.get_effective_radius_2())}\n")
-            if lens.is_parabolic_2:
-                f.write("  CONI -1\n")
+            conic = _zemax_conic(lens.is_parabolic_2, lens.conic_constant_2)
+            if conic is not None:
+                f.write(f"  CONI {conic:g}\n")
             f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_2())}\n")
             coat2 = lens.coating_label(2)
             if coat2 != "Uncoated":
@@ -671,6 +674,15 @@ def _zemax_curv(radius: float) -> str:
     return f"{1.0 / radius}"
 
 
+def _zemax_conic(is_parabolic: bool, conic_constant: float) -> Optional[float]:
+    """CONI value for a surface, or None when it is spherical."""
+    if is_parabolic:
+        return -1.0
+    if abs(conic_constant) > EPSILON:
+        return conic_constant
+    return None
+
+
 def _zemax_material(material: str) -> str:
     """Render a material name as a single .zmx GLAS argument.
 
@@ -733,8 +745,9 @@ class ZemaxSystemExporter:
                 f.write(f"SURF {surf}\n")
                 f.write("  TYPE STANDARD\n")
                 f.write(f"  CURV {_zemax_curv(lens.get_effective_radius_1())}\n")
-                if lens.is_parabolic_1:
-                    f.write("  CONI -1\n")
+                conic = _zemax_conic(lens.is_parabolic_1, lens.conic_constant_1)
+                if conic is not None:
+                    f.write(f"  CONI {conic:g}\n")
                 f.write(f"  DISZ {lens.thickness}\n")
                 f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_1())}\n")
                 f.write(f"  GLAS {_zemax_material(lens.material)}\n")
@@ -758,8 +771,9 @@ class ZemaxSystemExporter:
                 f.write(f"SURF {surf}\n")
                 f.write("  TYPE STANDARD\n")
                 f.write(f"  CURV {_zemax_curv(lens.get_effective_radius_2())}\n")
-                if lens.is_parabolic_2:
-                    f.write("  CONI -1\n")
+                conic = _zemax_conic(lens.is_parabolic_2, lens.conic_constant_2)
+                if conic is not None:
+                    f.write(f"  CONI {conic:g}\n")
                 f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_2())}\n")
                 coat = lens.coating_label(2)
                 if coat != "Uncoated":
@@ -911,6 +925,8 @@ class ZemaxSystemImporter:
                 thickness=thickness,
                 diameter=diameter,
                 refractive_index=n,
+                conic_constant_1=conic1,
+                conic_constant_2=conic2,
             )
             # Clear apertures are relative to the diameter, so they can only be
             # checked once the diameter itself has been accepted.
@@ -943,6 +959,8 @@ class ZemaxSystemImporter:
             parabolic_sag_1=sag_1,
             is_parabolic_2=is_parabolic_2,
             parabolic_sag_2=sag_2,
+            conic_constant_1=conic1,
+            conic_constant_2=conic2,
         )
 
     @staticmethod

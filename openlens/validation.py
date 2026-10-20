@@ -592,6 +592,46 @@ def safe_float_conversion(
     return False, default
 
 
+def validate_conic_constant(conic_constant: float, param_name: str = "conic constant") -> float:
+    """Validate a conic constant.
+
+    The optical range of interest is small, but hyperbolic surfaces are
+    commonly written with values below -1.  Keep a generous finite bound so
+    a typo still fails loudly without rejecting unusual prescriptions.
+
+    Args:
+        conic_constant: Conic constant (K).
+        param_name: Parameter name for error messages.
+
+    Returns:
+        The validated conic constant.
+
+    Raises:
+        ValidationError: If the value is not finite or outside [-100, 100].
+    """
+    value = _validate_number(conic_constant, param_name)
+    if value < -100.0 or value > 100.0:
+        raise ValidationError(f"{param_name} must be between -100 and 100, got {value}")
+    return value
+
+
+def _validate_conic_aperture(
+    radius: float, conic_constant: float, semi_aperture: float, param_name: str
+) -> None:
+    """Reject a conic whose square root is imaginary at the polished rim."""
+    if abs(conic_constant) <= EPSILON or conic_constant <= -1.0:
+        return
+    if not math.isfinite(radius) or abs(radius) < EPSILON:
+        return
+    limit = 1.0 / (abs(1.0 / radius) * math.sqrt(1.0 + conic_constant))
+    if semi_aperture > limit + EPSILON:
+        raise ValidationError(
+            f"{param_name} has no real surface at {semi_aperture:.3f}mm "
+            f"(K={conic_constant}, limit {limit:.3f}mm). Reduce the aperture "
+            "or use a less oblate conic."
+        )
+
+
 def validate_lens_parameters(
     radius1: float,
     radius2: float,
@@ -604,6 +644,8 @@ def validate_lens_parameters(
     parabolic_sag_2: float = 0.0,
     clear_aperture_1: Optional[float] = None,
     clear_aperture_2: Optional[float] = None,
+    conic_constant_1: float = 0.0,
+    conic_constant_2: float = 0.0,
 ) -> dict:
     """
     Validate all lens parameters at once.
@@ -620,6 +662,8 @@ def validate_lens_parameters(
         parabolic_sag_2: Back parabolic sag at D/2 (mm)
         clear_aperture_1: Front clear aperture diameter (mm), or None
         clear_aperture_2: Back clear aperture diameter (mm), or None
+        conic_constant_1: Front conic constant K (0 = sphere, -1 = parabola)
+        conic_constant_2: Back conic constant K
 
     Returns:
         dict: Dictionary of validated parameters
@@ -629,6 +673,8 @@ def validate_lens_parameters(
     """
     validated_diameter = validate_diameter(diameter)
     validated_thickness = validate_thickness(thickness)
+    validated_radius1 = validate_radius(radius1, allow_negative=True, param_name="R1")
+    validated_radius2 = validate_radius(radius2, allow_negative=True, param_name="R2")
     # The clear apertures used to be accepted as arguments, documented in the
     # docstring, and then silently dropped: neither validated nor returned. So
     # a -5 mm front aperture or a 1e9 mm rear one passed through this function
@@ -651,9 +697,21 @@ def validate_lens_parameters(
         sag_2 = validate_parabolic_sag(
             sag_2, validated_diameter, validated_thickness, "parabolic sag 2"
         )
+
+    conic_1 = validate_conic_constant(conic_constant_1, "conic constant 1")
+    conic_2 = validate_conic_constant(conic_constant_2, "conic constant 2")
+    semi_aperture = validated_diameter / 2.0
+    for clear_aperture in (clear_aperture_1, clear_aperture_2):
+        if clear_aperture is not None:
+            semi_aperture = min(semi_aperture, clear_aperture / 2.0)
+    if not is_parabolic_1:
+        _validate_conic_aperture(validated_radius1, conic_1, semi_aperture, "conic surface 1")
+    if not is_parabolic_2:
+        _validate_conic_aperture(validated_radius2, conic_2, semi_aperture, "conic surface 2")
+
     return {
-        "radius1": validate_radius(radius1, allow_negative=True, param_name="R1"),
-        "radius2": validate_radius(radius2, allow_negative=True, param_name="R2"),
+        "radius1": validated_radius1,
+        "radius2": validated_radius2,
         "thickness": validated_thickness,
         "diameter": validated_diameter,
         "refractive_index": validate_refractive_index(refractive_index),
@@ -663,6 +721,8 @@ def validate_lens_parameters(
         "parabolic_sag_2": sag_2,
         "clear_aperture_1": clear_aperture_1,
         "clear_aperture_2": clear_aperture_2,
+        "conic_constant_1": conic_1,
+        "conic_constant_2": conic_2,
     }
 
 
@@ -677,6 +737,8 @@ def check_physical_feasibility(
     parabolic_sag_2: float = 0.0,
     clear_aperture_1: Optional[float] = None,
     clear_aperture_2: Optional[float] = None,
+    conic_constant_1: float = 0.0,
+    conic_constant_2: float = 0.0,
 ) -> Tuple[bool, Optional[str]]:
     """
     Check if lens parameters are physically feasible.
@@ -694,6 +756,8 @@ def check_physical_feasibility(
             at the radius the lens is actually polished to rather than at
             diameter/2 - see Lens.get_manufacturing_radius.
         clear_aperture_2: Back clear aperture diameter (mm), or None
+        conic_constant_1: Front conic constant K
+        conic_constant_2: Back conic constant K
 
     Returns:
         Tuple[bool, Optional[str]]: (is_feasible, warning_message)
@@ -719,6 +783,8 @@ def check_physical_feasibility(
             parabolic_sag_1=parabolic_sag_1,
             is_parabolic_2=is_parabolic_2,
             parabolic_sag_2=parabolic_sag_2,
+            conic_constant_1=conic_constant_1,
+            conic_constant_2=conic_constant_2,
             clear_aperture_1=clear_aperture_1,
             clear_aperture_2=clear_aperture_2,
         )

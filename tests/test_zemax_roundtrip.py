@@ -1,5 +1,6 @@
 """Tests for full-system Zemax export/import (todo item 7)."""
 
+import math
 import os
 import tempfile
 import unittest
@@ -466,3 +467,81 @@ class TestZemaxMaterialsWithSpaces(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestZemaxConicSurfaces(unittest.TestCase):
+    """#74: non-parabolic CONI values must survive an import/export round-trip."""
+
+    def test_import_preserves_a_non_parabolic_conic_constant(self):
+        text = _singlet_zmx().replace(
+            "  CURV 0.02\n  DISZ 5.0\n", "  CURV 0.02\n  CONI -0.5\n  DISZ 5.0\n"
+        )
+        rebuilt = _import_text(text)
+        lens = rebuilt.elements[0].lens
+
+        self.assertFalse(lens.is_parabolic_1)
+        self.assertAlmostEqual(lens.conic_constant_1, -0.5)
+        expected = 2.0 / (1.0 + math.sqrt(1.0 - 0.5 * (0.02 * 10.0) ** 2))
+        self.assertAlmostEqual(lens.get_sag_1(10.0), expected, places=4)
+
+    def test_export_writes_a_non_parabolic_conic_constant(self):
+        lens = Lens(
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=-50.0,
+            thickness=5.0,
+            diameter=20.0,
+            conic_constant_1=-0.5,
+        )
+        tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+        tmp.close()
+        try:
+            ZemaxExporter.export_lens(lens, tmp.name)
+            with open(tmp.name) as f:
+                content = f.read()
+        finally:
+            os.unlink(tmp.name)
+
+        self.assertIn("CONI -0.5", content)
+
+    def test_system_export_writes_conic_constants(self):
+        system = OpticalSystem(name="Conic system")
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=20.0,
+                conic_constant_1=-0.5,
+                conic_constant_2=0.25,
+            )
+        )
+        path = _export_path(system)
+        try:
+            with open(path) as f:
+                content = f.read()
+        finally:
+            os.unlink(path)
+
+        self.assertIn("CONI -0.5", content)
+        self.assertIn("CONI 0.25", content)
+
+    def test_conic_round_trips_through_zemax(self):
+        lens = Lens(
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=-50.0,
+            thickness=5.0,
+            diameter=20.0,
+            conic_constant_1=-0.5,
+            conic_constant_2=1.0,
+        )
+        tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+        tmp.close()
+        try:
+            ZemaxExporter.export_lens(lens, tmp.name)
+            rebuilt = ZemaxSystemImporter.import_system(tmp.name)
+        finally:
+            os.unlink(tmp.name)
+
+        rebuilt_lens = rebuilt.elements[0].lens
+        self.assertAlmostEqual(rebuilt_lens.conic_constant_1, -0.5)
+        self.assertAlmostEqual(rebuilt_lens.conic_constant_2, 1.0)

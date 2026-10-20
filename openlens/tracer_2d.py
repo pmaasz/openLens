@@ -74,6 +74,8 @@ class LensRayTracer:
         self.is_parabolic_2 = bool(lens.is_parabolic_2)
         self.parabolic_sag_1 = float(lens.parabolic_sag_1)
         self.parabolic_sag_2 = float(lens.parabolic_sag_2)
+        self.conic_constant_1 = float(getattr(lens, "conic_constant_1", 0.0))
+        self.conic_constant_2 = float(getattr(lens, "conic_constant_2", 0.0))
         self.is_fresnel = bool(getattr(lens, "is_fresnel", False))
         self.fresnel_facets_1 = LensGeometry.fresnel_facets(lens, 1)
         self.fresnel_facets_2 = LensGeometry.fresnel_facets(lens, 2)
@@ -90,28 +92,59 @@ class LensRayTracer:
         if self.is_parabolic_1 and abs(self.parabolic_sag_1) > EPSILON:
             self.front_is_flat = False
             self.front_is_parabolic = True
+            self.front_is_conic = False
             self.front_center_x = self.front_vertex_x  # not used
         elif _is_flat(self.R1):
             self.front_center_x = self.front_vertex_x
             self.front_is_flat = True
             self.front_is_parabolic = False
+            self.front_is_conic = False
+        elif abs(self.conic_constant_1) > EPSILON:
+            self.front_center_x = self.front_vertex_x
+            self.front_is_flat = False
+            self.front_is_parabolic = False
+            self.front_is_conic = True
         else:
             self.front_center_x = self.front_vertex_x + self.R1
             self.front_is_flat = False
             self.front_is_parabolic = False
+            self.front_is_conic = False
 
         if self.is_parabolic_2 and abs(self.parabolic_sag_2) > EPSILON:
             self.back_is_flat = False
             self.back_is_parabolic = True
+            self.back_is_conic = False
             self.back_center_x = self.back_vertex_x
         elif _is_flat(self.R2):
             self.back_center_x = self.back_vertex_x
             self.back_is_flat = True
             self.back_is_parabolic = False
+            self.back_is_conic = False
+        elif abs(self.conic_constant_2) > EPSILON:
+            self.back_center_x = self.back_vertex_x
+            self.back_is_flat = False
+            self.back_is_parabolic = False
+            self.back_is_conic = True
         else:
             self.back_center_x = self.back_vertex_x + self.R2
             self.back_is_flat = False
             self.back_is_parabolic = False
+            self.back_is_conic = False
+
+    @staticmethod
+    def _conic_normal_angle(y: float, radius: float, conic_constant: float) -> float:
+        """Normal angle of a conic surface at radial height ``y``.
+
+        ``dz/dy = c*y / sqrt(1 - (1+K)*(c*y)^2)``.  The normal is
+        ``(1, -dz/dy)`` up to orientation; refraction is
+        orientation-agnostic, as for the parabolic path.
+        """
+        if abs(radius) < EPSILON or not math.isfinite(radius):
+            return 0.0
+        c = 1.0 / radius
+        radicand = 1.0 - (1.0 + conic_constant) * (c * y) ** 2
+        slope = c * y / math.sqrt(max(radicand, EPSILON))
+        return math.atan2(-slope, 1.0)
 
     def _get_surface_normal_angle(self, x: float, y: float, surface_type: str) -> float:
         """Calculate surface normal angle at a point."""
@@ -130,10 +163,11 @@ class LensRayTracer:
                 a = self.parabolic_sag_1 / (r_max * r_max)
                 # Gradient (1, -2*a*y) -> normal
                 return math.atan2(-2 * a * y, 1)
-            else:
-                dx = x - self.front_center_x
-                dy = y
-                return math.atan2(dy, dx)
+            if self.front_is_conic:
+                return self._conic_normal_angle(y, self.R1, self.conic_constant_1)
+            dx = x - self.front_center_x
+            dy = y
+            return math.atan2(dy, dx)
         else:
             if self.back_is_flat:
                 return 0
@@ -143,10 +177,11 @@ class LensRayTracer:
                     return 0
                 a = self.parabolic_sag_2 / (r_max * r_max)
                 return math.atan2(-2 * a * y, 1)
-            else:
-                dx = x - self.back_center_x
-                dy = y
-                return math.atan2(dy, dx)
+            if self.back_is_conic:
+                return self._conic_normal_angle(y, self.R2, self.conic_constant_2)
+            dx = x - self.back_center_x
+            dy = y
+            return math.atan2(dy, dx)
 
     def _intersect_flat_surface(
         self, ray: Ray, vertex_x: float, semi_aperture: Optional[float] = None
@@ -289,6 +324,68 @@ class LensRayTracer:
             return None
         return (vertex_x + a * y * y, y)
 
+    def _intersect_conic_surface(
+        self,
+        ray: Ray,
+        vertex_x: float,
+        radius: float,
+        conic_constant: float,
+        semi_aperture: Optional[float] = None,
+    ) -> Optional[Tuple[float, float]]:
+        """Intersect a ray with the vertex-side cap of a conic surface.
+
+        The conic is written as the quadric
+        ``(1+K) z² - 2R z + y² = 0`` in vertex coordinates
+        ``z = x - vertex_x``.  Squaring the sag formula introduces the
+        other sheet of a sphere/hyperbola, so roots are ranked by distance
+        from the vertex rather than by ray parameter.
+        """
+        if _is_flat(radius):
+            return self._intersect_flat_surface(ray, vertex_x, semi_aperture)
+
+        limit = self.D / 2 if semi_aperture is None else semi_aperture
+        c = 1.0 / radius
+        z0 = ray.x - vertex_x
+        y0 = ray.y
+        dx = math.cos(ray.angle)
+        dy = math.sin(ray.angle)
+
+        # (1+K)*(z0+t*dx)^2 - 2R*(z0+t*dx) + (y0+t*dy)^2 = 0
+        a = (1.0 + conic_constant) * dx * dx + dy * dy
+        b = 2.0 * ((1.0 + conic_constant) * z0 * dx - radius * dx + y0 * dy)
+        c_term = (1.0 + conic_constant) * z0 * z0 - 2.0 * radius * z0 + y0 * y0
+
+        if abs(a) < EPSILON:
+            if abs(b) < EPSILON:
+                return None
+            roots = [-c_term / b]
+        else:
+            discriminant = b * b - 4.0 * a * c_term
+            if discriminant < -EPSILON:
+                return None
+            root = math.sqrt(max(0.0, discriminant))
+            roots = [(-b - root) / (2.0 * a), (-b + root) / (2.0 * a)]
+
+        best = None
+        for t in roots:
+            if t <= EPSILON:
+                continue
+            y = y0 + t * dy
+            if abs(y) > limit + 1e-6:
+                continue
+            radicand = 1.0 - (1.0 + conic_constant) * (c * y) ** 2
+            if radicand < -1e-6:
+                # A root of the squared quadric, but not on the real sag.
+                continue
+            z = z0 + t * dx
+            candidate = (abs(z), t, z, y)
+            if best is None or candidate[:2] < best[:2]:
+                best = candidate
+        if best is None:
+            return None
+        _, _, z, y = best
+        return (vertex_x + z, y)
+
     def _intersect_fresnel_surface(
         self,
         ray: Ray,
@@ -363,6 +460,10 @@ class LensRayTracer:
             return self._intersect_parabolic_surface(
                 ray, self.front_vertex_x, self.parabolic_sag_1, semi
             )
+        if self.front_is_conic:
+            return self._intersect_conic_surface(
+                ray, self.front_vertex_x, self.R1, self.conic_constant_1, semi
+            )
         if self.front_is_flat:
             return self._intersect_flat_surface(ray, self.front_vertex_x, semi)
         return self._intersect_sphere_surface(
@@ -379,6 +480,10 @@ class LensRayTracer:
         if self.back_is_parabolic:
             return self._intersect_parabolic_surface(
                 ray, self.back_vertex_x, self.parabolic_sag_2, semi
+            )
+        if self.back_is_conic:
+            return self._intersect_conic_surface(
+                ray, self.back_vertex_x, self.R2, self.conic_constant_2, semi
             )
         if self.back_is_flat:
             return self._intersect_flat_surface(ray, self.back_vertex_x, semi)

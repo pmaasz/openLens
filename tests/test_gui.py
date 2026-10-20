@@ -229,6 +229,41 @@ else:
             self.assertEqual(lens.radius_of_curvature_1, 100.0)
             self.assertEqual(lens.parabolic_sag_1, 2.0)
 
+        def test_conic_controls_load_and_edit_model(self):
+            """Conic constants are displayed, editable, and written back."""
+            lens = Lens(
+                name="Conic",
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=40.0,
+                conic_constant_1=-0.5,
+                conic_constant_2=0.25,
+            )
+            self.widget.load_lens(lens)
+
+            self.assertAlmostEqual(self.widget._conic1_input.value(), -0.5)
+            self.assertAlmostEqual(self.widget._conic2_input.value(), 0.25)
+            self.widget._conic1_input.setValue(-0.75)
+            self.assertAlmostEqual(lens.conic_constant_1, -0.75)
+
+        def test_conic_input_is_disabled_for_a_parabolic_surface(self):
+            """Parabolic surfaces use their sag, not K, so K is not editable."""
+            lens = Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=40.0,
+                is_parabolic_1=True,
+                parabolic_sag_1=2.0,
+            )
+            self.widget.load_lens(lens)
+
+            self.assertFalse(self.widget._conic1_input.isEnabled())
+            self.assertTrue(self.widget._conic2_input.isEnabled())
+            self.widget._para1_check.setChecked(False)
+            self.assertTrue(self.widget._conic1_input.isEnabled())
+
         def test_sag_ranges_track_diameter(self):
             """Sag spinbox limits follow the physics-scaled bound."""
             self._load(lock=True)
