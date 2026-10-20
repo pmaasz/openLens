@@ -61,6 +61,10 @@ jobs:
           generate_release_notes: false
           files: dist/*
       - name: Publish to PyPI
+        # PyPI's `openlens` distribution name belongs to an unrelated project,
+        # so publishing is impossible until the name/ownership is settled
+        # (#591). Keep it opt-in; the wheel and sdist still attach above.
+        if: vars.PYPI_PUBLISH_ENABLED == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
 
   executable:
