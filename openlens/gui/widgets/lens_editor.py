@@ -3,9 +3,11 @@ OpenLens PySide6 Lens Editor Widget
 Main editor widget for lens properties with visualization
 """
 
+import copy
+import functools
+import logging
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
-import logging
 
 from PySide6.QtWidgets import (
     QWidget,
@@ -22,6 +24,7 @@ from PySide6.QtWidgets import (
     QPushButton,
 )
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QUndoCommand, QUndoStack
 
 from .lens_viz_container import LensVisualizationWidget
 from ..theme import DARK, get_palette
@@ -39,6 +42,121 @@ logger = logging.getLogger(__name__)
 
 #: Shown while the material is looked up, before one is chosen.
 CUSTOM_MATERIAL = "Custom"
+
+#: Wall-clock bookkeeping, not an optical property. It changes on every edit
+#: and must not make two consecutive edits look like different properties.
+_UNDO_IGNORED_KEYS = frozenset({"modified_at"})
+
+
+def _changed_keys(before: dict, after: dict) -> frozenset:
+    """Return the model keys that actually changed between two snapshots."""
+    return frozenset(
+        key
+        for key in set(before) | set(after)
+        if key not in _UNDO_IGNORED_KEYS and before.get(key) != after.get(key)
+    )
+
+
+class _LensSnapshotCommand(QUndoCommand):
+    """Restore a lens to a full ``__dict__`` snapshot on undo/redo.
+
+    A per-property command would have to know about every widget and every
+    derived field (edge-lock thickness, groove count, coating stacks). The
+    snapshot keeps the commands uniform and makes undo exact.
+    """
+
+    def __init__(self, editor, lens, before, after, keys) -> None:
+        super().__init__("Edit " + ", ".join(sorted(key.replace("_", " ") for key in keys)))
+        self._editor = editor
+        self._lens = lens
+        self._before = before
+        self._after = after
+        self._keys = keys
+
+    def id(self) -> int:
+        """Merge consecutive edits of the same property into one step."""
+        return 1
+
+    def undo(self) -> None:
+        self._restore(self._before)
+
+    def redo(self) -> None:
+        self._restore(self._after)
+
+    def mergeWith(self, other) -> bool:
+        """Merge a consecutive edit of the same property set."""
+        if not isinstance(other, _LensSnapshotCommand):
+            return False
+        if other._lens is not self._lens or other._keys != self._keys:
+            return False
+        self._after = other._after
+        return True
+
+    def _restore(self, snapshot) -> None:
+        editor = self._editor
+        if editor._lens is not self._lens:
+            # The editor moved on; a stale command must not mutate another
+            # lens. Loading a different lens clears the stack anyway.
+            return
+
+        current = self._lens.__dict__
+        try:
+            if current == snapshot:
+                # QUndoStack.push() calls redo() once; the handler already
+                # applied the edit, so this is the normal push path.
+                return
+        except Exception:
+            pass
+
+        editor._restoring = True
+        try:
+            current.clear()
+            current.update(copy.deepcopy(snapshot))
+            editor.load_lens(self._lens)
+            editor._touch_lens()
+        finally:
+            editor._restoring = False
+
+        # Undo/redo is an edit too: let the window's normal debounced save and
+        # tab refresh run, exactly as a widget change would.
+        editor.lens_modified.emit(self._lens)
+        editor.lens_updated.emit()
+
+
+def _undoable_edit(method):
+    """Record one undo command around a user-edit handler.
+
+    Nested handlers (the material handler sets the index spinbox, which fires
+    the index handler) must not push intermediate commands; the outermost
+    handler owns the whole edit.
+    """
+
+    # Qt slots may receive signal arguments the handler ignores (valueChanged
+    # passes a float to _on_property_changed, stateChanged passes an int, ...).
+    # Qt normally drops extra arguments for Python callables, but this wrapper
+    # is the callable registered as the slot; trim them here before forwarding.
+    accepted = method.__code__.co_argcount - 1
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        args = args[:accepted]
+        if self._lens is None or self._restoring or self._edit_depth:
+            return method(self, *args, **kwargs)
+
+        before = copy.deepcopy(self._lens.__dict__)
+        self._edit_depth += 1
+        try:
+            result = method(self, *args, **kwargs)
+            after = copy.deepcopy(self._lens.__dict__)
+        finally:
+            self._edit_depth -= 1
+
+        keys = _changed_keys(before, after)
+        if keys:
+            self._undo_stack.push(_LensSnapshotCommand(self, self._lens, before, after, keys))
+        return result
+
+    return wrapper
 
 
 def _materials_with_indices():
@@ -90,10 +208,18 @@ class LensEditorWidget(QWidget):
         """
         super().__init__(parent)
         self._lens = None
+        self._undo_stack = QUndoStack(self)
+        self._restoring = False
+        self._edit_depth = 0
         self._parent = parent
         self._theme = DARK
         self._setup_ui()
         self.set_theme(DARK)
+
+    @property
+    def undo_stack(self) -> QUndoStack:
+        """The editor's undo history (one command per property edit)."""
+        return self._undo_stack
 
     def set_theme(self, theme: str = DARK) -> None:
         """Re-apply the themed input styling.
@@ -495,6 +621,7 @@ class LensEditorWidget(QWidget):
         if self._lens is not None:
             self._lens.modified_at = datetime.now().isoformat()
 
+    @_undoable_edit
     def _on_name_changed(self, name: str) -> None:
         """Handle name change"""
         if self._lens:
@@ -502,6 +629,7 @@ class LensEditorWidget(QWidget):
             self._touch_lens()
             self.lens_modified.emit(self._lens)
 
+    @_undoable_edit
     def _on_parabolic_changed(self) -> None:
         """Handle parabolic checkbox / sag changes."""
         is_p1 = self._para1_check.isChecked()
@@ -533,6 +661,7 @@ class LensEditorWidget(QWidget):
             self.lens_modified.emit(self._lens)
             self.lens_updated.emit()
 
+    @_undoable_edit
     def _on_property_changed(self) -> None:
         """Handle property changes with auto-save"""
         if self._lens:
@@ -685,6 +814,7 @@ class LensEditorWidget(QWidget):
             if sync_model and enabled:
                 setattr(self._lens, attr, spin.value())
 
+    @_undoable_edit
     def _on_index_changed(self, index: float) -> None:
         """Handle a hand-typed refractive index (Custom material).
 
@@ -701,6 +831,7 @@ class LensEditorWidget(QWidget):
             self._viz_widget.update_lens(self._lens)
         self.lens_updated.emit()
 
+    @_undoable_edit
     def _on_material_changed(self, material: str) -> None:
         """Handle material change"""
         indices = dict(_materials_with_indices())
@@ -731,6 +862,7 @@ class LensEditorWidget(QWidget):
         """Design-wavelength tweak: refresh readouts, keep the stack."""
         self._refresh_coating_ui()
 
+    @_undoable_edit
     def _on_coating_apply(self, surface: int) -> None:
         """Apply the selected coating preset to one surface."""
         if not self._lens:
@@ -800,6 +932,7 @@ class LensEditorWidget(QWidget):
             except Exception:
                 self._coat_info_labels[surface - 1].setText("Uncoated")
 
+    @_undoable_edit
     def _on_fresnel_changed(self, state: int) -> None:
         """Handle Fresnel checkbox change"""
         enabled = state == 2
@@ -830,6 +963,7 @@ class LensEditorWidget(QWidget):
             self.lens_modified.emit(self._lens)
             self.lens_updated.emit()
 
+    @_undoable_edit
     def _on_groove_pitch_changed(self, value):
         """Handle groove pitch change"""
         if self._lens and getattr(self._lens, "is_fresnel", False):
@@ -959,6 +1093,10 @@ class LensEditorWidget(QWidget):
         Args:
             lens: The lens model to display and edit.
         """
+        if lens is not self._lens:
+            # A new model starts a new edit history. Refreshing the same model
+            # (open/save/undo) must keep the stack usable.
+            self._undo_stack.clear()
         self._lens = lens
         self._name_input.blockSignals(True)
         self._name_input.setText(lens.name)
@@ -1021,7 +1159,11 @@ class LensEditorWidget(QWidget):
         # modification.
         indices = dict(_materials_with_indices())
         self._n_input.setReadOnly(indices.get(loaded_material) is not None)
+        # Block the valueChanged slot: displaying a lens is not an edit and
+        # must not create an undo command (or mark the model modified).
+        self._n_input.blockSignals(True)
         self._n_input.setValue(loaded_index)
+        self._n_input.blockSignals(False)
         if self._lens is not None:
             self._lens.material = loaded_material
             self._lens.refractive_index = loaded_index
