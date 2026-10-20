@@ -5,9 +5,9 @@ f/1.8 embodiment) scaled from the patent's normalized ``f = 100 mm`` to the
 real ``f = 50 mm`` (halve all radii and thicknesses; indices unchanged).
 
 Full background and unscaled patent values live in
-``docs/NIKON_SERIES_E_50MM.md``. This module is the single source of truth
-for seeding that lens into SQLite databases as six individual lens rows
-plus one six-element assembly row.
+``docs/sphinx/source/nikon_series_e_50mm.rst``. This module is the single
+source of truth for seeding that lens into SQLite databases as six individual
+lens rows plus one six-element assembly row.
 
 Seeding is idempotent and non-destructive: existing rows with the same
 stable IDs are never overwritten. Storage stays pure -- call
