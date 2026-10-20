@@ -1,24 +1,51 @@
 name: Release
 
 # Fires when release-please's Release PR is merged (GitHub Release published),
-# or on a manual `git tag v*` push as fallback. Builds the package, attaches
-# dist/ assets to the GitHub Release, and publishes to PyPI via OIDC.
-# Also builds standalone PyInstaller executables (Linux/Windows/macOS on
-# both ARM64 and Intel) and attaches them to the same GitHub Release.
+# on a manual `git tag` push, or as a reusable workflow from Release Please.
+# Release Please creates tags/releases with the repository GITHUB_TOKEN, and
+# GitHub does not start another workflow for those events, so the Release
+# Please workflow calls this file directly after `release_created` is true.
+#
+# Manual dispatch is a build-only smoke test: leave the tag blank to upload
+# the Linux/Windows/macOS artifacts to the workflow run, or enter an existing
+# tag to attach the executables to that release (PyPI is not republished).
 on:
   release:
     types: [published]
   push:
-    tags: ["v*"]
+    tags: ["v*", "openlens-v*"]
+  workflow_call:
+    inputs:
+      tag_name:
+        description: "Tag to build and attach to the GitHub Release"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Existing tag/release to attach to; leave blank for a build-only run"
+        required: false
+        default: ""
+        type: string
+
+env:
+  # Empty for a build-only manual dispatch. Release events, tag pushes and
+  # reusable calls all supply a tag.
+  RELEASE_TAG: ${{ github.event.inputs.tag_name || inputs.tag_name || github.event.release.tag_name || (github.event_name != 'workflow_dispatch' && github.ref_name) || '' }}
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # A manual run may be build-only. It never republishes PyPI, even when a
+    # tag is supplied just to test attachment.
+    if: ${{ github.event_name != 'workflow_dispatch' }}
     permissions:
       contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -30,8 +57,8 @@ jobs:
       - name: Attach dist to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
-          generate_release_notes: true
+          tag_name: ${{ env.RELEASE_TAG }}
+          generate_release_notes: false
           files: dist/*
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -55,6 +82,8 @@ jobs:
             suffix: macOS-x64
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG || github.ref }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -69,10 +98,16 @@ jobs:
           sudo apt-get install -y -qq libxcb-cursor0 libtiff5 || sudo apt-get install -y -qq libxcb-cursor0 libtiff6 || true
       - name: Build executable with PyInstaller
         shell: bash
+        env:
+          SUFFIX: ${{ matrix.suffix }}
         run: |
-          TAG="${{ github.event.release.tag_name || github.ref_name }}"
+          set -euo pipefail
+          TAG="${RELEASE_TAG:-${GITHUB_REF_NAME}}"
           TAG="${TAG##*/}"
-          APP_NAME="OpenLens-${TAG}-${{ matrix.suffix }}"
+          TAG="${TAG#openlens-}"
+          TAG="${TAG//\//-}"
+          APP_NAME="OpenLens-${TAG}-${SUFFIX}"
+          echo "APP_NAME=${APP_NAME}" >> "$GITHUB_ENV"
           # Bundle ALL runtime deps (required + optional) so the standalone
           # executable has full functionality: PySide6, numpy, matplotlib,
           # scipy, Pillow. --collect-all is needed because optional imports
@@ -105,9 +140,35 @@ jobs:
             --paths . \
             openlens/__main__.py
           ls -lh dist/
-          test -f "dist/${APP_NAME}" -o -f "dist/${APP_NAME}.exe"
+      - name: Package release artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p package
+          if [ "${RUNNER_OS}" = "macOS" ]; then
+            test -d "dist/${APP_NAME}.app"
+            # A .app is a directory; zip the whole bundle so GitHub Releases
+            # can store it and users get a normal double-clickable app.
+            ditto -c -k --sequesterRsrc --keepParent \
+              "dist/${APP_NAME}.app" "package/${APP_NAME}.zip"
+          elif [ "${RUNNER_OS}" = "Windows" ]; then
+            test -f "dist/${APP_NAME}.exe"
+            cp "dist/${APP_NAME}.exe" "package/${APP_NAME}.exe"
+          else
+            test -f "dist/${APP_NAME}"
+            cp "dist/${APP_NAME}" "package/${APP_NAME}"
+          fi
+          ls -lh package/
+      - name: Upload build-only artifact
+        if: env.RELEASE_TAG == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: openlens-${{ github.run_id }}-${{ matrix.suffix }}
+          path: package/*
+          if-no-files-found: error
       - name: Attach executable to GitHub Release
+        if: env.RELEASE_TAG != ''
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
-          files: dist/OpenLens-*
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: package/*
