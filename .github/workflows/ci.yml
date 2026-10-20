@@ -27,6 +27,11 @@ jobs:
         # BLE001 keeps new broad `except` handlers out of the library; the
         # boundaries and the #479 burn-down list live in ruff.toml.
         run: ruff check openlens/ tests/
+      - name: Type checking (mypy)
+        # Lenient baseline: mypy.ini lists the modules that still carry
+        # pre-existing errors; everything else must pass. Remove an entry when
+        # that module is clean - never add one to hide a new error.
+        run: mypy
       - name: Linting (flake8, style - advisory)
         # The remaining ~500 style findings (E402, F401, E501, ...) are
         # tracked separately; once that cleanup lands this step drops
