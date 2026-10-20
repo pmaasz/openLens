@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/pmaasz/openLens/compare/openlens-v0.6.0...openlens-v0.7.0) (2026-10-20)
+
+
+### Features
+
+* **assembly:** add undo/redo for assembly edits ([#586](https://github.com/pmaasz/openLens/issues/586)) ([#595](https://github.com/pmaasz/openLens/issues/595)) ([cefc208](https://github.com/pmaasz/openLens/commit/cefc208dfa5b17219f49a15b06090636b7fb8b5d))
+
 ## [0.6.0](https://github.com/pmaasz/openLens/compare/openlens-v0.5.0...openlens-v0.6.0) (2026-10-20)
 
 
