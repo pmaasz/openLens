@@ -32,7 +32,7 @@ from openlens.database import LensInUseError
 from openlens.logging_setup import setup_logging, verbose_requested
 from openlens.paths import migrate_legacy_db, migrate_legacy_materials, resolve_db_path
 from openlens.gui.storage import LensStorage
-from openlens.gui.services import ExportService
+from openlens.gui.services import ExportService, LibraryService
 from openlens.gui.widgets import LensEditorWidget
 from openlens.gui.tabs import (
     SimulationTab,
@@ -132,6 +132,7 @@ class OpenLensWindow(QMainWindow):
         # lambda, and the window used to claim "Saved to database" regardless.
         self._db_path = resolve_db_path()
         self._storage = LensStorage(self._db_path, self._update_status)
+        self._library_service = LibraryService(lambda: self._storage)
         self._export_service = ExportService()
         self._lenses = []
         self._assemblies = []
@@ -188,16 +189,12 @@ class OpenLensWindow(QMainWindow):
 
         self._update_status("Loading library...")
         try:
-            all_items = self._storage.load_lenses()
+            loaded = self._library_service.load()
+            if not loaded.ok:
+                raise loaded.cause or RuntimeError(loaded.error or "unknown load error")
 
-            self._lenses = []
-            self._assemblies = []
-
-            for item in all_items:
-                if hasattr(item, "elements") and hasattr(item, "air_gaps"):
-                    self._assemblies.append(item)
-                else:
-                    self._lenses.append(item)
+            self._lenses = loaded.lenses
+            self._assemblies = loaded.assemblies
 
             logger.info(
                 "Loaded %d lenses and %d assemblies from database",
@@ -335,30 +332,17 @@ class OpenLensWindow(QMainWindow):
             # Sync tolerances to current target metadata before saving
             self._sync_tolerances_to_metadata()
 
-            all_items = self._lenses + self._assemblies
-
-            # Ensure uniqueness by ID before saving to avoid duplicate keys or state conflicts
-            unique_items = {}
-            for item in all_items:
-                if hasattr(item, "id"):
-                    unique_items[item.id] = item
-
-            # unique_items is every stored object, so a lens missing from it
-            # that an assembly still holds really is an assembly member - and
-            # load_all hides those, which is what keeps an assembly's lenses
-            # from reappearing as standalone library lenses after a reload.
-            if not self._storage.save_lenses(
-                list(unique_items.values()), reconcile=reconcile, library_snapshot=True
-            ):
-                # save_lenses swallowed the exception, so its own report is the
-                # only place the real reason survives.
-                self._report_save_failure(
-                    getattr(self._storage, "last_error", None) or "the database rejected the save"
-                )
+            # The service de-duplicates by id and passes the complete snapshot
+            # to LensStorage. It keeps the storage's last_error, which is the
+            # only place the real reason survives: save_lenses swallows the
+            # exception and returns False.
+            saved = self._library_service.save(self._lenses + self._assemblies, reconcile=reconcile)
+            if not saved.ok:
+                self._report_save_failure(saved.error or "the database rejected the save")
                 return False
 
             self._save_error_shown = False
-            logger.info("Saved %d unique items to database", len(unique_items))
+            logger.info("Saved %d unique items to database", saved.count)
             return True
         except Exception as e:
             logger.error("Failed to save to database: %s", e)
@@ -1008,14 +992,22 @@ class OpenLensWindow(QMainWindow):
             return
 
         # Persist the removal first; abort on refusal without touching memory.
-        try:
-            self._storage.delete_item(item.id)
-        except LensInUseError as e:
-            self._notify_delete_blocked(e)
+        deleted = self._library_service.delete(item.id)
+        if deleted.blocked:
+            if isinstance(deleted.cause, LensInUseError):
+                self._notify_delete_blocked(deleted.cause)
+            else:  # Defensive: a blocked result must carry the original error.
+                QMessageBox.critical(
+                    self,
+                    "Delete failed",
+                    f"Could not delete '{item.name}': {deleted.error}",
+                )
             return
-        except Exception as e:
-            logger.error("Database delete failed for %s: %s", item.id, e)
-            QMessageBox.critical(self, "Delete failed", f"Could not delete '{item.name}': {e}")
+        if not deleted.ok:
+            logger.error("Database delete failed for %s: %s", item.id, deleted.error)
+            QMessageBox.critical(
+                self, "Delete failed", f"Could not delete '{item.name}': {deleted.error}"
+            )
             return
 
         if self._current_lens:
@@ -1159,12 +1151,7 @@ Ctrl+6         Tolerancing
         if not self._current_lens:
             return
 
-        data = self._current_lens.to_dict()
-        # Pop identity so the constructor mints a fresh uuid4 id;
-        # keeping the id would collide with the original on INSERT OR REPLACE.
-        data.pop("id", None)
-        data["name"] = f"{self._current_lens.name} (copy)"
-        new_lens = Lens.from_dict(data)
+        new_lens = self._library_service.duplicate_lens(self._current_lens)
 
         self._lenses.append(new_lens)
         self._current_lens = new_lens
