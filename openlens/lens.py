@@ -47,6 +47,37 @@ def _is_flat(r):
     return not r or not math.isfinite(r) or abs(r) > LARGE_NUMBER or abs(r) < EPSILON
 
 
+def _conic_domain_radius(radius: float, conic_constant: float) -> float:
+    """Largest real radial height of a conic surface.
+
+    For ``K > -1`` the square root in the conic sag reaches zero at
+    ``1 / (|c| * sqrt(1 + K))``.  Parabolic (``K = -1``) and hyperbolic
+    (``K < -1``) surfaces are real for every radius.
+    """
+    if _is_flat(radius) or conic_constant <= -1.0:
+        return float("inf")
+    return 1.0 / (abs(1.0 / radius) * math.sqrt(1.0 + conic_constant))
+
+
+def _conic_sag(radius: float, conic_constant: float, y: float) -> float:
+    """Vertex-referenced sag of a conic surface at height ``y``.
+
+    Positive radii put the vertex at the leftmost point (positive sag);
+    negative radii mirror the surface.  Outside the real domain the value
+    is clamped to the domain edge, matching the spherical helper's
+    behaviour at ``|y| = |R|``.
+    """
+    if _is_flat(radius):
+        return 0.0
+    y_abs = abs(y)
+    domain = _conic_domain_radius(radius, conic_constant)
+    if math.isfinite(domain):
+        y_abs = min(y_abs, domain)
+    c = 1.0 / radius
+    radicand = max(0.0, 1.0 - (1.0 + conic_constant) * (c * y_abs) ** 2)
+    return c * y_abs * y_abs / (1.0 + math.sqrt(radicand))
+
+
 def _normalize_coating(value) -> Optional[List[Dict[str, Any]]]:
     """Normalize a coating stack to plain JSON-able layer dicts.
 
@@ -101,6 +132,8 @@ _LENS_SERIALIZED_KEYS = frozenset(
         "parabolic_sag_1",
         "is_parabolic_2",
         "parabolic_sag_2",
+        "conic_constant_1",
+        "conic_constant_2",
         "clear_aperture_1",
         "clear_aperture_2",
         "bevel_1",
@@ -144,6 +177,8 @@ class Lens:
         parabolic_sag_1: float = 0.0,
         is_parabolic_2: bool = False,
         parabolic_sag_2: float = 0.0,
+        conic_constant_1: float = 0.0,
+        conic_constant_2: float = 0.0,
         clear_aperture_1: Optional[float] = None,
         clear_aperture_2: Optional[float] = None,
         bevel_1: float = 0.0,
@@ -214,6 +249,12 @@ class Lens:
         self.parabolic_sag_1 = float(parabolic_sag_1)
         self.is_parabolic_2 = bool(is_parabolic_2)
         self.parabolic_sag_2 = float(parabolic_sag_2)
+
+        # Conic aspheric surfaces: K=0 sphere, K=-1 parabola.  Parabolic
+        # surfaces above keep their sag-based parameterization and ignore K
+        # (they are mathematically the K=-1 case).
+        self.conic_constant_1 = float(conic_constant_1)
+        self.conic_constant_2 = float(conic_constant_2)
 
         # Only overwrite radii when the caller explicitly opts in.
         # This prevents silently clobbering r1=100, r2=-100 passed for
@@ -295,7 +336,11 @@ class Lens:
         return self.radius_of_curvature_2
 
     def get_sag_1(self, y: float) -> float:
-        """Sag of surface 1 at height y (parabolic uses y²·sag/r²)."""
+        """Sag of surface 1 at height y.
+
+        Parabolic surfaces use the stored sag at D/2; other surfaces use
+        the spherical (K=0) or conic sag formula.
+        """
         if self.is_parabolic_1:
             r = self.diameter / 2
             if abs(r) < EPSILON:
@@ -303,6 +348,8 @@ class Lens:
             # Clamp y to aperture
             y_c = max(-r, min(y, r))
             return self.parabolic_sag_1 * (y_c * y_c) / (r * r)
+        if abs(self.conic_constant_1) > EPSILON:
+            return _conic_sag(self.radius_of_curvature_1, self.conic_constant_1, y)
         # spherical
         r = self.radius_of_curvature_1
         if _is_flat(r):
@@ -320,6 +367,8 @@ class Lens:
                 return 0.0
             y_c = max(-r, min(y, r))
             return self.parabolic_sag_2 * (y_c * y_c) / (r * r)
+        if abs(self.conic_constant_2) > EPSILON:
+            return _conic_sag(self.radius_of_curvature_2, self.conic_constant_2, y)
         r = self.radius_of_curvature_2
         if _is_flat(r):
             return 0.0
@@ -557,6 +606,8 @@ class Lens:
             "parabolic_sag_1": self.parabolic_sag_1,
             "is_parabolic_2": self.is_parabolic_2,
             "parabolic_sag_2": self.parabolic_sag_2,
+            "conic_constant_1": self.conic_constant_1,
+            "conic_constant_2": self.conic_constant_2,
             "clear_aperture_1": self.clear_aperture_1,
             "clear_aperture_2": self.clear_aperture_2,
             "bevel_1": self.bevel_1,
@@ -607,6 +658,8 @@ class Lens:
             parabolic_sag_1=data.get("parabolic_sag_1", 0.0),
             is_parabolic_2=data.get("is_parabolic_2", False),
             parabolic_sag_2=data.get("parabolic_sag_2", 0.0),
+            conic_constant_1=data.get("conic_constant_1", 0.0),
+            conic_constant_2=data.get("conic_constant_2", 0.0),
             clear_aperture_1=data.get("clear_aperture_1", None),
             clear_aperture_2=data.get("clear_aperture_2", None),
             bevel_1=data.get("bevel_1", 0.0),
@@ -675,9 +728,8 @@ class Lens:
             if getattr(self, f"is_parabolic_{surface}", False):
                 continue
             r = self.radius_of_curvature_1 if surface == 1 else self.radius_of_curvature_2
-            if _is_flat(r):
-                continue
-            if abs(h) > abs(r):
+            k = float(getattr(self, f"conic_constant_{surface}", 0.0))
+            if abs(h) > _conic_domain_radius(r, k) + EPSILON:
                 return None
         try:
             s1 = self.get_sag_1(h)
@@ -715,8 +767,8 @@ class Lens:
         """Apply the standard radius preset for the current lens_type.
 
         Type presets are spherical, so applying one clears any parabolic
-        surface flags (setters exclusive). Unknown types leave the radii
-        untouched.
+        surface flags and conic constants (setters exclusive). Unknown types
+        leave the radii untouched.
         """
         preset = LENS_TYPE_PRESET_RADII.get(self.lens_type)
         if preset is None:
@@ -726,6 +778,8 @@ class Lens:
         self.is_parabolic_2 = False
         self.parabolic_sag_1 = 0.0
         self.parabolic_sag_2 = 0.0
+        self.conic_constant_1 = 0.0
+        self.conic_constant_2 = 0.0
 
     def set_lens_type(self, lens_type: str) -> None:
         """Set lens type and update radii accordingly."""

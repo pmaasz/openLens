@@ -306,6 +306,7 @@ class LensEditorWidget(QWidget):
         layout.addWidget(self._create_classification_group())
         layout.addWidget(self._create_dimensions_group())
         layout.addWidget(self._create_parabolic_group())
+        layout.addWidget(self._create_conic_group())
         layout.addWidget(self._create_material_group())
         layout.addWidget(self._create_coatings_group())
         layout.addWidget(self._create_fresnel_group())
@@ -471,6 +472,40 @@ class LensEditorWidget(QWidget):
         para_layout.addRow("Sag 2 (peak→rim):", self._para2_sag_input)
 
         return para_group
+
+    def _create_conic_group(self) -> QGroupBox:
+        """Create the conic-constant controls for both surfaces.
+
+        K=0 is a sphere and K=-1 is a parabola; other values make an
+        ellipsoid (K > -1) or hyperboloid (K < -1).  Parabolic surfaces use
+        their sag parameterization instead, so these boxes are disabled for
+        them.
+
+        Returns:
+            The group box holding the two conic constant inputs.
+        """
+        conic_group = QGroupBox("Conic Surfaces (K)")
+        conic_layout = QFormLayout(conic_group)
+
+        self._conic1_input = QDoubleSpinBox()
+        self._conic1_input.setRange(-100.0, 100.0)
+        self._conic1_input.setDecimals(3)
+        self._conic1_input.setSingleStep(0.1)
+        self._conic1_input.setValue(0.0)
+        self._conic1_input.setToolTip("0 = sphere, -1 = parabola")
+        self._conic1_input.valueChanged.connect(self._on_conic_changed)
+        conic_layout.addRow("Front K:", self._conic1_input)
+
+        self._conic2_input = QDoubleSpinBox()
+        self._conic2_input.setRange(-100.0, 100.0)
+        self._conic2_input.setDecimals(3)
+        self._conic2_input.setSingleStep(0.1)
+        self._conic2_input.setValue(0.0)
+        self._conic2_input.setToolTip("0 = sphere, -1 = parabola")
+        self._conic2_input.valueChanged.connect(self._on_conic_changed)
+        conic_layout.addRow("Back K:", self._conic2_input)
+
+        return conic_group
 
     def _create_material_group(self) -> QGroupBox:
         """Create the material group box.
@@ -655,11 +690,27 @@ class LensEditorWidget(QWidget):
                     spin.blockSignals(True)
                     spin.setValue(0.0)
                     spin.blockSignals(False)
+            self._refresh_conic_ui()
             self._touch_lens()
             self._update_calculated()
             self._viz_widget.update_lens(self._lens)
             self.lens_modified.emit(self._lens)
             self.lens_updated.emit()
+
+    @_undoable_edit
+    def _on_conic_changed(self) -> None:
+        """Handle a conic-constant edit on either surface."""
+        if not self._lens:
+            return
+        if not bool(getattr(self._lens, "is_parabolic_1", False)):
+            self._lens.conic_constant_1 = self._conic1_input.value()
+        if not bool(getattr(self._lens, "is_parabolic_2", False)):
+            self._lens.conic_constant_2 = self._conic2_input.value()
+        self._touch_lens()
+        self._update_calculated()
+        self._viz_widget.update_lens(self._lens)
+        self.lens_modified.emit(self._lens)
+        self.lens_updated.emit()
 
     @_undoable_edit
     def _on_property_changed(self) -> None:
@@ -707,6 +758,7 @@ class LensEditorWidget(QWidget):
                 self._update_groove_count()
             self._touch_lens()
             self._refresh_parabolic_ui()
+            self._refresh_conic_ui()
             self._update_sag_ranges()
             # Sync parabolic sag diameters if needed (sag stays as absolute distance)
             self._update_calculated()
@@ -788,6 +840,20 @@ class LensEditorWidget(QWidget):
             sag_spin.blockSignals(True)
             sag_spin.setValue(float(getattr(self._lens, sag_attr, 0.0)))
             sag_spin.blockSignals(False)
+
+    def _refresh_conic_ui(self) -> None:
+        """Snap conic inputs to the model and disable them while parabolic."""
+        if self._lens is None:
+            return
+        for spin, conic_attr, flag_attr in (
+            (self._conic1_input, "conic_constant_1", "is_parabolic_1"),
+            (self._conic2_input, "conic_constant_2", "is_parabolic_2"),
+        ):
+            flag = bool(getattr(self._lens, flag_attr, False))
+            spin.blockSignals(True)
+            spin.setValue(float(getattr(self._lens, conic_attr, 0.0)))
+            spin.setEnabled(not flag)
+            spin.blockSignals(False)
 
     def _update_sag_ranges(self, sync_model: bool = True) -> None:
         """Clamp parabolic sag spinboxes to the diameter-scaled limit.
@@ -1077,6 +1143,8 @@ class LensEditorWidget(QWidget):
                 float(getattr(self._lens, "parabolic_sag_1", 0.0)),
                 bool(getattr(self._lens, "is_parabolic_2", False)),
                 float(getattr(self._lens, "parabolic_sag_2", 0.0)),
+                conic_constant_1=float(getattr(self._lens, "conic_constant_1", 0.0)),
+                conic_constant_2=float(getattr(self._lens, "conic_constant_2", 0.0)),
             )
             if not feasible:
                 message = soft_msg
@@ -1173,6 +1241,7 @@ class LensEditorWidget(QWidget):
         # values until the user acts (sync_model=False).
         self._update_sag_ranges(sync_model=False)
         self._refresh_parabolic_ui()
+        self._refresh_conic_ui()
         self._refresh_fresnel_ui()
         self._refresh_coating_ui()
         self._update_calculated()

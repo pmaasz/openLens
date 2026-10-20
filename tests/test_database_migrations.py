@@ -6,7 +6,8 @@ Two distinct failures lived in the ``version == 0`` branch:
    ``user_version = 0`` but already hold a ``lenses`` table in the v1 shape.
    The branch assumed a brand-new file, so ``CREATE TABLE IF NOT EXISTS`` did
    nothing, the version was stamped 5, and none of the columns added since v1
-   (``is_parabolic_*``, ``clear_aperture_*``, ``bevel_*``, ``coating_*``) was
+   (``is_parabolic_*``, ``conic_constant_*``, ``clear_aperture_*``, ``bevel_*``,
+   ``coating_*``) was
    ever added. Because the version then read 5, no later launch would add them
    either, and every save failed with
    "table lenses has no column named is_parabolic_1" - permanently, for a file
@@ -35,6 +36,8 @@ LENS_COLUMNS_ADDED_AFTER_V1 = (
     "parabolic_sag_1",
     "is_parabolic_2",
     "parabolic_sag_2",
+    "conic_constant_1",
+    "conic_constant_2",
     "clear_aperture_1",
     "clear_aperture_2",
     "bevel_1",
@@ -174,7 +177,12 @@ ADDED_IN_VERSION = {
     6: (
         # Whether a lens is a library item in its own right, as opposed to
         # existing only as an assembly element.
-        ("lenses", "is_library", "INTEGER"),
+        ("lenses", "is_library", "INTEGER NOT NULL DEFAULT 1"),
+    ),
+    7: (
+        # Conic constants for the front and back surfaces.
+        ("lenses", "conic_constant_1", "REAL NOT NULL DEFAULT 0.0"),
+        ("lenses", "conic_constant_2", "REAL NOT NULL DEFAULT 0.0"),
     ),
 }
 
@@ -292,13 +300,14 @@ class TestUnstampedLegacyDatabase(_TempDb):
         row = (
             sqlite3.connect(self.path)
             .execute(
-                "SELECT is_parabolic_1, parabolic_sag_1, bevel_1, coating_1"
+                "SELECT is_parabolic_1, parabolic_sag_1, conic_constant_1,"
+                " conic_constant_2, bevel_1, coating_1"
                 " FROM lenses WHERE id = ?",
                 ("legacy-1",),
             )
             .fetchone()
         )
-        self.assertEqual(row, (0, 0.0, 0.0, None))
+        self.assertEqual(row, (0, 0.0, 0.0, 0.0, 0.0, None))
 
 
 class TestPartiallyPresentLegacyTables(_TempDb):
@@ -327,7 +336,7 @@ class TestEveryHistoricalVersionMigrates(_TempDb):
     """Every version the app has ever written must reach the current one."""
 
     def test_each_stamped_version_migrates(self):
-        for version in (1, 2, 3, 4):
+        for version in (1, 2, 3, 4, 5, 6):
             with self.subTest(version=version):
                 path = self.path + f".v{version}"
                 _make_db_at_version(path, version)
@@ -340,7 +349,7 @@ class TestEveryHistoricalVersionMigrates(_TempDb):
 
     def test_each_stamped_version_keeps_its_rows(self):
         """Migrating must not lose the lenses that were already stored."""
-        for version in (1, 2, 3, 4, 5):
+        for version in (1, 2, 3, 4, 5, 6):
             with self.subTest(version=version):
                 path = self.path + f".rows{version}"
                 _make_db_at_version(path, version)

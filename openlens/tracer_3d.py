@@ -62,6 +62,8 @@ def _lens_state_key(lens: "Lens") -> Tuple[object, ...]:
         bool(getattr(lens, "is_parabolic_2", False)),
         float(getattr(lens, "parabolic_sag_1", 0.0)),
         float(getattr(lens, "parabolic_sag_2", 0.0)),
+        float(getattr(lens, "conic_constant_1", 0.0)),
+        float(getattr(lens, "conic_constant_2", 0.0)),
         bool(getattr(lens, "is_fresnel", False)),
         getattr(lens, "fresnel_surface", None),
         float(getattr(lens, "groove_pitch", 0.0)),
@@ -98,6 +100,8 @@ class LensRayTracer3D:
         self.is_parabolic_2 = bool(getattr(lens, "is_parabolic_2", False))
         self.parabolic_sag_1 = float(getattr(lens, "parabolic_sag_1", 0.0))
         self.parabolic_sag_2 = float(getattr(lens, "parabolic_sag_2", 0.0))
+        self.conic_constant_1 = float(getattr(lens, "conic_constant_1", 0.0))
+        self.conic_constant_2 = float(getattr(lens, "conic_constant_2", 0.0))
         self.is_fresnel = bool(getattr(lens, "is_fresnel", False))
         self.fresnel_facets_1 = LensGeometry.fresnel_facets(lens, 1)
         self.fresnel_facets_2 = LensGeometry.fresnel_facets(lens, 2)
@@ -136,27 +140,43 @@ class LensRayTracer3D:
             self.front_center = self.front_vertex
             self.front_is_flat = False
             self.front_is_parabolic = True
+            self.front_is_conic = False
         elif _is_flat(self.R1):
             self.front_center = self.front_vertex
             self.front_is_flat = True
             self.front_is_parabolic = False
+            self.front_is_conic = False
+        elif abs(self.conic_constant_1) > EPSILON:
+            self.front_center = self.front_vertex
+            self.front_is_flat = False
+            self.front_is_parabolic = False
+            self.front_is_conic = True
         else:
             self.front_center = self.transform.multiply_point(vec3(self.R1, 0, 0))
             self.front_is_flat = False
             self.front_is_parabolic = False
+            self.front_is_conic = False
 
         if self.is_parabolic_2 and abs(self.parabolic_sag_2) > EPSILON:
             self.back_center = self.back_vertex
             self.back_is_flat = False
             self.back_is_parabolic = True
+            self.back_is_conic = False
         elif _is_flat(self.R2):
             self.back_center = self.back_vertex
             self.back_is_flat = True
             self.back_is_parabolic = False
+            self.back_is_conic = False
+        elif abs(self.conic_constant_2) > EPSILON:
+            self.back_center = self.back_vertex
+            self.back_is_flat = False
+            self.back_is_parabolic = False
+            self.back_is_conic = True
         else:
             self.back_center = self.transform.multiply_point(vec3(self.d + self.R2, 0, 0))
             self.back_is_flat = False
             self.back_is_parabolic = False
+            self.back_is_conic = False
 
         self.optical_axis = self.transform.multiply_vector(vec3(1, 0, 0)).normalize()
 
@@ -424,6 +444,70 @@ class LensRayTracer3D:
             return None
         return self.transform.multiply_point(local_hit + vertex_offset)
 
+    def _intersect_conic(
+        self,
+        ray: Ray3D,
+        vertex: Vector3,
+        radius: float,
+        conic_constant: float,
+        surface_type: str = "front",
+    ) -> Optional[Vector3]:
+        """Intersect a ray with the vertex-side cap of a conic surface.
+
+        Local quadric: ``(1+K)x² - 2R x + y² + z² = 0``.  The squared
+        sag equation also contains the opposite sheet for spheres and
+        hyperbolas, so roots are ranked by axial distance from the vertex.
+        """
+        if abs(radius) < EPSILON or abs(radius) > 1e10:
+            return self._intersect_plane(ray, vertex, self.optical_axis)
+
+        local_origin = self._to_local_point(ray.origin, vertex)
+        local_dir = self._to_local_vector(ray.direction)
+        vertex_offset = self._to_local_point(vertex, vertex)
+        local_origin = local_origin - vertex_offset
+
+        ox, oy, oz = local_origin.x, local_origin.y, local_origin.z
+        dx, dy, dz = local_dir.x, local_dir.y, local_dir.z
+        aperture_sq = self._aperture_sq_front if surface_type == "front" else self._aperture_sq_back
+
+        a = (1.0 + conic_constant) * dx * dx + dy * dy + dz * dz
+        b = 2.0 * ((1.0 + conic_constant) * ox * dx - radius * dx + oy * dy + oz * dz)
+        c_term = (1.0 + conic_constant) * ox * ox - 2.0 * radius * ox + oy * oy + oz * oz
+
+        if abs(a) < EPSILON:
+            if abs(b) < EPSILON:
+                return None
+            roots = [-c_term / b]
+        else:
+            discriminant = b * b - 4.0 * a * c_term
+            if discriminant < -EPSILON:
+                return None
+            root = math.sqrt(max(0.0, discriminant))
+            roots = [(-b - root) / (2.0 * a), (-b + root) / (2.0 * a)]
+
+        best = None
+        for t in roots:
+            if t <= EPSILON:
+                continue
+            local_x = ox + t * dx
+            local_y = oy + t * dy
+            local_z = oz + t * dz
+            radial_sq = local_y * local_y + local_z * local_z
+            if radial_sq > aperture_sq:
+                continue
+            radial = math.sqrt(max(0.0, radial_sq))
+            radicand = 1.0 - (1.0 + conic_constant) * (radial / radius) ** 2
+            if radicand < -1e-6:
+                continue
+            candidate = (abs(local_x), t, local_x, local_y, local_z)
+            if best is None or candidate[:2] < best[:2]:
+                best = candidate
+
+        if best is None:
+            return None
+        _, _, local_x, local_y, local_z = best
+        return self.transform.multiply_point(vec3(local_x, local_y, local_z) + vertex_offset)
+
     def trace_surface(
         self, ray: Ray3D, surface_type: str, interaction: str = "refract"
     ) -> RefractionResult:
@@ -432,6 +516,8 @@ class LensRayTracer3D:
             center = self.front_center
             is_flat = self.front_is_flat
             is_parabolic = self.front_is_parabolic
+            is_conic = self.front_is_conic
+            conic_constant = self.conic_constant_1
             vertex = self.front_vertex
             R = self.R1
             default_n1 = REFRACTIVE_INDEX_AIR
@@ -440,6 +526,8 @@ class LensRayTracer3D:
             center = self.back_center
             is_flat = self.back_is_flat
             is_parabolic = self.back_is_parabolic
+            is_conic = self.back_is_conic
+            conic_constant = self.conic_constant_2
             vertex = self.back_vertex
             R = self.R2
             default_n1 = self.n
@@ -456,6 +544,7 @@ class LensRayTracer3D:
             intersection, normal = fresnel_hit
             is_flat = False
             is_parabolic = False
+            is_conic = False
         elif is_parabolic:
             # R is the effective vertex radius (may be negative).
             if abs(R) < EPSILON or abs(R) > 1e10:
@@ -464,6 +553,9 @@ class LensRayTracer3D:
             else:
                 normal = None  # gradient-based: oriented outward below
                 intersection = self._intersect_paraboloid(ray, vertex, R, surface_type)
+        elif is_conic:
+            normal = None  # gradient-based: oriented outward below
+            intersection = self._intersect_conic(ray, vertex, R, conic_constant, surface_type)
         elif is_flat:
             normal = self.optical_axis
             intersection = self._intersect_plane(ray, vertex, normal)
@@ -523,6 +615,24 @@ class LensRayTracer3D:
                     normal_local = vec3(1, 0, 0)
                 else:
                     normal_local = vec3(1, -ly / R, -lz / R).normalize()
+                geometric = self.transform.multiply_vector(normal_local)
+            except Exception:
+                geometric = None
+            if geometric is None:
+                normal = -self.optical_axis if surface_type == "front" else self.optical_axis
+            else:
+                normal = self._outward_normal(geometric, surface_type)
+        elif fresnel_hit is None and is_conic and normal is None:
+            # Conic gradient in the vertex-local frame:
+            # ((1+K)x - R, y, z).
+            try:
+                local_hit = self._to_local_point(intersection, vertex)
+                local_hit = local_hit - self._to_local_point(vertex, vertex)
+                normal_local = vec3(
+                    (1.0 + conic_constant) * local_hit.x - R,
+                    local_hit.y,
+                    local_hit.z,
+                ).normalize()
                 geometric = self.transform.multiply_vector(normal_local)
             except Exception:
                 geometric = None
