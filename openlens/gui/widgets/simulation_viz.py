@@ -3,7 +3,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 import logging
 import math
-from typing import Optional, TYPE_CHECKING, Union
+from typing import Optional, Sequence, TYPE_CHECKING, Union
 
 from ...constants import COLOR_LENS_FILL, NM_TO_MM, WAVELENGTH_GREEN
 from ..theme import DARK, get_palette
@@ -31,7 +31,9 @@ class SimulationVisualizationWidget(QWidget):
         self._lens = None
         self._system = None
         self._rays = []
-        self._wavelength = WAVELENGTH_GREEN  # Default wavelength in nm
+        self._ray_groups = []
+        self._wavelength = WAVELENGTH_GREEN  # Primary wavelength in nm
+        self._wavelengths = [WAVELENGTH_GREEN]
 
         self.setMinimumSize(400, 300)
         self._theme = DARK
@@ -184,6 +186,7 @@ class SimulationVisualizationWidget(QWidget):
         source_height: float = 0,
         show_ghosts: bool = False,
         wavelength: float = WAVELENGTH_GREEN,
+        wavelengths: Optional[Sequence[float]] = None,
     ) -> None:
         """Run ray tracing simulation
 
@@ -194,9 +197,12 @@ class SimulationVisualizationWidget(QWidget):
             source_height: Vertical offset of the ray fan origin (mm).
             show_ghosts: Whether to trace ghost rays from internal
                 reflections.
-            wavelength: Wavelength in nanometers. Used for the ray colour
-                *and* passed to the tracer, so a dispersive glass actually
-                disperses at the wavelength the user picked.
+            wavelength: Single wavelength in nanometers, kept for callers
+                that trace one colour. Used to select the tracer's dispersive
+                index and the ray colour.
+            wavelengths: Multiple wavelengths in nanometers. Each gets its
+                own trace group and spectral colour; duplicates are ignored.
+                When given, ``wavelength`` is ignored.
         """
         from ...optical_system import OpticalSystem
 
@@ -207,61 +213,73 @@ class SimulationVisualizationWidget(QWidget):
             self._lens = lens_or_system
             self._system = None
 
+        selected = wavelengths if wavelengths is not None else [wavelength]
+        unique = [float(nm) for nm in dict.fromkeys(selected)]
+        self._wavelengths = unique or [WAVELENGTH_GREEN]
+
         self._rays = []
+        self._ray_groups = []
         self._ghost_rays = []
         self._show_ghosts = show_ghosts
-        self._wavelength = wavelength
+        self._wavelength = self._wavelengths[0]
         self._last_num_rays = num_rays
         self._last_angle = angle
         self._last_source_height = source_height
-        self._ray_color = self.wavelength_to_color(wavelength)
+        self._ray_color = self.wavelength_to_color(self._wavelength)
 
         try:
-            from ...ray_tracer import LensRayTracer, Ray
+            from ...ray_tracer import LensRayTracer, Ray, SystemRayTracer
 
-            # Use appropriate tracer
+            # Use appropriate tracer. Each wavelength gets its own tracer so
+            # the dispersion curve is evaluated once per element, not per ray.
             if self._system:
-                # OpticalSystem has multiple elements
-                from ...ray_tracer import SystemRayTracer
-
-                tracer = SystemRayTracer(self._system)
                 diameter = self._system.elements[0].lens.diameter if self._system.elements else 25.0
             else:
-                tracer = LensRayTracer(self._lens)
                 diameter = self._lens.diameter
 
             angle_rad = angle * math.pi / 180.0
 
-            for i in range(num_rays):
-                if num_rays == 1:
-                    h = 0
-                else:
-                    h = -diameter / 2 + diameter * i / (num_rays - 1)
+            for trace_wavelength in self._wavelengths:
+                group = []
+                color = self.wavelength_to_color(trace_wavelength)
+                try:
+                    if self._system:
+                        tracer = SystemRayTracer(self._system, wavelength_nm=trace_wavelength)
+                    else:
+                        tracer = LensRayTracer(self._lens, wavelength_nm=trace_wavelength)
 
-                # wavelength_mm has to be set explicitly. Without it the ray
-                # inherited the Ray default of 550 nm, so the wavelength picker
-                # changed only the ray colour and every trace stayed at green -
-                # dispersion never showed no matter which glass was loaded.
-                ray = Ray(
-                    -100,
-                    h + source_height,
-                    angle_rad=angle_rad,
-                    wavelength_mm=wavelength * NM_TO_MM,
-                )
-                tracer.trace_ray(ray)
-                self._rays.append(ray)
+                    for i in range(num_rays):
+                        if num_rays == 1:
+                            h = 0
+                        else:
+                            h = -diameter / 2 + diameter * i / (num_rays - 1)
+
+                        # wavelength_mm has to be set explicitly; the Ray
+                        # default is green independent of the tracer index.
+                        ray = Ray(
+                            -100,
+                            h + source_height,
+                            angle_rad=angle_rad,
+                            wavelength_mm=trace_wavelength * NM_TO_MM,
+                        )
+                        tracer.trace_ray(ray)
+                        group.append(ray)
+                        self._rays.append(ray)
+                except Exception as e:
+                    logger.error("Simulation failed at %.1f nm: %s", trace_wavelength, e)
+                self._ray_groups.append((color, group))
 
             if show_ghosts:
                 if self._system:
-                    self._run_ghost_analysis(self._system, tracer)
+                    self._run_ghost_analysis(self._system, SystemRayTracer(self._system))
                 elif self._lens:
                     # Wrap lens in temporary system for GhostAnalyzer
                     temp_system = OpticalSystem(name="Ghost Analysis")
                     temp_system.add_lens(self._lens)
-                    self._run_ghost_analysis(temp_system, tracer)
+                    self._run_ghost_analysis(temp_system, LensRayTracer(self._lens))
 
         except Exception as e:
-            logger.error("Simulation failed at %.1f nm: %s", wavelength, e)
+            logger.error("Simulation failed: %s", e)
 
         self.update()
 
@@ -294,6 +312,7 @@ class SimulationVisualizationWidget(QWidget):
     def clear_simulation(self) -> None:
         """Clear simulation results"""
         self._rays = []
+        self._ray_groups = []
         self._ghost_rays = []
         self._lens = None
         self._show_image_sim = False
@@ -329,7 +348,7 @@ class SimulationVisualizationWidget(QWidget):
             angle=self._last_angle,
             source_height=self._last_source_height,
             show_ghosts=self._show_ghosts,
-            wavelength=self._wavelength,
+            wavelengths=self._wavelengths,
         )
         self.update()
 
@@ -450,23 +469,30 @@ class SimulationVisualizationWidget(QWidget):
         else:
             draw_single_lens(painter, self._lens, cx, cy, scale, self._lens_color)
 
-        # Draw rays
-        painter.setPen(QPen(self._ray_color, 1.5))
-        for ray in self._rays:
-            if len(ray.path) < 2:
-                continue
-            for j in range(len(ray.path) - 1):
-                p1, p2 = ray.path[j], ray.path[j + 1]
-                if hasattr(p1, "x"):
-                    x1, y1, x2, y2 = p1.x, p1.y, p2.x, p2.y
-                else:
-                    x1, y1, x2, y2 = p1[0], p1[1], p2[0], p2[1]
-                painter.drawLine(
-                    int(cx + x1 * scale),
-                    int(cy - y1 * scale),
-                    int(cx + x2 * scale),
-                    int(cy - y2 * scale),
-                )
+        # Draw rays, one spectral colour per wavelength group. Additive
+        # blending makes overlapping spectral lines read as white light
+        # instead of letting whichever wavelength is drawn last repaint them.
+        ray_groups = self._ray_groups or [(self._ray_color, self._rays)]
+        if len(ray_groups) > 1:
+            painter.setCompositionMode(QPainter.CompositionMode_Plus)
+        for color, rays in ray_groups:
+            painter.setPen(QPen(color, 1.5))
+            for ray in rays:
+                if len(ray.path) < 2:
+                    continue
+                for j in range(len(ray.path) - 1):
+                    p1, p2 = ray.path[j], ray.path[j + 1]
+                    if hasattr(p1, "x"):
+                        x1, y1, x2, y2 = p1.x, p1.y, p2.x, p2.y
+                    else:
+                        x1, y1, x2, y2 = p1[0], p1[1], p2[0], p2[1]
+                    painter.drawLine(
+                        int(cx + x1 * scale),
+                        int(cy - y1 * scale),
+                        int(cx + x2 * scale),
+                        int(cy - y2 * scale),
+                    )
+        painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
 
         # Ghost rays
         if self._show_ghosts and self._ghost_rays:
