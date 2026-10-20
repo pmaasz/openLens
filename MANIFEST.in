@@ -8,8 +8,12 @@ include CHANGELOG.md
 include setup_venv.sh
 include setup_venv.bat
 
-# Include data files
-recursive-include data *.json
+# data/ and specs/ are gitignored working directories, not source files.
+# Material definitions are built into the package and the writable catalog
+# lives in the user data directory; a checkout's data/materials.json is only a
+# one-time migration source, so it must not leak into a release from whoever
+# happened to have one. Including it made the sdist depend on local state: a
+# clean checkout shipped no catalog, a developer tree shipped theirs.
 
 # Include documentation directory
 recursive-include docs *.md
