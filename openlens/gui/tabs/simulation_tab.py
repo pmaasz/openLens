@@ -202,14 +202,14 @@ class SimulationTab(BaseTab):
             The inserted list item.
         """
         item = QListWidgetItem(_wavelength_label(nanometres))
-        item.setData(Qt.UserRole, float(nanometres))
+        item.setData(Qt.ItemDataRole.UserRole, float(nanometres))
         self._sim_wavelengths.addItem(item)
         return item
 
     def _listed_wavelengths(self) -> list[float]:
         """Return the wavelengths currently listed, in display order."""
         return [
-            float(self._sim_wavelengths.item(row).data(Qt.UserRole))
+            float(self._sim_wavelengths.item(row).data(Qt.ItemDataRole.UserRole))
             for row in range(self._sim_wavelengths.count())
         ]
 
