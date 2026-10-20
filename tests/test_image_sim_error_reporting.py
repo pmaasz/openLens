@@ -25,20 +25,17 @@ except ImportError:  # pragma: no cover - optional dependency guard
     MPL_AVAILABLE = False
 
 try:
-    from PySide6.QtWidgets import QApplication, QWidget
+    from PySide6.QtWidgets import QWidget
 
     PYSIDE_AVAILABLE = True
 except ImportError:  # pragma: no cover - environment guard
     PYSIDE_AVAILABLE = False
 
-_app = None
-
 
 def _ensure_app():
-    global _app
-    if _app is None:
-        _app = QApplication.instance() or QApplication(sys.argv[:1])
-    return _app
+    from tests import ensure_qapp
+
+    return ensure_qapp()
 
 
 def _lens(radius: float = 60.0):

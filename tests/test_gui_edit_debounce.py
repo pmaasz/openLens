@@ -16,21 +16,18 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QEventLoop, QTimer
 
 import openlens.__main__ as openlens
 from openlens.lens import Lens
 
-_app = None
 _window = None
 
 
 def _ensure_app():
-    global _app
-    if _app is None:
-        _app = QApplication.instance() or QApplication([])
-    return _app
+    from tests import ensure_qapp
+
+    return ensure_qapp()
 
 
 def _spin_until(predicate, timeout_ms=6000):

@@ -22,25 +22,22 @@ from unittest import mock
 
 import numpy as np
 
+from tests import ensure_qapp
+
 if os.environ.get("DISPLAY", "") == "" and sys.platform.startswith("linux"):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
     from PySide6.QtCore import QEventLoop, QTimer
-    from PySide6.QtWidgets import QApplication, QWidget
+    from PySide6.QtWidgets import QWidget
 
     PYSIDE_AVAILABLE = True
 except ImportError:  # pragma: no cover - environment guard
     PYSIDE_AVAILABLE = False
 
-_app = None
-
 
 def _ensure_app():
-    global _app
-    if _app is None:
-        _app = QApplication.instance() or QApplication(sys.argv[:1])
-    return _app
+    return ensure_qapp()
 
 
 if PYSIDE_AVAILABLE:

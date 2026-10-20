@@ -30,15 +30,11 @@ except ImportError as _pyside_error:  # pragma: no cover - depends on install
     PYSIDE_AVAILABLE = False
 
 
-_app = None
-
-
 def _ensure_app():
     """Create (once) and return the QApplication every widget needs."""
-    global _app
-    if _app is None:
-        _app = QApplication.instance() or QApplication([])
-    return _app
+    from tests import ensure_qapp
+
+    return ensure_qapp()
 
 
 #: Builders in panel order, and the title each group box must carry.
