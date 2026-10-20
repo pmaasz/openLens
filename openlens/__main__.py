@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QLabel, QTabWidget, QStatusBar, QFileDialog, QMessageBox)
 from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QKeySequence
+from PySide6.QtGui import QKeySequence, QShortcut
 
 from openlens.lens import Lens
 from openlens.optical_system import OpticalSystem
@@ -64,6 +64,18 @@ def _report_missing_plot_dependency(parent, exc) -> None:
 #: Quiet period (ms) after the last edit before a burst is committed. Long
 #: enough to coalesce a typed word, short enough to still feel immediate.
 EDIT_COMMIT_DELAY_MS = 400
+
+#: Tab-switching shortcuts, as promised by the Keyboard Shortcuts dialog.
+#: ``(tab index, key sequence, display name)``; the order is the tab order
+#: built in ``_create_editor_area``.
+TAB_SHORTCUTS = (
+    (0, "Ctrl+1", "Lens Editor"),
+    (1, "Ctrl+2", "Assembly Editor"),
+    (2, "Ctrl+3", "Simulation"),
+    (3, "Ctrl+4", "Performance"),
+    (4, "Ctrl+5", "Optimization"),
+    (5, "Ctrl+6", "Tolerancing"),
+)
 
 
 class OpenLensWindow(QMainWindow):
@@ -515,8 +527,39 @@ class OpenLensWindow(QMainWindow):
         
         self._tol_tab = TolerancingTab(self)
         self._editor_tabs.addTab(self._tol_tab, "Tolerancing")
-        
+
+        # Ctrl+1 ... Ctrl+6 were documented in the shortcuts dialog but never
+        # created; the keys did nothing. Parent them to the window so they
+        # live as long as it does.
+        self._tab_shortcuts = []
+        for index, key, name in TAB_SHORTCUTS:
+            shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.activated.connect(
+                lambda index=index, name=name: self._switch_to_tab(index, name)
+            )
+            self._tab_shortcuts.append(shortcut)
+
         return self._editor_tabs
+
+    def _switch_to_tab(self, index: int, name: str) -> None:
+        """Select an editor tab, or explain why it is unavailable.
+
+        Ctrl+2 is advertised even when no assembly is loaded. The assembly
+        tab is hidden then, and Qt refuses to select a hidden tab, so the old
+        no-op made the shortcut look dead.
+
+        Args:
+            index: Tab index in ``_editor_tabs``.
+            name: Human-readable tab name for the status line.
+        """
+        if index < 0 or index >= self._editor_tabs.count():
+            self._update_status(f"{name} is not available")
+            return
+        if not self._editor_tabs.isTabVisible(index):
+            self._update_status(f"{name}: no assembly loaded")
+            return
+        self._editor_tabs.setCurrentIndex(index)
+        self._update_status(name)
     
     def _on_lens_modified(self, lens: Lens) -> None:
         """Handle lens modification from editor widget"""
