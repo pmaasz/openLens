@@ -7,6 +7,8 @@
 
 * add undo/redo for lens property edits ([#566](https://github.com/pmaasz/openLens/issues/566)) ([#587](https://github.com/pmaasz/openLens/issues/587)) ([fc19d96](https://github.com/pmaasz/openLens/commit/fc19d96b51fc5f4d436baa80e1f1e1de9bea8fe9))
 * **qa:** add automated GUI flow suite replacing manual QA ([#288](https://github.com/pmaasz/openLens/issues/288)) ([2e7175b](https://github.com/pmaasz/openLens/commit/2e7175b916d784bd83ca01c28512c3dc94633930))
+* simulate lenses at a user-set temperature ([#10](https://github.com/pmaasz/openLens/issues/10)) ([8603931](https://github.com/pmaasz/openLens/commit/8603931c300c096964e111ad35793dba1854f9eb))
+* standalone Windows and macOS executables on every release ([#35](https://github.com/pmaasz/openLens/issues/35)) ([263d953](https://github.com/pmaasz/openLens/commit/263d953e7f2cd41bb7cf5658b40d35331552af88))
 * trace multiple wavelengths and white light in simulation ([#72](https://github.com/pmaasz/openLens/issues/72)) ([#588](https://github.com/pmaasz/openLens/issues/588)) ([0480dad](https://github.com/pmaasz/openLens/commit/0480dadefaa4e09d82bf0d1ce92ed1ea0be9d54a))
 
 
