@@ -23,6 +23,7 @@ from .base_tab import BaseTab
 from ..theme import DARK, get_monospace_qss
 from ..workers import AnalysisWorker
 from ...constants import WAVELENGTH_GREEN, WAVELENGTH_PRESETS
+from ...optical_system import as_system
 
 logger = logging.getLogger(__name__)
 
@@ -239,11 +240,7 @@ class PerformanceTab(BaseTab):
 
     def _current_system(self):
         """The assembly or lens the tab analyses, or None if nothing is selected."""
-        return (
-            self._parent._current_assembly
-            if self._parent._current_assembly
-            else self._parent._current_lens
-        )
+        return self._active_target()
 
     @staticmethod
     def _wrap_in_system(active_system):
@@ -255,13 +252,7 @@ class PerformanceTab(BaseTab):
         Returns:
             An OpticalSystem; the input itself when it already is one.
         """
-        from ...optical_system import OpticalSystem
-
-        if isinstance(active_system, OpticalSystem):
-            return active_system
-        system = OpticalSystem(name=active_system.name)
-        system.add_lens(active_system)
-        return system
+        return as_system(active_system)
 
     def _selected_wavelength(self) -> float:
         """Wavelength selected in the calculation parameters, in nanometres."""
@@ -303,11 +294,7 @@ class PerformanceTab(BaseTab):
 
     def _on_show_image_simulation(self) -> None:
         """Show Image Simulation Dialog with side-by-side view."""
-        active_system = (
-            self._parent._current_assembly
-            if self._parent._current_assembly
-            else self._parent._current_lens
-        )
+        active_system = self._active_target()
         if not active_system:
             QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
             return
@@ -733,11 +720,7 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
         belongs to the explicit "Calculate Metrics" button, which already
         exists.
         """
-        active_system = (
-            self._parent._current_assembly
-            if self._parent._current_assembly
-            else self._parent._current_lens
-        )
+        active_system = self._active_target()
         if not active_system:
             self._cached_metrics_text = None
             self._cached_metrics_for = None

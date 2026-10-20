@@ -19,7 +19,7 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 
 from openlens.lens import Lens
-from openlens.optical_system import OpticalSystem
+from openlens.optical_system import OpticalSystem, as_system
 from openlens.database import LensInUseError
 from openlens.logging_setup import setup_logging, verbose_requested
 from openlens.paths import migrate_legacy_db, migrate_legacy_materials, resolve_db_path
@@ -257,7 +257,7 @@ class OpenLensWindow(QMainWindow):
         if target is None:
             target = self._tol_operands_target
         if target is None:
-            target = self._current_assembly if self._current_assembly else self._current_lens
+            target = self._active_target()
         if target is None:
             return
         if not hasattr(target, 'metadata') or target.metadata is None:
@@ -1197,17 +1197,25 @@ Ctrl+6         Tolerancing
                 viz.set_view_mode(mode)
         self._update_status(f"View: {mode}")
 
+    def _active_target(self) -> Optional[Any]:
+        """The assembly being edited, or else the current lens.
+
+        Every action and analysis handler used to repeat this ternary, so the
+        precedence between an assembly and a lens was defined as many times as
+        it was used.
+
+        Returns:
+            The current OpticalSystem, the current Lens, or None.
+        """
+        return self._current_assembly if self._current_assembly else self._current_lens
+
     def _ensure_system(self, target: Any) -> OpticalSystem:
         """Return *target* as an OpticalSystem, wrapping a single Lens if needed."""
-        if isinstance(target, Lens):
-            system = OpticalSystem(name=target.name)
-            system.add_lens(target)
-            return system
-        return target
+        return as_system(target)
 
     def _on_export_stl(self) -> None:
         """Export current lens or assembly to STL"""
-        target = self._current_assembly if self._current_assembly else self._current_lens
+        target = self._active_target()
         if not target:
             return
             
@@ -1229,7 +1237,7 @@ Ctrl+6         Tolerancing
 
     def _on_export_step(self) -> None:
         """Export current lens or assembly to STEP"""
-        target = self._current_assembly if self._current_assembly else self._current_lens
+        target = self._active_target()
         if not target:
             return
             
@@ -1260,7 +1268,7 @@ Ctrl+6         Tolerancing
 
     def _on_export_iso10110(self) -> None:
         """Export ISO 10110 drawing as SVG"""
-        target = self._current_assembly if self._current_assembly else self._current_lens
+        target = self._active_target()
         if not target:
             return
             
@@ -1285,7 +1293,7 @@ Ctrl+6         Tolerancing
 
     def _on_export_report(self) -> None:
         """Export comprehensive design report"""
-        target = self._current_assembly if self._current_assembly else self._current_lens
+        target = self._active_target()
         if not target:
             return
             
@@ -1376,7 +1384,7 @@ Ctrl+6         Tolerancing
 
     def _on_show_ghost_analysis(self) -> None:
         """Show Ghost Reflection Analysis"""
-        target = self._current_assembly if self._current_assembly else self._current_lens
+        target = self._active_target()
         if not target:
             return
 
@@ -1402,7 +1410,7 @@ Ctrl+6         Tolerancing
 
     def _on_show_psf(self) -> None:
         """Show Point Spread Function analysis"""
-        target = self._current_assembly if self._current_assembly else self._current_lens
+        target = self._active_target()
         if not target:
             return
 
@@ -1427,7 +1435,7 @@ Ctrl+6         Tolerancing
 
     def _on_show_mtf(self) -> None:
         """Show Modulation Transfer Function analysis"""
-        target = self._current_assembly if self._current_assembly else self._current_lens
+        target = self._active_target()
         if not target:
             return
 
@@ -1446,7 +1454,7 @@ Ctrl+6         Tolerancing
 
     def _on_show_wavefront(self) -> None:
         """Show Wavefront Error analysis"""
-        target = self._current_assembly if self._current_assembly else self._current_lens
+        target = self._active_target()
         if not target:
             return
 

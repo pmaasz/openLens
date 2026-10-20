@@ -128,11 +128,7 @@ class SimulationTab(BaseTab):
         with the active lens/assembly from the parent window, to the
         visualization widget.
         """
-        active_system = (
-            self._parent._current_assembly
-            if self._parent._current_assembly
-            else self._parent._current_lens
-        )
+        active_system = self._active_target()
         if active_system:
             num_rays = int(self._sim_num_rays.value())
             angle = self._sim_angle.value()

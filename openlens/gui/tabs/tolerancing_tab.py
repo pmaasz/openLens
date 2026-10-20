@@ -4,7 +4,6 @@ Tab for tolerancing and yield analysis
 """
 
 import logging
-import copy
 from typing import List
 
 from PySide6.QtWidgets import (
@@ -32,6 +31,7 @@ from PySide6.QtCore import Signal, Slot, Qt, QThread
 
 from .base_tab import BaseTab
 from ..theme import DARK, get_monospace_qss
+from ...optical_system import as_system
 from ...tolerancing import (
     MonteCarloAnalyzer,
     InverseSensitivityAnalyzer,
@@ -43,30 +43,18 @@ logger = logging.getLogger(__name__)
 
 
 def _as_system(target):
-    """Wrap a bare Lens in a throwaway system; pass a *copy* of a system through.
+    """Copy *target* into an OpticalSystem for the tolerance workers.
 
-    Both workers need an OpticalSystem to trace. A single lens gets a
-    one-element wrapper; an assembly is already one and must be used as-is,
-    otherwise its elements, gaps and alignment would be discarded and the
-    element indices in the tolerance operands would refer to nothing.
+    Both workers perturb the system in place from another thread while the main
+    thread keeps drawing, refreshing and saving the same object. Handing them
+    the live assembly meant an edit saved during a run could write a perturbed
+    design to SQLite. ``as_system(..., copy_system=True)`` deep-copies both a
+    bare Lens and an existing assembly for that reason.
 
-    The copy is the point. MonteCarloAnalyzer applies random tolerance
-    changes *in place* on the system it is given, from a worker thread, while
-    the main thread keeps drawing, refreshing and saving the same object.
-    Handing it the live assembly meant an edit saved during a run could
-    write a perturbed design to SQLite. A bare Lens was already copied here;
-    an assembly now is too.
-
-    copy.deepcopy keeps the tree and the flat element list pointing at the
-    same lens objects, which refresh_references depends on.
+    ``copy.deepcopy`` keeps the tree and the flat element list pointing at the
+    same lens objects, which ``refresh_references`` depends on.
     """
-    from ...optical_system import OpticalSystem
-
-    if isinstance(target, OpticalSystem):
-        return copy.deepcopy(target)
-    system = OpticalSystem(name="Tolerancing")
-    system.add_lens(copy.deepcopy(target))
-    return system
+    return as_system(target, copy_system=True, name="Tolerancing")
 
 
 class MonteCarloWorker(QThread):
@@ -405,12 +393,9 @@ class TolerancingTab(BaseTab):
         """
         if not self._parent:
             return None
-        # getattr rather than attribute access: the tab is also driven by
-        # tests and embedders that supply only part of the parent surface,
-        # and this file already guards parent attributes with hasattr.
-        return getattr(self._parent, "_current_assembly", None) or getattr(
-            self._parent, "_current_lens", None
-        )
+        # BaseTab._active_target() prefers the window's single definition and
+        # keeps the attribute fallback for partial parent doubles.
+        return self._active_target()
 
     def _require_target(self) -> bool:
         """Report and return False when nothing is selected."""
@@ -511,16 +496,10 @@ class TolerancingTab(BaseTab):
     def _on_load_grade(self) -> None:
         """Build a full shop-grade tolerance set for the current target."""
         from ...tolerancing import tolerances_for_system
-        from ...optical_system import OpticalSystem
 
         if not self._require_target():
             return
-        target = self._resolve_target()
-        if hasattr(target, "elements"):
-            system = target
-        else:
-            system = OpticalSystem(name="Tolerancing")
-            system.add_lens(copy.deepcopy(target))
+        system = _as_system(self._resolve_target())
         try:
             new_operands = tolerances_for_system(system, self._grade_combo.currentText())
         except ValueError:
