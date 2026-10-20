@@ -89,7 +89,7 @@ class MountManagerDialog(QDialog):
         buttons.addStretch()
         layout.addLayout(buttons)
 
-        close_box = QDialogButtonBox(QDialogButtonBox.Close)
+        close_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         close_box.rejected.connect(self.reject)
         layout.addWidget(close_box)
 
@@ -103,7 +103,7 @@ class MountManagerDialog(QDialog):
             item_text = f"{name} — {spec['flange_distance']:.3f} mm"
             self._custom_list.addItem(item_text)
             item = self._custom_list.item(self._custom_list.count() - 1)
-            item.setData(Qt.UserRole, name)
+            item.setData(Qt.ItemDataRole.UserRole, name)
         self._remove_button.setEnabled(self._custom_list.count() > 0)
 
     def _on_add(self, _checked: bool = False) -> None:
@@ -124,7 +124,7 @@ class MountManagerDialog(QDialog):
         item = self._custom_list.currentItem()
         if item is None:
             return
-        name = item.data(Qt.UserRole)
+        name = item.data(Qt.ItemDataRole.UserRole)
         try:
             removed = self._catalog.remove_custom_mount(name)
             if removed:
