@@ -8,6 +8,8 @@ from typing import Optional
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Signal
 
+from ..theme import DARK
+
 
 class BaseTab(QWidget):
     """Base class for all main-window tabs.
@@ -27,7 +29,19 @@ class BaseTab(QWidget):
         """
         super().__init__(parent)
         self._parent = parent
+        self._theme = DARK
         self._setup_ui()
+
+    def set_theme(self, theme: str = DARK) -> None:
+        """Apply *theme* to the tab.
+
+        Subclasses that own themed panes override this and call ``super()``
+        so ``self._theme`` stays in step.
+
+        Args:
+            theme: "dark" or "light".
+        """
+        self._theme = theme
 
     def _setup_ui(self) -> None:
         """Set up the tab's widgets. Override in subclasses."""

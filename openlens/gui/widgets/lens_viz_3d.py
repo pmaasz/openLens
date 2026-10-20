@@ -1,6 +1,8 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout
 from typing import Optional, TYPE_CHECKING
 
+from ..theme import DARK, get_palette
+
 try:
     import numpy as np
 except ImportError:
@@ -29,9 +31,10 @@ class _3DVisualizationWidget(QWidget):
         self._ax_lens = None
         self._ax_coords = None
         self._surface_profiles = {}
+        self._theme = DARK
 
         self.setMinimumSize(400, 300)
-        self.setStyleSheet("background-color: #1e1e1e;")
+        self.setStyleSheet(f"background-color: {get_palette(DARK)['plot_bg']};")
 
         try:
             import matplotlib
@@ -40,9 +43,10 @@ class _3DVisualizationWidget(QWidget):
             from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
             from matplotlib.figure import Figure
 
-            self._figure = Figure(figsize=(6, 5), facecolor="#1e1e1e")
+            palette = get_palette(DARK)
+            self._figure = Figure(figsize=(6, 5), facecolor=palette["plot_bg"])
             self._canvas = FigureCanvasQTAgg(self._figure)
-            self._canvas.setStyleSheet("background-color: #1e1e1e;")
+            self._canvas.setStyleSheet(f"background-color: {palette['plot_bg']};")
 
             layout = QVBoxLayout(self)
             layout.setContentsMargins(0, 0, 0, 0)
@@ -52,7 +56,7 @@ class _3DVisualizationWidget(QWidget):
 
             # Fixed coordinate system (background)
             self._ax_coords = self._figure.add_subplot(
-                111, projection="3d", facecolor="#1e1e1e", computed_zorder=False
+                111, projection="3d", facecolor=palette["plot_bg"], computed_zorder=False
             )
             self._ax_coords.view_init(elev=20, azim=45)
             self._ax_coords.mouse_init()
@@ -71,13 +75,13 @@ class _3DVisualizationWidget(QWidget):
             self._ax = self._ax_lens
 
             # Configure coordinate appearance
-            self._ax_coords.set_xlabel("X (mm)", color="#666")
-            self._ax_coords.set_ylabel("Y (mm)", color="#666")
-            self._ax_coords.set_zlabel("Z (mm)", color="#666")
-            self._ax_coords.tick_params(colors="#555", labelsize=8)
-            self._ax_coords.xaxis.pane.set_facecolor("#1e1e1e")
-            self._ax_coords.yaxis.pane.set_facecolor("#1e1e1e")
-            self._ax_coords.zaxis.pane.set_facecolor("#1e1e1e")
+            self._ax_coords.set_xlabel("X (mm)", color=palette["plot_axis"])
+            self._ax_coords.set_ylabel("Y (mm)", color=palette["plot_axis"])
+            self._ax_coords.set_zlabel("Z (mm)", color=palette["plot_axis"])
+            self._ax_coords.tick_params(colors=palette["plot_axis"], labelsize=8)
+            self._ax_coords.xaxis.pane.set_facecolor(palette["plot_bg"])
+            self._ax_coords.yaxis.pane.set_facecolor(palette["plot_bg"])
+            self._ax_coords.zaxis.pane.set_facecolor(palette["plot_bg"])
             self._ax_coords.xaxis.pane.set_alpha(0.9)
             self._ax_coords.yaxis.pane.set_alpha(0.9)
             self._ax_coords.zaxis.pane.set_alpha(0.9)
@@ -87,8 +91,33 @@ class _3DVisualizationWidget(QWidget):
 
             layout = QVBoxLayout(self)
             lbl = QLabel("Install matplotlib\nfor 3D view")
-            lbl.setStyleSheet("color: #888; padding: 50px;")
+            lbl.setStyleSheet(f"color: {get_palette(DARK)['text_dim']}; padding: 50px;")
             layout.addWidget(lbl)
+
+        self.set_theme(DARK)
+
+    def set_theme(self, theme: str = DARK) -> None:
+        """Repaint the 3D canvas with *theme*'s colours.
+
+        Args:
+            theme: "dark" or "light".
+        """
+        palette = get_palette(theme)
+        self._theme = theme
+        self.setStyleSheet(f"background-color: {palette['plot_bg']};")
+        if self._figure is None or self._canvas is None:
+            return
+
+        background = palette["plot_bg"]
+        self._figure.set_facecolor(background)
+        self._canvas.setStyleSheet(f"background-color: {background};")
+        coords = self._ax_coords
+        coords.set_facecolor(background)
+        coords.tick_params(colors=palette["plot_axis"], labelsize=8)
+        for axis in (coords.xaxis, coords.yaxis, coords.zaxis):
+            axis.label.set_color(palette["plot_axis"])
+            axis.pane.set_facecolor(background)
+        self._canvas.draw_idle()
 
     def update_lens(self, lens: "Lens") -> None:
         """Redraw the 3D lens geometry for the given lens.

@@ -19,6 +19,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
 from ..workers import AnalysisWorker
+from ...analysis.plots import apply_axis_theme, axis_theme_colors
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -48,8 +49,7 @@ class AnalysisPlotDialog(QDialog):
         self.figure = Figure(figsize=(8, 6), dpi=100)
         # Use a safe way to check theme from parent
         theme = getattr(parent, "_theme", "dark") if parent else "dark"
-        if theme == "dark":
-            self.figure.patch.set_facecolor("#1e1e1e")
+        self.figure.patch.set_facecolor(axis_theme_colors(theme)["background"])
 
         self.canvas = FigureCanvas(self.figure)
         layout.addWidget(self.canvas)
@@ -82,14 +82,7 @@ class AnalysisPlotDialog(QDialog):
         """
         ax = self.figure.add_subplot(*args, **kwargs)
         theme = getattr(self.parent(), "_theme", "dark") if self.parent() else "dark"
-        if theme == "dark":
-            ax.set_facecolor("#1e1e1e")
-            ax.tick_params(colors="#e0e0e0")
-            ax.xaxis.label.set_color("#e0e0e0")
-            ax.yaxis.label.set_color("#e0e0e0")
-            ax.title.set_color("#e0e0e0")
-            for spine in ax.spines.values():
-                spine.set_edgecolor("#3f3f3f")
+        apply_axis_theme(ax, theme)
         return ax
 
     # ------------------------------------------------------------------
@@ -98,8 +91,8 @@ class AnalysisPlotDialog(QDialog):
 
     def _text_color(self) -> str:
         """Foreground colour matching the active theme."""
-        dark = getattr(self.parent(), "_theme", "dark") == "dark"
-        return "#e0e0e0" if dark else "black"
+        theme = getattr(self.parent(), "_theme", "dark") if self.parent() else "dark"
+        return axis_theme_colors(theme)["text"]
 
     def _content_axes(self, columns: int = 1):
         """The axes this dialog draws into, created (or rebuilt) on first use.

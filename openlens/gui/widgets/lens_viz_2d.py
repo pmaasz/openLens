@@ -11,6 +11,7 @@ from ...constants import (
     COLOR_LENS_RIM,
 )
 from ...geometry import LensGeometry
+from ..theme import DARK, get_palette
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QMouseEvent, QPaintEvent
@@ -35,9 +36,9 @@ class LensViz2DWidget(QWidget):
         self._view_mode = "2D"
 
         self.setMinimumSize(400, 300)
-        self.setStyleSheet("background-color: #1e1e1e;")
+        self._theme = DARK
+        self.set_theme(DARK)
 
-        self._bg_color = QColor("#1e1e1e")
         # Shared lens palette (constants.py) so every 2D view matches.
         self._r1_color = QColor(COLOR_LENS_R1)
         self._r2_color = QColor(COLOR_LENS_R2)
@@ -45,8 +46,6 @@ class LensViz2DWidget(QWidget):
         self._fill_color.setAlpha(80)
         self._edge_color = QColor(COLOR_LENS_RIM)
         self._bad_color = QColor(COLOR_LENS_BAD)
-        self._text_color = QColor("#e0e0e0")
-        self._axis_color = QColor("#666666")
         self._handle_color = QColor(255, 255, 255, 200)  # White for interactive handles
 
         # Interaction state
@@ -58,6 +57,21 @@ class LensViz2DWidget(QWidget):
         self._cy = 0
 
         self.setMouseTracking(True)
+
+    def set_theme(self, theme: str = DARK) -> None:
+        """Repaint with *theme*'s canvas colours.
+
+        Args:
+            theme: "dark" or "light".
+        """
+        palette = get_palette(theme)
+        self._theme = theme
+        self._bg_color = QColor(palette["plot_bg"])
+        self._grid_color = QColor(palette["plot_grid"])
+        self._text_color = QColor(palette["plot_text"])
+        self._axis_color = QColor(palette["plot_axis"])
+        self.setStyleSheet(f"background-color: {palette['plot_bg']};")
+        self.update()
 
     def mousePressEvent(self, event: "QMouseEvent") -> None:
         """Select the handle under the mouse cursor, if any."""
@@ -176,7 +190,7 @@ class LensViz2DWidget(QWidget):
         self._cx, self._cy = cx, cy
 
         # Draw grid
-        grid_color = QColor("#333333")
+        grid_color = self._grid_color
         painter.setPen(QPen(grid_color, 1))
         grid_spacing = 10 * scale  # 10mm grid
 

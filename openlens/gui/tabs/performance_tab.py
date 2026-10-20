@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 from .base_tab import BaseTab
+from ..theme import DARK, get_monospace_qss
 from ..workers import AnalysisWorker
 
 logger = logging.getLogger(__name__)
@@ -111,9 +112,7 @@ class PerformanceTab(BaseTab):
         self._perf_metrics_text = QTextEdit()
         self._perf_metrics_text.setReadOnly(True)
         self._perf_metrics_text.setMinimumWidth(300)
-        self._perf_metrics_text.setStyleSheet(
-            "background-color: #2b2b2b; color: #e0e0e0; font-family: Courier; font-size: 10px;"
-        )
+        self._perf_metrics_text.setStyleSheet(get_monospace_qss(DARK))
         self._perf_metrics_text.setPlainText(
             "Select a lens and click 'Calculate Metrics' to view performance data."
         )
@@ -223,6 +222,15 @@ class PerformanceTab(BaseTab):
         scroll.setWidget(content)
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(scroll)
+
+    def set_theme(self, theme: str = DARK) -> None:
+        """Re-style the monospace metrics pane for *theme*.
+
+        Args:
+            theme: "dark" or "light".
+        """
+        super().set_theme(theme)
+        self._perf_metrics_text.setStyleSheet(get_monospace_qss(theme))
 
     def _current_system(self):
         """The assembly or lens the tab analyses, or None if nothing is selected."""
