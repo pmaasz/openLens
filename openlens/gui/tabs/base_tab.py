@@ -43,6 +43,25 @@ class BaseTab(QWidget):
         """
         self._theme = theme
 
+    def _active_target(self):
+        """The current assembly, else the current lens, from the parent window.
+
+        The window owns the one definition of the precedence; this proxy keeps
+        partial parent doubles (tests and embedders) working through the
+        attribute fallback.
+
+        Returns:
+            The active model, or None when nothing is selected.
+        """
+        if not self._parent:
+            return None
+        active = getattr(self._parent, "_active_target", None)
+        if callable(active):
+            return active()
+        return getattr(self._parent, "_current_assembly", None) or getattr(
+            self._parent, "_current_lens", None
+        )
+
     def _setup_ui(self) -> None:
         """Set up the tab's widgets. Override in subclasses."""
         pass

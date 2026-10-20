@@ -374,11 +374,7 @@ class OptimizationTab(BaseTab):
         if not self._parent:
             return
 
-        active_target = (
-            self._parent._current_assembly
-            if self._parent._current_assembly
-            else self._parent._current_lens
-        )
+        active_target = self._active_target()
         if not active_target:
             self._opt_vars_layout.addWidget(QLabel("No system selected"))
             self._opt_selection_target = None
@@ -689,11 +685,7 @@ class OptimizationTab(BaseTab):
 
         from ...global_optimizer import GlobalOptimizer
 
-        active_target = (
-            self._parent._current_assembly
-            if self._parent._current_assembly
-            else self._parent._current_lens
-        )
+        active_target = self._active_target()
         if not active_target:
             self._opt_results_text.setPlainText("No system selected.")
             return

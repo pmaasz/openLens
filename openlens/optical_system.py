@@ -6,6 +6,7 @@ Supports compound lenses, doublets, triplets with air gaps
 
 from typing import List, Tuple, Optional, Dict, Any
 from dataclasses import dataclass
+import copy
 import math
 import json
 import uuid
@@ -1002,4 +1003,42 @@ def create_triplet(focal_length: float = 100.0, diameter: float = 50.0) -> Optic
     system.add_lens(lens2, air_gap_before=gap)
     system.add_lens(lens3, air_gap_before=gap)
 
+    return system
+
+
+def as_system(
+    target: Any,
+    *,
+    copy_system: bool = False,
+    name: Optional[str] = None,
+) -> OpticalSystem:
+    """Return *target* as an OpticalSystem, wrapping a bare Lens if needed.
+
+    The main window and the analysis tabs all need an OpticalSystem to trace,
+    but the active model may be a single lens. They each had their own copy of
+    this wrapper; the copies disagreed about whether to hand out the live
+    object.
+
+    Args:
+        target: A Lens, or an OpticalSystem.
+        copy_system: Deep-copy the result before returning it. A caller that
+            perturbs the system from a worker thread must set this: the window
+            keeps drawing, refreshing and saving the live object.
+        name: Name for a wrapper around a bare Lens. Defaults to the lens name.
+            Ignored when *target* already is a system.
+
+    Returns:
+        The original system, or a new one-element system around the lens.
+
+    Raises:
+        TypeError: If *target* is neither a Lens nor an OpticalSystem.
+    """
+    if isinstance(target, OpticalSystem):
+        return copy.deepcopy(target) if copy_system else target
+    if not isinstance(target, Lens):
+        raise TypeError(f"expected a Lens or OpticalSystem, got {type(target).__name__}")
+
+    lens = copy.deepcopy(target) if copy_system else target
+    system = OpticalSystem(name=name or lens.name)
+    system.add_lens(lens)
     return system
