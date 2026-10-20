@@ -60,6 +60,23 @@ openlens is a desktop application for designing and analyzing **glass optical le
 
 ## Installation
 
+### Standalone executables (no Python required)
+
+Every [release](https://github.com/pmaasz/openLens/releases/latest) includes
+standalone builds for the desktop platforms:
+
+| Platform | Download |
+|----------|----------|
+| Windows | `OpenLens-<version>-Windows.exe` |
+| macOS (Apple silicon) | `OpenLens-<version>-macOS-arm64.zip` |
+| macOS (Intel) | `OpenLens-<version>-macOS-x64.zip` |
+| Linux | `OpenLens-<version>-Linux` |
+
+Unzip a macOS download and drag `OpenLens.app` to Applications. The builds are
+not code-signed, so the first launch needs **right-click -> Open** (or
+**System Settings -> Privacy & Security -> Open Anyway**). On Linux, make the
+downloaded file executable with `chmod +x`.
+
 ### Prerequisites
 
 **Core Requirements:**
