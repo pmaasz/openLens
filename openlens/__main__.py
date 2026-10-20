@@ -6,9 +6,7 @@ PySide6-based modern GUI
 
 import sys
 import os
-import json
 import logging
-from datetime import datetime
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -34,6 +32,7 @@ from openlens.database import LensInUseError
 from openlens.logging_setup import setup_logging, verbose_requested
 from openlens.paths import migrate_legacy_db, migrate_legacy_materials, resolve_db_path
 from openlens.gui.storage import LensStorage
+from openlens.gui.services import ExportService
 from openlens.gui.widgets import LensEditorWidget
 from openlens.gui.tabs import (
     SimulationTab,
@@ -52,9 +51,9 @@ from openlens.gui.theme import (
     get_status_bar_qss,
     get_tab_widget_qss,
 )
-from openlens.stl_export import export_lens_stl
-from openlens.io.step_export import StepExporter
-from openlens.io.export import ISO10110Generator
+
+# Kept importable for callers/tests that reference openlens.__main__.StepExporter.
+from openlens.io.step_export import StepExporter  # noqa: F401
 from openlens.analysis.ghost import GhostAnalyzer
 from openlens.analysis.psf_mtf import ImageQualityAnalyzer
 from openlens.analysis.diffraction_psf import WavefrontSensor
@@ -133,6 +132,7 @@ class OpenLensWindow(QMainWindow):
         # lambda, and the window used to claim "Saved to database" regardless.
         self._db_path = resolve_db_path()
         self._storage = LensStorage(self._db_path, self._update_status)
+        self._export_service = ExportService()
         self._lenses = []
         self._assemblies = []
         self._current_lens = None
@@ -1107,14 +1107,10 @@ class OpenLensWindow(QMainWindow):
         if not filepath:
             return
 
-        try:
-            data = self._current_lens.to_dict()
-            with open(filepath, "w") as f:
-                json.dump(data, f, indent=2)
-
-        except Exception as e:
-            logger.error("Failed to save file: %s", e)
-            QMessageBox.critical(self, "Error", f"Failed to save file: {e}")
+        result = self._export_service.save_lens_json(self._current_lens, filepath)
+        if not result.ok:
+            logger.error("Failed to save file: %s", result.error)
+            QMessageBox.critical(self, "Error", f"Failed to save file: {result.error}")
 
     def _on_about(self) -> None:
         """Show about dialog"""
@@ -1259,13 +1255,13 @@ Ctrl+6         Tolerancing
         if not filepath:
             return
 
-        try:
-            system = self._ensure_system(target)
-            export_lens_stl(system, filepath)
-            self._update_status(f"Exported to STL: {os.path.basename(filepath)}")
-        except Exception as e:
-            logger.error("STL export failed: %s", e)
-            QMessageBox.critical(self, "Export Error", f"Failed to export STL: {e}")
+        result = self._export_service.export_stl(target, filepath)
+        if not result.ok:
+            logger.error("STL export failed: %s", result.error)
+            QMessageBox.critical(self, "Export Error", f"Failed to export STL: {result.error}")
+            return
+
+        self._update_status(f"Exported to STL: {os.path.basename(filepath)}")
 
     def _on_export_step(self) -> None:
         """Export current lens or assembly to STEP"""
@@ -1280,26 +1276,21 @@ Ctrl+6         Tolerancing
         if not filepath:
             return
 
-        try:
+        result = self._export_service.export_step(target, filepath)
+        if not result.ok:
+            if result.dependency_missing:
+                logger.error("STEP export failed with ImportError: %s", result.error)
+                QMessageBox.warning(
+                    self,
+                    "Export Error",
+                    "STEP export requires additional dependencies (e.g. pythonocc-core).",
+                )
+            else:
+                logger.error("STEP export failed: %s", result.error)
+                QMessageBox.critical(self, "Export Error", f"Failed to export STEP: {result.error}")
+            return
 
-            system = self._ensure_system(target)
-
-            from openlens.mechanical_designer import MechanicalDesigner
-
-            housing = MechanicalDesigner(system).suggest_housing()
-            exporter = StepExporter(system)
-            exporter.export(filepath, housing=housing)
-            self._update_status(f"Exported to STEP: {os.path.basename(filepath)}")
-        except ImportError as e:
-            logger.error("STEP export failed with ImportError: %s", e)
-            QMessageBox.warning(
-                self,
-                "Export Error",
-                "STEP export requires additional dependencies (e.g. pythonocc-core).",
-            )
-        except Exception as e:
-            logger.error("STEP export failed: %s", e)
-            QMessageBox.critical(self, "Export Error", f"Failed to export STEP: {e}")
+        self._update_status(f"Exported to STEP: {os.path.basename(filepath)}")
 
     def _on_export_iso10110(self) -> None:
         """Export ISO 10110 drawing as SVG"""
@@ -1317,16 +1308,13 @@ Ctrl+6         Tolerancing
         if not filepath:
             return
 
-        try:
+        result = self._export_service.export_iso10110(target, filepath)
+        if not result.ok:
+            logger.error("ISO 10110 export failed: %s", result.error)
+            QMessageBox.critical(self, "Export Error", f"Failed to export drawing: {result.error}")
+            return
 
-            system = self._ensure_system(target)
-
-            generator = ISO10110Generator(system)
-            generator.generate_svg(filepath)
-            self._update_status(f"Exported drawing to: {os.path.basename(filepath)}")
-        except Exception as e:
-            logger.error("ISO 10110 export failed: %s", e)
-            QMessageBox.critical(self, "Export Error", f"Failed to export drawing: {e}")
+        self._update_status(f"Exported drawing to: {os.path.basename(filepath)}")
 
     def _on_export_report(self) -> None:
         """Export comprehensive design report"""
@@ -1341,32 +1329,13 @@ Ctrl+6         Tolerancing
         if not filepath:
             return
 
-        try:
-            with open(filepath, "w") as f:
-                f.write("OpenLens Design Report\n")
-                f.write("======================\n\n")
-                f.write(f"Name: {target.name}\n")
-                f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        result = self._export_service.export_report(target, filepath)
+        if not result.ok:
+            logger.error("Report export failed: %s", result.error)
+            QMessageBox.critical(self, "Export Error", f"Failed to export report: {result.error}")
+            return
 
-                if isinstance(target, Lens):
-                    f.write("Type: Single Lens Element\n")
-                    f.write(f"Radius 1: {target.radius_of_curvature_1} mm\n")
-                    f.write(f"Radius 2: {target.radius_of_curvature_2} mm\n")
-                    f.write(f"Thickness: {target.thickness} mm\n")
-                    f.write(f"Diameter: {target.diameter} mm\n")
-                    f.write(f"Material: {target.material} (n={target.refractive_index})\n")
-                else:
-                    f.write(f"Type: Optical Assembly ({len(target.elements)} elements)\n")
-                    for i, elem in enumerate(target.elements):
-                        f.write(f"\nElement {i+1}: {elem.lens.name}\n")
-                        f.write(f"  Position: {elem.position} mm\n")
-                        f.write(f"  Thickness: {elem.lens.thickness} mm\n")
-                        f.write(f"  Material: {elem.lens.material}\n")
-
-            self._update_status(f"Report exported to: {os.path.basename(filepath)}")
-        except Exception as e:
-            logger.error("Report export failed: %s", e)
-            QMessageBox.critical(self, "Export Error", f"Failed to export report: {e}")
+        self._update_status(f"Report exported to: {os.path.basename(filepath)}")
 
     def _open_analysis_dialog(self, title, compute, plot, columns: int = 1) -> None:
         """Open an analysis dialog that computes off the GUI thread.
