@@ -137,6 +137,16 @@ COLOR_HOVER_LIGHT = "#d0d0d0"
 COLOR_TEXT_ON_LIGHT = "#1e1e1e"
 COLOR_TEXT_ON_ACCENT = "#ffffff"
 
+# Canvas colours shared by the custom-painted views and the matplotlib
+# analysis plots. They live here, next to the QSS palette, so the drawing
+# widgets and the plots cannot drift apart from the stylesheets.
+COLOR_PLOT_AXIS_DARK = "#666666"
+COLOR_PLOT_AXIS_LIGHT = "#888888"
+COLOR_PLOT_GRID_DARK = "#333333"
+COLOR_PLOT_GRID_LIGHT = "#e0e0e0"
+COLOR_CODE_BG_DARK = "#2b2b2b"
+COLOR_TEXT_DIM_LIGHT = "#666666"
+
 # Font configurations
 FONT_FAMILY = "Arial"
 FONT_SIZE_NORMAL = 9

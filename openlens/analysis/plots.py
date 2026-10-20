@@ -10,6 +10,15 @@ openlens/analysis/ instead of inline in window code.
 import logging
 from typing import List
 
+from ..constants import (
+    COLOR_BG_DARK,
+    COLOR_BORDER_DARK,
+    COLOR_BORDER_LIGHT,
+    COLOR_FG,
+    COLOR_SURFACE_LIGHT,
+    COLOR_TEXT_ON_LIGHT,
+)
+
 logger = logging.getLogger(__name__)
 
 # matplotlib and numpy are soft dependencies: the application must start and
@@ -127,15 +136,56 @@ def plot_ghost_analysis(ax, system: OpticalSystem, ghosts) -> int:
     return len(ghosts)
 
 
-def apply_dark_axis_theme(ax) -> None:
-    """Style an Axes for the dark theme."""
-    ax.set_facecolor("#1e1e1e")
-    ax.tick_params(colors="#e0e0e0")
-    ax.xaxis.label.set_color("#e0e0e0")
-    ax.yaxis.label.set_color("#e0e0e0")
-    ax.title.set_color("#e0e0e0")
+_AXIS_THEMES = {
+    "dark": {
+        "background": COLOR_BG_DARK,
+        "text": COLOR_FG,
+        "spine": COLOR_BORDER_DARK,
+    },
+    "light": {
+        "background": COLOR_SURFACE_LIGHT,
+        "text": COLOR_TEXT_ON_LIGHT,
+        "spine": COLOR_BORDER_LIGHT,
+    },
+}
+
+
+def axis_theme_colors(theme: str = "dark") -> dict:
+    """Return the axis background/text/spine colours for *theme*.
+
+    Args:
+        theme: "dark" or "light"; unknown values fall back to dark.
+
+    Returns:
+        A new dict with keys ``background``, ``text`` and ``spine``.
+    """
+    return dict(_AXIS_THEMES.get(theme, _AXIS_THEMES["dark"]))
+
+
+def apply_axis_theme(ax, theme: str = "dark") -> None:
+    """Style an Axes for the given theme.
+
+    One implementation for the dark and light faces, instead of the dark
+    block that was copied into the analysis dialog and silently omitted in
+    light mode.
+
+    Args:
+        ax: The matplotlib Axes to restyle.
+        theme: "dark" or "light".
+    """
+    colors = axis_theme_colors(theme)
+    ax.set_facecolor(colors["background"])
+    ax.tick_params(colors=colors["text"])
+    ax.xaxis.label.set_color(colors["text"])
+    ax.yaxis.label.set_color(colors["text"])
+    ax.title.set_color(colors["text"])
     for spine in ax.spines.values():
-        spine.set_edgecolor("#3f3f3f")
+        spine.set_edgecolor(colors["spine"])
+
+
+def apply_dark_axis_theme(ax) -> None:
+    """Style an Axes for the dark theme (compatibility wrapper)."""
+    apply_axis_theme(ax, "dark")
 
 
 def plot_psf(ax, psf_data: dict) -> None:

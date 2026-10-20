@@ -1102,21 +1102,42 @@ Ctrl+6         Tolerancing
     
     def _on_toggle_theme(self) -> None:
         """Toggle between dark and light theme"""
+        theme = LIGHT if self._theme == DARK else DARK
+        self._apply_theme(theme)
+        self._update_status("Light theme" if theme == LIGHT else "Dark theme")
+
+    def _apply_theme(self, theme: str) -> None:
+        """Apply *theme* to the window chrome and to the custom views.
+
+        The status bar, menu bar and editor tabs each carry their own sheet,
+        set once at creation. Only the application sheet used to be replaced
+        on toggle, so light mode left those three dark (#468). The drawing
+        widgets get the same treatment through their ``set_theme`` hook.
+
+        Args:
+            theme: "dark" or "light".
+        """
+        self._theme = theme
         app = QApplication.instance()
-        current = getattr(self, '_theme', 'dark')
-        
-        if current == 'dark':
-            self._theme = 'light'
-            app.setStyleSheet(get_app_stylesheet(LIGHT))
-            self._update_status("Light theme")
-        else:
-            self._theme = 'dark'
-            self.dark_theme(app)
-            self._update_status("Dark theme")
-    
+        if app is not None:
+            app.setStyleSheet(get_app_stylesheet(theme))
+
+        if hasattr(self, "_status_bar"):
+            self._status_bar.setStyleSheet(get_status_bar_qss(theme))
+        if hasattr(self, "_editor_tabs"):
+            self._editor_tabs.setStyleSheet(get_tab_widget_qss(theme))
+        menubar = self.menuBar()
+        if menubar is not None:
+            menubar.setStyleSheet(get_menubar_qss(theme))
+
+        for widget in self.findChildren(QWidget):
+            set_theme = getattr(widget, "set_theme", None)
+            if callable(set_theme):
+                set_theme(theme)
+
     def dark_theme(self, app: QApplication) -> None:
         """Apply the dark application stylesheet."""
-        app.setStyleSheet(get_app_stylesheet(DARK))
+        self._apply_theme(DARK)
 
     
     def _on_reset_window(self) -> None:

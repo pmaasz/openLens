@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal, Slot, Qt, QThread
 
 from .base_tab import BaseTab
+from ..theme import DARK, get_monospace_qss
 from ...tolerancing import (
     MonteCarloAnalyzer,
     InverseSensitivityAnalyzer,
@@ -264,9 +265,7 @@ class TolerancingTab(BaseTab):
         self._tol_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self._tol_table.setEditTriggers(QTableWidget.DoubleClicked)
         self._tol_table.itemChanged.connect(self._on_tol_item_changed)
-        self._tol_table.setStyleSheet(
-            "background-color: #2b2b2b; color: #e0e0e0; font-family: Courier; font-size: 10px;"
-        )
+        self._tol_table.setStyleSheet(get_monospace_qss(DARK))
         left_layout.addWidget(QLabel("Operands (Double-click to edit Min/Max):"))
         left_layout.addWidget(self._tol_table)
 
@@ -328,9 +327,7 @@ class TolerancingTab(BaseTab):
         self._tol_results_text = QTextEdit()
         self._tol_results_text.setReadOnly(True)
         self._tol_results_text.setMinimumHeight(200)
-        self._tol_results_text.setStyleSheet(
-            "background-color: #2b2b2b; color: #e0e0e0; font-family: Courier; font-size: 10px;"
-        )
+        self._tol_results_text.setStyleSheet(get_monospace_qss(DARK))
         self._mc_running = False
         self._inv_running = False
         self._mc_worker = None
@@ -363,6 +360,17 @@ class TolerancingTab(BaseTab):
         self._inv_running = False
         self._mc_worker = None
         self._inv_worker = None
+
+    def set_theme(self, theme: str = DARK) -> None:
+        """Re-style the monospace table and results pane for *theme*.
+
+        Args:
+            theme: "dark" or "light".
+        """
+        super().set_theme(theme)
+        qss = get_monospace_qss(theme)
+        self._tol_table.setStyleSheet(qss)
+        self._tol_results_text.setStyleSheet(qss)
 
     def refresh(self) -> None:
         """Update display when parent changes.

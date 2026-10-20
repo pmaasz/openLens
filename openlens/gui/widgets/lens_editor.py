@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal
 
 from .lens_viz_container import LensVisualizationWidget
+from ..theme import DARK, get_palette
 from ...validation import (
     ValidationError,
     check_physical_feasibility,
@@ -90,7 +91,29 @@ class LensEditorWidget(QWidget):
         super().__init__(parent)
         self._lens = None
         self._parent = parent
+        self._theme = DARK
         self._setup_ui()
+        self.set_theme(DARK)
+
+    def set_theme(self, theme: str = DARK) -> None:
+        """Re-apply the themed input styling.
+
+        Args:
+            theme: "dark" or "light".
+        """
+        palette = get_palette(theme)
+        self._theme = theme
+        self._name_input.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {palette['input_bg']};
+                color: {palette['text']};
+                border: 1px solid {palette['border']};
+                padding: 5px;
+            }}
+            """)
+        self._n_input.setStyleSheet(
+            f"QDoubleSpinBox {{ background: {palette['input_bg']}; color: {palette['text_dim']}; }}"
+        )
 
     def _setup_ui(self) -> None:
         """Set up the editor layout with the properties panel and visualization."""
@@ -154,14 +177,6 @@ class LensEditorWidget(QWidget):
         name_group = QGroupBox("Name")
         name_layout = QFormLayout(name_group)
         self._name_input = QLineEdit()
-        self._name_input.setStyleSheet("""
-            QLineEdit {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-                border: 1px solid #3f3f3f;
-                padding: 5px;
-            }
-        """)
         name_layout.addRow("Name:", self._name_input)
         self._name_input.textChanged.connect(self._on_name_changed)
         layout.addWidget(name_group)
@@ -311,9 +326,6 @@ class LensEditorWidget(QWidget):
         # always, so "Custom" pinned n to 1.5 and there was no way to state the
         # index you actually wanted.
         self._n_input.setReadOnly(True)
-        # The selector has to name the widget it styles: "QSpinBox" does not
-        # match a QDoubleSpinBox, so this rule was applied to nothing at all.
-        self._n_input.setStyleSheet("QDoubleSpinBox { background: #2d2d2d; color: #888; }")
         # A custom index has to reach the model. The box had no connection at
         # all, so a typed value stayed on screen and in the widget and nowhere
         # else - the index shown and the index traced silently disagreed.

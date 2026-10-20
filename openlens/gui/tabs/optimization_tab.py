@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Slot, Signal, QThread
 
 from .base_tab import BaseTab
+from ..theme import DARK, get_monospace_qss
 from ..widgets.lens_viz_2d import LensViz2DWidget
 from ..widgets.assembly_viz import AssemblyVisualizationWidget
 from ...optimizer import OptimizationVariable, OptimizationTarget
@@ -272,9 +273,7 @@ class OptimizationTab(BaseTab):
         self._opt_results_text = QTextEdit()
         self._opt_results_text.setReadOnly(True)
         self._opt_results_text.setMinimumHeight(150)
-        self._opt_results_text.setStyleSheet(
-            "background-color: #2b2b2b; color: #e0e0e0; font-family: Courier; font-size: 10px;"
-        )
+        self._opt_results_text.setStyleSheet(get_monospace_qss(DARK))
         results_layout.addWidget(self._opt_results_text)
 
         middle_row_layout.addWidget(constraints_group, 1)
@@ -326,6 +325,15 @@ class OptimizationTab(BaseTab):
         # if self._parent:
         #     self._parent.opt_finished.connect(self._on_optimization_finished)
         #     self._parent.opt_failed.connect(self._on_optimization_failed)
+
+    def set_theme(self, theme: str = DARK) -> None:
+        """Re-style the monospace results pane for *theme*.
+
+        Args:
+            theme: "dark" or "light".
+        """
+        super().set_theme(theme)
+        self._opt_results_text.setStyleSheet(get_monospace_qss(theme))
 
     def _is_checked(self, key: str) -> bool:
         """None-safe checkbox state (False before the first refresh)."""

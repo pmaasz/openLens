@@ -3,6 +3,7 @@ from typing import Optional, TYPE_CHECKING
 
 from .lens_viz_2d import LensViz2DWidget
 from .lens_viz_3d import _3DVisualizationWidget
+from ..theme import DARK, get_palette
 
 if TYPE_CHECKING:
     from ...lens import Lens
@@ -25,15 +26,10 @@ class LensVisualizationWidget(QWidget):
         self._3d_dirty = False
 
         self.setMinimumSize(400, 300)
-        self.setStyleSheet("background-color: #1e1e1e;")
+        self._theme = DARK
 
         # Create 2D/3D tab structure
         self._viz_tabs = QTabWidget()
-        self._viz_tabs.setStyleSheet("""
-            QTabWidget::pane { border: 1px solid #3f3f3f; }
-            QTabBar::tab { background: #2d2d2d; color: #e0e0e0; padding: 5px 10px; }
-            QTabBar::tab:selected { background: #0078d4; }
-        """)
 
         # 2D view (custom canvas)
         self._2d_widget = LensViz2DWidget()
@@ -49,6 +45,32 @@ class LensVisualizationWidget(QWidget):
 
         # Selecting the 3D tab is what makes a deferred redraw worthwhile.
         self._viz_tabs.currentChanged.connect(self._on_tab_changed)
+
+        self.set_theme(DARK)
+
+    def set_theme(self, theme: str = DARK) -> None:
+        """Re-style the container and its 2D/3D views.
+
+        Args:
+            theme: "dark" or "light".
+        """
+        palette = get_palette(theme)
+        self._theme = theme
+        self.setStyleSheet(f"background-color: {palette['plot_bg']};")
+        self._viz_tabs.setStyleSheet(f"""
+            QTabWidget::pane {{ border: 1px solid {palette['border']}; }}
+            QTabBar::tab {{
+                background: {palette['surface']};
+                color: {palette['text']};
+                padding: 5px 10px;
+            }}
+            QTabBar::tab:selected {{
+                background: {palette['accent']};
+                color: {palette['accent_text']};
+            }}
+            """)
+        for view in (self._2d_widget, self._3d_widget):
+            view.set_theme(theme)
 
     def set_view_mode(self, mode: str) -> None:
         """Set view mode (2D, 3D, Side)

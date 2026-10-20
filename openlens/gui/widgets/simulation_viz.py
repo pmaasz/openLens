@@ -6,6 +6,7 @@ import math
 from typing import Optional, TYPE_CHECKING, Union
 
 from ...constants import COLOR_LENS_FILL, NM_TO_MM, WAVELENGTH_GREEN
+from ..theme import DARK, get_palette
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QKeyEvent, QMouseEvent, QPaintEvent, QWheelEvent
@@ -33,15 +34,12 @@ class SimulationVisualizationWidget(QWidget):
         self._wavelength = WAVELENGTH_GREEN  # Default wavelength in nm
 
         self.setMinimumSize(400, 300)
-        self.setStyleSheet("background-color: #1e1e1e; border: 2px solid #888888;")
-
-        self._bg_color = QColor("#1e1e1e")
-        self._axis_color = QColor("#666666")
+        self._theme = DARK
+        self.set_theme(DARK)
         # Shared glass fill so simulation matches the editor view.
         self._lens_color = QColor(COLOR_LENS_FILL)
         self._lens_color.setAlpha(80)
         self._ray_color = QColor(255, 200, 0, 200)
-        self._text_color = QColor("#e0e0e0")
         self._ghost_color = QColor(255, 100, 100, 180)
         self._show_ghosts = False
         self._show_image_sim = False
@@ -63,6 +61,23 @@ class SimulationVisualizationWidget(QWidget):
 
         # Install event filters
         self.setFocusPolicy(Qt.StrongFocus)
+
+    def set_theme(self, theme: str = DARK) -> None:
+        """Repaint with *theme*'s canvas colours.
+
+        Args:
+            theme: "dark" or "light".
+        """
+        palette = get_palette(theme)
+        self._theme = theme
+        self._bg_color = QColor(palette["plot_bg"])
+        self._axis_color = QColor(palette["plot_axis"])
+        self._text_color = QColor(palette["plot_text"])
+        self.setStyleSheet(
+            f"background-color: {palette['plot_bg']}; "
+            f"border: 2px solid {palette['canvas_border']};"
+        )
+        self.update()
 
     @staticmethod
     def wavelength_to_color(wavelength: float) -> QColor:

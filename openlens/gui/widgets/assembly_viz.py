@@ -8,6 +8,8 @@ from PySide6.QtGui import QPainter, QPen, QPainterPath, QBrush, QColor
 from PySide6.QtCore import Qt
 from typing import Optional, TYPE_CHECKING
 
+from ..theme import DARK, get_palette
+
 if TYPE_CHECKING:
     from PySide6.QtGui import QPaintEvent
 
@@ -28,17 +30,31 @@ class AssemblyVisualizationWidget(QWidget):
         self._system = None
 
         self.setMinimumSize(400, 300)
-        self.setStyleSheet("background-color: #1e1e1e; border: 1px solid #3f3f3f;")
+        self._theme = DARK
+        self.set_theme(DARK)
 
-        self._bg_color = QColor("#1e1e1e")
-        self._axis_color = QColor("#666666")
         self._lens_colors = [
             QColor(0, 120, 212, 150),
             QColor(0, 180, 100, 150),
             QColor(200, 100, 0, 150),
             QColor(150, 50, 200, 150),
         ]
-        self._text_color = QColor("#e0e0e0")
+
+    def set_theme(self, theme: str = DARK) -> None:
+        """Repaint with *theme*'s canvas colours.
+
+        Args:
+            theme: "dark" or "light".
+        """
+        palette = get_palette(theme)
+        self._theme = theme
+        self._bg_color = QColor(palette["plot_bg"])
+        self._axis_color = QColor(palette["plot_axis"])
+        self._text_color = QColor(palette["plot_text"])
+        self.setStyleSheet(
+            f"background-color: {palette['plot_bg']}; " f"border: 1px solid {palette['border']};"
+        )
+        self.update()
 
     def update_system(self, system: "OpticalSystem") -> None:
         """Update visualization with optical system
