@@ -87,6 +87,9 @@ setup(
             # One rule only (blind excepts, see ruff.toml); pinned like black
             # so the gate cannot shift under the repository.
             'ruff==0.17.1',
+            # Lenient type-check gate; the per-module burn-down baseline lives
+            # in mypy.ini. Pinned like black so the baseline cannot shift.
+            'mypy==1.11.2',
             'pylint>=2.12.0',
             'flake8>=4.0.0',
             'pre-commit>=2.20.0',
