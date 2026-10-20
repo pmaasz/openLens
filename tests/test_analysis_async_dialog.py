@@ -14,7 +14,6 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QEventLoop, QTimer
 
 from openlens.analysis.plots import plot_ghost_analysis
@@ -23,15 +22,11 @@ from openlens.gui.dialogs.analysis_plots import (
     AnalysisWorker,
     show_computing_dialog,
 )
-
-_app = None
+from tests import ensure_qapp, flush_qt
 
 
 def _ensure_app():
-    global _app
-    if _app is None:
-        _app = QApplication.instance() or QApplication([])
-    return _app
+    return ensure_qapp()
 
 
 def _run_until(predicate, timeout_ms=10000):
@@ -52,28 +47,54 @@ def _run_until(predicate, timeout_ms=10000):
     return predicate()
 
 
+def _run_until_signal(worker, signal, timeout_ms=10000):
+    """Start ``worker`` and spin the loop until ``signal`` is delivered.
+
+    Waiting on ``isFinished()`` alone returns as soon as the thread ends,
+    before the queued signal event has been processed - the payload then
+    arrives after the assertion. Connecting the signal to ``loop.quit`` waits
+    for the delivery, not just the thread.
+    """
+    loop = QEventLoop()
+    received = []
+    signal.connect(received.append)
+    signal.connect(loop.quit)
+    timer = QTimer()
+    timer.setSingleShot(True)
+    timer.timeout.connect(loop.quit)
+    timer.start(timeout_ms)
+    worker.start()
+    loop.exec()
+    timer.stop()
+    worker.wait(1000)
+    return received
+
+
+def _dialog(test, title="Test", parent=None):
+    """Create a dialog that is deleted while the application is still alive."""
+    dialog = AnalysisPlotDialog(title, parent)
+    test.addCleanup(dialog.deleteLater)
+    return dialog
+
+
 class TestAnalysisWorker(unittest.TestCase):
     def setUp(self):
         _ensure_app()
+        self.addCleanup(flush_qt)
 
     def test_worker_emits_computed_payload(self):
         """done must carry whatever the callable returned."""
         worker = AnalysisWorker(lambda: {"value": 42})
-        seen = []
-        worker.done.connect(seen.append)
-        worker.finished.connect(lambda: None)
-        worker.start()
-        _run_until(lambda: worker.isFinished())
-        self.assertEqual(seen, [{"value": 42}])
+        received = _run_until_signal(worker, worker.done)
+        worker.deleteLater()
+        self.assertEqual(received, [{"value": 42}])
 
     def test_worker_emits_failed_instead_of_raising(self):
         """A raising computation must report, not escape the thread."""
         worker = AnalysisWorker(self._boom)
-        errors = []
-        worker.failed.connect(errors.append)
-        worker.start()
-        _run_until(lambda: worker.isFinished())
-        self.assertEqual(errors, ["boom"])
+        received = _run_until_signal(worker, worker.failed)
+        worker.deleteLater()
+        self.assertEqual(received, ["boom"])
 
     @staticmethod
     def _boom():
@@ -83,10 +104,11 @@ class TestAnalysisWorker(unittest.TestCase):
 class TestPlotAsync(unittest.TestCase):
     def setUp(self):
         _ensure_app()
+        self.addCleanup(flush_qt)
 
     def test_show_computing_makes_the_dialog_visible(self):
         """A window must exist before any heavy work starts."""
-        dialog = AnalysisPlotDialog("Test", None)
+        dialog = _dialog(self)
         self.assertFalse(dialog.isVisible())
         dialog.show_computing()
         self.assertTrue(dialog.isVisible())
@@ -98,7 +120,7 @@ class TestPlotAsync(unittest.TestCase):
         This is the actual user-visible fix: the handler has to return so the
         event loop keeps running while the worker computes.
         """
-        dialog = AnalysisPlotDialog("Test", None)
+        dialog = _dialog(self)
         started = {"v": False}
         finished = {"v": False}
 
@@ -125,7 +147,7 @@ class TestPlotAsync(unittest.TestCase):
 
     def test_plot_async_paints_the_payload(self):
         """The plot callback must receive the worker's payload."""
-        dialog = AnalysisPlotDialog("Test", None)
+        dialog = _dialog(self)
         got = []
 
         def _plot(ax, payload):
@@ -144,7 +166,7 @@ class TestPlotAsync(unittest.TestCase):
 
     def test_failed_compute_paints_a_message(self):
         """A failure must be visible in the dialog, not silently ignored."""
-        dialog = AnalysisPlotDialog("Test", None)
+        dialog = _dialog(self)
         painted = []
         original = dialog.canvas.draw_idle
 
@@ -168,7 +190,7 @@ class TestPlotAsync(unittest.TestCase):
         arguments, but the worker hands over a single payload tuple. Passing the
         plotter straight through raised TypeError inside the finished handler.
         """
-        dialog = AnalysisPlotDialog("Test", None)
+        dialog = _dialog(self)
         calls = []
 
         def _compute():
@@ -202,7 +224,7 @@ class TestPlotAsync(unittest.TestCase):
         Calling get_axes() for both the status line and the result would leave
         the stale "Calculating" axes on the figure after every analysis.
         """
-        dialog = AnalysisPlotDialog("Test", None)
+        dialog = _dialog(self)
         for value in (1, 2, 3):
             dialog.plot_async(lambda v=value: v, lambda ax, payload: ax.plot([0, payload]))
             _run_until(lambda: dialog._pending_worker is None)
@@ -214,7 +236,7 @@ class TestPlotAsync(unittest.TestCase):
 
     def test_worker_reference_is_cleared_when_done(self):
         """The dialog must not hold a dead worker forever."""
-        dialog = AnalysisPlotDialog("Test", None)
+        dialog = _dialog(self)
         dialog.plot_async(lambda: 1, lambda ax, payload: None)
         _run_until(lambda: dialog._pending_worker is None)
         self.assertIsNone(dialog._pending_worker)
@@ -232,9 +254,10 @@ class TestMultiPanelPlots(unittest.TestCase):
 
     def setUp(self):
         _ensure_app()
+        self.addCleanup(flush_qt)
 
     def test_two_columns_hand_the_plot_two_axes(self):
-        dialog = AnalysisPlotDialog("Test", None)
+        dialog = _dialog(self)
         seen = []
 
         def _plot(axes, payload):
@@ -255,7 +278,7 @@ class TestMultiPanelPlots(unittest.TestCase):
 
     def test_two_columns_are_reused_not_stacked(self):
         """A second run must replace the result, not add a third subplot."""
-        dialog = AnalysisPlotDialog("Test", None)
+        dialog = _dialog(self)
 
         for value in (1, 2):
             dialog.plot_async(
@@ -272,11 +295,13 @@ class TestMultiPanelPlots(unittest.TestCase):
 class TestShowComputingDialog(unittest.TestCase):
     def setUp(self):
         _ensure_app()
+        self.addCleanup(flush_qt)
 
     def test_helper_returns_a_visible_dialog(self):
         """The minimal fallback path must also put a window on screen."""
-        parent = AnalysisPlotDialog("Parent", None)
+        parent = _dialog(self, "Parent")
         dialog = show_computing_dialog(parent, "Working", "Please wait")
+        self.addCleanup(dialog.deleteLater)
         try:
             self.assertTrue(dialog.isVisible())
             self.assertEqual(dialog.windowTitle(), "Working")

@@ -30,10 +30,9 @@ except ImportError:  # pragma: no cover - environment guard
     PYSIDE_AVAILABLE = False
 
 if PYSIDE_AVAILABLE:
-    _app = __import__("sys").modules.get("__main__")
-    from PySide6.QtWidgets import QApplication
+    from tests import ensure_qapp
 
-    QApplication.instance() or QApplication([])
+    ensure_qapp()
 
 from openlens.gui.tabs.performance_tab import metrics_fingerprint
 from openlens.lens import Lens
@@ -112,6 +111,11 @@ class TestFingerprintTracksWhatTheLensIs(unittest.TestCase):
 class _TabFixture(unittest.TestCase):
     def setUp(self):
         from openlens.gui.tabs.performance_tab import PerformanceTab
+        from tests import flush_qt
+
+        # Registered first so it runs last: the deleteLater cleanups below
+        # only schedule the deletion, flush_qt delivers it while Qt lives.
+        self.addCleanup(flush_qt)
 
         # BaseTab hands its parent to QWidget, so the stand-in has to be one.
         class _Parent(QWidget):
