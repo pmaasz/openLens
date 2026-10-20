@@ -18,19 +18,15 @@ from PySide6.QtWidgets import (
 )
 from .base_tab import BaseTab
 from ..widgets.simulation_viz import SimulationVisualizationWidget
-from ...constants import WAVELENGTH_GREEN
+from ...constants import WAVELENGTH_GREEN, WAVELENGTH_PRESETS
 
-#: The wavelengths offered in the picker, as ``(nm, label)``. The trace reads its
-#: wavelength from this same table, so the numbers and the labels cannot drift
-#: apart. They were two separate hard-coded lists - the combo's strings and a
-#: bare ``[400, 450, 550, 650, 700]`` - matched by position, with "Custom"
-#: recognized as the literal index 5.
-SIMULATION_WAVELENGTHS = (
-    (400.0, "400 nm (Violet)"),
-    (450.0, "450 nm (Blue)"),
-    (WAVELENGTH_GREEN, "550 nm (Green)"),
-    (650.0, "650 nm (Red)"),
-    (700.0, "700 nm (IR)"),
+#: The wavelengths offered in the picker, as ``(nm, label)``. Both the numbers
+#: and their order come from ``constants.WAVELENGTH_PRESETS``, so the
+#: simulation and performance pickers cannot drift apart. The trace reads its
+#: wavelength from this same table, so the combo's strings and the traced value
+#: are one list.
+SIMULATION_WAVELENGTHS = tuple(
+    (nanometres, f"{nanometres:g} nm ({name})") for nanometres, name in WAVELENGTH_PRESETS
 )
 
 #: Index of the "Custom" entry, which follows the preset wavelengths.
@@ -38,7 +34,11 @@ CUSTOM_WAVELENGTH_INDEX = len(SIMULATION_WAVELENGTHS)
 
 #: Preset wavelength selected by default: the photopic peak, which is also the
 #: application's default for ray-tracing visualization.
-DEFAULT_WAVELENGTH_INDEX = SIMULATION_WAVELENGTHS.index((WAVELENGTH_GREEN, "550 nm (Green)"))
+DEFAULT_WAVELENGTH_INDEX = next(
+    index
+    for index, (nanometres, _label) in enumerate(SIMULATION_WAVELENGTHS)
+    if nanometres == WAVELENGTH_GREEN
+)
 
 
 class SimulationTab(BaseTab):
