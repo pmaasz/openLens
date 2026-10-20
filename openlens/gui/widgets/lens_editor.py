@@ -164,7 +164,10 @@ class LensEditorWidget(QWidget):
             self._diameter_input.setValue(value)
 
     def _create_properties_panel(self) -> QFrame:
-        """Create the properties panel
+        """Create the properties panel.
+
+        One builder per group box; the panel only decides which groups appear
+        and in what order. The method used to build all 267 lines itself.
 
         Returns:
             The frame containing all editor input groups.
@@ -173,22 +176,53 @@ class LensEditorWidget(QWidget):
         frame.setFrameShape(QFrame.StyledPanel)
         layout = QVBoxLayout(frame)
 
+        layout.addWidget(self._create_name_group())
+        layout.addWidget(self._create_classification_group())
+        layout.addWidget(self._create_dimensions_group())
+        layout.addWidget(self._create_parabolic_group())
+        layout.addWidget(self._create_material_group())
+        layout.addWidget(self._create_coatings_group())
+        layout.addWidget(self._create_fresnel_group())
+        layout.addWidget(self._create_calculated_group())
+
+        layout.addStretch()
+
+        return frame
+
+    def _create_name_group(self) -> QGroupBox:
+        """Create the name group box.
+
+        Returns:
+            The group box holding the lens name input.
+        """
         # Name
         name_group = QGroupBox("Name")
         name_layout = QFormLayout(name_group)
         self._name_input = QLineEdit()
         name_layout.addRow("Name:", self._name_input)
         self._name_input.textChanged.connect(self._on_name_changed)
-        layout.addWidget(name_group)
+        return name_group
 
+    def _create_classification_group(self) -> QGroupBox:
+        """Create the read-only classification group box.
+
+        Returns:
+            The group box showing the derived lens type.
+        """
         # Classification (read-only display)
         class_group = QGroupBox("Classification")
         class_layout = QFormLayout(class_group)
         self._class_type_label = QLabel("Biconvex")
         self._class_type_label.setStyleSheet("color: #4fc3f7; font-weight: bold;")
         class_layout.addRow("Type:", self._class_type_label)
-        layout.addWidget(class_group)
+        return class_group
 
+    def _create_dimensions_group(self) -> QGroupBox:
+        """Create the dimensions group box.
+
+        Returns:
+            The group box holding radii, thickness, apertures, bevels and the edge lock.
+        """
         # Dimensions
         dim_group = QGroupBox("Dimensions")
         dim_layout = QFormLayout(dim_group)
@@ -270,8 +304,14 @@ class LensEditorWidget(QWidget):
         )
         dim_layout.addRow(self._lock_edge_check)
 
-        layout.addWidget(dim_group)
+        return dim_group
 
+    def _create_parabolic_group(self) -> QGroupBox:
+        """Create the parabolic-surface group box.
+
+        Returns:
+            The group box holding the two parabolic surface controls.
+        """
         # Parabolic surfaces – sag at clear aperture (vertex to rim)
         para_group = QGroupBox("Parabolic Surfaces (sag at D/2)")
         para_layout = QFormLayout(para_group)
@@ -304,8 +344,14 @@ class LensEditorWidget(QWidget):
         self._para2_sag_input.setEnabled(False)
         para_layout.addRow("Sag 2 (peak→rim):", self._para2_sag_input)
 
-        layout.addWidget(para_group)
+        return para_group
 
+    def _create_material_group(self) -> QGroupBox:
+        """Create the material group box.
+
+        Returns:
+            The group box holding the material picker and refractive index.
+        """
         # Material
         mat_group = QGroupBox("Material")
         mat_layout = QFormLayout(mat_group)
@@ -332,8 +378,14 @@ class LensEditorWidget(QWidget):
         self._n_input.valueChanged.connect(self._on_index_changed)
         mat_layout.addRow("Refractive Index:", self._n_input)
 
-        layout.addWidget(mat_group)
+        return mat_group
 
+    def _create_coatings_group(self) -> QGroupBox:
+        """Create the coatings group box.
+
+        Returns:
+            The group box holding the per-surface coating controls.
+        """
         # Coatings: per-surface AR stack presets + reflectivity readout.
         coat_group = QGroupBox("Coatings")
         coat_layout = QFormLayout(coat_group)
@@ -367,8 +419,14 @@ class LensEditorWidget(QWidget):
             info.setStyleSheet("color: #4fc3f7;")
             coat_layout.addRow("Coating:", info)
             self._coat_info_labels.append(info)
-        layout.addWidget(coat_group)
+        return coat_group
 
+    def _create_fresnel_group(self) -> QGroupBox:
+        """Create the Fresnel lens group box.
+
+        Returns:
+            The group box holding the Fresnel toggle and groove readouts.
+        """
         # Fresnel lens
         fresnel_box = QGroupBox("Fresnel Lens")
         fresnel_layout = QFormLayout(fresnel_box)
@@ -397,8 +455,14 @@ class LensEditorWidget(QWidget):
         fresnel_layout.addRow(self._num_grooves_label, self._num_grooves_value)
 
         self._fresnel_group = fresnel_box
-        layout.addWidget(fresnel_box)
+        return fresnel_box
 
+    def _create_calculated_group(self) -> QGroupBox:
+        """Create the calculated-properties group box.
+
+        Returns:
+            The group box showing focal lengths, power and feasibility.
+        """
         # Calculated
         calc_group = QGroupBox("Calculated Properties")
         calc_layout = QFormLayout(calc_group)
@@ -424,11 +488,7 @@ class LensEditorWidget(QWidget):
         self._feas_warning_label.hide()
         calc_layout.addRow("Feasibility:", self._feas_warning_label)
 
-        layout.addWidget(calc_group)
-
-        layout.addStretch()
-
-        return frame
+        return calc_group
 
     def _touch_lens(self) -> None:
         """Stamp the model modified time (shown in the UI and persisted)."""
