@@ -42,6 +42,8 @@ def test_performance_metrics_flow(main_window, qtbot):
     text = po.calculate_performance()
     # The report, not the "Calculating…" placeholder the worker paints first.
     assert "Image Quality Metrics" in text
+    assert "Working Flange Distance" in text
+    assert "C-mount" in text
 
 
 def test_analysis_dialogs_smoke(main_window, qtbot, monkeypatch):

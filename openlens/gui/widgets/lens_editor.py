@@ -28,6 +28,7 @@ from PySide6.QtGui import QUndoCommand, QUndoStack
 
 from .lens_viz_container import LensVisualizationWidget
 from ..theme import DARK, get_palette
+from ...mounts import MountCatalog
 from ...validation import (
     ValidationError,
     check_physical_feasibility,
@@ -200,14 +201,21 @@ class LensEditorWidget(QWidget):
     # Signal emitted when lens model is modified and needs saving/refreshing
     lens_modified = Signal(object)  # Using object for Lens class to avoid circularity if any
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(
+        self,
+        parent: Optional[QWidget] = None,
+        mount_catalog: Optional[MountCatalog] = None,
+    ) -> None:
         """Initialize the editor widget and build its UI.
 
         Args:
             parent: Optional parent widget (usually the main window).
+            mount_catalog: Mount source for the selector. None uses the
+                per-user catalog; tests can inject an isolated one.
         """
         super().__init__(parent)
         self._lens = None
+        self._mount_catalog = mount_catalog or MountCatalog()
         self._undo_stack = QUndoStack(self)
         self._restoring = False
         self._edit_depth = 0
@@ -305,6 +313,7 @@ class LensEditorWidget(QWidget):
         layout.addWidget(self._create_name_group())
         layout.addWidget(self._create_classification_group())
         layout.addWidget(self._create_dimensions_group())
+        layout.addWidget(self._create_mount_group())
         layout.addWidget(self._create_parabolic_group())
         layout.addWidget(self._create_conic_group())
         layout.addWidget(self._create_material_group())
@@ -432,6 +441,72 @@ class LensEditorWidget(QWidget):
         dim_layout.addRow(self._lock_edge_check)
 
         return dim_group
+
+    def _create_mount_group(self) -> QGroupBox:
+        """Create the camera-mount group box.
+
+        Returns:
+            The group box holding the per-lens mount selector and the custom
+            mount manager button.
+        """
+        mount_group = QGroupBox("Mount")
+        mount_layout = QFormLayout(mount_group)
+
+        self._mount_combo = QComboBox()
+        self._mount_combo.setToolTip(
+            "Camera mount. Working flange distance combines its flange "
+            "distance with the lens back focal length."
+        )
+        self._mount_combo.currentTextChanged.connect(self._on_mount_changed)
+        mount_layout.addRow("Mount:", self._mount_combo)
+
+        self._manage_mounts_btn = QPushButton("Manage mounts…")
+        self._manage_mounts_btn.setToolTip("Add or remove user-defined mounts")
+        self._manage_mounts_btn.clicked.connect(self._open_mount_manager)
+        mount_layout.addRow(self._manage_mounts_btn)
+
+        self._refresh_mount_combo()
+        return mount_group
+
+    def _refresh_mount_combo(self, selected: Optional[str] = None) -> None:
+        """Repopulate the selector and choose ``selected`` (or the lens mount).
+
+        Unknown mounts (for example, a custom mount that has since been
+        deleted) are still shown, with the calculated panel reporting no
+        working flange distance, so a saved lens never silently changes mount.
+        """
+        if selected is None and self._lens is not None:
+            selected = self._lens.mount_type
+        names = list(self._mount_catalog.get_available_mounts())
+        if selected and selected not in names:
+            names.append(selected)
+
+        self._mount_combo.blockSignals(True)
+        self._mount_combo.clear()
+        self._mount_combo.addItems(names)
+        if selected:
+            self._mount_combo.setCurrentText(selected)
+        self._mount_combo.blockSignals(False)
+
+    def _open_mount_manager(self, _checked: bool = False) -> None:
+        """Open the custom-mount manager and refresh the selector afterwards."""
+        from ..dialogs.mount_manager import MountManagerDialog
+
+        dialog = MountManagerDialog(self, catalog=self._mount_catalog)
+        dialog.exec()
+        self._refresh_mount_combo()
+        self._update_calculated()
+
+    @_undoable_edit
+    def _on_mount_changed(self, mount_type: str) -> None:
+        """Apply a mount selection to the lens."""
+        if self._lens is None or not mount_type:
+            return
+        self._lens.mount_type = mount_type
+        self._touch_lens()
+        self._update_calculated()
+        self.lens_modified.emit(self._lens)
+        self.lens_updated.emit()
 
     def _create_parabolic_group(self) -> QGroupBox:
         """Create the parabolic-surface group box.
@@ -636,6 +711,10 @@ class LensEditorWidget(QWidget):
 
         self._bfl_label = QLabel("--")
         calc_layout.addRow("Back Focal Length:", self._bfl_label)
+
+        self._working_flange_label = QLabel("--")
+        self._working_flange_label.setWordWrap(True)
+        calc_layout.addRow("Working Flange Distance:", self._working_flange_label)
 
         self._ffl_label = QLabel("--")
         calc_layout.addRow("Front Focal Length:", self._ffl_label)
@@ -1081,6 +1160,7 @@ class LensEditorWidget(QWidget):
             self._focal_label.setText("--")
             self._power_label.setText("--")
             self._bfl_label.setText("--")
+            self._working_flange_label.setText("--")
             self._ffl_label.setText("--")
             return
 
@@ -1093,11 +1173,27 @@ class LensEditorWidget(QWidget):
             ffl = self._lens.calculate_front_focal_length()
             self._bfl_label.setText(f"{bfl:.2f} mm" if bfl is not None else "--")
             self._ffl_label.setText(f"{ffl:.2f} mm" if ffl is not None else "--")
+            self._update_working_flange(bfl)
         except Exception:
             self._bfl_label.setText("--")
+            self._working_flange_label.setText("--")
             self._ffl_label.setText("--")
 
         self._update_feasibility()
+
+    def _update_working_flange(self, bfl: Optional[float]) -> None:
+        """Show the mount-referenced focus distance and its breakdown."""
+        if self._lens is None or bfl is None:
+            self._working_flange_label.setText("--")
+            return
+        flange = self._mount_catalog.get_flange_distance(self._lens.mount_type)
+        if flange is None:
+            self._working_flange_label.setText("--")
+            return
+        self._working_flange_label.setText(
+            f"{bfl + flange:.2f} mm\n"
+            f"(BFL: {bfl:.2f} mm + {self._lens.mount_type}: {flange:.2f} mm)"
+        )
 
     def _update_feasibility(self) -> None:
         """Show edge thickness and warn about unrealizable geometry.
@@ -1235,6 +1331,7 @@ class LensEditorWidget(QWidget):
         if self._lens is not None:
             self._lens.material = loaded_material
             self._lens.refractive_index = loaded_index
+        self._refresh_mount_combo(lens.mount_type)
         # Parabolic
         # Ranges first (from model D/t), then values: a stale narrow range
         # must never clamp the incoming values, and the model keeps file

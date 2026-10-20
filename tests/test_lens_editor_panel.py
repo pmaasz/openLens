@@ -42,6 +42,7 @@ BUILDERS = (
     ("_create_name_group", "Name"),
     ("_create_classification_group", "Classification"),
     ("_create_dimensions_group", "Dimensions"),
+    ("_create_mount_group", "Mount"),
     ("_create_parabolic_group", "Parabolic Surfaces (sag at D/2)"),
     ("_create_conic_group", "Conic Surfaces (K)"),
     ("_create_material_group", "Material"),
@@ -63,6 +64,8 @@ NAMED_INPUTS = (
     "_bevel1_input",
     "_bevel2_input",
     "_lock_edge_check",
+    "_mount_combo",
+    "_manage_mounts_btn",
     "_para1_check",
     "_para1_sag_input",
     "_para2_check",
@@ -85,6 +88,7 @@ NAMED_INPUTS = (
     "_ffl_label",
     "_edge_label",
     "_feas_warning_label",
+    "_working_flange_label",
 )
 
 

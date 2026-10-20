@@ -18,6 +18,7 @@ from .constants import (
     DEFAULT_RADIUS_2,
     DEFAULT_THICKNESS,
     DEFAULT_DIAMETER,
+    DEFAULT_MOUNT_TYPE,
     REFRACTIVE_INDEX_BK7,
     EPSILON,
     LARGE_NUMBER,
@@ -32,6 +33,7 @@ from .constants import (
     LENS_TYPE_UNKNOWN,
     DEFAULT_MATERIAL_INDICES,
 )
+from .mounts import MountCatalog
 
 # Material database is an optional dependency
 try:
@@ -119,6 +121,7 @@ _LENS_SERIALIZED_KEYS = frozenset(
         # not the Lens/OpticalSystem row marker.
         "type",
         "material",
+        "mount_type",
         "wavelength",
         "wavelength_nm",
         "temperature",
@@ -163,6 +166,7 @@ class Lens:
         refractive_index: Optional[float] = None,
         lens_type: str = LENS_TYPE_BICONVEX,
         material: str = "BK7",
+        mount_type: str = DEFAULT_MOUNT_TYPE,
         wavelength_nm: float = WAVELENGTH_D_LINE,
         wavelength: Optional[float] = None,
         temperature: float = 20.0,
@@ -201,6 +205,7 @@ class Lens:
         self.thickness = thickness
         self.diameter = diameter
         self.material = material
+        self.mount_type = str(mount_type or DEFAULT_MOUNT_TYPE)
         self.wavelength = (
             wavelength if wavelength is not None else wavelength_nm
         )  # Design wavelength in nm
@@ -594,6 +599,7 @@ class Lens:
             "refractive_index": self.refractive_index,
             "type": self.lens_type,
             "material": self.material,
+            "mount_type": self.mount_type,
             "wavelength": self.wavelength,
             "temperature": self.temperature,
             "is_fresnel": self.is_fresnel,
@@ -645,6 +651,7 @@ class Lens:
             refractive_index=data.get("refractive_index", REFRACTIVE_INDEX_BK7),
             lens_type=lens_type,
             material=data.get("material", "BK7"),
+            mount_type=data.get("mount_type", DEFAULT_MOUNT_TYPE),
             wavelength_nm=data.get("wavelength_nm", data.get("wavelength", WAVELENGTH_D_LINE)),
             temperature=data.get("temperature", 20.0),
             is_fresnel=data.get("is_fresnel", False),
@@ -917,6 +924,25 @@ class Lens:
             return bfl
         except ZeroDivisionError:
             return None
+
+    def calculate_working_flange_distance(self) -> Optional[float]:
+        """Distance from the rear vertex to the sensor plane.
+
+        The camera mount fixes the sensor at its flange distance behind the
+        mounting face, while the lens focuses at its back focal length behind
+        the rear vertex. Their sum is the working flange distance.
+
+        Returns:
+            Distance in mm, or None when the lens is afocal or its mount is
+            unknown (for example, a deleted custom mount).
+        """
+        bfl = self.calculate_back_focal_length()
+        if bfl is None:
+            return None
+        flange = MountCatalog().get_flange_distance(self.mount_type)
+        if flange is None:
+            return None
+        return bfl + flange
 
     def calculate_front_focal_length(self) -> Optional[float]:
         """

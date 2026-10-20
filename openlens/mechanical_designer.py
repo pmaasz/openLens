@@ -12,6 +12,9 @@ import math
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 
+from .constants import DEFAULT_MOUNT_TYPE
+from .mounts import MountCatalog
+
 
 @dataclass
 class LensMount:
@@ -87,32 +90,47 @@ class Spacer:
 class MechanicalDesigner:
     """Design mechanical components for optical systems."""
 
-    # Standard mount specifications
-    STANDARD_MOUNTS = {
-        "C-mount": {
-            "thread_diameter": 25.4,
-            "thread_pitch": 0.794,  # 32 TPI
-            "flange_distance": 17.526,
-        },
-        "CS-mount": {
-            "thread_diameter": 25.4,
-            "thread_pitch": 0.794,
-            "flange_distance": 12.526,
-        },
-        "M42": {"thread_diameter": 42.0, "thread_pitch": 1.0, "flange_distance": 45.46},
-        "M39": {"thread_diameter": 39.0, "thread_pitch": 1.0, "flange_distance": 28.8},
-        "T-mount": {
-            "thread_diameter": 42.0,
-            "thread_pitch": 0.75,
-            "flange_distance": 55.0,
-        },
-    }
+    # Standard mount specifications (the authoritative table lives in mounts).
+    STANDARD_MOUNTS = MountCatalog.STANDARD_MOUNTS
 
-    def __init__(self, optical_system):
+    def __init__(
+        self,
+        optical_system=None,
+        mount_catalog: Optional[MountCatalog] = None,
+    ) -> None:
         self.optical_system = optical_system
+        self.mount_catalog = mount_catalog or MountCatalog()
         self.lens_cells: List[LensCell] = []
         self.spacers: List[Spacer] = []
         self.mounts: List[LensMount] = []
+
+    def get_available_mounts(self) -> Dict[str, Dict[str, Any]]:
+        """Return standard and custom mounts available for design."""
+        return self.mount_catalog.get_available_mounts()
+
+    def add_custom_mount(
+        self,
+        name: str,
+        flange_distance: float,
+        thread_diameter: float = 0.0,
+        thread_pitch: float = 0.0,
+    ) -> Dict[str, Any]:
+        """Add a user-defined mount to this designer's catalog."""
+        return self.mount_catalog.add_custom_mount(
+            name, flange_distance, thread_diameter, thread_pitch
+        )
+
+    def remove_custom_mount(self, name: str) -> bool:
+        """Remove a user-defined mount from this designer's catalog."""
+        return self.mount_catalog.remove_custom_mount(name)
+
+    def save_custom_mounts(self):
+        """Persist the user-defined mounts and return the config path."""
+        return self.mount_catalog.save_custom_mounts()
+
+    def load_custom_mounts(self) -> Dict[str, Dict[str, Any]]:
+        """Reload user-defined mounts and return them."""
+        return self.mount_catalog.load_custom_mounts()
 
     def design_lens_cells(
         self, wall_thickness: float = 2.0, material: str = "aluminum"
@@ -202,13 +220,12 @@ class MechanicalDesigner:
         return self.spacers
 
     def design_mount(
-        self, mount_type: str = "C-mount", lens_diameter: Optional[float] = None
+        self, mount_type: str = DEFAULT_MOUNT_TYPE, lens_diameter: Optional[float] = None
     ) -> LensMount:
         """Design lens mount interface."""
-        if mount_type not in self.STANDARD_MOUNTS:
+        specs = self.mount_catalog.get_mount(mount_type)
+        if specs is None:
             raise ValueError(f"Unknown mount type: {mount_type}")
-
-        specs = self.STANDARD_MOUNTS[mount_type]
 
         if lens_diameter is None:
             if self.lens_cells:
@@ -362,13 +379,17 @@ class MechanicalDesigner:
 
         # Mounts
         for i, mount in enumerate(self.mounts):
+            if mount.thread_diameter > 0:
+                dimensions = f"Thread={mount.thread_diameter:.1f}mm"
+            else:
+                dimensions = f"Bayonet, flange={mount.flange_distance:.2f}mm"
             bom.append(
                 {
                     "item": f"Mount Adapter {i+1}",
                     "part_number": f"MT-{i+1:02d}",
                     "description": f"{mount.mount_type} adapter",
                     "quantity": 1,
-                    "dimensions": f"Thread={mount.thread_diameter:.1f}mm",
+                    "dimensions": dimensions,
                     "weight_g": 0.0,
                     "material": "aluminum",
                 }

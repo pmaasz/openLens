@@ -73,6 +73,7 @@ DEFAULT_RADIUS_1 = 100.0
 DEFAULT_RADIUS_2 = -100.0
 DEFAULT_THICKNESS = 5.0
 DEFAULT_DIAMETER = 40.0
+DEFAULT_MOUNT_TYPE = "C-mount"
 DEFAULT_PROPAGATION_DISTANCE = 100.0  # mm — free-space propagation before first surface
 DEFAULT_TEMPERATURE = 20.0  # degrees Celsius
 ABSOLUTE_ZERO_C = -273.15  # 0 K; temperatures are always Celsius in the UI
@@ -215,6 +216,9 @@ MM_TO_MICRONS = 1000.0
 
 # Default filenames
 DEFAULT_DB_FILE = "openlens.db"
+
+#: User-editable JSON file holding custom lens-mount definitions.
+DEFAULT_MOUNTS_FILE = "mounts.json"
 #: The writable material catalog. Lives in the per-user data directory, never
 #: beside the package: site-packages is not writable on a system install.
 DEFAULT_MATERIALS_FILE = "materials.json"

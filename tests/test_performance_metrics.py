@@ -245,7 +245,7 @@ class TestBackFocalLengthForSystem(unittest.TestCase):
         empty = OpticalSystem(name="Empty")
         self.assertIsNone(PerformanceMetrics(empty).calculate_back_focal_length())
 
-    def test_single_lens_path_unchanged(self):
+    def test_single_lens_bfl_uses_the_thick_lens_model(self):
         lens = Lens(
             radius_of_curvature_1=50.0,
             radius_of_curvature_2=-50.0,
@@ -254,7 +254,7 @@ class TestBackFocalLengthForSystem(unittest.TestCase):
             refractive_index=1.5,
         )
         bfl = PerformanceMetrics(lens).calculate_back_focal_length()
-        self.assertAlmostEqual(bfl, lens.calculate_focal_length() - lens.thickness / 2, places=9)
+        self.assertAlmostEqual(bfl, lens.calculate_back_focal_length(), places=9)
 
 
 class TestDepthOfFieldBeyondHyperfocal(unittest.TestCase):
