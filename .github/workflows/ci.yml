@@ -49,6 +49,11 @@ jobs:
     name: Test (py${{ matrix.python-version }})
     needs: lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Codecov authenticates the upload with the workflow's OIDC token; no
+      # long-lived CODECOV_TOKEN secret is needed (and none is configured).
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -83,7 +88,12 @@ jobs:
           fi
       - name: Upload to Codecov
         if: matrix.python-version == '3.11'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          # A failed upload must fail the build: a green "coverage" job with no
+          # data is worse than no coverage at all.
+          fail_ci_if_error: true
       - name: Upload QA visual failures
         if: failure()
         uses: actions/upload-artifact@v4
