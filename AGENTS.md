@@ -5,7 +5,7 @@ This file provides guidance for AI coding agents working in this repository.
 ## Project Overview
 
 OpenLens is an interactive optical lens design and simulation tool for single glass lens elements and multi-element systems.
-- **Language**: Python 3.7+ (dataclasses are used throughout)
+- **Language**: Python 3.10+ (dataclasses are used throughout; CI tests 3.10-3.12)
 - **License**: MIT
 - **Core Dependencies**: PySide6 (GUI, required), numpy + matplotlib (highly recommended for simulation/plots)
 - **Optional Dependencies**: scipy, Pillow (advanced diffraction and image-simulation features). **RULE**: Guard optional imports with try/except and a `*_AVAILABLE` flag - the app must start and run core features without them.

@@ -244,7 +244,7 @@ Potential areas for expansion:
 ## Technical Notes
 
 ### Dependencies
-- **Python:** 3.6+
+- **Python:** 3.10+
 - **tkinter:** For GUI (standard library)
 - **json:** Data storage (standard library)
 - **datetime:** Timestamps (standard library)
@@ -261,7 +261,7 @@ Potential areas for expansion:
 - ✅ Linux
 - ✅ macOS
 - ✅ Windows
-- ✅ Any Python 3.6+ environment
+- ✅ Any Python 3.10+ environment
 
 ---
 

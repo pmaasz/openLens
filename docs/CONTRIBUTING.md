@@ -56,7 +56,7 @@ Violations can be reported to the project maintainers. All reports will be revie
 
 Before contributing, ensure you have:
 
-- **Python 3.6+** installed
+- **Python 3.10+** installed
 - **Git** for version control
 - **tkinter** for GUI development
 - **Optional**: matplotlib, numpy for advanced features

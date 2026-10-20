@@ -50,7 +50,7 @@ sys.path.append('/path/to/openLens')
 ### Dependencies
 
 **Required:**
-- Python 3.6+
+- Python 3.10+
 
 **Optional (for full functionality):**
 - `matplotlib` - For 3D visualization
