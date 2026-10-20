@@ -15,7 +15,11 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QPushButton,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
 )
+from PySide6.QtCore import Qt
+
 from .base_tab import BaseTab
 from ..widgets.simulation_viz import SimulationVisualizationWidget
 from ...constants import WAVELENGTH_GREEN, WAVELENGTH_PRESETS
@@ -32,6 +36,12 @@ SIMULATION_WAVELENGTHS = tuple(
 #: Index of the "Custom" entry, which follows the preset wavelengths.
 CUSTOM_WAVELENGTH_INDEX = len(SIMULATION_WAVELENGTHS)
 
+#: Seven samples across the visible range, used by the white-light option.
+#: A continuous spectrum would be prettier but would turn each ray fan into
+#: hundreds of nearly coincident lines; seven spectral colours already blend
+#: into white and show the chromatic spread.
+WHITE_LIGHT_WAVELENGTHS = tuple(float(nm) for nm in range(400, 701, 50))
+
 #: Preset wavelength selected by default: the photopic peak, which is also the
 #: application's default for ray-tracing visualization.
 DEFAULT_WAVELENGTH_INDEX = next(
@@ -39,6 +49,14 @@ DEFAULT_WAVELENGTH_INDEX = next(
     for index, (nanometres, _label) in enumerate(SIMULATION_WAVELENGTHS)
     if nanometres == WAVELENGTH_GREEN
 )
+
+
+def _wavelength_label(nanometres: float) -> str:
+    """Return the picker/list label for a wavelength."""
+    for value, label in SIMULATION_WAVELENGTHS:
+        if abs(value - nanometres) < 1e-9:
+            return label
+    return f"{nanometres:g} nm (Custom)"
 
 
 class SimulationTab(BaseTab):
@@ -91,6 +109,36 @@ class SimulationTab(BaseTab):
 
         controls_layout.addWidget(source_group)
 
+        # Selected wavelengths: the picker above chooses one, Add appends it
+        # here, and the simulation traces every entry.
+        wavelength_group = QGroupBox("Wavelengths")
+        wavelength_layout = QVBoxLayout(wavelength_group)
+
+        self._sim_wavelengths = QListWidget()
+        self._sim_wavelengths.setMaximumHeight(110)
+        self._sim_wavelengths.setToolTip("Wavelengths traced on the next run")
+        wavelength_layout.addWidget(self._sim_wavelengths)
+
+        wavelength_buttons = QHBoxLayout()
+        self._sim_add_wavelength = QPushButton("Add")
+        self._sim_add_wavelength.setToolTip("Add the wavelength selected above")
+        self._sim_add_wavelength.clicked.connect(self._add_wavelength)
+        self._sim_remove_wavelength = QPushButton("Remove")
+        self._sim_remove_wavelength.setToolTip("Remove the selected wavelength")
+        self._sim_remove_wavelength.clicked.connect(self._remove_wavelength)
+        wavelength_buttons.addWidget(self._sim_add_wavelength)
+        wavelength_buttons.addWidget(self._sim_remove_wavelength)
+        wavelength_layout.addLayout(wavelength_buttons)
+
+        self._sim_white_light = QCheckBox("White light (400-700 nm)")
+        self._sim_white_light.setToolTip("Trace a seven-point visible spectrum instead of the list")
+        self._sim_white_light.toggled.connect(self._on_white_light_toggled)
+        wavelength_layout.addWidget(self._sim_white_light)
+
+        self._add_wavelength_item(WAVELENGTH_GREEN)
+
+        controls_layout.addWidget(wavelength_group)
+
         # Ghost analysis checkbox
         self._ghost_analysis = QCheckBox("Show Ghost Analysis")
         controls_layout.addWidget(self._ghost_analysis)
@@ -135,12 +183,79 @@ class SimulationTab(BaseTab):
             source_height = self._sim_source_height.value()
             show_ghosts = self._ghost_analysis.isChecked()
 
-            # Get wavelength
-            wavelength = self._selected_wavelength()
-
             self._sim_viz.run_simulation(
-                active_system, num_rays, angle, source_height, show_ghosts, wavelength
+                active_system,
+                num_rays,
+                angle,
+                source_height,
+                show_ghosts,
+                wavelengths=self._selected_wavelengths(),
             )
+
+    def _add_wavelength_item(self, nanometres: float) -> QListWidgetItem:
+        """Append one wavelength entry to the list.
+
+        Args:
+            nanometres: Wavelength in nanometers.
+
+        Returns:
+            The inserted list item.
+        """
+        item = QListWidgetItem(_wavelength_label(nanometres))
+        item.setData(Qt.ItemDataRole.UserRole, float(nanometres))
+        self._sim_wavelengths.addItem(item)
+        return item
+
+    def _listed_wavelengths(self) -> list[float]:
+        """Return the wavelengths currently listed, in display order."""
+        return [
+            float(self._sim_wavelengths.item(row).data(Qt.ItemDataRole.UserRole))
+            for row in range(self._sim_wavelengths.count())
+        ]
+
+    def _add_wavelength(self) -> None:
+        """Add the wavelength picked above to the traced list."""
+        value = self._selected_wavelength()
+        if any(abs(existing - value) < 1e-6 for existing in self._listed_wavelengths()):
+            return
+        item = self._add_wavelength_item(value)
+        self._sim_wavelengths.setCurrentItem(item)
+
+    def _remove_wavelength(self) -> None:
+        """Remove the selected wavelength from the traced list."""
+        row = self._sim_wavelengths.currentRow()
+        if row >= 0:
+            self._sim_wavelengths.takeItem(row)
+
+    def _selected_wavelengths(self) -> list[float]:
+        """Wavelengths to trace for the current controls.
+
+        White light replaces the list with a fixed visible spectrum. An empty
+        list falls back to the picker so Run Simulation always has a target.
+
+        Returns:
+            Sorted, unique wavelengths in nanometers.
+        """
+        if self._sim_white_light.isChecked():
+            return list(WHITE_LIGHT_WAVELENGTHS)
+        values = sorted(set(self._listed_wavelengths()))
+        return values or [self._selected_wavelength()]
+
+    def _on_white_light_toggled(self, checked: bool) -> None:
+        """Swap between the wavelength list and the white-light spectrum."""
+        for widget in (
+            self._sim_wavelength,
+            self._sim_wavelengths,
+            self._sim_add_wavelength,
+            self._sim_remove_wavelength,
+        ):
+            widget.setEnabled(not checked)
+        self._sim_custom_wavelength.setEnabled(not checked)
+        if checked:
+            self._sim_custom_label.setVisible(False)
+            self._sim_custom_wavelength.setVisible(False)
+        else:
+            self._on_wavelength_changed(self._sim_wavelength.currentIndex())
 
     def _selected_wavelength(self) -> float:
         """Wavelength in nm for the current picker selection.

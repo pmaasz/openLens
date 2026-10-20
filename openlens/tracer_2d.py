@@ -33,13 +33,22 @@ class LensRayTracer:
     Traces rays through a lens using Snell's law at each surface.
     """
 
-    def __init__(self, lens: "Lens", x_offset: float = 0.0) -> None:
+    def __init__(
+        self,
+        lens: "Lens",
+        x_offset: float = 0.0,
+        wavelength_nm: Optional[float] = None,
+    ) -> None:
         """
         Initialize ray tracer with a lens.
 
         Args:
             lens: Lens object with optical parameters
             x_offset: X position of the front vertex (mm)
+            wavelength_nm: Trace at the glass index for this wavelength. When
+                omitted, the lens's stored ``refractive_index`` is used, which
+                keeps all existing callers and analyses at their design
+                wavelength.
         """
         self.lens = lens
         # Direct attributes: Lens always defines these (constructor sets them
@@ -48,7 +57,11 @@ class LensRayTracer:
         self.R2 = lens.get_effective_radius_2()
         self.d = lens.thickness
         self.D = lens.diameter
-        self.n = lens.refractive_index
+        self.n = (
+            lens.refractive_index_at(wavelength_nm)
+            if wavelength_nm is not None
+            else lens.refractive_index
+        )
         self.x_offset = x_offset
         # Per-surface clear apertures (polished aperture; fall back to the
         # mechanical outer diameter when unset).
@@ -550,8 +563,11 @@ class LensRayTracer:
 class SystemRayTracer:
     """Ray tracer for multi-element optical systems"""
 
-    def __init__(self, optical_system: "OpticalSystem") -> None:
+    def __init__(
+        self, optical_system: "OpticalSystem", wavelength_nm: Optional[float] = None
+    ) -> None:
         self.system = optical_system
+        self._wavelength_nm = wavelength_nm
         self._tracers: List[LensRayTracer] = []
         self._sync_tracers()
 
@@ -563,7 +579,11 @@ class SystemRayTracer:
         while the per-ray loop stays allocation-free.
         """
         self._tracers = [
-            LensRayTracer(element.lens, x_offset=element.position)
+            LensRayTracer(
+                element.lens,
+                x_offset=element.position,
+                wavelength_nm=self._wavelength_nm,
+            )
             for element in self.system.elements
         ]
 

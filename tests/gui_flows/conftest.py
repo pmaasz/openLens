@@ -36,6 +36,13 @@ def qapp():
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv)
+    # OpenLensWindow does not set the application stylesheet itself; main()
+    # does. Without this the visual snapshots depended on whether an earlier
+    # test happened to toggle the theme, which changes widget metrics as well
+    # as colours. Pin the real startup look for every flow test.
+    from openlens.gui.theme import DARK, get_app_stylesheet
+
+    app.setStyleSheet(get_app_stylesheet(DARK))
     return app
 
 
