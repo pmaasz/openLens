@@ -1,5 +1,5 @@
 # openlens Runtime Requirements
-# Python 3.7+ required
+# Python 3.10+ required (see python_requires in setup.py)
 
 # GUI Framework (Required)
 PySide6>=6.2.0

@@ -4,7 +4,7 @@
 
 **An interactive optical lens design and simulation tool for single glass lens elements**
 
-[![Python](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-494%20passing-brightgreen.svg)](docs/TESTING.md)
 
@@ -63,7 +63,7 @@ openlens is a desktop application for designing and analyzing **glass optical le
 ### Prerequisites
 
 **Core Requirements:**
-- **Python 3.7 or higher**
+- **Python 3.10 or higher** (CI tests 3.10-3.12; `python_requires` in `setup.py` is the authority)
 - **PySide6 ≥ 6.2** (GUI framework - installed via pip)
 - **X11 display server** (Linux) or native display (Windows/Mac)
 
@@ -175,7 +175,7 @@ The script will:
 4. **Verify Python and PySide6:**
    ```bash
    python3 --version
-   # Should show Python 3.7 or higher
+   # Should show Python 3.10 or higher
 
    python3 -c "import PySide6; print('PySide6 available')"
    ```
