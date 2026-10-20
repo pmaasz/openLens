@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QKeySequence, QShortcut, QUndoGroup
 
 from openlens.lens import Lens
 from openlens.optical_system import OpticalSystem, as_system
@@ -645,10 +645,33 @@ class OpenLensWindow(QMainWindow):
             self._lens_editor.undo_stack.clear()
         if hasattr(self, "_assembly_tab_index"):
             self._editor_tabs.setTabVisible(self._assembly_tab_index, show)
+        self._sync_active_undo_stack()
 
     def _show_lens_editor(self, show: bool = True) -> None:
         """Show lens editor tab"""
+        if show and hasattr(self, "_assembly_tab_widget"):
+            # The assembly model is no longer on screen; do not let Ctrl+Z
+            # mutate it invisibly.
+            self._assembly_tab_widget.undo_stack.clear()
         self._editor_tabs.setTabVisible(0, show)
+        self._sync_active_undo_stack()
+
+    def _sync_active_undo_stack(self) -> None:
+        """Point the shared Edit > Undo/Redo actions at the visible editor."""
+        group = getattr(self, "_undo_group", None)
+        if group is None:
+            return
+        index = self._editor_tabs.currentIndex()
+        if index == getattr(self, "_assembly_tab_index", -1):
+            group.setActiveStack(self._assembly_tab_widget.undo_stack)
+        elif index == 0:
+            group.setActiveStack(self._lens_editor.undo_stack)
+
+    def _on_editor_tab_changed(self, index: int) -> None:
+        """Keep undo history scoped to the editor the user is working in."""
+        if index == 0 and hasattr(self, "_assembly_tab_widget"):
+            self._assembly_tab_widget.undo_stack.clear()
+        self._sync_active_undo_stack()
 
     def _create_menu(self) -> None:
         """Create menu bar"""
@@ -675,14 +698,19 @@ class OpenLensWindow(QMainWindow):
 
         # Edit menu
         edit_menu = menubar.addMenu("Edit")
-        # The actions stay bound to the editor's stack, so their enabled state
-        # and text ("Undo Edit radius of curvature 1") track the history.
-        self._undo_action = self._lens_editor.undo_stack.createUndoAction(self, "Undo")
+        # One history per editor; the group's actions follow whichever editor
+        # is visible and carry its command text ("Undo Add element", ...).
+        self._undo_group = QUndoGroup(self)
+        self._undo_group.addStack(self._lens_editor.undo_stack)
+        self._undo_group.addStack(self._assembly_tab_widget.undo_stack)
+        self._undo_group.setActiveStack(self._lens_editor.undo_stack)
+        self._undo_action = self._undo_group.createUndoAction(self, "Undo")
         self._undo_action.setShortcut(QKeySequence.Undo)
-        self._redo_action = self._lens_editor.undo_stack.createRedoAction(self, "Redo")
+        self._redo_action = self._undo_group.createRedoAction(self, "Redo")
         self._redo_action.setShortcut(QKeySequence.Redo)
         edit_menu.addAction(self._undo_action)
         edit_menu.addAction(self._redo_action)
+        self._editor_tabs.currentChanged.connect(self._on_editor_tab_changed)
         edit_menu.addSeparator()
         edit_menu.addAction(
             "Delete Lens", self._confirm_and_delete_lens, QKeySequence("Ctrl+Delete")
@@ -739,6 +767,10 @@ class OpenLensWindow(QMainWindow):
         # only existed on some paths, so the window and the Assembly Editor
         # could disagree about which system is current.
         self._optical_system = assembly
+        if hasattr(self, "_assembly_tab_widget"):
+            # Switching systems clears the editor's undo history; a stale
+            # command would otherwise target the previous assembly.
+            self._assembly_tab_widget.load_system(assembly)
         if hasattr(self, "_assembly_viz"):
             self._assembly_viz.update_system(assembly)
         if hasattr(self, "_system_list"):

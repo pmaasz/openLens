@@ -3,8 +3,13 @@ OpenLens PySide6 Assembly Tab
 Multi-element optical system builder
 """
 
+import copy
+import functools
 import logging
+from datetime import datetime
+from typing import Optional
 
+from PySide6.QtGui import QUndoCommand, QUndoStack
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -27,6 +32,95 @@ from ...optical_system import OpticalSystem, AirGap
 logger = logging.getLogger(__name__)
 
 
+class _AssemblySnapshotCommand(QUndoCommand):
+    """Restore a whole ``OpticalSystem`` to a snapshot on undo/redo.
+
+    Assembly edits reach into the flat element list, the node tree, air gaps,
+    aperture stop and metadata.  A snapshot command keeps every operation -
+    add, remove, reorder, gap, alignment and stop - exact without a command
+    class per property.
+    """
+
+    def __init__(self, tab, system, before, after, label) -> None:
+        super().__init__(label)
+        self._tab = tab
+        self._system = system
+        self._before = before
+        self._after = after
+        # QUndoStack.push() calls redo() once.  The edit handler has already
+        # applied the change, so that first callback must not restore it again.
+        self._first_redo = True
+
+    def undo(self) -> None:
+        """Restore the state captured before the edit."""
+        self._restore(self._before)
+
+    def redo(self) -> None:
+        """Reapply the state captured after the edit."""
+        if self._first_redo:
+            self._first_redo = False
+            return
+        self._restore(self._after)
+
+    def _restore(self, snapshot) -> None:
+        tab = self._tab
+        if tab._optical_system is not self._system:
+            # The editor moved on; a stale command must not mutate another
+            # system.  Loading a different system clears the stack anyway.
+            return
+
+        tab._restoring = True
+        try:
+            current = self._system.__dict__
+            current.clear()
+            current.update(copy.deepcopy(snapshot))
+            self._system.modified_at = datetime.now().isoformat()
+            tab._refresh_assembly_ui()
+            tab._on_assembly_changed()
+        finally:
+            tab._restoring = False
+
+
+def _undoable_assembly_edit(label: str):
+    """Record one whole-system undo command around a user-edit handler.
+
+    Nested handlers are folded into the outermost command, like the lens
+    editor's ``_undoable_edit``.  A handler that makes no model change does not
+    grow the history.
+    """
+
+    def decorator(method):
+        accepted = method.__code__.co_argcount - 1
+
+        @functools.wraps(method)
+        def wrapper(self, *args, **kwargs):
+            # Qt signals may pass an argument the handler does not use (for
+            # example clicked(bool)); trim it before forwarding.
+            args = args[:accepted]
+            if self._optical_system is None or self._restoring or self._edit_depth:
+                return method(self, *args, **kwargs)
+
+            before_state = self._optical_system.to_dict()
+            before = copy.deepcopy(self._optical_system.__dict__)
+            self._edit_depth += 1
+            try:
+                result = method(self, *args, **kwargs)
+                after_state = self._optical_system.to_dict()
+            finally:
+                self._edit_depth -= 1
+
+            if after_state != before_state:
+                after = copy.deepcopy(self._optical_system.__dict__)
+                self._undo_stack.push(
+                    _AssemblySnapshotCommand(self, self._optical_system, before, after, label)
+                )
+            return result
+
+        return wrapper
+
+    return decorator
+
+
 class AssemblyTab(BaseTab):
     """Multi-element optical system builder"""
 
@@ -36,8 +130,16 @@ class AssemblyTab(BaseTab):
     LENS_LIST_RETRY_MS = 100
     LENS_LIST_MAX_RETRIES = 20
 
+    @property
+    def undo_stack(self) -> QUndoStack:
+        """The assembly editor's undo history (one command per edit)."""
+        return self._undo_stack
+
     def _setup_ui(self) -> None:
         """Build the builder panels and create the initial optical system."""
+        self._undo_stack = QUndoStack(self)
+        self._restoring = False
+        self._edit_depth = 0
         layout = QHBoxLayout(self)
 
         # Left: Available lenses + System builder. Minimum width keeps
@@ -245,7 +347,13 @@ class AssemblyTab(BaseTab):
         self._lens_list_retry_timer.start(self.LENS_LIST_RETRY_MS)
 
     def _update_system_list(self) -> None:
-        """Update the system list widget from the optical system model."""
+        """Update the system list widget from the optical system model.
+
+        Rebuilding the list used to drop the selection after every edit, which
+        also disabled the contextual gap/alignment editors.  Keep the row where
+        possible so undo/redo restores the same visible element.
+        """
+        row = self._system_list.currentRow()
         self._system_list.clear()
         stop = self._optical_system.get_aperture_stop()
         stop_gap = stop["gap_index"] if stop is not None else None
@@ -269,6 +377,65 @@ class AssemblyTab(BaseTab):
             item = QListWidgetItem(f"{i+1}: {element.lens.name}{gap_str}{align_str}")
             self._system_list.addItem(item)
         self._refresh_stop_ui()
+        if row >= 0 and self._system_list.count():
+            self._system_list.setCurrentRow(min(row, self._system_list.count() - 1))
+
+    def _refresh_assembly_ui(self) -> None:
+        """Repaint the widget tree from the current optical system.
+
+        Used after a programmatic load and after undo/redo.  The selected row is
+        kept where possible so the contextual air-gap and alignment editors stay
+        pointed at the same element.
+        """
+        if self._optical_system is None:
+            self._system_list.clear()
+            self._air_gap_group.setEnabled(False)
+            self._align_group.setEnabled(False)
+            combo = self._stop_gap_combo
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItem("(no air gaps)", -1)
+            combo.setEnabled(False)
+            combo.blockSignals(False)
+            self._stop_dia_input.setValue(0.0)
+            self._assembly_viz.update_system(None)
+            return
+
+        row = self._system_list.currentRow()
+        self._update_system_list()
+        count = len(self._optical_system.elements)
+        if count:
+            row = 0 if row < 0 else min(row, count - 1)
+            self._system_list.setCurrentRow(row)
+        else:
+            self._system_list.setCurrentRow(-1)
+            self._air_gap_group.setEnabled(False)
+            self._align_group.setEnabled(False)
+        self._assembly_viz.update_system(self._optical_system)
+
+    def load_system(self, system: Optional[OpticalSystem]) -> None:
+        """Bind the editor to *system* without recording an undo command.
+
+        Loading a different system clears the previous history: its commands
+        hold snapshots of another model and must never be replayed here.
+        Refreshing the same system keeps the history intact.
+
+        Args:
+            system: The optical system to display, or None to clear the editor.
+        """
+        if system is self._optical_system:
+            self._refresh_assembly_ui()
+            return
+
+        self._restoring = True
+        try:
+            self._optical_system = system
+            self._undo_stack.clear()
+            # The old row number means nothing in the new system.
+            self._system_list.setCurrentRow(-1)
+            self._refresh_assembly_ui()
+        finally:
+            self._restoring = False
 
     def _refresh_stop_ui(self) -> None:
         """Rebuild the stop gap combo and reflect the current stop."""
@@ -294,6 +461,7 @@ class AssemblyTab(BaseTab):
             self._stop_dia_input.setValue(0.0)
         combo.blockSignals(False)
 
+    @_undoable_assembly_edit("Set aperture stop")
     def _on_stop_set_clicked(self) -> None:
         """Place the aperture stop in the selected gap."""
         gap_index = self._stop_gap_combo.currentData()
@@ -310,13 +478,17 @@ class AssemblyTab(BaseTab):
         self._assembly_viz.update_system(self._optical_system)
         self._on_assembly_changed()
 
+    @_undoable_assembly_edit("Clear aperture stop")
     def _on_stop_clear_clicked(self) -> None:
         """Remove the aperture stop definition."""
+        if self._optical_system.get_aperture_stop() is None:
+            return
         self._optical_system.clear_aperture_stop()
         self._update_system_list()
         self._assembly_viz.update_system(self._optical_system)
         self._on_assembly_changed()
 
+    @_undoable_assembly_edit("Edit element alignment")
     def _on_align_apply_clicked(self) -> None:
         """Apply decenter/tilt values to the selected element."""
         current = self._system_list.currentRow()
@@ -335,6 +507,7 @@ class AssemblyTab(BaseTab):
             self._assembly_viz.update_system(self._optical_system)
             self._on_assembly_changed()
 
+    @_undoable_assembly_edit("Add element")
     def _on_add_lens_to_system(self) -> None:
         """Add selected lens to optical system."""
         current = self._assembly_lens_list.currentRow()
@@ -347,6 +520,7 @@ class AssemblyTab(BaseTab):
             self._assembly_viz.update_system(self._optical_system)
             self._on_assembly_changed()
 
+    @_undoable_assembly_edit("Remove element")
     def _on_remove_lens_from_system(self) -> None:
         """Remove selected lens from system."""
         current = self._system_list.currentRow()
@@ -356,6 +530,7 @@ class AssemblyTab(BaseTab):
             self._assembly_viz.update_system(self._optical_system)
             self._on_assembly_changed()
 
+    @_undoable_assembly_edit("Move element up")
     def _on_move_lens_up(self) -> None:
         """Move lens up in system."""
         current = self._system_list.currentRow()
@@ -371,6 +546,7 @@ class AssemblyTab(BaseTab):
             self._assembly_viz.update_system(self._optical_system)
             self._on_assembly_changed()
 
+    @_undoable_assembly_edit("Move element down")
     def _on_move_lens_down(self) -> None:
         """Move lens down in system."""
         current = self._system_list.currentRow()
@@ -430,6 +606,7 @@ class AssemblyTab(BaseTab):
         """Apply the current air gap value to the system."""
         self._on_air_gap_changed(self._air_gap_input.value())
 
+    @_undoable_assembly_edit("Edit air gap")
     def _on_air_gap_changed(self, value: float) -> None:
         """Update air gap for selected element.
 
@@ -465,13 +642,20 @@ class AssemblyTab(BaseTab):
         """Refresh assembly tab state from parent's current assembly.
 
         Reloads the lens list and syncs the builder with the parent window's
-        current lens/system state.
+        current lens/system state.  A genuine system switch clears undo
+        history; a refresh of the same system leaves it alone.
         """
         self.refresh_lens_list()
 
-        # Sync with parent's current assembly if it exists
-        if hasattr(self._parent, "_current_assembly") and self._parent._current_assembly:
-            self._optical_system = self._parent._current_assembly
-            self._update_system_list()
-
-        self._assembly_viz.update_system(self._optical_system)
+        current = getattr(self._parent, "_current_assembly", None)
+        if current is not None:
+            if current is not self._optical_system:
+                self.load_system(current)
+            else:
+                self._refresh_assembly_ui()
+        elif self._optical_system is not None:
+            # The window no longer has an assembly.  Keep the last drawing on
+            # screen (the delete path clears it explicitly), but never let a
+            # stale history survive into another model.
+            self._undo_stack.clear()
+            self._assembly_viz.update_system(self._optical_system)
