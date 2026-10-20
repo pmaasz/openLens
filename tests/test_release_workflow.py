@@ -103,6 +103,16 @@ class TestReleaseWorkflow(unittest.TestCase):
         self.assertEqual(attach["with"]["files"], "package/*")
         self.assertIn("RELEASE_TAG", attach["if"])
 
+    def test_pypi_publish_requires_explicit_enablement(self):
+        publish = self.release["jobs"]["publish"]
+        pypi = _step_using(publish, "pypa/gh-action-pypi-publish")
+        self.assertIn("vars.PYPI_PUBLISH_ENABLED", pypi["if"])
+
+        # The wheel and sdist must still attach even when PyPI is not ours to
+        # publish to (the PyPI `openlens` project belongs to someone else).
+        attach = _step_using(publish, "softprops/action-gh-release")
+        self.assertEqual(attach["with"]["files"], "dist/*")
+
     def test_manual_dispatch_can_build_without_touching_a_release(self):
         triggers = self.release["on"]
         self.assertIn("workflow_dispatch", triggers)
