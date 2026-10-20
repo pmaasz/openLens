@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from .constants import DEFAULT_DB_FILE, DEFAULT_MATERIALS_FILE
+from .constants import DEFAULT_DB_FILE, DEFAULT_MATERIALS_FILE, DEFAULT_MOUNTS_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,9 @@ DATA_DIR_ENV_VAR = "OPENLENS_DATA_DIR"
 #: Overrides the material catalog path. The catalog is user-editable and the
 #: application writes to it, so it must never default to the installed package.
 MATERIALS_PATH_ENV_VAR = "OPENLENS_MATERIALS_PATH"
+
+#: Overrides the custom-mount configuration path.
+MOUNTS_PATH_ENV_VAR = "OPENLENS_MOUNTS_PATH"
 
 #: The directory name used under the platform's per-user data root.
 APP_DIR_NAME = "openlens"
@@ -101,6 +104,22 @@ def default_materials_path() -> Path:
     if override:
         return Path(override).expanduser()
     return user_data_dir() / DEFAULT_MATERIALS_FILE
+
+
+def default_mounts_path() -> Path:
+    """The JSON file holding user-defined lens mounts.
+
+    Returns:
+        The path from ``$OPENLENS_MOUNTS_PATH`` if set, otherwise
+        ``<user data dir>/mounts.json``.
+
+    The file is user data and the mount manager writes it. It therefore lives
+    under the per-user data directory, never beside the installed package.
+    """
+    override = os.environ.get(MOUNTS_PATH_ENV_VAR)
+    if override:
+        return Path(override).expanduser()
+    return user_data_dir() / DEFAULT_MOUNTS_FILE
 
 
 def legacy_materials_path() -> Path:

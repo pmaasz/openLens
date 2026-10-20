@@ -32,6 +32,34 @@ The Editor tab provides controls for:
 - **Material Properties**: Choose refractive index or select from material database
 - **Real-time Preview**: See lens shape update as you modify parameters
 
+Camera Mounts
+^^^^^^^^^^^^^
+
+The Editor's **Mount** group assigns a camera mount to the lens. The
+calculated properties show the **working flange distance**: the distance from
+the rear lens vertex to the sensor plane.
+
+.. code-block:: text
+
+   working flange distance = back focal length + mount flange distance
+
+OpenLens includes C-mount, CS-mount, M42, M39, T-mount, Fujifilm X-mount,
+Leica M-mount, Canon EF-mount and Nikon F-mount. The mount is saved with the
+lens in the SQLite library.
+
+Use **Manage mounts…** to add a custom mount from its flange distance. Custom
+mounts are shared by every lens and stored in ``mounts.json`` under the
+per-user OpenLens data directory. Set ``OPENLENS_MOUNTS_PATH`` to use a
+different configuration file.
+
+.. code-block:: python
+
+   from openlens.lens import Lens
+
+   lens = Lens(radius_of_curvature_1=50.0, radius_of_curvature_2=-50.0)
+   lens.mount_type = "M42"
+   print(lens.calculate_working_flange_distance())
+
 Simulation Tab
 ^^^^^^^^^^^^^^
 

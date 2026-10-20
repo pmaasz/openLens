@@ -9,6 +9,7 @@ from typing import Optional, Dict, Any
 
 from .lens import Lens
 from .constants import WAVELENGTH_GREEN, NM_TO_MM
+from .mounts import MountCatalog
 from .optical_system import OpticalSystem
 
 
@@ -103,16 +104,28 @@ class PerformanceMetrics:
         Distance from last surface to focal point
         """
         if self.lens:
-            # For thin lens: BFL ≈ EFL - thickness/2
-            f = self.lens.calculate_focal_length()
-            if f:
-                return f - self.lens.thickness / 2
+            # The Lens model uses the thick-lens BFL; f - t/2 was a thin-lens
+            # approximation that disagreed with the editor and with the
+            # working-flange breakdown by several millimetres.
+            return self.lens.calculate_back_focal_length()
         elif self.system:
             # Delegate: OpticalSystem already derives the BFL from the system
             # ABCD matrix (-A/C, measured from the last surface). Returning
             # the EFL here reported a back focal distance that was too long
             # by the whole distance from the last surface to focus.
             return self.system.calculate_back_focal_length()
+        return None
+
+    def calculate_working_flange_distance(self) -> Optional[float]:
+        """Working flange distance (rear vertex to sensor) for a single lens.
+
+        Returns:
+            Distance in mm, or None for an assembly, afocal lens or unknown
+            mount. A system does not carry one mount type; its interface is
+            designed separately in the mechanical module.
+        """
+        if self.lens:
+            return self.lens.calculate_working_flange_distance()
         return None
 
     def calculate_working_distance(self, magnification: float = 1.0) -> Optional[float]:
@@ -354,6 +367,16 @@ class PerformanceMetrics:
         metrics["back_focal_length"] = self.calculate_back_focal_length()
         metrics["working_distance_1x"] = self.calculate_working_distance(1.0)
 
+        # Camera-interface metrics only make sense for a single lens: an
+        # assembly's mount is chosen in the mechanical design, not stored on
+        # the optical model.
+        if self.lens:
+            metrics["working_flange_distance"] = self.calculate_working_flange_distance()
+            metrics["mount_type"] = self.lens.mount_type
+            metrics["mount_flange_distance"] = MountCatalog().get_flange_distance(
+                self.lens.mount_type
+            )
+
         # Resolution metrics
         f_num = metrics["f_number"]
         metrics["resolution_um"] = self.estimate_resolution_rayleigh(wavelength, f_num)
@@ -408,6 +431,16 @@ class PerformanceMetrics:
 
         if "back_focal_length" in metrics and metrics["back_focal_length"]:
             lines.append(f"  Back Focal Length:      {metrics['back_focal_length']:.2f} mm")
+
+        working_flange = metrics.get("working_flange_distance")
+        if working_flange is not None:
+            bfl = metrics.get("back_focal_length")
+            flange = metrics.get("mount_flange_distance")
+            mount = metrics.get("mount_type")
+            breakdown = ""
+            if bfl is not None and flange is not None:
+                breakdown = f"  (BFL: {bfl:.2f}mm + {mount}: {flange:.2f}mm)"
+            lines.append(f"  Working Flange Distance: {working_flange:.2f} mm{breakdown}")
 
         if "entrance_pupil_diameter" in metrics and metrics["entrance_pupil_diameter"]:
             lines.append(f"  Entrance Pupil:         {metrics['entrance_pupil_diameter']:.2f} mm")

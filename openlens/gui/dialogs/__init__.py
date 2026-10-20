@@ -3,6 +3,7 @@ OpenLens PySide6 Dialogs
 """
 
 from .startup import StartupDialog
+from .mount_manager import MountManagerDialog
 
 # AnalysisPlotDialog and image_sim need matplotlib, which AGENTS.md classes
 # as optional. Importing them eagerly at module scope meant a plain
@@ -42,6 +43,7 @@ def require_analysis_plot_dialog():
 
 __all__ = [
     "StartupDialog",
+    "MountManagerDialog",
     "AnalysisPlotDialog",
     "ANALYSIS_PLOTS_AVAILABLE",
     "require_analysis_plot_dialog",

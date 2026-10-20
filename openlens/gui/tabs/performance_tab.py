@@ -385,6 +385,22 @@ class PerformanceTab(BaseTab):
             if fl and fl > 0:
                 field_angle = math.degrees(math.atan((sensor_size / 2.0) / fl))
 
+            # A single lens carries a camera mount. Assemblies pick theirs in
+            # the mechanical design, so only show this for a lens.
+            mount_line = ""
+            if not isinstance(active_system, OpticalSystem) and hasattr(
+                active_system, "calculate_working_flange_distance"
+            ):
+                working_flange = active_system.calculate_working_flange_distance()
+                if working_flange is not None:
+                    rear_bfl = active_system.calculate_back_focal_length()
+                    flange = working_flange - rear_bfl
+                    mount_line = (
+                        f"Working Flange Distance: {working_flange:.2f} mm "
+                        f"(BFL: {rear_bfl:.2f} mm + {active_system.mount_type}: "
+                        f"{flange:.2f} mm)\n"
+                    )
+
             results = calculator.calculate_all_aberrations(
                 field_angle_deg=field_angle, wavelength_nm=wavelength
             )
@@ -436,7 +452,7 @@ Type: {"Assembly" if isinstance(active_system, OpticalSystem) else "Single Lens"
 Focal Length: {f"{fl:.2f} mm" if fl else "Infinite"}
 Optical Power: {f"{power:.4f} D" if power else "N/A"}
 Back Focal Length: {f"{bfl:.2f} mm" if bfl else "N/A"}
-Entrance Pupil: {entrance_pupil:.2f} mm
+{mount_line}Entrance Pupil: {entrance_pupil:.2f} mm
 f-number (f/#): {results.get('f_number', 0):.2f}
 {chromatic_text}
 --- Calculation Parameters ---
