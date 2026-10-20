@@ -22,8 +22,13 @@ from PySide6.QtWidgets import (
 from .base_tab import BaseTab
 from ..theme import DARK, get_monospace_qss
 from ..workers import AnalysisWorker
+from ...constants import WAVELENGTH_GREEN, WAVELENGTH_PRESETS
 
 logger = logging.getLogger(__name__)
+
+#: Preset wavelengths in picker order. The combo is populated from the same
+#: table, so an index always names the wavelength it shows.
+_PRESET_WAVELENGTHS = tuple(nanometres for nanometres, _label in WAVELENGTH_PRESETS)
 
 
 #: Keys excluded from a metrics fingerprint, because they identify the *record*
@@ -151,15 +156,15 @@ class PerformanceTab(BaseTab):
 
         self._perf_wavelength = QComboBox()
         self._perf_wavelength.addItems(
-            [
-                "400 nm (Violet)",
-                "450 nm (Blue)",
-                "550 nm (Green)",
-                "650 nm (Red)",
-                "700 nm (IR)",
-            ]
+            [f"{nanometres:g} nm ({name})" for nanometres, name in WAVELENGTH_PRESETS]
         )
-        self._perf_wavelength.setCurrentIndex(2)  # Default to 550nm
+        self._perf_wavelength.setCurrentIndex(
+            next(
+                index
+                for index, (nanometres, _label) in enumerate(WAVELENGTH_PRESETS)
+                if nanometres == WAVELENGTH_GREEN
+            )
+        )
         self._perf_wavelength.setFixedWidth(140)
         params_layout.addRow("Wavelength:", self._perf_wavelength)
 
@@ -260,8 +265,7 @@ class PerformanceTab(BaseTab):
 
     def _selected_wavelength(self) -> float:
         """Wavelength selected in the calculation parameters, in nanometres."""
-        wavelengths = [400, 450, 550, 650, 700]
-        return wavelengths[self._perf_wavelength.currentIndex()]
+        return _PRESET_WAVELENGTHS[self._perf_wavelength.currentIndex()]
 
     def _max_field_angle(self, system) -> float:
         """Half-sensor field angle for the configured sensor size.

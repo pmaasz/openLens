@@ -29,6 +29,21 @@ WAVELENGTH_C_LINE = 656.3  # Hydrogen C-line (red)
 WAVELENGTH_F_LINE = 486.1  # Hydrogen F-line (blue)
 WAVELENGTH_GREEN = 550.0  # Photopic peak - visualization/analysis default
 
+# Picker presets shared by the simulation and performance tabs. The labels
+# live here too, so both pickers offer the same wavelengths in the same order;
+# the tabs used to keep separate copies of the list.
+WAVELENGTH_VIOLET = 400.0
+WAVELENGTH_BLUE = 450.0
+WAVELENGTH_RED = 650.0
+WAVELENGTH_IR = 700.0
+WAVELENGTH_PRESETS = (
+    (WAVELENGTH_VIOLET, "Violet"),
+    (WAVELENGTH_BLUE, "Blue"),
+    (WAVELENGTH_GREEN, "Green"),
+    (WAVELENGTH_RED, "Red"),
+    (WAVELENGTH_IR, "IR"),
+)
+
 # Standard refractive indices
 REFRACTIVE_INDEX_AIR = 1.0
 REFRACTIVE_INDEX_BK7 = 1.5168
