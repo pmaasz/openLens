@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/pmaasz/openLens/compare/openlens-v0.5.0...openlens-v0.6.0) (2026-10-20)
+
+
+### Features
+
+* **conic:** add conic aspheric surfaces ([#74](https://github.com/pmaasz/openLens/issues/74)) ([#594](https://github.com/pmaasz/openLens/issues/594)) ([0103996](https://github.com/pmaasz/openLens/commit/0103996bb3baf0d3cf5b5e18c40c46e52c23f682))
+
+
+### Bug Fixes
+
+* **release:** gate PyPI publishing on a repository variable ([#591](https://github.com/pmaasz/openLens/issues/591)) ([#592](https://github.com/pmaasz/openLens/issues/592)) ([0ec0116](https://github.com/pmaasz/openLens/commit/0ec011636c0dc555ccb6e65f98a6a1d875cd2e06))
+
 ## [0.5.0](https://github.com/pmaasz/openLens/compare/openlens-v0.4.0...openlens-v0.5.0) (2026-10-20)
 
 
