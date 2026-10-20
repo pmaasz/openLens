@@ -1,0 +1,18 @@
+# Coverage floor for a public repository (#551).
+#
+# The project status targets the base commit rather than a frozen number, so a
+# report that is simply noisy does not fail; a real drop beyond 1% does. The
+# patch status requires the lines a PR adds to be covered: new code cannot
+# ride in on the project average.
+#
+# Baseline when this was introduced: 84.09% project coverage (78 files,
+# 11990/14258 lines) on 6a57c8a, the first successful upload.
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 80%
