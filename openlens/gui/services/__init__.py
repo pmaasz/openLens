@@ -6,5 +6,13 @@ without Qt so they can be tested headlessly.
 """
 
 from .export_service import ExportResult, ExportService
+from .library_service import LibraryDelete, LibraryLoad, LibrarySave, LibraryService
 
-__all__ = ["ExportResult", "ExportService"]
+__all__ = [
+    "ExportResult",
+    "ExportService",
+    "LibraryDelete",
+    "LibraryLoad",
+    "LibrarySave",
+    "LibraryService",
+]
