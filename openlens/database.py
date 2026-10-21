@@ -501,6 +501,7 @@ class DatabaseManager:
         cursor: sqlite3.Cursor,
         lens_dict: Dict[str, Any],
         flatten_metadata: bool = True,
+        library_default: int = 1,
     ) -> None:
         """Insert/replace one lenses row inside the caller's transaction.
 
@@ -514,7 +515,23 @@ class DatabaseManager:
             flatten_metadata: Fold the model's metadata into the blob's top
                 level, as standalone lens saves have always done. Assembly
                 elements preserve the ``metadata`` key as-is.
+            library_default: The ``is_library`` value for a row that does not
+                exist yet - a standalone lens is a library item (1), an
+                assembly member is not (0). An existing row keeps the
+                membership it already has: the statement replaces the row, so
+                a column it does not mention falls back to the schema default
+                and silently promoted every assembly member into the library.
         """
+        lens_id = lens_dict.get("id")
+        if "is_library" in lens_dict:
+            # A row that was loaded from the database carries its membership.
+            is_library = 1 if lens_dict.get("is_library") else 0
+        else:
+            existing = cursor.execute(
+                "SELECT is_library FROM lenses WHERE id = ?", (lens_id,)
+            ).fetchone()
+            is_library = int(existing["is_library"]) if existing is not None else library_default
+
         cursor.execute(
             """
             INSERT OR REPLACE INTO lenses
@@ -524,11 +541,11 @@ class DatabaseManager:
              conic_constant_1, conic_constant_2,
              clear_aperture_1, clear_aperture_2, bevel_1, bevel_2,
              coating_1, coating_2,
-             metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             is_library, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
-                lens_dict.get("id"),
+                lens_id,
                 lens_dict.get("name"),
                 lens_dict.get("radius_of_curvature_1", lens_dict.get("radius1")),
                 lens_dict.get("radius_of_curvature_2", lens_dict.get("radius2")),
@@ -550,6 +567,7 @@ class DatabaseManager:
                 float(lens_dict.get("bevel_2", 0.0) or 0.0),
                 _coating_json(lens_dict.get("coating_1")),
                 _coating_json(lens_dict.get("coating_2")),
+                is_library,
                 json.dumps(
                     {
                         k: v
@@ -580,6 +598,10 @@ class DatabaseManager:
                             "bevel_2",
                             "coating_1",
                             "coating_2",
+                            # A column, not metadata: copying it into the
+                            # blob would store the membership twice and let
+                            # the blob shadow the column on the way back.
+                            "is_library",
                         ]
                         and not (flatten_metadata and k == "metadata")
                     }
@@ -658,7 +680,10 @@ class DatabaseManager:
         # 3. Save elements
         for i, elem in enumerate(assembly_dict.get("elements", [])):
             lens_data = elem.get("lens")
-            self._save_lens_row(cursor, lens_data, flatten_metadata=False)
+            # library_default=0: a lens that exists only inside an assembly is
+            # not a library item. The membership write that follows decides
+            # the rest - it promotes the ids that really are in the library.
+            self._save_lens_row(cursor, lens_data, flatten_metadata=False, library_default=0)
 
             cursor.execute(
                 """
