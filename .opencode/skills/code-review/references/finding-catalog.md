@@ -201,6 +201,22 @@ Probe: for every validator, feed the values the model itself produces and
 assert they are accepted; run every create/edit path with the defaults and
 assert the result is accepted.
 
+## Exported geometry: orientation, extents, and counts
+
+| Pattern | Example |
+| --- | --- |
+| A default argument silently selects the wrong winding | The assembly STL export winds the back cap like the front, so the solid is inside-out (#660) |
+| An extent is derived from every point of a block, including construction points | The STEP reader reports a lens's curvature centres as its axial extent (#661) |
+| A derived count is unbounded | The Fresnel facet count follows `groove_pitch` with no cap (#664) |
+| A helper's contract and its implementation disagree | `calculate_surface_profile` never returns `None` although the docstring promises it; the list input of `generate_edge_triangles` raises `IndexError` (#663) |
+| The unit of a value is guessed from its magnitude | `if wavelength > 1.0: # likely nm` mis-scales every micrometre value (#665) |
+
+Probe: for every mesh export, compute the signed volume of the result and
+assert it is positive and close to the analytic volume; for every extent,
+assert it matches the geometry that produced it; for every count derived from
+user data, assert an upper bound; for every unit-carrying parameter, assert
+an explicit unit is documented and used.
+
 ## Rejected as non-issues (do not re-file)
 
 These were investigated and found intentional or already handled:
