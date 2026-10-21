@@ -776,7 +776,7 @@ class SystemRayTracer:
             if dy == 0.0 and tz == 0.0:
                 tracer.trace_ray(ray, propagate_distance=0)
             else:
-                self._trace_aligned_element(ray, element, tracer)
+                self._trace_aligned_element(ray, element)
 
             if not ray.hit or ray.terminated:
                 ray.terminated = True
@@ -813,7 +813,7 @@ class SystemRayTracer:
             return False
         return True
 
-    def _trace_aligned_element(self, ray: Ray, element, tracer: LensRayTracer) -> None:
+    def _trace_aligned_element(self, ray: Ray, element) -> None:
         """Trace through a decentered/tilted element via its local frame.
 
         The frame matches the tree convention exactly: origin at the
@@ -823,6 +823,12 @@ class SystemRayTracer:
         centered element tracer, then mapped back including the new path
         points. Exact for the centered-tracer math; identity when alignment
         is zero (callers take the fast path instead).
+
+        The local tracer is built with the tracer's wavelength, exactly like
+        the per-element tracers the centered path uses. It used to fall back
+        to the lens's stored design index, so a tilted or decentered element
+        was traced at one index for every wavelength and the chromatic spread
+        disappeared for exactly the elements whose alignment was modelled.
         """
         dy = float(getattr(element, "decenter_y", 0.0) or 0.0)
         tz = math.radians(float(getattr(element, "tilt_z", 0.0) or 0.0))
@@ -838,7 +844,7 @@ class SystemRayTracer:
         ray.x, ray.y = lx, ly
         ray.angle = ray.angle - tz
 
-        local = LensRayTracer(lens, x_offset=0.0)
+        local = LensRayTracer(lens, x_offset=0.0, wavelength_nm=self._wavelength_nm)
         local.trace_ray(ray, propagate_distance=0)
 
         # Local -> world (rotate by +tz, translate back), including the
