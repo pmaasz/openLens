@@ -6,6 +6,7 @@ Direct coverage of geometry, optics math, type presets and
 serialization, independent of the CLI manager in lens_editor.
 """
 
+import math
 import unittest
 
 from openlens.lens import Lens
@@ -267,6 +268,23 @@ class TestLensSerialization(unittest.TestCase):
         """Sparse dicts fall back to defaults without raising"""
         lens = Lens.from_dict({"name": "sparse"})
         self.assertEqual(lens.radius_of_curvature_1, 100.0)
+
+    def test_from_dict_null_radius_is_a_flat_surface(self):
+        """null is the JSON spelling of a flat surface (infinite radius)"""
+        lens = Lens.from_dict(
+            {
+                "name": "plano",
+                "radius_of_curvature_1": None,
+                "radius_of_curvature_2": -50.0,
+            }
+        )
+        self.assertTrue(math.isinf(lens.radius_of_curvature_1))
+        self.assertEqual(lens.radius_of_curvature_2, -50.0)
+
+    def test_to_dict_keeps_the_numeric_radius_for_the_database(self):
+        """to_dict stays numeric: the database columns are NOT NULL REALs"""
+        lens = Lens(radius_of_curvature_1=float("inf"), radius_of_curvature_2=-50.0)
+        self.assertTrue(math.isinf(lens.to_dict()["radius_of_curvature_1"]))
 
 
 class TestRadiusValidationContract(unittest.TestCase):

@@ -644,6 +644,7 @@ class StartupDialog(QDialog):
                     validate_json_file_path,
                     validate_lens_data_schema,
                 )
+                from ...lens import json_safe_radii
 
                 with open(validate_json_file_path(filename, must_exist=True), "r") as f:
                     data = json.load(f)
@@ -653,6 +654,13 @@ class StartupDialog(QDialog):
                 # lens with a NaN radius, whose focal length is NaN - and NaN
                 # compares false against every threshold, so it passes every
                 # downstream check silently.
+                #
+                # A flat surface is the one legitimate infinite radius: it is
+                # stored as null in JSON, but a file written by an older
+                # version carries the bare Infinity literal, so those radii
+                # are converted first. Every other non-finite value is still
+                # rejected below.
+                data = json_safe_radii(data)
                 reject_non_finite_numbers(data, "imported file")
 
                 from ...lens import Lens

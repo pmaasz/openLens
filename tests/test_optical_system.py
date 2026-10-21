@@ -4,6 +4,8 @@ Test multi-element optical systems
 """
 
 import unittest
+import json
+import math
 import os
 import tempfile
 
@@ -195,6 +197,117 @@ class TestOpticalSystem(unittest.TestCase):
         system._update_positions()
 
         self.assertEqual(system.elements[1].position, 20.0)  # 0 + 10 + 10
+
+
+class TestFlatSurfaceRoundTrip(unittest.TestCase):
+    """A flat surface must survive the JSON interchange format (#601).
+
+    The model stores a flat surface as an infinite radius, which JSON cannot
+    spell: the writer emitted the bare ``Infinity`` literal and the reader
+    rejected it, so any system with a plano surface could never be loaded
+    back.
+    """
+
+    @staticmethod
+    def _system(r1, r2):
+        system = OpticalSystem(name="Plano")
+        system.add_lens(
+            Lens(
+                name="PlanoLens",
+                radius_of_curvature_1=r1,
+                radius_of_curvature_2=r2,
+                thickness=5.0,
+                diameter=25.0,
+                material="BK7",
+            )
+        )
+        return system
+
+    def _round_trip(self, system):
+        """Save and load the system, returning the loaded system and the path."""
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+            path = tmp.name
+        try:
+            self.assertTrue(system.save(path))
+            return OpticalSystem.load(path), path
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_plano_first_surface_round_trips(self):
+        """A flat first surface survives save and load"""
+        loaded, _ = self._round_trip(self._system(float("inf"), -50.0))
+        self.assertIsNotNone(loaded)
+        self.assertTrue(math.isinf(loaded.elements[0].lens.radius_of_curvature_1))
+        self.assertEqual(loaded.elements[0].lens.radius_of_curvature_2, -50.0)
+
+    def test_plano_second_surface_round_trips(self):
+        """A flat second surface survives save and load"""
+        loaded, _ = self._round_trip(self._system(50.0, float("inf")))
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded.elements[0].lens.radius_of_curvature_1, 50.0)
+        self.assertTrue(math.isinf(loaded.elements[0].lens.radius_of_curvature_2))
+
+    def test_both_surfaces_flat_round_trip(self):
+        """A plane-parallel plate survives save and load"""
+        loaded, _ = self._round_trip(self._system(float("inf"), float("inf")))
+        self.assertIsNotNone(loaded)
+        self.assertTrue(math.isinf(loaded.elements[0].lens.radius_of_curvature_1))
+        self.assertTrue(math.isinf(loaded.elements[0].lens.radius_of_curvature_2))
+
+    def test_written_file_is_valid_json(self):
+        """The file the app writes is JSON a strict parser accepts"""
+        system = self._system(float("inf"), -50.0)
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+            path = tmp.name
+        try:
+            self.assertTrue(system.save(path))
+            with open(path) as handle:
+                text = handle.read()
+            self.assertNotIn("Infinity", text)
+            # A strict parser rejects the bare NaN/Infinity literals.
+            json.loads(
+                text,
+                parse_constant=lambda name: (_ for _ in ()).throw(
+                    ValueError(f"non-standard JSON constant: {name}")
+                ),
+            )
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_legacy_file_with_infinity_literal_still_loads(self):
+        """A file written by an older version (bare Infinity) still loads"""
+        payload = {
+            "id": "legacy",
+            "name": "LegacyPlano",
+            "type": "OpticalSystem",
+            "elements": [
+                {
+                    "lens": {
+                        "name": "PlanoLens",
+                        "radius_of_curvature_1": float("inf"),
+                        "radius_of_curvature_2": -50.0,
+                        "thickness": 5.0,
+                        "diameter": 25.0,
+                        "refractive_index": 1.5168,
+                    },
+                    "position": 0.0,
+                }
+            ],
+            "air_gaps": [],
+        }
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+            path = tmp.name
+        try:
+            with open(path, "w") as handle:
+                json.dump(payload, handle)
+            loaded = OpticalSystem.load(path)
+            self.assertIsNotNone(loaded)
+            self.assertTrue(math.isinf(loaded.elements[0].lens.radius_of_curvature_1))
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
 
 
 if __name__ == "__main__":
