@@ -150,6 +150,20 @@ Run these passes over each subsystem. They catch different bug classes.
 - For every override parameter, check that it reaches *all* consumers in the
   returned bundle, not just the first one.
 
+### I. Shipped data, validators, and download paths
+
+- Run the application's own validators over every shipped preset, seed row,
+  mount, and catalogue entry; the data tables are usually exempt from the
+  checks the code applies to user input.
+- Compare seed/reference data with the reference object's own `to_dict()`.
+- For every value the model can produce (including its special spellings
+  such as `0` for an infinite radius), assert the validator accepts it.
+- For download/update code, check what is verified besides the file size
+  (digest, signature, magic bytes), whether a failed update is recoverable,
+  and whether the temporary files and directories are cleaned up.
+- For "atomic write" helpers, write the same file from two threads at once:
+  a fixed temp name makes concurrent writers destroy each other.
+
 ## Phase 3 - Reproduce and grade
 
 For each candidate, write `/tmp/opencode/repro_<slug>.py`:

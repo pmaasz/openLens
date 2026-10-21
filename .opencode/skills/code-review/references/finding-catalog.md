@@ -154,6 +154,53 @@ path (paraxial vs traced, analyzer vs environmental model, hand calculation),
 and assert the two agree in sign and magnitude. Reorder list arguments and
 assert the result is unchanged.
 
+## Serialisation blobs and metadata
+
+| Pattern | Example |
+| --- | --- |
+| Two writers of the same record use different shapes | The assembly writer nests `metadata`; the standalone writer flattens it, and the reader drops the nested copy (#651) |
+| The reader merges the whole record into a user namespace | `_metadata_merge` returns the blob, so `row_type`/`is_library` land in `lens.metadata` (#651) |
+
+Probe: save the same model through every writer (standalone, as an assembly
+member, through the GUI service), reload it, and assert every user-facing
+field survives byte-for-byte.
+
+## Shipped data versus the application's own rules
+
+| Pattern | Example |
+| --- | --- |
+| A literal data table is never validated by the app's own validator | Four presets describe lenses with crossed surfaces (#652) |
+| A standards table contradicts its own stated convention | EF/F mounts are bayonet but carry a thread, so the BOM names a screw adapter (#655) |
+| Seed data is re-derived by hand instead of taken from the reference | The seeded assembly stores every air gap at position 0.0 (#658) |
+
+Probe: run `check_physical_feasibility()` (or the module's own invariant) over
+every shipped preset, seed row and catalogue entry; compare the seed with
+the reference object's `to_dict()`.
+
+## Update, download, and atomic-write paths
+
+| Pattern | Example |
+| --- | --- |
+| The only check on a download is a size comparison | The updater accepts any payload of the reported length and installs it over the binary (#653) |
+| A temp path is derived only from the target name | `atomic_write` uses `<name>.tmp`, so concurrent writers collide and lose data (#654) |
+| A created temporary directory is never owned | The updater leaves `/tmp/openlens-update-*` (and the payload) behind (#656) |
+
+Probe: intercept the download with a fake opener that returns a payload of
+the right length but the wrong content; write the same file from two threads
+at once; list the temp directory after an update attempt.
+
+## One spelling per physical quantity
+
+| Pattern | Example |
+| --- | --- |
+| The model accepts a value the validator rejects | `Lens` maps radius 0 to `inf`; `validate_radius` rejects both (#657) |
+| A prompt offers a default its own check refuses | The CLI's default lens fails the CLI's feasibility check (#648) |
+| The same validation rule is not applied on every path | The CLI create path checks feasibility, the modify path does not (#647) |
+
+Probe: for every validator, feed the values the model itself produces and
+assert they are accepted; run every create/edit path with the defaults and
+assert the result is accepted.
+
 ## Rejected as non-issues (do not re-file)
 
 These were investigated and found intentional or already handled:
