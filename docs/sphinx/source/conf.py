@@ -26,7 +26,7 @@ def get_version():
 
 
 project = "OpenLens"
-copyright = "2024, OpenLens Contributors"
+copyright = "2024-2026, OpenLens Contributors"
 author = "OpenLens Contributors"
 release = get_version()
 version = ".".join(release.split(".")[:2])
@@ -68,7 +68,7 @@ autodoc_default_options = {
     "show-inheritance": True,
 }
 autodoc_typehints = "description"
-autodoc_mock_imports = ["matplotlib", "numpy", "scipy", "PIL"]
+autodoc_mock_imports = ["PySide6", "matplotlib", "numpy", "scipy", "PIL"]
 
 # Autosummary settings
 autosummary_generate = True

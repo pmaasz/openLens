@@ -452,7 +452,7 @@ class OpticalSystem:
         return -1.0 / C
 
     def get_system_f_number(self) -> Optional[float]:
-        """System F-number (photographic convention: |EFL|/D, always >= 0)."""
+        """System F-number (photographic convention: :math:`\\lvert EFL \\rvert/D`)."""
         f = self.get_system_focal_length()
         if f is None:
             return None
@@ -781,8 +781,9 @@ class OpticalSystem:
     def get_numerical_aperture(self) -> float:
         """System numerical aperture from the entrance pupil and system EFL.
 
-        Paraxial NA = D / (2 * |EFL|), with D the first-element diameter
-        (entrance-pupil estimate, same convention as get_f_number).
+        Paraxial NA = D / (2 * :math:`\\lvert EFL \\rvert`), with D the
+        first-element diameter (entrance-pupil estimate, same convention as
+        get_f_number).
         """
         if not self.elements:
             return 0.0
@@ -793,7 +794,7 @@ class OpticalSystem:
         return first_lens.diameter / (2 * abs(f))
 
     def get_f_number(self) -> Optional[float]:
-        """System f-number (photographic convention: |EFL|/D, always >= 0)."""
+        """System f-number (photographic convention: :math:`\\lvert EFL \\rvert/D`)."""
         f = self.get_system_focal_length()
         if f is None:
             return None

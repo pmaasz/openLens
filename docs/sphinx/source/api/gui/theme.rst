@@ -1,5 +1,5 @@
-Theme Manager
-=============
+Theme
+=====
 
 .. automodule:: openlens.gui.theme
    :members:
@@ -9,38 +9,17 @@ Theme Manager
 Overview
 --------
 
-The ThemeManager class handles application theming and provides consistent colors
-across the GUI.
+``openlens.gui.theme`` defines the dark and light palettes and the stylesheet
+templates used by the desktop application. A palette is a plain dictionary;
+the ``get_*_qss`` helpers fill the templates for a selected theme.
 
-Color Definitions
------------------
-
-The module defines standard colors used throughout the application:
-
-.. code-block:: python
-
-    COLORS = {
-        'primary': '#2196F3',
-        'secondary': '#757575',
-        'success': '#4CAF50',
-        'warning': '#FF9800',
-        'error': '#F44336',
-        'background': '#FFFFFF',
-        'surface': '#F5F5F5',
-        'text': '#212121',
-        'text_secondary': '#757575',
-    }
-
-Example Usage
--------------
+Example
+-------
 
 .. code-block:: python
 
-    from openlens.gui.theme import ThemeManager, COLORS
+    from openlens.gui.theme import DARK, LIGHT, get_app_stylesheet, get_palette
 
-    # Access color definitions
-    primary_color = COLORS['primary']
-
-    # Use theme manager
-    theme = ThemeManager()
-    theme.apply_theme(widget)
+    palette = get_palette(DARK)
+    stylesheet = get_app_stylesheet(LIGHT)
+    application.setStyleSheet(stylesheet)

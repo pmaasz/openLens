@@ -26,8 +26,9 @@ class GhostAnalyzer:
     Focuses on 2nd order ghosts (2 reflections).
 
     Known limits (deliberate, documented here rather than hidden):
+
     - Reflection strength uses bulk Fresnel R from the glass index, corrected
-      for per-surface coatings at normal incidence (see _coating_correction):
+      for per-surface coatings at normal incidence (see ``_coating_correction``):
       ghosts in AR-coated systems use the coated R of the two reflecting
       surfaces, while transmission losses along the path stay bare-Fresnel.
     - Rays that reflect twice but miss the exit leg are still counted in

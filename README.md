@@ -2,11 +2,11 @@
 
 <div align="center">
 
-**An interactive optical lens design and simulation tool for single glass lens elements**
+**An interactive optical design and simulation tool for single lenses and multi-element systems**
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-494%20passing-brightgreen.svg)](docs/TESTING.md)
+[![Tests](https://github.com/pmaasz/openLens/actions/workflows/ci.yml/badge.svg)](https://github.com/pmaasz/openLens/actions/workflows/ci.yml)
 
 </div>
 
@@ -14,47 +14,66 @@
 
 ## What is openlens?
 
-openlens is a desktop application for designing and analyzing **glass optical lenses**. Whether you're a student learning optics, an engineer designing optical systems, or a hobbyist exploring lens physics, openlens provides an intuitive interface to:
+openlens is a desktop application for designing and analyzing **glass optical
+lenses and multi-element systems**. Whether you're a student learning optics, an
+engineer designing optical systems, or a hobbyist exploring lens physics,
+openlens provides an intuitive interface to:
 
-- Design optical lenses with precise physical parameters
-- Calculate optical properties using the lensmaker's equation
-- Experiment with different glass materials and geometries
-- Store and manage your lens designs
-- Visualize how lens parameters affect focal length and optical power
+- Design single lenses or assemblies with precise physical parameters
+- Calculate first-order properties with thick-lens and paraxial models
+- Experiment with different glass materials, surface profiles, and geometries
+- Assign camera mounts and compute working flange distance
+- Store and manage lenses, assemblies, and tolerance sets in SQLite
+- Trace rays and inspect aberrations, spots, PSF/MTF, and wavefront error
+- Export mechanical and manufacturing data as STL, STEP, or ISO 10110 drawings
+
+## Documentation
+
+The documentation is divided by audience:
+
+- **User documentation** - [Getting Started](docs/sphinx/source/getting_started.rst)
+  and the [User Guide](docs/sphinx/source/user_guide.rst).
+- **Technical documentation** - [Architecture](docs/sphinx/source/architecture.rst),
+  [Contributing](docs/sphinx/source/contributing.rst), and the
+  [API reference](docs/sphinx/source/api/index.rst).
+- **Scientific documentation** - [optical model](docs/sphinx/source/scientific/optics.rst),
+  [image quality](docs/sphinx/source/scientific/image_quality.rst), and
+  [thermal/mechanical effects](docs/sphinx/source/scientific/thermal_mechanical.rst).
+
+Build the full Sphinx site with `cd docs/sphinx && make html`.
 
 ## Features
 
 ### **Optical Design**
-- Define lens geometry: radii of curvature, thickness, diameter
-- Select from common optical materials (BK7, Fused Silica, Crown Glass, etc.)
-- Support for all lens types: Biconvex, Biconcave, Plano-Convex, Plano-Concave, Meniscus
+- Single lenses and multi-element assemblies with air gaps and an aperture stop
+- Spherical, conic, parabolic, and Fresnel surface profiles
+- Clear apertures, bevels, and per-surface coating stacks
+- Camera mounts with working-flange-distance calculation
+- Material catalog with Sellmeier dispersion and thermal data
+- Biconvex, biconcave, plano-convex, plano-concave, and meniscus lenses
 
 ### **Ray Tracing Simulation**
-- Visual ray tracing through lens elements
-- Snell's law physics simulation
-- Parallel rays (collimated beam) and point source modes
-- Automatic focal point detection and display
-- Interactive controls for number of rays and angles
+- 2-D and 3-D ray tracing with Snell's law and total internal reflection
+- Parallel fans, point sources, off-axis fields, and multiple wavelengths
+- Ghost reflections and stray-light paths
+- Automatic focal-point detection and interactive controls
 
-### **Aberrations Analysis**
-- Calculate five primary (Seidel) aberrations
-- Chromatic aberration with material-specific Abbe numbers
-- Spherical aberration, coma, astigmatism, field curvature, distortion
-- Automatic quality assessment and scoring
-- Diffraction-limited resolution (Airy disk)
-- Numerical aperture and F-number calculations
-- Professional-grade optical analysis
+### **Aberrations and Image Quality**
+- Five primary (Seidel) aberrations and chromatic estimates
+- Spot diagrams, ray fans, field curves, and encircled energy
+- PSF, MTF, wavefront error, Strehl ratio, and Airy-disk metrics
+- Explicit `None` results when a trace or wavefront sample fails
 
 ### **3D Visualization**
-- Interactive 3D rendering of lens cross-section
-- Visualize spherical surfaces and lens geometry
-- Real-time ray path visualization
+- Interactive 2-D and 3-D lens and assembly views
+- Real-time ray-path and optical-layout visualization
+- Mechanical assembly visualization
 
 ### **Professional Capabilities**
-- **Optimization:** Global search (Simulated Annealing) and Desensitization optimization for manufacturability.
-- **Tolerancing:** Monte Carlo analysis and Inverse Sensitivity to predict manufacturing yields.
-- **Advanced Analysis:** Ghost analysis (stray light), Physical Optics (Beam Synthesis Propagation), and Diffraction (PSF/MTF).
-- **Interoperability:** Export designs to STL (3D printing) and ISO 10110 drawings (SVG).
+- **Optimization:** Simplex and global search, plus desensitization for manufacturability.
+- **Tolerancing:** Monte Carlo analysis and inverse sensitivity to predict manufacturing yield.
+- **Advanced analysis:** Ghost analysis, beam synthesis, and diffraction PSF/MTF.
+- **Interoperability:** STL, STEP, ISO 10110 drawings, reports, and JSON interchange.
 
 ---
 
@@ -116,8 +135,11 @@ Use the provided setup script to automatically create and configure the virtual 
 ./setup_venv.sh
 source venv/bin/activate
 
+# Install OpenLens in editable mode
+pip install -e .
+
 # Install optional dependencies for full features (recommended)
-pip install matplotlib numpy
+pip install -e .[visualization]
 
 # For advanced features (diffraction, image simulation)
 pip install scipy Pillow
@@ -128,8 +150,11 @@ pip install scipy Pillow
 setup_venv.bat
 venv\Scripts\activate
 
+REM Install OpenLens in editable mode
+pip install -e .
+
 REM Install optional dependencies for full features (recommended)
-pip install matplotlib numpy
+pip install -e .[visualization]
 
 REM For advanced features (diffraction, image simulation)
 pip install scipy Pillow
@@ -170,11 +195,14 @@ The script will:
    venv\Scripts\activate
    ```
 
-3. **Install optional dependencies:**
+3. **Install OpenLens and optional dependencies:**
 
-   **For full features (recommended):**
    ```bash
-   pip install matplotlib numpy
+   # Install the package and its required PySide6 dependency
+   pip install -e .
+
+   # Full plotting and numerical features (recommended)
+   pip install -e .[visualization]
    ```
 
    **For advanced features:**
@@ -300,7 +328,9 @@ Lenses and optical systems are stored in `openlens.db` using SQLite for robust, 
 
 ### Exporting and Sharing
 
-While the main database is SQLite, you can still export individual lenses to JSON format for sharing via the **Export** tab in the application.
+While the main database is SQLite, use **File → Save As...** to export the
+active lens or assembly as JSON for sharing. **File → Export** provides STL,
+STEP, ISO 10110, and report output.
 
 To backup your entire lens library, simply copy the database file:
 ```bash

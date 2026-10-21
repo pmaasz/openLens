@@ -50,8 +50,8 @@ Before contributing, ensure you have:
 
 - **Python 3.10+** installed
 - **Git** for version control
-- **tkinter** for GUI development
-- **Optional**: matplotlib, numpy for advanced features
+- **PySide6** for GUI development (installed by ``pip install -e .``)
+- **Optional**: numpy, matplotlib, scipy, Pillow for analysis and imaging
 - A **GitHub account**
 
 First Time Contributors
@@ -108,8 +108,8 @@ Development Setup
    # Or install optional dependencies individually
    pip install matplotlib numpy
 
-   # Verify installation
-   python3 verify_setup.py
+   # Verify the import and the installed version
+   python3 -c "import openlens; print(openlens.__version__)"
 
 4. Install Pre-commit Hooks
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -123,10 +123,11 @@ Development Setup
 
 .. code-block:: bash
 
-   # Run all tests to ensure everything works
-   python3 tests/run_all_tests.py
+   # Run all unit tests to ensure everything works
+   python3 -m unittest discover -s tests -t .
 
-   # Should see: "All tests passed!"
+   # GUI flow tests need pytest-qt from the dev extra
+   QT_QPA_PLATFORM=offscreen pytest tests/gui_flows -q
 
 6. Create a Branch
 ^^^^^^^^^^^^^^^^^^
@@ -386,18 +387,20 @@ Error Handling
 .. code-block:: python
 
    # Be specific with exceptions
-   try:
-       value = float(user_input)
-   except ValueError as e:
-       print(f"Invalid number: {e}")
-       return None
+   def parse_number(user_input):
+       try:
+           return float(user_input)
+       except ValueError as e:
+           print(f"Invalid number: {e}")
+           return None
 
    # Provide helpful error messages
-   if radius <= 0:
-       raise ValueError(
-           f"Radius must be positive, got {radius}. "
-           "Use negative values for concave surfaces."
-       )
+   def validate_radius(radius):
+       if radius <= 0:
+           raise ValueError(
+               f"Radius must be positive, got {radius}. "
+               "Use negative values for concave surfaces."
+           )
 
    # Use assertions for internal checks
    def calculate_power(focal_length):
@@ -415,7 +418,7 @@ Run All Tests
 
 .. code-block:: bash
 
-   python3 tests/run_all_tests.py
+   python3 -m unittest discover -s tests -t .
 
 Or with pytest:
 
@@ -429,24 +432,24 @@ Run Specific Tests
 .. code-block:: bash
 
    # Single test file
-   python3 tests/test_lens_editor.py
+   python3 -m unittest tests.test_lens
 
    # With pytest
-   pytest tests/test_lens_editor.py
+   pytest tests/test_lens.py
 
    # Single test method
-   python3 -m unittest tests.test_lens_editor.TestLensCalculations.test_biconvex_focal_length
+   python3 -m unittest tests.test_lens.TestLensCalculations.test_biconvex_focal_length_positive
 
    # Or with pytest
-   pytest tests/test_lens_editor.py::TestLensCalculations::test_biconvex_focal_length
+   pytest tests/test_lens.py::TestLensCalculations::test_biconvex_focal_length_positive
 
 With Coverage
 """""""""""""
 
 .. code-block:: bash
 
-   pytest --cov=src tests/
-   pytest --cov=src --cov-report=html tests/
+   pytest --cov=openlens tests/
+   pytest --cov=openlens --cov-report=html tests/
 
 Test Structure
 ^^^^^^^^^^^^^^
@@ -457,6 +460,7 @@ Use ``unittest`` framework with descriptive test names:
 
    import unittest
    from openlens.lens import Lens
+   from openlens.validation import ValidationError, validate_radius
 
    class TestLensCalculations(unittest.TestCase):
        """Test focal length calculations."""
@@ -464,22 +468,22 @@ Use ``unittest`` framework with descriptive test names:
        def setUp(self):
            """Set up test fixtures."""
            self.lens = Lens(
-               radius_1=50.0,
-               radius_2=-50.0,
-               n=1.5,
-               thickness=5.0
+               radius_of_curvature_1=50.0,
+               radius_of_curvature_2=-50.0,
+               refractive_index=1.5,
+               thickness=5.0,
            )
 
        def test_biconvex_focal_length_positive(self):
            """Biconvex lens should have positive focal length."""
            focal_length = self.lens.calculate_focal_length()
            self.assertGreater(focal_length, 0)
-           self.assertAlmostEqual(focal_length, 50.0, places=1)
+           self.assertAlmostEqual(focal_length, 50.8, places=1)
 
        def test_invalid_radius_raises_validation_error(self):
-           """Invalid radius should raise ValidationError."""
+           """A zero radius is not a valid spherical radius."""
            with self.assertRaises(ValidationError):
-               Lens(radius_1=0, radius_2=-50.0, n=1.5, thickness=5.0)
+               validate_radius(0)
 
        def tearDown(self):
            """Clean up after tests."""
@@ -542,7 +546,7 @@ Current test coverage includes:
 
 - Lens class: Creation, serialization, focal length calculations
 - LensManager: File persistence, lens retrieval
-- Data integrity: ID generation, JSON serialization
+- Data integrity: ID generation, SQLite round-trips
 
 **GUI Functionality Tests (17+ tests)**
 
@@ -789,7 +793,9 @@ Issue Labels
 - ``question``: Further information requested
 - ``wontfix``: Will not be worked on
 - ``duplicate``: Already exists
-- ``priority-high``: High priority
+- ``prio-high``: High priority
+- ``prio-medium``: Normal priority
+- ``prio-low``: Low priority
 
 Project Structure
 -----------------
@@ -797,25 +803,24 @@ Project Structure
 .. code-block:: text
 
    openLens/
-   ├── openlens/__main__.py               # Main entry point
-   ├── openlens/                      # Main source code
-   │   ├── lens.py              # Core Lens class
-   │   ├── lens_editor.py       # CLI application, LensManager
-   │   ├── lens_editor_gui.py   # Main GUI application
-   │   ├── ray_tracer.py        # Ray tracing engine
-   │   ├── aberrations.py       # Aberration calculations
-   │   ├── validation.py        # Input validation
-   │   ├── constants.py         # Constants and configuration
-   │   ├── services.py          # Service layer
-   │   └── gui/                 # GUI components package
-   │       ├── tabs/            # Tab implementations
-   │       ├── tooltip.py       # Tooltip widget
-   │       ├── theme.py         # Theme management
-   │       └── storage.py       # Persistence utilities
-   ├── tests/                   # Test suites
-   ├── docs/                    # Documentation
-   │   └── sphinx/              # Sphinx documentation
-   └── setup.py                 # Package distribution
+   ├── openlens/__main__.py      # PySide6 GUI entry point
+   ├── openlens/                 # Source package
+   │   ├── lens.py               # Lens model and calculations
+   │   ├── optical_system.py     # Multi-element systems
+   │   ├── lens_editor.py        # CLI application, LensManager
+   │   ├── ray_tracer.py         # Compatibility exports for 2-D/3-D tracers
+   │   ├── tracer_2d.py          # 2-D ray tracer
+   │   ├── tracer_3d.py          # 3-D ray tracer
+   │   ├── aberrations.py        # Seidel and image-quality metrics
+   │   ├── validation.py         # Input validation
+   │   ├── constants.py          # Constants and configuration
+   │   ├── database.py           # SQLite persistence
+   │   ├── analysis/             # PSF, MTF, spot, wavefront, ghost, thermal
+   │   ├── gui/                  # PySide6 tabs, widgets, dialogs, services
+   │   └── io/                   # STEP and ISO drawing export
+   ├── tests/                    # Unit, functional, and GUI-flow tests
+   ├── docs/                     # Sphinx documentation and mirrors
+   └── setup.py                  # Package distribution
 
 Advanced Topics
 ---------------
@@ -825,18 +830,11 @@ Setting Up Pre-commit Hooks
 
 .. code-block:: bash
 
-   # Create .git/hooks/pre-commit
-   cat > .git/hooks/pre-commit << 'EOF'
-   #!/bin/bash
-   echo "Running tests before commit..."
-   python3 tests/run_all_tests.py
-   if [ $? -ne 0 ]; then
-       echo "Tests failed. Commit aborted."
-       exit 1
-   fi
-   EOF
+   # Install the hooks once per clone
+   pre-commit install
 
-   chmod +x .git/hooks/pre-commit
+   # Run every hook against every file
+   pre-commit run --all-files
 
 Debugging Tips
 ^^^^^^^^^^^^^^

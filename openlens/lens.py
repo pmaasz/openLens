@@ -724,9 +724,9 @@ class Lens:
 
         Returns:
             Edge thickness in mm, or None if the geometry is undefined
-            (a spherical surface with |R| < h has no real sag there) or
-            non-finite. A value <= 0 means the surfaces intersect within
-            the clear aperture (unrealizable lens).
+            (a spherical surface with :math:`\\lvert R \\rvert < h` has no
+            real sag there) or non-finite. A value <= 0 means the surfaces
+            intersect within the clear aperture (unrealizable lens).
         """
         h = self.get_manufacturing_radius()
         if not math.isfinite(h):
@@ -885,8 +885,8 @@ class Lens:
     def calculate_f_number(self) -> float:
         """Calculate f-number (f/#).
 
-        Photographic convention: uses |f|, so diverging lenses report a
-        positive f/# matching the signed EFL's magnitude.
+        Photographic convention: uses :math:`\\lvert f \\rvert`, so diverging
+        lenses report a positive f/# matching the signed EFL's magnitude.
         """
         focal_length = self.calculate_focal_length()
         if focal_length is None or abs(self.diameter) < EPSILON:
