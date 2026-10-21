@@ -165,6 +165,31 @@ class TestTolerancingWorkerSlots(unittest.TestCase):
         self.assertEqual(tab._tol_progress.maximum(), 100)
         self.assertIn("MONTE CARLO", tab._tol_results_text.toPlainText())
 
+    def test_the_report_names_an_operand_that_could_not_be_applied(self):
+        """A tolerance that changes nothing must be named in the report."""
+        from openlens.gui.tabs.tolerancing_tab import MonteCarloWorker
+
+        plano = Lens(
+            name="Plano",
+            radius_of_curvature_1=float("inf"),
+            radius_of_curvature_2=-50.0,
+            thickness=5.0,
+            diameter=20.0,
+            refractive_index=1.5,
+        )
+        worker = MonteCarloWorker(
+            plano,
+            [ToleranceOperand(0, ToleranceType.RADIUS_1, -0.5, 0.5)],
+            num_trials=5,
+            criterion=1.0,
+            refocus=False,
+        )
+        captured = {}
+        worker.finished.connect(lambda text, results: captured.update(text=text))
+        worker.run()
+        self.assertIn("WARNING", captured["text"])
+        self.assertIn("Radius 1", captured["text"])
+
     def test_inverse_sensitivity_run_completes_and_clears_busy_state(self):
         """Same for the inverse-sensitivity worker."""
         from PySide6.QtCore import QEventLoop, QTimer

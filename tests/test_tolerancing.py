@@ -1,3 +1,4 @@
+import math
 import unittest
 import sys
 import os
@@ -11,6 +12,7 @@ from openlens.tolerancing import (
     ToleranceType,
     InverseSensitivityAnalyzer,
     generate_yield_report,
+    _apply_value,
 )
 from openlens.optical_system import OpticalSystem
 from openlens.lens import Lens
@@ -76,6 +78,97 @@ class TestTolerancing(unittest.TestCase):
         report = generate_yield_report(stats)
         self.assertIn("=== Monte Carlo Yield Analysis ===", report)
         self.assertIn("ESTIMATED YIELD:", report)
+
+
+class TestFlatSurfaceRadiusTolerance(unittest.TestCase):
+    """A radius tolerance on a flat surface must not be silently dropped.
+
+    A flat surface is stored as an infinite radius, and inf + finite == inf,
+    so the draw changed nothing while the operand reported success. The
+    Monte Carlo therefore counted a tolerance that was never applied and
+    reported a yield that was too good.
+    """
+
+    def _plano_system(self):
+        system = OpticalSystem("Plano")
+        system.add_lens(
+            Lens(
+                "PlanoLens",
+                radius_of_curvature_1=float("inf"),
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=25.0,
+                material="BK7",
+                wavelength_nm=587.6,
+            )
+        )
+        return system
+
+    def test_apply_value_reports_a_flat_radius_as_not_applied(self):
+        """The operand says it could not be applied instead of claiming success"""
+        system = self._plano_system()
+        lens = system.elements[0].lens
+
+        applied = _apply_value(system, ToleranceType.RADIUS_1, 0, 0.5)
+
+        self.assertFalse(applied, "a flat surface reported a successful radius draw")
+        self.assertTrue(math.isinf(lens.radius_of_curvature_1))
+
+    def test_apply_value_still_perturbs_a_finite_radius(self):
+        """The normal case is untouched"""
+        system = OpticalSystem("Curved")
+        system.add_lens(
+            Lens(
+                "CurvedLens",
+                radius_of_curvature_1=100.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=25.0,
+                material="BK7",
+                wavelength_nm=587.6,
+            )
+        )
+
+        applied = _apply_value(system, ToleranceType.RADIUS_1, 0, 0.5)
+
+        self.assertTrue(applied)
+        self.assertAlmostEqual(system.elements[0].lens.radius_of_curvature_1, 100.5)
+
+    def test_the_monte_carlo_reports_the_skipped_operand(self):
+        """The statistics must name the operand that was left out"""
+        system = self._plano_system()
+        tolerances = [
+            ToleranceOperand(0, ToleranceType.RADIUS_1, -0.5, 0.5),
+            ToleranceOperand(0, ToleranceType.THICKNESS, -0.1, 0.1),
+        ]
+
+        analyzer = MonteCarloAnalyzer(system, tolerances, seed=42)
+        stats = analyzer.run(num_trials=10, criterion="rms_spot_radius", criterion_limit=1.0)
+
+        self.assertIn("skipped_operands", stats)
+        self.assertEqual(len(stats["skipped_operands"]), 1)
+        self.assertIn("Radius 1", stats["skipped_operands"][0])
+
+    def test_the_monte_carlo_reports_nothing_for_a_curved_surface(self):
+        """A tolerance set that can be applied must not be flagged"""
+        system = OpticalSystem("Curved")
+        system.add_lens(
+            Lens(
+                "CurvedLens",
+                radius_of_curvature_1=100.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=25.0,
+                material="BK7",
+                wavelength_nm=587.6,
+            )
+        )
+        tolerances = [ToleranceOperand(0, ToleranceType.RADIUS_1, -0.5, 0.5)]
+
+        analyzer = MonteCarloAnalyzer(system, tolerances, seed=42)
+        stats = analyzer.run(num_trials=10, criterion="rms_spot_radius", criterion_limit=1.0)
+
+        self.assertEqual(stats["skipped_operands"], [])
 
 
 class TestInverseSensitivity(unittest.TestCase):
