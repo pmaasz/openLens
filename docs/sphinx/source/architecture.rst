@@ -55,8 +55,10 @@ Application Layers
      - ``openlens/__main__.py``, ``openlens/gui/``
      - Main window, tabs, widgets, dialogs, theming, background workers.
    * - Application services
-     - ``openlens/gui/services/``, ``openlens/gui/storage.py``
-     - Library operations, export coordination, and GUI-facing persistence.
+     - ``openlens/gui/services/``, ``openlens/gui/storage.py``,
+       ``openlens/updater.py``
+     - Library operations, export coordination, GUI-facing persistence, and
+       release checks/self-update planning.
    * - Optical domain
      - ``openlens/lens.py``, ``optical_system.py``, ``optical_node.py``,
        ``ray.py``, ``material_database.py``, ``mounts.py``
@@ -182,6 +184,13 @@ Threading and Failure Handling
 ------------------------------
 
 - GUI analysis runs in worker threads; results return by Qt signals.
+- The startup release check and update download also run in
+  ``AnalysisWorker``. ``openlens/updater.py`` performs the HTTP and version
+  work without importing Qt, so it is testable on its own.
+- A frozen Linux or Windows update writes a small helper script, launches it
+  detached, and exits. The helper waits for the old PID, replaces the
+  executable, and starts it again; the next launch runs the usual database
+  migrations. macOS extracts the downloaded app and hands it to the desktop.
 - Database and file writes use transactions or atomic replacement.
 - Optional dependencies (``numpy``, ``matplotlib``, ``scipy``, ``Pillow``) are
   imported behind availability flags. The core Lens model, ray tracer, and CLI

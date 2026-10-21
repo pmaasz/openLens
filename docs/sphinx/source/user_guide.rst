@@ -170,6 +170,53 @@ A nominal design with a small spot but no tolerance margin is not yet a
 manufacturable design. Compensators and focus adjustment should be included
 explicitly.
 
+Startup and Updates
+-------------------
+
+The welcome screen checks the latest GitHub release in the background while the
+rest of the window stays responsive. Under the title it reports one of:
+
+- the running version is up to date;
+- a newer version is available;
+- the newer release has no build for the current operating system and
+  architecture;
+- the check could not reach GitHub.
+
+The check is advisory. A network failure never blocks startup and never opens
+an error dialog; use **Retry** on the welcome screen to check again.
+
+When a compatible newer release exists, the available action depends on how
+OpenLens was installed:
+
+Standalone Linux and Windows build
+    **Download and install** fetches the release asset, waits for the current
+    process to exit, replaces the executable, and starts the new version. If
+    the replacement cannot be written, the old executable is started again and
+    the reason is written to ``openlens-update-error.log`` beside the
+    downloaded file.
+
+Standalone macOS build
+    **Download and install** fetches the matching ``macOS-arm64`` or
+    ``macOS-x64`` archive, extracts it under ``~/Downloads``, and opens the new
+    application bundle. Drag that bundle to **Applications** to keep it, then
+    close the old copy.
+
+Source checkout or pip install
+    **Download from GitHub** opens the release page. OpenLens does not replace
+    a Python-managed installation behind the package manager's back.
+
+After a standalone update restarts, the new version opens the SQLite library
+normally. Schema migrations run as part of database initialization, so an
+update that changes the schema upgrades the existing library in place. Back up
+the database before skipping several major versions.
+
+.. note::
+
+   The update check contacts the public GitHub Releases API at startup. It
+   sends no library data, only a request for the latest release metadata. Set
+   ``OPENLENS_NO_UPDATE_CHECK=1`` to skip the request; the welcome screen then
+   shows only the running version.
+
 Lens Types and Sign Convention
 ------------------------------
 
