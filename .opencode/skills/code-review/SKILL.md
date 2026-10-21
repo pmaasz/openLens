@@ -115,6 +115,13 @@ Run these passes over each subsystem. They catch different bug classes.
 - Do labels match the computed quantity/unit?
 - Does a button path call a method that exists with the right signature?
 - Are worker threads forbidden from touching widgets?
+- Does a widget hold the *live* model, or a copy/derived snapshot that goes
+  stale after the next edit? Does the refresh path pick the live object up?
+- Are the GUI's mutable collections snapshotted before a worker receives
+  them, and are the mutating actions disabled while a worker runs?
+- Is every painted number read from the model (a hard-coded fallback paints a
+  plausible-looking constant)?
+- Are theme colours taken from the palette rather than hard-coded?
 
 ### F. Optional dependencies
 

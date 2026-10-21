@@ -217,6 +217,25 @@ assert it matches the geometry that produced it; for every count derived from
 user data, assert an upper bound; for every unit-carrying parameter, assert
 an explicit unit is documented and used.
 
+## GUI: live state, workers, and painted values
+
+| Pattern | Example |
+| --- | --- |
+| The widget is given a derived copy instead of the live model | The simulation tab traces a conditioned copy, so later edits are discarded (#666) |
+| A worker is handed the GUI's live collection | The tolerancing workers share `_tol_operands`; editing the table mutates the running analysis (#667) |
+| A "clear" action resets only half of the state | `clear_simulation()` nulls the lens but not the system, so the rays come back (#668) |
+| An action with no selection falls through to a destructive default | "Remove" with an empty table selection pops the last operand (#669) |
+| A dialog offers a value the backend ignores | "Add Tolerance" offers `FOCUS`, which is never randomised (#670) |
+| A partial result is reported as a plain success | The STEP export drops solids but still returns `ok=True` (#671) |
+| A painted value is hard-coded | The performance panel always draws `RMS Spot: 0.0000` because the metrics have no `rms_spot` key (#673) |
+| A divisor is not floored | The assembly view divides by the total size, which is 0 for a degenerate element (#672) |
+| A colour is hard-coded instead of taken from the theme | The 3D caption is white on a white light-theme canvas (#674) |
+
+Probe: for every widget, change the model, refresh, and assert the widget
+shows the new state; for every worker, mutate the GUI's collections during
+the run and assert the run is unaffected; for every painted number, compare
+the widget's output with the value the model holds.
+
 ## Rejected as non-issues (do not re-file)
 
 These were investigated and found intentional or already handled:
