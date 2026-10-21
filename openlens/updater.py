@@ -289,9 +289,7 @@ class UpdateChecker:
                 message=str(exc),
             )
 
-        if not isinstance(payload, dict) or not isinstance(
-            payload.get("tag_name"), str
-        ):
+        if not isinstance(payload, dict) or not isinstance(payload.get("tag_name"), str):
             logger.warning("Update response did not contain a release tag")
             return UpdateCheckResult(
                 status=STATUS_ERROR,
@@ -402,9 +400,7 @@ class UpdateChecker:
         received = partial.stat().st_size
         if asset.size and received != asset.size:
             partial.unlink(missing_ok=True)
-            raise ValueError(
-                f"Downloaded {received} bytes for {asset.name}, expected {asset.size}"
-            )
+            raise ValueError(f"Downloaded {received} bytes for {asset.name}, expected {asset.size}")
 
         try:
             partial.replace(target)
@@ -525,23 +521,17 @@ class UpdateInstaller:
         """
         self.frozen = is_frozen() if frozen is None else frozen
         self.system = _normalise_system(system)
-        self.executable = (
-            Path(executable) if executable is not None else Path(sys.executable)
-        )
+        self.executable = Path(executable) if executable is not None else Path(sys.executable)
         self.pid = os.getpid() if pid is None else pid
         self.downloads_dir = (
-            Path(downloads_dir)
-            if downloads_dir is not None
-            else Path.home() / "Downloads"
+            Path(downloads_dir) if downloads_dir is not None else Path.home() / "Downloads"
         )
 
     def can_self_update(self) -> bool:
         """Return whether this build can install a downloaded update itself."""
         return self.frozen and self.system in {"windows", "linux", "darwin"}
 
-    def prepare(
-        self, downloaded: os.PathLike, result: UpdateCheckResult
-    ) -> InstallPlan:
+    def prepare(self, downloaded: os.PathLike, result: UpdateCheckResult) -> InstallPlan:
         """Turn a downloaded asset into an actionable installation plan.
 
         Args:
@@ -570,16 +560,12 @@ class UpdateInstaller:
         log = path.with_name("openlens-update-error.log")
         if self.system == "windows":
             script.write_text(
-                _windows_update_script(
-                    path.resolve(), self.executable.resolve(), self.pid, log
-                ),
+                _windows_update_script(path.resolve(), self.executable.resolve(), self.pid, log),
                 encoding="utf-8",
             )
         else:
             script.write_text(
-                _linux_update_script(
-                    path.resolve(), self.executable.resolve(), self.pid, log
-                ),
+                _linux_update_script(path.resolve(), self.executable.resolve(), self.pid, log),
                 encoding="utf-8",
             )
             script.chmod(0o700)
@@ -594,9 +580,7 @@ class UpdateInstaller:
             root = archive.parent
         destination = root / archive.stem
         if destination.exists():
-            destination = Path(
-                tempfile.mkdtemp(prefix=f"{archive.stem}-", dir=str(root))
-            )
+            destination = Path(tempfile.mkdtemp(prefix=f"{archive.stem}-", dir=str(root)))
         else:
             destination.mkdir(parents=True)
         _safe_extract(archive, destination)

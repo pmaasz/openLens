@@ -87,9 +87,7 @@ def release_payload(tag="openlens-v0.8.0", assets=None):
                 "size": 13,
             },
         ]
-    return json.dumps(
-        {"tag_name": tag, "html_url": RELEASE_URL, "assets": assets}
-    ).encode("utf-8")
+    return json.dumps({"tag_name": tag, "html_url": RELEASE_URL, "assets": assets}).encode("utf-8")
 
 
 def checker_for(payload, system="Linux", machine="x86_64", current="0.7.0"):
@@ -147,12 +145,8 @@ class TestAssetSelection(unittest.TestCase):
         self.assertEqual(asset.name, "OpenLens-0.8.0-macOS-x64.zip")
 
     def test_unsupported_architecture_has_no_asset(self):
-        self.assertIsNone(
-            asset_for_platform(self.assets, system="Linux", machine="aarch64")
-        )
-        self.assertIsNone(
-            asset_for_platform(self.assets, system="Windows", machine="arm64")
-        )
+        self.assertIsNone(asset_for_platform(self.assets, system="Linux", machine="aarch64"))
+        self.assertIsNone(asset_for_platform(self.assets, system="Windows", machine="arm64"))
 
     def test_wheels_are_not_mistaken_for_platform_builds(self):
         assets = [
@@ -237,9 +231,7 @@ class TestUpdateCheck(unittest.TestCase):
 
 class TestDownload(unittest.TestCase):
     def test_asset_is_written_and_size_checked(self):
-        asset = ReleaseAsset(
-            "OpenLens-0.8.0-Linux", "https://example.test/OpenLens-Linux", 7
-        )
+        asset = ReleaseAsset("OpenLens-0.8.0-Linux", "https://example.test/OpenLens-Linux", 7)
         opener = FakeOpener({asset.url: b"payload"})
         checker = UpdateChecker(opener=opener)
         result = UpdateCheckResult(
@@ -256,9 +248,7 @@ class TestDownload(unittest.TestCase):
             self.assertEqual(path.name, "OpenLens-0.8.0-Linux")
 
     def test_size_mismatch_removes_the_partial_file(self):
-        asset = ReleaseAsset(
-            "OpenLens-0.8.0-Linux", "https://example.test/OpenLens-Linux", 99
-        )
+        asset = ReleaseAsset("OpenLens-0.8.0-Linux", "https://example.test/OpenLens-Linux", 99)
         opener = FakeOpener({asset.url: b"short"})
         checker = UpdateChecker(opener=opener)
         result = UpdateCheckResult(
@@ -274,9 +264,7 @@ class TestDownload(unittest.TestCase):
             self.assertEqual(list(Path(temp).iterdir()), [])
 
     def test_read_failure_removes_the_partial_file(self):
-        asset = ReleaseAsset(
-            "OpenLens-0.8.0-Linux", "https://example.test/OpenLens-Linux", 7
-        )
+        asset = ReleaseAsset("OpenLens-0.8.0-Linux", "https://example.test/OpenLens-Linux", 7)
         opener = FakeOpener({asset.url: FailingRead(b"payload")})
         checker = UpdateChecker(opener=opener)
         result = UpdateCheckResult(
@@ -304,9 +292,7 @@ class TestInstallPlanning(unittest.TestCase):
             current_version="0.7.0",
             latest_version="0.8.0",
             release_url=RELEASE_URL,
-            asset=ReleaseAsset(
-                "OpenLens-0.8.0-Linux", "https://example.test/OpenLens-Linux", 9
-            ),
+            asset=ReleaseAsset("OpenLens-0.8.0-Linux", "https://example.test/OpenLens-Linux", 9),
         )
 
     def test_pip_or_dev_install_falls_back_to_release_page(self):
@@ -343,9 +329,7 @@ class TestInstallPlanning(unittest.TestCase):
             downloaded = self._downloaded(temp)
             target = Path(temp) / "OpenLens"
             marker = Path(temp) / "relaunched.txt"
-            new_content = (
-                "#!/bin/sh\n" f"printf 'new version' > {shlex.quote(str(marker))}\n"
-            )
+            new_content = "#!/bin/sh\n" f"printf 'new version' > {shlex.quote(str(marker))}\n"
             downloaded.write_text(new_content, encoding="utf-8")
             installer = UpdateInstaller(
                 frozen=True, system="Linux", executable=target, pid=2**31 - 1

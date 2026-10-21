@@ -76,9 +76,7 @@ class FakeInstaller:
 
     def prepare(self, downloaded, result):
         self.prepared.append((Path(downloaded), result))
-        return InstallPlan(
-            kind="replace", target=Path("/opt/OpenLens"), script=Path("/tmp/x.sh")
-        )
+        return InstallPlan(kind="replace", target=Path("/opt/OpenLens"), script=Path("/tmp/x.sh"))
 
     def launch(self, plan):
         self.launched.append(plan)
@@ -214,9 +212,7 @@ class TestStartupUpdateStatus(unittest.TestCase):
     def test_download_failure_removes_the_partial_file(self):
         dialog, checker, installer = self._dialog()
         result = update_result()
-        downloaded = (
-            Path(tempfile.mkdtemp(prefix="openlens-test-download-")) / "OpenLens"
-        )
+        downloaded = Path(tempfile.mkdtemp(prefix="openlens-test-download-")) / "OpenLens"
         downloaded.write_bytes(b"partial")
         checker.download = mock.Mock(return_value=downloaded)
         installer.prepare = mock.Mock(side_effect=OSError("disk full"))

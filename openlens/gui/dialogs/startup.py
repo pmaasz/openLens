@@ -92,9 +92,7 @@ class StartupDialog(QDialog):
         # Load database items once
         from ..storage import LensStorage
 
-        self._storage = (
-            storage if storage is not None else LensStorage(None, lambda x: None)
-        )
+        self._storage = storage if storage is not None else LensStorage(None, lambda x: None)
         try:
             self._all_items = self._storage.load_lenses()
         except Exception as e:
@@ -325,8 +323,7 @@ class StartupDialog(QDialog):
         elif result.status == STATUS_NO_ASSET:
             latest = result.latest_version or "A newer version"
             self._set_update_status(
-                f"OpenLens {result.current_version} \u2192 {latest}: "
-                "no build for this platform."
+                f"OpenLens {result.current_version} \u2192 {latest}: " "no build for this platform."
             )
             self._show_update_button("Open release page")
         else:
@@ -358,10 +355,7 @@ class StartupDialog(QDialog):
             self._start_update_check()
             return
 
-        if (
-            result.status == STATUS_UPDATE_AVAILABLE
-            and self._update_installer.can_self_update()
-        ):
+        if result.status == STATUS_UPDATE_AVAILABLE and self._update_installer.can_self_update():
             self._start_update_download(result)
             return
 
@@ -534,9 +528,7 @@ class StartupDialog(QDialog):
                 border: 1px solid #555555;
             }
         """)
-        open_btn.clicked.connect(
-            lambda: self._open_selected(list_widget, items, list_type)
-        )
+        open_btn.clicked.connect(lambda: self._open_selected(list_widget, items, list_type))
         self.bottom_controls_layout.addWidget(open_btn)
 
         self.bottom_controls_layout.addStretch(1)
@@ -594,9 +586,7 @@ class StartupDialog(QDialog):
             }
         """)
         minus_btn.setIcon(create_icon("minus"))
-        minus_btn.clicked.connect(
-            lambda: self._on_delete(list_widget, items, list_type)
-        )
+        minus_btn.clicked.connect(lambda: self._on_delete(list_widget, items, list_type))
 
         action_layout.addWidget(plus_btn)
         action_layout.addWidget(minus_btn)
@@ -625,9 +615,7 @@ class StartupDialog(QDialog):
             elif child.layout():
                 self._clear_layout(child.layout())
 
-    def _open_selected(
-        self, list_widget: QListWidget, items: List[Any], list_type: str
-    ) -> None:
+    def _open_selected(self, list_widget: QListWidget, items: List[Any], list_type: str) -> None:
         """Accept the dialog with an ``open_<list_type>`` action for the highlighted item.
 
         Sets ``_selected_action`` to "open_lens" or "open_assembly" and
@@ -681,9 +669,7 @@ class StartupDialog(QDialog):
             except Exception as e:
                 QMessageBox.critical(self, "Import Error", f"Failed to import: {e}")
 
-    def _on_delete(
-        self, list_widget: QListWidget, items: List[Any], list_type: str
-    ) -> None:
+    def _on_delete(self, list_widget: QListWidget, items: List[Any], list_type: str) -> None:
         """Delete from database"""
         idx = list_widget.currentRow()
         if idx < 0:
