@@ -360,8 +360,16 @@ def _apply_value(
         return False
 
     if param_type == ToleranceType.RADIUS_1:
+        if not math.isfinite(lens.radius_of_curvature_1):
+            # A flat surface has no radius to perturb: inf + finite == inf, so
+            # the draw was silently discarded while the operand reported
+            # success. A radius tolerance does not apply to a flat surface -
+            # say so instead of pretending it was applied.
+            return False
         lens.radius_of_curvature_1 += value
     elif param_type == ToleranceType.RADIUS_2:
+        if not math.isfinite(lens.radius_of_curvature_2):
+            return False
         lens.radius_of_curvature_2 += value
     elif param_type == ToleranceType.THICKNESS:
         lens.thickness += value
@@ -479,13 +487,25 @@ class MonteCarloAnalyzer:
     def _apply_tolerances(self, system: OpticalSystem) -> Dict[str, float]:
         """
         Apply random tolerances to the system and return the applied values.
+
+        Operands that cannot be applied - a radius tolerance on a flat
+        surface, a FOCUS operand in a tolerance list - are collected and
+        reported, not silently dropped. A draw that changes nothing while
+        claiming success makes the yield look better than it is.
         """
         perturbations = {}
+        skipped = []
 
         for tol in self.tolerances:
             delta = tol.generate_value(self._rng)
             perturbations[f"El_{tol.element_index}_{tol.param_type.name}"] = delta
-            _apply_value(system, tol.param_type, tol.element_index, delta, surface=tol.surface)
+            applied = _apply_value(
+                system, tol.param_type, tol.element_index, delta, surface=tol.surface
+            )
+            if not applied:
+                skipped.append(f"Element {tol.element_index + 1} {tol.param_type.value}")
+
+        self._skipped_operands = sorted(set(skipped))
 
         # Positions/gaps already synced per application; one final sync.
         system._update_positions()
@@ -652,6 +672,18 @@ class MonteCarloAnalyzer:
         finite = [v for v in values if math.isfinite(v)]
         yield_pct = (pass_count / num_trials) * 100
 
+        # Operands that could not be applied. The yield above does not include
+        # them, so the report has to say so: a silently ignored tolerance
+        # makes the yield look better than it is.
+        skipped = list(getattr(self, "_skipped_operands", []))
+        if skipped:
+            logger.warning(
+                "Monte Carlo: %d tolerance operand(s) could not be applied and "
+                "were left out of the statistics: %s",
+                len(skipped),
+                ", ".join(skipped),
+            )
+
         stats = {
             "nominal": nominal_val,
             "mean": statistics.mean(finite) if finite else float("inf"),
@@ -664,6 +696,7 @@ class MonteCarloAnalyzer:
             "limit": criterion_limit,
             "90th_percentile": _percentile(finite, 90.0) if finite else float("inf"),
             "vignetted_trials": len(values) - len(finite),
+            "skipped_operands": skipped,
         }
 
         return stats

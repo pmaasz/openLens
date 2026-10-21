@@ -123,6 +123,16 @@ class MonteCarloWorker(QThread):
             text += f"90th Percentile: {results['90th_percentile']:.4f} mm\n"
             text += f"Worst Case (Max): {results['max']:.4f} mm\n"
 
+            # Operands that could not be applied are not in the statistics
+            # above, so the report has to name them: a radius tolerance on a
+            # flat surface, for instance, changes nothing at all.
+            skipped = results.get("skipped_operands") or []
+            if skipped:
+                text += f"\nWARNING: {len(skipped)} tolerance operand(s) could not "
+                text += "be applied and are not in these statistics:\n"
+                for operand in skipped:
+                    text += f"  - {operand}\n"
+
             self.finished.emit(text, results)
 
         except Exception as e:
