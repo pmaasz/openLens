@@ -145,6 +145,67 @@ class TestAssemblyLensesAreNotLibraryItems(_DbFixture):
         return self.db.load_all()
 
 
+class TestPartialSaveKeepsLibraryMembership(_DbFixture):
+    """A partial save must not change who belongs to the library (#602).
+
+    The lens row is written with ``INSERT OR REPLACE``, and the statement did
+    not mention the ``is_library`` column, so the column fell back to its
+    schema default (1) and the lens became a library item. A full save
+    repaired it afterwards - the membership write demotes everything that is
+    not in the library - but a partial save only promotes, so the leak
+    survived.
+    """
+
+    def _partial_save(self, *items):
+        """Save without the library-snapshot semantics (the default)."""
+        self.storage.save_lenses(
+            list(items), show_status=False, library_snapshot=False, reconcile=False
+        )
+
+    def test_a_partial_save_does_not_promote_an_assembly_member(self):
+        """The member of an assembly must stay out of the library"""
+        member = _lens("Member")
+        assembly = _assembly(member, name="A")
+        library_lens = _lens("Library")
+
+        # A full save records the membership: only the library lens is one.
+        self._save(library_lens, assembly)
+        self.assertEqual(self._names(), ["A", "Library"])
+
+        # A partial save must not change that.
+        self._partial_save(library_lens, assembly)
+
+        self.assertEqual(
+            self._names(),
+            ["A", "Library"],
+            msg="a partial save pushed the assembly member into the library",
+        )
+
+    def test_a_partial_save_keeps_a_shared_lens_in_the_library(self):
+        """A lens in the library *and* in an assembly stays a library item"""
+        shared = _lens("Shared")
+        self._save(shared, _assembly(shared, name="A"))
+        self.assertIn("Shared", self._names())
+
+        self._partial_save(shared, _assembly(shared, name="A"))
+
+        self.assertIn(
+            "Shared",
+            self._names(),
+            msg="a partial save dropped a lens the user keeps in the library",
+        )
+
+    def test_a_partial_save_keeps_a_standalone_lens_in_the_library(self):
+        """The ordinary case: saving a lens keeps it in the library"""
+        loose = _lens("Loose")
+        self._save(loose)
+        self.assertIn("Loose", self._names())
+
+        self._partial_save(loose)
+
+        self.assertIn("Loose", self._names())
+
+
 class TestTheSavedShapeSurvivesAReload(_DbFixture):
     def test_a_round_trip_is_stable(self):
         """Reload, save again, reload: the library must not grow."""
