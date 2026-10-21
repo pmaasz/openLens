@@ -1,6 +1,12 @@
 import unittest
 
-from openlens.constants import RAY_EXIT_PROPAGATION_2D_MM
+from openlens.constants import (
+    NM_TO_MM,
+    RAY_EXIT_PROPAGATION_2D_MM,
+    WAVELENGTH_C_LINE,
+    WAVELENGTH_D_LINE,
+    WAVELENGTH_F_LINE,
+)
 from openlens.optical_system import OpticalSystem, create_doublet
 from openlens.lens import Lens
 from openlens.ray import Ray, Ray3D
@@ -228,6 +234,81 @@ class TestConcaveFirstElement(unittest.TestCase):
         vertices_3d = sorted({(round(p.x, 9), round(p.y, 9)) for p in ray3d.path})
         for x, y in ray2d.path[1:-1]:
             self.assertIn((round(x, 9), round(y, 9)), vertices_3d)
+
+
+class TestAlignedElementKeepsTheWavelength(unittest.TestCase):
+    """A tilted or decentered element must refract at the traced wavelength.
+
+    The aligned path rebuilds a local tracer for the element's own frame. It
+    did not forward the wavelength, so the element was traced at its stored
+    design index for every wavelength and the chromatic spread disappeared
+    exactly where alignment was being modelled.
+    """
+
+    def _heights(self, tilt=0.0, decenter=0.0):
+        """The exit height of a marginal ray at the C, d and F lines."""
+        system = OpticalSystem(name="Aligned")
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=100.0,
+                radius_of_curvature_2=-100.0,
+                thickness=5.0,
+                diameter=30.0,
+                refractive_index=1.5168,
+                material="BK7",
+            )
+        )
+        system.elements[0].tilt_z = tilt
+        system.elements[0].decenter_y = decenter
+
+        heights = []
+        for wavelength in (WAVELENGTH_C_LINE, WAVELENGTH_D_LINE, WAVELENGTH_F_LINE):
+            tracer = SystemRayTracer(system, wavelength_nm=wavelength)
+            rays = tracer.trace_parallel_rays(num_rays=5, wavelength_mm=wavelength * NM_TO_MM)
+            heights.append(rays[-1].y)
+        return heights
+
+    @staticmethod
+    def _spread(heights):
+        return max(heights) - min(heights)
+
+    def test_a_centered_element_has_a_chromatic_spread(self):
+        """The reference: the centered path refracts at each wavelength."""
+        self.assertGreater(self._spread(self._heights()), 0.1)
+
+    def test_a_tilted_element_keeps_the_chromatic_spread(self):
+        """A 1e-6 degree tilt is physically nothing, but it must not erase dispersion."""
+        centered = self._heights()
+        tilted = self._heights(tilt=1e-6)
+
+        self.assertAlmostEqual(
+            self._spread(tilted),
+            self._spread(centered),
+            places=3,
+            msg="a tilted element was traced at the design index, so the "
+            "chromatic spread vanished",
+        )
+
+    def test_a_decentered_element_keeps_the_chromatic_spread(self):
+        """The same for a decentered element."""
+        centered = self._heights()
+        decentered = self._heights(decenter=1e-3)
+
+        self.assertAlmostEqual(
+            self._spread(decentered),
+            self._spread(centered),
+            places=3,
+            msg="a decentered element was traced at the design index, so the "
+            "chromatic spread vanished",
+        )
+
+    def test_a_tilted_element_stays_close_to_the_centered_one(self):
+        """The aligned path must be continuous with the centered path."""
+        centered = self._heights()
+        tilted = self._heights(tilt=1e-6)
+
+        for expected, actual in zip(centered, tilted):
+            self.assertAlmostEqual(expected, actual, places=3)
 
 
 if __name__ == "__main__":
