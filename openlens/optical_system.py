@@ -13,7 +13,7 @@ import uuid
 import logging
 from datetime import datetime
 
-from .lens import Lens
+from .lens import Lens, json_safe_radii
 from .constants import (
     WAVELENGTH_D_LINE,
     WAVELENGTH_C_LINE,
@@ -471,7 +471,13 @@ class OpticalSystem:
         """Save optical system to JSON file"""
         try:
             with atomic_write_text(filename) as f:
-                json.dump(self.to_dict(), f, indent=2)
+                # A flat surface is an infinite radius in the model and null
+                # in JSON: the bare ``Infinity`` literal is not valid JSON and
+                # the reader below rejects it, so a plano system could never be
+                # loaded back. ``allow_nan=False`` makes any *other*
+                # non-finite value fail the write instead of producing a file
+                # that cannot be read.
+                json.dump(json_safe_radii(self.to_dict()), f, indent=2, allow_nan=False)
             return True
         except Exception as e:
             logger.error("Error saving optical system: %s", e)
@@ -655,11 +661,17 @@ class OpticalSystem:
         ``json.load`` accepts the non-standard bare literals, and a NaN that
         reaches the model compares false against every sanity threshold and
         silently disables downstream checks.
+
+        A file written by an older version spells a flat surface as the bare
+        ``Infinity`` literal. Those radii are converted to the JSON spelling
+        (null) before the check, so such a file still loads while every other
+        non-finite value is still rejected.
         """
         try:
             reject_oversized_file(filename)
             with open(filename, "r") as f:
                 data = json.load(f)
+            data = json_safe_radii(data)
             reject_non_finite_numbers(data, "optical system")
             return OpticalSystem.from_dict(data)
         except Exception as e:

@@ -49,6 +49,72 @@ def _is_flat(r):
     return not r or not math.isfinite(r) or abs(r) > LARGE_NUMBER or abs(r) < EPSILON
 
 
+#: The lens-dict keys that hold a radius of curvature.
+_RADIUS_KEYS = ("radius_of_curvature_1", "radius_of_curvature_2")
+
+
+def decode_radius(value: Any) -> Any:
+    """The radius as it is stored in a serialized lens.
+
+    ``None`` is the JSON spelling of a flat surface: the model stores a flat
+    surface as an infinite radius, and JSON has no way to write one.
+
+    Args:
+        value: The stored value - ``None`` for a flat surface, else a number.
+
+    Returns:
+        The radius in the model's own spelling: ``inf`` for a flat surface.
+    """
+    return float("inf") if value is None else value
+
+
+def _map_lens_radii(payload: Any, transform) -> Any:
+    """Apply *transform* to the radius fields of every lens dict in *payload*.
+
+    A lens dict is recognised by its radius keys, so the walk needs no
+    knowledge of the surrounding schema: a saved system holds lens dicts in
+    two places - the flat ``elements`` list and the ``node_tree``.
+
+    Args:
+        payload: Any JSON-shaped structure.
+        transform: Callable applied to every radius value.
+
+    Returns:
+        A copy of *payload* with the radii transformed.
+    """
+    if isinstance(payload, dict):
+        is_lens = any(key in payload for key in _RADIUS_KEYS)
+        result = {}
+        for key, value in payload.items():
+            is_radius = is_lens and key in _RADIUS_KEYS and isinstance(value, float)
+            result[key] = transform(value) if is_radius else _map_lens_radii(value, transform)
+        return result
+    if isinstance(payload, list):
+        return [_map_lens_radii(item, transform) for item in payload]
+    return payload
+
+
+def json_safe_radii(payload: Any) -> Any:
+    """Return a copy of *payload* with infinite radii written as ``null``.
+
+    The model stores a flat surface as an infinite radius, and JSON cannot
+    spell one: the writer emitted the bare ``Infinity`` literal, which is not
+    valid JSON and which the application's own reader rejects. A flat radius
+    is therefore written as ``null``.
+
+    Only the radius fields of a lens dict are touched. Every other value is
+    copied unchanged, so a NaN elsewhere still fails the write - loudly -
+    instead of being silently dropped.
+
+    Args:
+        payload: Any JSON-shaped structure.
+
+    Returns:
+        A copy of *payload* with infinite radii replaced by ``None``.
+    """
+    return _map_lens_radii(payload, lambda radius: None if math.isinf(radius) else radius)
+
+
 def _conic_domain_radius(radius: float, conic_constant: float) -> float:
     """Largest real radial height of a conic surface.
 
@@ -630,8 +696,8 @@ class Lens:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Lens":
         """Create lens from dictionary representation."""
-        r1 = data.get("radius_of_curvature_1", DEFAULT_RADIUS_1)
-        r2 = data.get("radius_of_curvature_2", DEFAULT_RADIUS_2)
+        r1 = decode_radius(data.get("radius_of_curvature_1", DEFAULT_RADIUS_1))
+        r2 = decode_radius(data.get("radius_of_curvature_2", DEFAULT_RADIUS_2))
         lens_type = data.get("type", LENS_TYPE_BICONVEX)
 
         # The stored metadata blob is flat: it carries the fields that have no

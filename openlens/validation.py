@@ -1045,6 +1045,11 @@ def reject_non_finite_numbers(data: Any, param_name: str = "data") -> Any:
     return data
 
 
+#: The lens-dict fields that may be null: a flat surface is an infinite
+#: radius in the model and null in JSON.
+FLAT_RADIUS_FIELDS = ("radius_of_curvature_1", "radius_of_curvature_2")
+
+
 def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> dict:
     """
     Validate that a lens data dictionary has the expected schema.
@@ -1089,6 +1094,11 @@ def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> d
     for field, expected_type in required_fields.items():
         if field not in data:
             raise ValidationError(f"Missing required field '{field}' in lens data{idx_str}")
+
+        if field in FLAT_RADIUS_FIELDS and data[field] is None:
+            # A flat surface is an infinite radius in the model and null in
+            # JSON, so null is a valid radius here.
+            continue
 
         if _is_numeric_field(expected_type) and isinstance(data[field], bool):
             # isinstance(True, int) is True, so a JSON `true` used to satisfy a

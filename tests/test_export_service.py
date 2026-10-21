@@ -50,6 +50,27 @@ class TestExportService(unittest.TestCase):
         self.assertEqual(data["name"], "Report Lens")
         self.assertEqual(data["radius_of_curvature_1"], 100.0)
 
+    def test_save_lens_json_writes_a_flat_surface_as_null(self):
+        """A flat surface is null in the exported JSON, not a bare Infinity"""
+        path = self.tmp / "plano.json"
+        plano = Lens(
+            name="Plano Lens",
+            radius_of_curvature_1=float("inf"),
+            radius_of_curvature_2=-100.0,
+            thickness=5.0,
+            diameter=50.0,
+            material="BK7",
+        )
+
+        result = ExportService().save_lens_json(plano, str(path))
+
+        self.assertTrue(result.ok, result.error)
+        text = path.read_text(encoding="utf-8")
+        self.assertNotIn("Infinity", text)
+        data = json.loads(text)
+        self.assertIsNone(data["radius_of_curvature_1"])
+        self.assertEqual(data["radius_of_curvature_2"], -100.0)
+
     def test_export_stl_writes_a_non_empty_file(self):
         path = self.tmp / "lens.stl"
 

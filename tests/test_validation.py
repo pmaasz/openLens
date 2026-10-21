@@ -525,6 +525,21 @@ class TestSchemaValidation(unittest.TestCase):
         with self.assertRaises(ValidationError):
             validate_lens_data_schema(invalid_data)
 
+    def test_validate_lens_data_schema_accepts_a_null_radius(self):
+        """A flat surface is null in JSON, so null must pass the schema check"""
+        from openlens.validation import validate_lens_data_schema
+
+        plano_data = {
+            "name": "Plano Lens",
+            "radius_of_curvature_1": None,
+            "radius_of_curvature_2": -100.0,
+            "thickness": 5.0,
+            "diameter": 50.0,
+            "refractive_index": 1.5168,
+        }
+        result = validate_lens_data_schema(plano_data)
+        self.assertEqual(result, plano_data)
+
     def test_validate_lenses_json_schema_valid(self):
         """Test validation of lenses array"""
         from openlens.validation import validate_lenses_json_schema

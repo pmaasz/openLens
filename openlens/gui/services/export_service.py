@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional
 
 from openlens.io.export import ISO10110Generator
 from openlens.io.step_export import StepExporter
-from openlens.lens import Lens
+from openlens.lens import Lens, json_safe_radii
 from openlens.optical_system import as_system
 from openlens.stl_export import export_lens_stl
 
@@ -94,7 +94,12 @@ class ExportService:
         """
         try:
             with open(path, "w") as handle:
-                json.dump(lens.to_dict(), handle, indent=2)
+                # A flat surface is an infinite radius in the model and null in
+                # JSON: the bare ``Infinity`` literal is not valid JSON and the
+                # importer rejects it, so a plano lens could never be imported
+                # again. ``allow_nan=False`` fails the export instead of
+                # writing a file that cannot be read.
+                json.dump(json_safe_radii(lens.to_dict()), handle, indent=2, allow_nan=False)
             return self._success("json", path)
         except Exception as exc:
             return self._failure("json", path, exc)
