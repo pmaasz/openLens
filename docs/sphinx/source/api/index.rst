@@ -61,6 +61,7 @@ Utilities
 .. toctree::
    :maxdepth: 2
 
+   updater
    stl_export
    material_database
    mounts
