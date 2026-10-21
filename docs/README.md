@@ -27,22 +27,24 @@ open build/html/index.html       # macOS
 
 ## Sphinx Structure
 
-- **Getting Started** - installation and quick start
-- **User Guide** - GUI walkthrough, lens types and ray tracing
-- **Nikon Series E 50mm** - worked multi-element prescription example
-- **Architecture** - system design, data flow and module organization
-- **Contributing** - coding standards, testing and pull-request process
-- **API Reference** - generated from the `openlens` docstrings
+The top-level index is divided by audience:
+
+- **User Documentation** - Getting Started, the GUI/CLI walkthrough, and the
+  Nikon Series E 50mm worked example.
+- **Technical Documentation** - Architecture, contributing guidelines, and the
+  generated API reference.
+- **Scientific Documentation** - optical conventions and equations, image-quality
+  metrics, and thermal/mechanical effects.
 
 ## Reference Markdown
 
 | File | Status |
 |------|--------|
 | `README.md` | This index. |
-| `CONTRIBUTING.md` | Mirror of `sphinx/source/contributing.rst`; kept because the root README links to it. |
-| `TESTING.md` | Mirror of the testing sections in `sphinx/source/contributing.rst`; linked from the README test badge. |
-| `ARCHITECTURE.md` | Mirror of `sphinx/source/architecture.rst`. |
-| `API_DOCUMENTATION.md` | Hand-written library guide (installation, examples). The Sphinx API reference is authoritative for signatures. |
+| `CONTRIBUTING.md` | Short entry point; the authoritative guide is `sphinx/source/contributing.rst`. Kept because the root README links to it. |
+| `TESTING.md` | Short test-command reference; authoritative details are in `sphinx/source/contributing.rst`. |
+| `ARCHITECTURE.md` | Short architecture summary; authoritative page is `sphinx/source/architecture.rst`. |
+| `API_DOCUMENTATION.md` | Short library entry point; authoritative signatures are in `sphinx/source/api/`. |
 | `FEATURE_ABERRATIONS.md` | Technical reference for the aberration calculations, not yet migrated. |
 
 The feature-status and ray-tracing implementation notes that used to live here

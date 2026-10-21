@@ -9,19 +9,26 @@ Base Tab
 Overview
 --------
 
-The ``BaseTab`` class provides a common interface for all tab components.
+``BaseTab`` is the common ``QWidget`` base for main-window tabs. It provides
+shared status reporting and hooks used when the active lens or assembly changes.
+
+Tabs are constructed by ``OpenLensWindow`` and receive model updates through
+signals; they do not own the library or the persistence layer.
+
+Example
+-------
 
 .. code-block:: python
 
-    from abc import ABC, abstractmethod
-    import tkinter as tk
+    from PySide6.QtWidgets import QLabel, QVBoxLayout
+    from openlens.gui.tabs import BaseTab
 
-    class BaseTab(ABC):
-        def __init__(self, parent: tk.Frame, window: 'LensEditorWindow'):
-            self.parent = parent
-            self.window = window
+    class SummaryTab(BaseTab):
+        def __init__(self, parent=None) -> None:
+            super().__init__(parent)
+            self._label = QLabel("No active lens")
+            layout = QVBoxLayout(self)
+            layout.addWidget(self._label)
 
-        @abstractmethod
-        def setup(self) -> None:
-            """Set up the tab contents."""
-            pass
+        def set_status(self, message: str) -> None:
+            self._label.setText(message)

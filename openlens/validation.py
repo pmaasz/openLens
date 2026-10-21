@@ -454,7 +454,8 @@ def validate_range(
 
 def parabolic_sag_limit(diameter: float, thickness: float = 0.0) -> float:
     """
-    Maximum meaningful |sag| for a parabolic surface of given aperture.
+    Maximum meaningful :math:`\\lvert sag \\rvert` for a parabolic surface of
+    given aperture.
 
     Sag without diameter is meaningless (vertex radius R = r²/(2·sag)):
     the bound keeps the implied vertex radius above MIN_RADIUS_OF_CURVATURE

@@ -9,21 +9,24 @@ Lens Storage
 Overview
 --------
 
-The LensStorage class provides persistence utilities for saving and loading
-lens data in the GUI application.
+``LensStorage`` is the GUI-facing facade over
+:class:`openlens.database.DatabaseManager`. It loads ``Lens`` and
+``OpticalSystem`` objects, saves the complete library, deletes records, and
+reports the last failure through ``last_error``.
 
-Example Usage
--------------
+SQLite is the source of truth. ``storage_file=None`` resolves the per-user
+database through :func:`openlens.paths.resolve_db_path`; tests and embedders can
+pass an isolated path.
+
+Example
+-------
 
 .. code-block:: python
 
     from openlens.gui.storage import LensStorage
 
-    storage = LensStorage()
+    storage = LensStorage("scratch.db")
+    items = storage.load_lenses()
 
-    # Save lens data
-    lens_data = {'radius_1': 50.0, 'radius_2': -50.0, ...}
-    storage.save_lens(lens_data, 'my_lens.json')
-
-    # Load lens data
-    loaded = storage.load_lens('my_lens.json')
+    if not storage.save_lenses(items, reconcile=True):
+        print(storage.last_error)

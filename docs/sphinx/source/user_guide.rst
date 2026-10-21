@@ -1,7 +1,10 @@
 User Guide
 ==========
 
-This guide covers the main features and workflows in OpenLens.
+This guide covers the current PySide6 application: the library, lens and
+assembly editors, simulation, image quality, optimization, tolerancing, and
+export. For installation, see :doc:`getting_started`; for the physics behind a
+number, see :doc:`scientific/index`.
 
 .. contents:: Table of Contents
    :local:
@@ -10,47 +13,73 @@ This guide covers the main features and workflows in OpenLens.
 GUI Overview
 ------------
 
-The OpenLens GUI is organized into several tabs for different workflows.
+The main window keeps one active target: either a single lens or an optical
+assembly. Selecting a library row loads that target into the editor tabs.
 
 Selection Tab
 ^^^^^^^^^^^^^
 
-The Selection tab allows you to:
+The **Selection** tab is the library browser. It supports:
 
-- Browse and select from a library of pre-defined lenses
-- Filter lenses by type (biconvex, plano-convex, etc.)
-- View lens properties at a glance
-- Load lenses for editing or simulation
+- browsing and filtering lenses and assemblies;
+- loading a row into the active-target tabs;
+- creating, duplicating, renaming, and deleting library records;
+- saving to the SQLite library;
+- importing/exporting JSON for interchange.
 
-Editor Tab
-^^^^^^^^^^
+The default library is a per-user SQLite database. The status bar reports save
+and load failures; a failed save is never presented as a success.
 
-The Editor tab provides controls for:
+Lens Editor Tab
+^^^^^^^^^^^^^^^
 
-- **Surface Parameters**: Set radius of curvature for both surfaces
-- **Lens Geometry**: Configure thickness and diameter
-- **Material Properties**: Choose refractive index or select from material database
-- **Real-time Preview**: See lens shape update as you modify parameters
+The **Lens Editor** edits a single element and shows calculated properties as
+the prescription changes.
+
+**Surface parameters**
+
+- Radius of curvature for each surface, in millimetres.
+- Optional conic constant for each surface.
+- Legacy parabolic sag control where a measured sag is preferred.
+- Clear aperture and bevel for each surface.
+
+**Geometry and material**
+
+- Centre thickness and mechanical diameter.
+- Material from the catalog, or a model glass defined by ``nd``/``Vd``.
+- Design wavelength and operating temperature.
+- Refractive index, either resolved from the selected glass or entered for a
+  model glass.
+
+**Coatings**
+
+Each surface can carry a thin-film stack. Coating presets can be loaded from
+the coating tools; the stack modulates reflected/transmitted energy while the
+geometric ray direction continues to follow Snell's law.
+
+**Calculated properties**
+
+The panel updates focal length, optical power, back and front focal lengths,
+working flange distance, edge thickness, and feasibility warnings. Thin or
+negative edge thickness warnings mean the surfaces intersect inside the clear
+aperture and the shape is not manufacturable as drawn.
 
 Camera Mounts
 ^^^^^^^^^^^^^
 
-The Editor's **Mount** group assigns a camera mount to the lens. The
-calculated properties show the **working flange distance**: the distance from
-the rear lens vertex to the sensor plane.
+The **Mount** group assigns a camera mount to the lens. It reports the
+**working flange distance**, measured from the rear lens vertex to the sensor
+plane:
 
 .. code-block:: text
 
    working flange distance = back focal length + mount flange distance
 
-OpenLens includes C-mount, CS-mount, M42, M39, T-mount, Fujifilm X-mount,
-Leica M-mount, Canon EF-mount and Nikon F-mount. The mount is saved with the
-lens in the SQLite library.
-
-Use **Manage mounts…** to add a custom mount from its flange distance. Custom
-mounts are shared by every lens and stored in ``mounts.json`` under the
-per-user OpenLens data directory. Set ``OPENLENS_MOUNTS_PATH`` to use a
-different configuration file.
+Built-in mounts are C, CS, M42, M39, T, Fujifilm X, Leica M, Canon EF, and
+Nikon F. Use **Manage mounts…** to add a custom mount from its flange
+distance. Custom mounts are shared by every lens and stored in ``mounts.json``
+under the per-user OpenLens data directory; ``OPENLENS_MOUNTS_PATH`` overrides
+the file location.
 
 .. code-block:: python
 
@@ -60,515 +89,211 @@ different configuration file.
    lens.mount_type = "M42"
    print(lens.calculate_working_flange_distance())
 
+If the lens is afocal or the mount is unknown, the distance is ``None``. The
+mount is saved with the lens in the SQLite library.
+
+Assembly Tab
+^^^^^^^^^^^^
+
+The **Assembly** tab edits a multi-element ``OpticalSystem``:
+
+- add, remove, reorder, and nest lens elements;
+- set the air gap before each element;
+- place an aperture stop in a gap and set its diameter;
+- apply decenter and tilt to individual elements;
+- inspect the optical layout and element positions;
+- edit tolerances and alignment values for the assembly.
+
+Assembly edits are undoable. The window-level undo/redo controls follow the
+active lens editor or assembly stack.
+
 Simulation Tab
 ^^^^^^^^^^^^^^
 
-Run ray tracing simulations:
+The **Simulation** tab traces rays through a lens or assembly:
 
-- Configure number of rays
-- Set ray source position and angle
-- Visualize ray paths through the lens
-- Identify focal point and aberrations
+- choose a parallel fan or point source;
+- set ray count, field angle, and ray height range;
+- trace at one or more wavelengths;
+- enable ghost reflections to inspect unwanted paths;
+- switch between 2-D and 3-D views;
+- clear the trace and reset the view without changing the optical model.
+
+Vignetted rays are dropped at clear apertures or the system stop. The status
+area reports the trace result; a failed trace is not replaced by an empty
+“perfect” image.
 
 Performance Tab
 ^^^^^^^^^^^^^^^
 
-Analyze optical performance:
+The **Performance** tab calculates the image-quality dashboard:
 
-- View aberration plots
-- Calculate MTF (Modulation Transfer Function)
-- Spot diagram analysis
-- Through-focus analysis
+- first-order values (EFL, BFL, f-number, numerical aperture);
+- Seidel spherical, coma, astigmatism, field curvature, and distortion;
+- axial and lateral chromatic estimates;
+- RMS spot size and AIRY disk diameter;
+- Strehl ratio and RMS wavefront error;
+- MTF cutoff;
+- spot diagram, ray fan, field curves, PSF, MTF, wavefront, and ghost views.
 
-Comparison Tab
-^^^^^^^^^^^^^^
+Expensive calculations run in background workers. If a trace or wavefront
+sample fails, the affected field is reported as unavailable or invalid instead
+of zero. See :doc:`scientific/image_quality` for the definitions and limits of
+each metric.
 
-Compare multiple lens designs:
+Optimization Tab
+^^^^^^^^^^^^^^^^
 
-- Side-by-side parameter comparison
-- Overlay ray trace diagrams
-- Compare aberration characteristics
+The **Optimization** tab builds a merit function from variables and targets:
 
-Export Tab
-^^^^^^^^^^
+- choose radii, thicknesses, air gaps, and selected system parameters as
+  variables;
+- target focal length, back focal length, aberration values, or other metrics;
+- run the default simplex optimizer, or choose another available algorithm;
+- inspect the merit value and variable values after convergence.
 
-Export your designs:
+The merit function penalizes invalid geometry such as negative edge thickness.
+Optimization runs on a copy of the model until the result is applied, so a
+cancelled run does not leave a half-mutated assembly behind.
 
-- Save to JSON format
-- Export STL for 3D printing
-- Generate ray trace images
-- Create PDF reports
+Tolerancing Tab
+^^^^^^^^^^^^^^^
 
-Lens Types
-----------
+The **Tolerancing** tab studies manufacturing and environmental variation:
 
-OpenLens supports various lens configurations:
+- define tolerance sets for radii, thickness, gaps, decentre, tilt, and index;
+- run sensitivity or Monte Carlo analysis;
+- inspect the distribution of spot, MTF, or other image-quality metrics;
+- save tolerance sets with the lens or assembly metadata.
 
-Biconvex Lens
-^^^^^^^^^^^^^
+A nominal design with a small spot but no tolerance margin is not yet a
+manufacturable design. Compensators and focus adjustment should be included
+explicitly.
 
-Both surfaces curve outward (positive radii on front, negative on back).
+Lens Types and Sign Convention
+------------------------------
 
-.. code-block:: python
+OpenLens uses the standard Cartesian convention: positive radius means the
+centre of curvature is to the right, and positive distances are to the right.
+A biconvex lens in air therefore has ``R1 > 0`` and ``R2 < 0``.
 
-   # Biconvex: R1 > 0, R2 < 0
-   lens = Lens(radius_1=50.0, radius_2=-50.0, ...)
+.. list-table:: Common shapes
+   :header-rows: 1
+   :widths: 22 34 44
 
-Plano-Convex Lens
-^^^^^^^^^^^^^^^^^
+   * - Shape
+     - Radii
+     - Behaviour
+   * - Biconvex
+     - ``R1 > 0``, ``R2 < 0``
+     - Positive (converging) power.
+   * - Plano-convex
+     - one radius flat/infinite, the other curved
+     - Positive power.
+   * - Biconcave
+     - ``R1 < 0``, ``R2 > 0``
+     - Negative (diverging) power.
+   * - Meniscus
+     - both radii same sign
+     - Positive or negative depending on the relative magnitudes.
 
-One flat surface, one curved surface.
-
-.. code-block:: python
-
-   # Plano-convex: R1 = infinity (use large value), R2 < 0
-   lens = Lens(radius_1=1e10, radius_2=-50.0, ...)
-
-Biconcave Lens
-^^^^^^^^^^^^^^
-
-Both surfaces curve inward (negative focal length).
-
-.. code-block:: python
-
-   # Biconcave: R1 < 0, R2 > 0
-   lens = Lens(radius_1=-50.0, radius_2=50.0, ...)
-
-Meniscus Lens
-^^^^^^^^^^^^^
-
-Both surfaces curve in the same direction.
-
-.. code-block:: python
-
-   # Positive meniscus: R1 > 0, R2 > 0, |R1| < |R2|
-   lens = Lens(radius_1=30.0, radius_2=50.0, ...)
-
-Sign Conventions
-----------------
-
-OpenLens uses the standard optics sign convention:
-
-- **Radius of curvature**: Positive if center of curvature is to the right of the surface
-- **Distances**: Positive to the right of the lens
-- **Focal length**: Positive for converging lenses, negative for diverging
+A flat surface is represented by an infinite radius; the model treats a zero
+radius as flat in the property setters. Use ``conic_constant_1`` or
+``conic_constant_2`` for an aspheric surface when a sphere is not sufficient.
 
 Material Database
 -----------------
 
-OpenLens includes a database of common optical materials:
-
-.. list-table:: Common Optical Glasses
-   :header-rows: 1
-
-   * - Material
-     - Refractive Index (nd)
-     - Abbe Number (Vd)
-   * - BK7
-     - 1.5168
-     - 64.2
-   * - SF11
-     - 1.7847
-     - 25.8
-   * - F2
-     - 1.6200
-     - 36.4
-   * - Fused Silica
-     - 1.4585
-     - 67.8
-
-Using the Material Database
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The material catalog stores refractive index, Abbe number, Sellmeier
+coefficients, thermal expansion, and Schott TIE-19 temperature coefficients
+where available. Common entries include BK7, SF11, F2, and fused silica.
 
 .. code-block:: python
 
    from openlens.material_database import MaterialDatabase
 
    db = MaterialDatabase()
-
-   # Get material by name
    bk7 = db.get_material("BK7")
-   print(f"BK7 refractive index: {bk7['n']}")
+   print(f"BK7 nd: {bk7.nd:.4f}, Vd: {bk7.vd:.1f}")
 
-   # List all materials
-   materials = db.list_materials()
+   lens = Lens.for_material("BK7", radius_of_curvature_1=50.0,
+                            radius_of_curvature_2=-50.0)
+   print(f"Index at 550 nm: {lens.refractive_index_at(550.0):.4f}")
+
+An unknown material is not silently replaced by BK7 when an explicit
+``refractive_index`` is stored on the lens. Model glass defined by ``nd`` and
+``Vd`` uses an analytic dispersion model and has no catalog thermal
+coefficients.
 
 Ray Tracing
 -----------
 
-The OpenLens ray tracing system allows you to visualize how light rays travel
-through optical lenses.
-
-Using Ray Tracing in the GUI
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Step 1: Select or Create a Lens
-"""""""""""""""""""""""""""""""
-
-1. Open the OpenLens application
-2. Go to the **"Lens Selection"** tab
-3. Either:
-
-   - Select an existing lens from the list, OR
-   - Create a new lens using the **"Editor"** tab
-
-Step 2: Configure Simulation Parameters
-"""""""""""""""""""""""""""""""""""""""
-
-1. Navigate to the **"Simulation"** tab
-2. Set the simulation parameters:
-
-   - **Number of Rays**: How many light rays to trace (recommended: 10-20)
-
-     - Fewer rays = faster rendering, clearer visualization
-     - More rays = more detailed, denser visualization
-
-   - **Ray Angle**: Controls the type of ray source
-
-     - ``0°`` = Parallel rays (collimated beam, like sunlight)
-     - ``>0°`` = Point source rays (diverging from a point)
-
-Step 3: Run the Simulation
-""""""""""""""""""""""""""
-
-1. Click the **"Run Simulation"** button
-2. The visualization will display:
-
-   - **Lens outline** (light blue filled area with blue border)
-   - **Optical axis** (dashed gray line)
-   - **Ray paths** (colored lines showing light propagation)
-
-     - Red = Edge rays (at the top and bottom of the lens)
-     - Green = Center ray (along the optical axis)
-     - Orange = Interior rays
-
-   - **Focal point** (green circle, if rays converge)
-
-Step 4: Interpret the Results
-"""""""""""""""""""""""""""""
-
-The status bar will show:
-
-- Number of rays traced
-- Focal point location (if found)
-- Any errors or warnings
-
-Understanding Ray Behavior
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Converging Lenses (Positive Focal Length)
-"""""""""""""""""""""""""""""""""""""""""
-
-**Examples**: Biconvex, Plano-Convex, Meniscus (with appropriate curvatures)
-
-**Parallel Ray Behavior**:
-
-- Rays entering parallel to the optical axis converge to a focal point
-- Focal point location indicates the lens power
-- Closer focal point = stronger lens
-
-**Point Source Behavior**:
-
-- Rays from a nearby point source are refocused to form an image
-- Ray paths show how the lens bends light
-
-Diverging Lenses (Negative Focal Length)
-""""""""""""""""""""""""""""""""""""""""
-
-**Examples**: Biconcave, Plano-Concave
-
-**Parallel Ray Behavior**:
-
-- Rays entering parallel spread out (diverge) after passing through
-- No real focal point is formed
-- Rays appear to originate from a virtual focal point behind the lens
-
-**Point Source Behavior**:
-
-- Source rays diverge even more after passing through
-- Used for vision correction (nearsightedness) or beam expansion
-
-Optical Principles
-^^^^^^^^^^^^^^^^^^
-
-Snell's Law
-"""""""""""
-
-The ray tracer implements Snell's law of refraction:
-
-.. math::
-
-   n_1 \sin(\theta_1) = n_2 \sin(\theta_2)
-
-Where:
-
-- n₁, n₂ = refractive indices of the two media
-- θ₁, θ₂ = angles of incidence and refraction
-
-Ray Path Segments
-"""""""""""""""""
-
-Each ray visualization shows:
-
-1. **Initial path**: Ray approaching the lens (straight line)
-2. **First refraction**: Ray enters the lens (bends at front surface)
-3. **Internal path**: Ray travels through lens material
-4. **Second refraction**: Ray exits the lens (bends at back surface)
-5. **Final path**: Ray continues after the lens
-
-Spherical Aberration
-""""""""""""""""""""
-
-You may notice that edge rays don't converge to exactly the same point as
-center rays. This is **spherical aberration**, a real optical phenomenon
-where rays at different heights focus at different distances.
-
-Ray Tracing Tips
-^^^^^^^^^^^^^^^^
-
-1. **Start Simple**: Begin with parallel rays (angle = 0°) to understand basic lens behavior
-2. **Moderate Ray Count**: 10-15 rays provides good visualization without clutter
-3. **Compare Lenses**: Try different lens types to see how curvature affects ray paths
-4. **Edge Ray Analysis**: Watch the red edge rays to see maximum refraction effects
-5. **Use Clear Simulation**: Click "Clear Simulation" to reset before trying new parameters
-
-Example Scenarios
-^^^^^^^^^^^^^^^^^
-
-Scenario 1: Measuring Focal Length
-""""""""""""""""""""""""""""""""""
-
-1. Select a biconvex lens
-2. Set rays = 10, angle = 0°
-3. Run simulation
-4. The green dot shows the focal point location
-5. Compare measured focal length with theoretical value (shown in status)
-
-Scenario 2: Point Source Imaging
-""""""""""""""""""""""""""""""""
-
-1. Select any converging lens
-2. Set rays = 11, angle = 10° (or higher)
-3. Run simulation
-4. Observe how rays from a point source are refocused
-
-Scenario 3: Diverging Lens Behavior
-"""""""""""""""""""""""""""""""""""
-
-1. Select a biconcave lens
-2. Set rays = 15, angle = 0°
-3. Run simulation
-4. Notice rays spreading out after the lens
-5. No focal point is formed (negative focal length)
-
-Programmatic Ray Tracing
-^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. code-block:: python
-
-   from openlens.ray_tracer import LensRayTracer
-   from openlens.lens import Lens
-
-   # Create a lens
-   lens = Lens(
-       radius_1=50.0,
-       radius_2=-50.0,
-       thickness=5.0,
-       diameter=25.0,
-       n=1.5168
-   )
-
-   # Create ray tracer
-   tracer = LensRayTracer(lens)
-
-   # Trace parallel rays
-   rays = tracer.trace_parallel_rays(num_rays=21)
-
-   # Examine results
-   for ray in rays:
-       print(f"Ray at height {ray['start_y']:.2f} mm")
-       print(f"  Focus at x = {ray.get('focus_x', 'N/A')} mm")
-
-Understanding Ray Trace Results
-"""""""""""""""""""""""""""""""
-
-The ray tracer returns detailed information for each ray:
-
-.. code-block:: python
-
-   ray_data = {
-       'start_x': 0.0,        # Starting X position
-       'start_y': 5.0,        # Starting Y position (height)
-       'angle': 0.0,          # Initial angle (radians)
-       'path': [...],         # List of (x, y) points
-       'focus_x': 100.0,      # X position where ray crosses axis
-       'refracted': True,     # Whether ray was refracted (not TIR)
-   }
-
-Total Internal Reflection
-"""""""""""""""""""""""""
-
-When rays exceed the critical angle, total internal reflection (TIR) occurs:
-
-.. code-block:: python
-
-   tracer = LensRayTracer(lens)
-   rays = tracer.trace_parallel_rays(num_rays=21)
-
-   for ray in rays:
-       if not ray.get('refracted', True):
-           print(f"TIR occurred for ray at height {ray['start_y']}")
-
-Aberration Analysis
--------------------
-
-OpenLens calculates several aberration types:
-
-Spherical Aberration
-^^^^^^^^^^^^^^^^^^^^
-
-Rays at different heights focus at different points.
-
-.. code-block:: python
-
-   from openlens.aberrations import AberrationsCalculator
-
-   calc = AberrationsCalculator(lens)
-   spherical = calc.calculate_spherical_aberration()
-
-Chromatic Aberration
-^^^^^^^^^^^^^^^^^^^^
-
-Different wavelengths focus at different points.
-
-.. code-block:: python
-
-   chromatic = calc.calculate_chromatic_aberration()
-
-Coma
-^^^^
-
-Off-axis rays form comet-shaped spots.
-
-.. code-block:: python
-
-   coma = calc.calculate_coma()
-
-Advanced Aberration Analysis
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-After running a simulation in the GUI, you can:
-
-1. Switch to the **"Aberrations"** tab
-2. Click **"Analyze Aberrations"**
-3. View detailed optical quality metrics including:
-
-   - Spherical aberration
-   - Chromatic aberration
-   - Coma, astigmatism, distortion
-   - Overall lens quality score
-
-Saving and Loading
-------------------
-
-JSON Format
-^^^^^^^^^^^
-
-.. code-block:: python
-
-   import json
-   from openlens.lens import Lens
-
-   # Save lens
-   lens_data = lens.to_dict()
-   with open('my_lens.json', 'w') as f:
-       json.dump(lens_data, f, indent=2)
-
-   # Load lens
-   with open('my_lens.json', 'r') as f:
-       data = json.load(f)
-   lens = Lens.from_dict(data)
-
-STL Export for 3D Printing
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. code-block:: python
-
-   from openlens.stl_export import export_lens_to_stl
-
-   export_lens_to_stl(lens, 'my_lens.stl', resolution=100)
-
-Keyboard Shortcuts
-------------------
-
-In the GUI application:
-
-.. list-table:: Keyboard Shortcuts
-   :header-rows: 1
-
-   * - Shortcut
-     - Action
-   * - Ctrl+S
-     - Save current lens
-   * - Ctrl+O
-     - Open lens file
-   * - Ctrl+N
-     - New lens
-   * - Ctrl+R
-     - Run simulation
-   * - Ctrl+E
-     - Export current design
-
-Troubleshooting
+The UI ray tracer and the Python tracers share the same surface intersection
+and refraction code. A parallel fan is launched relative to the front vertex;
+the default fills the full aperture so rim aberration is included. Point
+sources use a position and an angular range. Off-axis analysis rotates or
+displaces the bundle instead of changing the lens model.
+
+For a first-order check, use the paraxial matrix results (EFL, BFL, FFL).
+For a real design, inspect the ray fans and spot diagrams at the intended
+field and wavelength.
+
+Mounts and Mechanical Output
+----------------------------
+
+**File → Export** provides:
+
+- **STL** for lens solids and printable models;
+- **STEP** for lenses plus suggested cells, spacers, and a barrel;
+- **ISO 10110** for a manufacturing-style drawing;
+- **Report** for a text/plot summary.
+
+The STEP housing is derived from the current assembly and mount. Threads are
+specified in the part name but are not modeled as helical solids without a CAD
+kernel. Treat the suggested housing as a mechanical starting point and verify
+it in CAD before manufacture.
+
+Persistence and Interchange
+---------------------------
+
+SQLite is the application's source of truth. **Save** updates the active
+library record; **Save As...** writes a JSON copy. JSON is also used for
+import/export and for user preferences such as custom mounts, but it is not the
+primary library.
+
+A lens stores its mount type, wavelength, temperature, conic/parabolic terms,
+clear apertures, bevels, coatings, and metadata. An assembly stores its element
+order, air gaps, stop, alignment, and tolerance metadata. Round-tripping through
+SQLite or JSON preserves those fields.
+
+Undo, Redo, and Safety
+----------------------
+
+- **Ctrl+Z / Ctrl+Y** (or the platform equivalents) undo and redo lens and
+  assembly edits.
+- Deleting a library row asks for confirmation; the last remaining lens cannot
+  be deleted.
+- Analysis runs in background workers and reports failures instead of freezing
+  the window.
+- Close with unsaved edits prompts before discarding them.
+- Optional dependencies are guarded; missing plotting libraries disable those
+  views without preventing startup.
+
+Keyboard and Menu Reference
+---------------------------
+
+- **Ctrl+N** new lens, **Ctrl+O** open, **Ctrl+S** save, **Ctrl+Shift+S** save as.
+- **Ctrl+D** duplicate the current lens.
+- **Ctrl+0** reset the window layout.
+- **Edit** provides undo, redo, duplicate, and delete.
+- **Lens** lists library lenses and assemblies for quick switching.
+- **View** switches the 2-D view orientation and resets the window.
+- **Help** opens About and the keyboard-shortcut list.
+
+Further Reading
 ---------------
 
-Common Issues
-^^^^^^^^^^^^^
-
-**"Simulation visualizer not available"**
-
-- **Solution**: Ensure matplotlib and numpy are installed:
-
-  .. code-block:: bash
-
-     pip install matplotlib numpy
-
-**Rays go straight through without bending**
-
-- **Solution**: Check that the lens has non-zero curvatures and valid refractive index
-
-**No focal point found for converging lens**
-
-- **Solution**: This may indicate high spherical aberration or the focal point
-  is outside the simulation bounds
-
-**Visualization is cluttered**
-
-- **Solution**: Reduce the number of rays to 5-10 for clearer paths
-
-Technical Details
-^^^^^^^^^^^^^^^^^
-
-Ray Tracing Algorithm
-"""""""""""""""""""""
-
-- Uses geometric ray tracing with Snell's law
-- Calculates surface normals from lens curvatures
-- Propagates rays through air → glass → air transitions
-- Detects ray-surface intersections analytically
-- Handles total internal reflection
-
-Performance
-"""""""""""
-
-- Typical simulation: <100ms for 20 rays
-- Real-time updates in GUI
-- Scales linearly with number of rays
-
-Coordinate System
-"""""""""""""""""
-
-- X-axis: Optical axis (position along light path)
-- Y-axis: Height above optical axis
-- Origin: Typically at lens center
-- Units: millimeters (mm)
+- :doc:`scientific/optics` - sign conventions, surface sag, lens equations.
+- :doc:`scientific/image_quality` - aberrations, PSF, MTF, Strehl.
+- :doc:`scientific/thermal_mechanical` - thermal scaling, mounts, housings.
+- :doc:`api/index` - Python API reference.

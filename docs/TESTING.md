@@ -1,172 +1,57 @@
-# OpenLens Testing Guide
+# OpenLens Testing
 
-> **Note**: This content has been migrated to Sphinx documentation.
-> For the most up-to-date version, please see the Testing section in
-> `docs/sphinx/source/contributing.rst` or build the Sphinx documentation
-> with `cd docs/sphinx && make html`.
+> **The authoritative guide is the Testing section of
+> [`docs/sphinx/source/contributing.rst`](sphinx/source/contributing.rst).**
+> This file is kept for links to `docs/TESTING.md`.
 
-This document describes the functional tests for the OpenLens application.
+## Install test dependencies
 
-## Test Files
+```bash
+pip install -e .[dev]
+```
 
-- **test_lens_editor.py** - Core functionality tests for the Lens class and LensManager
-- **test_gui.py** - GUI functionality tests for the graphical editor
-- `python3 -m unittest discover -s tests -t .` runs the full suite
+`pytest-qt` from the dev extra is required for the GUI flow tests.
 
-## Running Tests
+## Run the unit suite
 
-### Run All Tests
 ```bash
 python3 -m unittest discover -s tests -t .
 ```
 
-### Run Only Core Tests
+Slow Monte Carlo, end-to-end, and functional-optimizer suites can be skipped:
+
 ```bash
-python3 test_lens_editor.py
+OPENLENS_SKIP_SLOW=1 python3 -m unittest discover -s tests -t .
 ```
 
-### Run Only GUI Tests
+## Run a single module or test
+
 ```bash
-python3 test_gui.py
+python3 -m unittest tests.test_validation
+python3 -m unittest tests.test_validation.TestRadiusValidation.test_valid_radius_returns_float
 ```
 
-## Test Coverage
+## Run with pytest
 
-### Core Functionality Tests (24 tests)
-
-#### TestLens (9 tests)
-- ✓ Lens creation with default parameters
-- ✓ Lens creation with custom parameters
-- ✓ Lens serialization to dictionary
-- ✓ Lens deserialization from dictionary
-- ✓ Focal length calculation for biconvex lens
-- ✓ Focal length calculation for plano-convex lens
-- ✓ Focal length with zero radius (edge case)
-- ✓ Focal length with no optical power (edge case)
-- ✓ String representation formatting
-
-#### TestLensManager (6 tests)
-- ✓ Manager initialization
-- ✓ Saving lenses to file
-- ✓ Loading lenses from file
-- ✓ Loading from non-existent file (error handling)
-- ✓ Loading from corrupt JSON file (error handling)
-- ✓ Getting lens by index with boundary checks
-- ✓ Multiple lenses persistence
-
-#### TestLensCalculations (4 tests)
-- ✓ Symmetric biconvex focal length calculation
-- ✓ High refractive index material calculation
-- ✓ Converging lens positive focal length
-- ✓ Different front and back curvatures
-
-#### TestDataIntegrity (5 tests)
-- ✓ Unique lens ID generation
-- ✓ Valid ISO timestamp format
-- ✓ Extreme value handling
-- ✓ Complete JSON serialization
-- ✓ Deserialization with missing fields
-
-### GUI Functionality Tests (17 tests)
-
-#### TestGUILensEditor (14 tests)
-- ✓ GUI initialization
-- ✓ Form variable creation
-- ✓ Default value assignment
-- ✓ Form clearing functionality
-- ✓ Loading lens data to form
-- ✓ Saving new lens
-- ✓ Updating existing lens
-- ✓ Lens list refresh
-- ✓ Focal length calculation in GUI
-- ✓ Invalid input handling for calculations
-- ✓ Zero radius handling
-- ✓ Auto-update modified timestamp
-- ✓ Lens duplication
-- ✓ Status bar updates
-
-#### TestGUIDataPersistence (1 test)
-- ✓ Save and load through GUI
-
-#### TestGUIValidation (2 tests)
-- ✓ Invalid numeric input validation
-- ✓ Empty name default handling
-
-## Test Results
-
-**Total Tests: 41**
-- Core Tests: 24/24 ✓
-- GUI Tests: 17/17 ✓
-
-All tests passing! ✓✓✓
-
-## What's Being Tested
-
-### Lens Physics
-- Lensmaker's equation calculation accuracy
-- Optical power calculations
-- Different lens type behaviors (converging, diverging)
-- Material refractive index effects
-
-### Data Management
-- JSON serialization/deserialization
-- File persistence
-- Data integrity
-- Unique ID generation
-- Timestamp management
-
-### Error Handling
-- Invalid numeric inputs
-- Missing data files
-- Corrupt JSON files
-- Zero/infinite values
-- Boundary conditions
-
-### GUI Functionality
-- Widget initialization
-- Form operations (clear, load, save)
-- User input validation
-- Real-time calculations
-- Status updates
-- List management
-
-### Edge Cases
-- Extreme parameter values
-- Missing fields in data
-- Zero radius of curvature
-- Flat surfaces (plano lenses)
-- High refractive index materials
-
-## Continuous Testing
-
-These tests should be run:
-1. After any code changes
-2. Before committing to version control
-3. As part of deployment verification
-4. When adding new features
-
-## Adding New Tests
-
-To add new tests, follow this pattern:
-
-```python
-class TestNewFeature(unittest.TestCase):
-    def setUp(self):
-        """Set up test fixtures"""
-        # Initialize test data
-        pass
-
-    def tearDown(self):
-        """Clean up after tests"""
-        # Remove temporary files
-        pass
-
-    def test_feature_behavior(self):
-        """Test description"""
-        # Arrange
-        # Act
-        # Assert
-        pass
+```bash
+pytest tests/
+pytest tests/test_validation.py
+pytest -n auto tests/          # requires pytest-xdist
 ```
 
-Then add the test class to the appropriate test file's test suite.
+## GUI flow tests
+
+```bash
+QT_QPA_PLATFORM=offscreen pytest tests/gui_flows -q
+```
+
+Tests redirect application data into a temporary per-run directory through
+`tests/__init__.py`, so they do not touch the user's SQLite library.
+
+## Before opening a pull request
+
+```bash
+black --line-length=100 --check openlens/ tests/
+flake8 openlens/ tests/
+python3 -m unittest discover -s tests -t .
+```

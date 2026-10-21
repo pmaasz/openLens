@@ -1,7 +1,8 @@
 Getting Started
 ===============
 
-This guide will help you get started with OpenLens, an interactive optical lens design and simulation tool.
+This guide installs OpenLens, starts the desktop application, and runs a first
+lens through the Python API.
 
 Installation
 ------------
@@ -9,60 +10,58 @@ Installation
 From Source
 ^^^^^^^^^^^
 
-Clone the repository and install:
+.. code-block:: bash
+
+   git clone https://github.com/pmaasz/openLens.git
+   cd openLens
+   pip install -e .
+
+For plotting, optimization, and the full development toolset:
 
 .. code-block:: bash
 
-    git clone https://github.com/yourusername/openLens.git
-    cd openLens
-    pip install -e .
-
-For development with all dependencies:
-
-.. code-block:: bash
-
-    pip install -e .[dev]
+   pip install -e .[visualization]
+   pip install -e .[dev]
 
 Requirements
 ^^^^^^^^^^^^
 
-- Python 3.10 or higher (CI tests 3.10-3.12)
-- tkinter (usually included with Python)
+- Python 3.10 or newer (CI tests 3.10, 3.11, and 3.12).
+- PySide6 for the desktop application.
+- numpy and matplotlib are strongly recommended for ray-tracing plots,
+  spot/PSF/MTF analysis, and optimization.
+- scipy and Pillow enable advanced diffraction and image-simulation features.
 
-Optional dependencies for advanced features:
-
-- matplotlib - Enhanced visualization
-- numpy - Numerical computations
-- scipy - Advanced optical calculations
-- Pillow - Image export
+The optional packages are guarded: the core model and command-line interface
+still start without them.
 
 Quick Start
 -----------
 
-Running the GUI Application
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Launch the graphical interface:
+Desktop Application
+^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
-    python3 -m openlens
+   python3 -m openlens
 
-This opens the main OpenLens window where you can:
+The main window opens on the **Lens Selection** tab. Select a library lens or
+create one, then use the **Lens Editor**, **Simulation**, **Performance**,
+**Optimization**, and **Tolerancing** tabs.
 
-- Design lens parameters interactively
-- Run ray tracing simulations
-- Analyze aberrations
-- Export lens designs
-
-Running the CLI Application
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-For command-line usage:
+Command-Line Application
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
-    python3 -m openlens.lens_editor
+   python3 -m openlens.lens_editor
+
+The installed console scripts are equivalent:
+
+.. code-block:: bash
+
+   openlens          # desktop GUI
+   openlens-cli      # command-line editor
 
 Basic Usage Example
 -------------------
@@ -72,55 +71,114 @@ Creating a Lens Programmatically
 
 .. code-block:: python
 
-    from openlens.lens import Lens
+   from openlens.lens import Lens
 
-    # Create a biconvex lens
-    lens = Lens(
-        radius_1=50.0,      # First surface radius (mm)
-        radius_2=-50.0,     # Second surface radius (mm)
-        thickness=10.0,     # Center thickness (mm)
-        diameter=25.0,      # Lens diameter (mm)
-        n=1.5168           # Refractive index (BK7 glass)
-    )
+   lens = Lens(
+       name="Biconvex demo",
+       radius_of_curvature_1=50.0,   # mm, centre to the right
+       radius_of_curvature_2=-50.0,  # mm, centre to the left
+       thickness=10.0,               # centre thickness, mm
+       diameter=25.0,                # mechanical diameter, mm
+       material="BK7",
+   )
 
-    # Calculate optical properties
-    focal_length = lens.calculate_focal_length()
-    print(f"Focal length: {focal_length:.2f} mm")
+   print(f"EFL: {lens.calculate_focal_length():.2f} mm")
+   print(f"BFL: {lens.calculate_back_focal_length():.2f} mm")
+   print(f"Working flange: {lens.calculate_working_flange_distance():.2f} mm")
+
+The constructor resolves the stored refractive index from the material defaults.
+Use :meth:`Lens.for_material` when the index should be read from the full glass
+catalog, or pass ``refractive_index`` explicitly for a model glass.
 
 Ray Tracing
 ^^^^^^^^^^^
 
 .. code-block:: python
 
-    from openlens.ray_tracer import LensRayTracer
+   from openlens.lens import Lens
+   from openlens.ray_tracer import LensRayTracer
 
-    # Create ray tracer for the lens
-    tracer = LensRayTracer(lens)
+   lens = Lens(radius_of_curvature_1=50.0, radius_of_curvature_2=-50.0,
+               thickness=5.0, diameter=25.0)
+   tracer = LensRayTracer(lens)
 
-    # Trace parallel rays
-    rays = tracer.trace_parallel_rays(num_rays=11)
+   rays = tracer.trace_parallel_rays(num_rays=11)
+   focus = tracer.find_focal_point(rays)
 
-    # Access ray data
-    for ray in rays:
-        print(f"Ray at height {ray['start_y']:.2f} focuses at {ray['focus_x']:.2f}")
+   print(f"Traced {len(rays)} rays")
+   print(f"Paraxial focus: {focus}")
 
-Aberration Analysis
-^^^^^^^^^^^^^^^^^^^
+Each returned ``Ray`` carries its final position, direction, path points, and
+termination state. The 3-D tracer is available as ``LensRayTracer3D``.
+
+Aberration and Image-Quality Analysis
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: python
 
-    from openlens.aberrations import AberrationsCalculator
+   from openlens.aberrations import AberrationsCalculator
+   from openlens.performance_metrics import PerformanceMetrics
 
-    # Calculate aberrations
-    calc = AberrationsCalculator(lens)
-    aberrations = calc.calculate_all()
+   calc = AberrationsCalculator(lens)
+   aberrations = calc.calculate_all_aberrations(field_angle_deg=5.0)
 
-    print(f"Spherical aberration: {aberrations['spherical']:.4f}")
-    print(f"Chromatic aberration: {aberrations['chromatic']:.4f}")
+   print(f"Spherical: {aberrations['spherical']:.4f} mm")
+   print(f"Coma: {aberrations['coma']}")
+   print(f"Strehl: {aberrations['strehl']:.3f}")
+
+   report = PerformanceMetrics(lens).format_metrics_report()
+   print(report)
+
+A failed trace can leave a field-dependent value as ``None``. That is
+deliberate: it means “not measurable”, not “zero aberration”.
+
+Optical Systems
+^^^^^^^^^^^^^^^
+
+.. code-block:: python
+
+   from openlens.lens import Lens
+   from openlens.optical_system import OpticalSystem
+
+   crown = Lens.for_material(
+       "BK7", radius_of_curvature_1=50.0, radius_of_curvature_2=-50.0,
+       thickness=5.0, diameter=25.0,
+   )
+   flint = Lens.for_material(
+       "F2", radius_of_curvature_1=-50.0, radius_of_curvature_2=-200.0,
+       thickness=3.0, diameter=25.0,
+   )
+
+   system = OpticalSystem(name="Two-element demo")
+   system.add_lens(crown)
+   system.add_lens(flint, air_gap_before=0.5)
+
+   print(f"System EFL: {system.get_system_focal_length():.2f} mm")
+   print(f"System BFL: {system.calculate_back_focal_length():.2f} mm")
+
+Use ``add_lens`` with the desired air gap, then ``set_aperture_stop`` to place a
+stop in one of the gaps. Assemblies can also be loaded from the SQLite library
+or from a JSON export.
+
+Testing the Installation
+------------------------
+
+.. code-block:: bash
+
+   # Full unit suite
+   python3 -m unittest discover -s tests -t .
+
+   # One module
+   python3 -m unittest tests.test_lens
+
+   # GUI flow tests (pytest-qt from the dev extra)
+   QT_QPA_PLATFORM=offscreen pytest tests/gui_flows -q
 
 Next Steps
 ----------
 
-- Read the :doc:`user_guide` for detailed feature documentation
-- Explore the :doc:`api/index` for programmatic usage
-- See :doc:`contributing` to contribute to the project
+- Read the :doc:`user_guide` for the GUI workflows and export options.
+- Read the :doc:`scientific/index` section for the optical equations and
+  metric definitions.
+- Explore the :doc:`api/index` for module and class reference.
+- See :doc:`contributing` for development setup, tests, and review process.
