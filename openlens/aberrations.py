@@ -73,12 +73,19 @@ class AberrationsCalculator:
     Additionally calculates chromatic aberration when Abbe number is available.
     """
 
-    def __init__(self, target: Any) -> None:
+    def __init__(self, target: Any, entrance_pupil_mm: Optional[float] = None) -> None:
         """
         Initialize calculator with a lens or an optical system.
 
         Args:
             target: Lens object or OpticalSystem object.
+            entrance_pupil_mm: Diameter of the aperture to evaluate the design
+                at, in mm. Defaults to the target's own clear aperture. A
+                value wider than the physical aperture is clamped to it - the
+                glass cannot pass more light - and a non-positive or
+                non-finite value raises ``ValueError``. Every aperture-derived
+                metric (f-number, NA, Airy disk, the marginal-ray traces and
+                the reported ``entrance_pupil``) uses the effective diameter.
         """
         self.target = target
         # Check if target is an OpticalSystem (has elements)
@@ -96,6 +103,11 @@ class AberrationsCalculator:
             self.radius_2 = target.radius_of_curvature_2
             self.thickness = target.thickness
             self.diameter = target.diameter
+        # The physical clear aperture, before any requested stop-down. Kept so
+        # a requested pupil can be clamped and reported honestly.
+        self.physical_diameter = self.diameter
+        if entrance_pupil_mm is not None:
+            self.diameter = self._effective_pupil(entrance_pupil_mm)
         # Cache of wavefront Strehl results keyed on the live optical state.
         # A 32x32 pupil trace costs ~0.3 s; repeated evaluations of an
         # unchanged lens/system (GUI refreshes, optimizer bookkeeping,
@@ -110,6 +122,28 @@ class AberrationsCalculator:
         # second, and repeated evaluations of unchanged optics are the norm
         # (GUI refreshes, optimizer bookkeeping, timing loops).
         self._field_cache: Dict[tuple, Any] = {}
+
+    def _effective_pupil(self, entrance_pupil_mm: float) -> float:
+        """Clamp a requested entrance pupil to the physical clear aperture.
+
+        Raises:
+            ValueError: If the value is not a positive finite diameter. A
+                silent fallback would make the value the caller set
+                meaningless, which is the bug this parameter exists to fix.
+        """
+        try:
+            pupil = float(entrance_pupil_mm)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"entrance pupil must be a positive diameter in mm, got {entrance_pupil_mm!r}"
+            ) from None
+        if not math.isfinite(pupil) or pupil <= 0:
+            raise ValueError(
+                f"entrance pupil must be a positive diameter in mm, got {entrance_pupil_mm!r}"
+            )
+        if self.physical_diameter and self.physical_diameter > 0:
+            return min(pupil, float(self.physical_diameter))
+        return pupil
 
     def calculate_all_aberrations(
         self,
@@ -179,6 +213,7 @@ class AberrationsCalculator:
         if focal_length is None:
             return {
                 "focal_length": None,
+                "entrance_pupil": self.diameter,
                 "f_number": 0.0,
                 "spherical": 0.0,
                 "spherical_aberration": 0.0,
@@ -234,6 +269,7 @@ class AberrationsCalculator:
                 }
             return {
                 "focal_length": focal_length,
+                "entrance_pupil": self.diameter,
                 "numerical_aperture": na,
                 "f_number": f_number,
                 "spherical": spherical,
@@ -275,6 +311,7 @@ class AberrationsCalculator:
             coma_val, astig_val = singlet_field
         return {
             "focal_length": focal_length,
+            "entrance_pupil": self.diameter,
             "numerical_aperture": na,
             "f_number": f_number,
             "spherical": spherical,

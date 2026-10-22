@@ -153,6 +153,10 @@ class PerformanceTab(BaseTab):
         self._perf_entrance_pupil.setValue(10.0)
         self._perf_entrance_pupil.setSuffix(" mm")
         self._perf_entrance_pupil.setFixedWidth(100)
+        self._perf_entrance_pupil.setToolTip(
+            "Aperture the metrics are evaluated at, in mm. Values wider than "
+            "the first element's clear aperture are clamped to it."
+        )
         params_layout.addRow("Entrance Pupil:", self._perf_entrance_pupil)
 
         self._perf_wavelength = QComboBox()
@@ -168,13 +172,6 @@ class PerformanceTab(BaseTab):
         )
         self._perf_wavelength.setFixedWidth(140)
         params_layout.addRow("Wavelength:", self._perf_wavelength)
-
-        self._perf_object_distance = QDoubleSpinBox()
-        self._perf_object_distance.setRange(1, 10000)
-        self._perf_object_distance.setValue(1000)
-        self._perf_object_distance.setSuffix(" mm")
-        self._perf_object_distance.setFixedWidth(100)
-        params_layout.addRow("Object Distance:", self._perf_object_distance)
 
         self._perf_sensor_size = QDoubleSpinBox()
         self._perf_sensor_size.setRange(1, 100)
@@ -350,7 +347,6 @@ class PerformanceTab(BaseTab):
         # Read the UI on the GUI thread; the worker must not touch widgets.
         wavelength = self._selected_wavelength()
         entrance_pupil = self._perf_entrance_pupil.value()
-        object_distance = self._perf_object_distance.value()
         sensor_size = self._perf_sensor_size.value()
         system = self._wrap_in_system(active_system)
 
@@ -361,7 +357,10 @@ class PerformanceTab(BaseTab):
             # Fingerprint before measuring: it must describe the design the
             # report describes, not whatever the editor holds by the end.
             stamp = metrics_fingerprint(active_system)
-            calculator = AberrationsCalculator(system)
+            # The pupil the report shows must be the one the calculator
+            # evaluates. It was read, printed, and dropped: every value
+            # produced the same f-number.
+            calculator = AberrationsCalculator(system, entrance_pupil_mm=entrance_pupil)
 
             # Get optical properties
             if hasattr(system, "get_system_focal_length"):
@@ -452,12 +451,12 @@ Type: {"Assembly" if isinstance(active_system, OpticalSystem) else "Single Lens"
 Focal Length: {f"{fl:.2f} mm" if fl else "Infinite"}
 Optical Power: {f"{power:.4f} D" if power else "N/A"}
 Back Focal Length: {f"{bfl:.2f} mm" if bfl else "N/A"}
-{mount_line}Entrance Pupil: {entrance_pupil:.2f} mm
+{mount_line}Entrance Pupil: {results.get('entrance_pupil', entrance_pupil):.2f} mm
 f-number (f/#): {results.get('f_number', 0):.2f}
 {chromatic_text}
 --- Calculation Parameters ---
 Wavelength: {wavelength} nm
-Object Distance: {object_distance} mm
+Object Distance: infinity (collimated; finite conjugates are not modelled)
 Max Field Angle: {field_angle:.2f} deg (derived from {sensor_size}mm sensor)
 
 --- Primary Aberrations ---
