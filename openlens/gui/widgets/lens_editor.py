@@ -974,6 +974,11 @@ class LensEditorWidget(QWidget):
         self._update_calculated()
         if self._viz_widget:
             self._viz_widget.update_lens(self._lens)
+        # lens_modified is the signal the window connects to the debounced
+        # save. Emitting only lens_updated - which nothing in the repository
+        # connects to - left the custom index in the in-memory model only, and
+        # the edit was lost when the window closed.
+        self.lens_modified.emit(self._lens)
         self.lens_updated.emit()
 
     @_undoable_edit
