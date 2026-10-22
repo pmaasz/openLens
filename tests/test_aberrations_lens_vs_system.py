@@ -90,5 +90,70 @@ class TestLensAndSystemAgree(unittest.TestCase):
         )
 
 
+class TestTracedFieldMetricsCache(unittest.TestCase):
+    """The traced metrics are cached, and the cache follows the optics.
+
+    Tracing the field metrics put ~5 ms on every calculate_all_aberrations()
+    call, which broke the "100 calls per second" performance budget. Caching
+    is only safe if an edit to the optics invalidates it, so both halves are
+    pinned here.
+    """
+
+    def setUp(self):
+        self.lens = _lens()
+        self.calc = AberrationsCalculator(self.lens)
+
+    def _counting_field_trace(self):
+        """Patch the field-curvature trace and count how often it runs."""
+        from unittest import mock
+
+        from openlens.analysis.geometric import GeometricTraceAnalysis
+
+        calls = []
+        original = GeometricTraceAnalysis.calculate_field_curvature_distortion
+
+        def counting(analysis_self, *args, **kwargs):
+            calls.append(1)
+            return original(analysis_self, *args, **kwargs)
+
+        return (
+            mock.patch.object(
+                GeometricTraceAnalysis,
+                "calculate_field_curvature_distortion",
+                counting,
+            ),
+            calls,
+        )
+
+    def test_unchanged_optics_reuse_the_trace(self):
+        """A repeated evaluation must not trace again."""
+        patcher, calls = self._counting_field_trace()
+        with patcher:
+            self.calc.calculate_all_aberrations()
+            traced_once = len(calls)
+            self.assertGreater(traced_once, 0, "the first call should trace")
+
+            self.calc.calculate_all_aberrations()
+
+        self.assertEqual(len(calls), traced_once, "unchanged optics traced again")
+
+    def test_an_optical_edit_invalidates_the_cache(self):
+        """Changing the glass geometry must be measured, not remembered."""
+        patcher, calls = self._counting_field_trace()
+        with patcher:
+            before = self.calc.calculate_all_aberrations()
+            traced_once = len(calls)
+
+            self.lens.thickness = 8.0
+            after = self.calc.calculate_all_aberrations()
+
+        self.assertGreater(len(calls), traced_once, "an optical edit reused the trace")
+        self.assertNotEqual(
+            before["field_curvature"],
+            after["field_curvature"],
+            "the cached field curvature survived a geometry change",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

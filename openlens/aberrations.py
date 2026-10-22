@@ -102,6 +102,14 @@ class AberrationsCalculator:
         # timing loops) reuse the cached value. The key contains every
         # parameter the trace depends on, so mutated optics recompute.
         self._strehl_cache: Dict[tuple, Tuple[float, float]] = {}
+        # Cache of traced field results (the curvature/distortion metrics and
+        # the coma/astigmatism estimators), keyed on the live optical state.
+        # Since #604 the singlet path measures the same trace as the system
+        # path, which put three ray traces on every call to
+        # calculate_all_aberrations(); the performance budget is 100 calls per
+        # second, and repeated evaluations of unchanged optics are the norm
+        # (GUI refreshes, optimizer bookkeeping, timing loops).
+        self._field_cache: Dict[tuple, Any] = {}
 
     def calculate_all_aberrations(
         self,
@@ -252,7 +260,7 @@ class AberrationsCalculator:
         # hundred-fold different value, and a GUI label that only fitted the
         # analytic one.
         field_data = self._calculate_field_metrics_system(
-            field_angle_deg, wavelength_nm=wavelength_nm, system=self._single_element_system()
+            field_angle_deg, wavelength_nm=wavelength_nm
         )
         if field_data is None:
             field_curvature, distortion = None, None
@@ -359,24 +367,24 @@ class AberrationsCalculator:
         self,
         field_angle: float,
         wavelength_nm: float = WAVELENGTH_GREEN,
-        system: Optional[Any] = None,
     ) -> Dict[str, float]:
         """Calculate field-dependent aberrations for an optical system using real ray tracing
 
         Args:
             field_angle: Field angle in degrees.
             wavelength_nm: Traced wavelength in nm.
-            system: The system to trace. Defaults to the calculator's own
-                target; a single lens is wrapped in a one-element system, so
-                both paths measure the same thing.
 
         Returns:
             The traced field metrics, or None when the trace failed.
         """
+        cached = self._field_cache_get("metrics", field_angle, wavelength_nm)
+        if cached is not None:
+            # A copy, so a caller editing the dict cannot poison the cache.
+            return dict(cached)
         try:
             from .analysis.geometric import GeometricTraceAnalysis
 
-            analysis = GeometricTraceAnalysis(system if system is not None else self.target)
+            analysis = GeometricTraceAnalysis(self._single_element_system())
 
             # 1. Field Curvature and Distortion
             # Sample out to the requested field. The magnitude is used:
@@ -404,7 +412,7 @@ class AberrationsCalculator:
             # singlet path (exact agreement by construction).
             coma_val, astig = self._calculate_field_estimators(field_angle, wavelength_nm)
 
-            return {
+            metrics = {
                 "field_curvature": field_curv,
                 "distortion": dist,
                 "astigmatism": astig,
@@ -413,6 +421,11 @@ class AberrationsCalculator:
         except Exception as e:
             logger.warning("Field metrics computation failed at %.1f deg: %s", field_angle, e)
             return None
+        # A failed trace is not cached: it is an error worth retrying, and
+        # None is also _field_cache_get()'s "miss" marker.
+        if coma_val is not None and astig is not None:
+            self._field_cache_put("metrics", field_angle, wavelength_nm, metrics)
+        return dict(metrics)
 
     def _calculate_field_estimators(
         self, field_angle_deg: float, wavelength_nm: float = WAVELENGTH_GREEN
@@ -438,6 +451,9 @@ class AberrationsCalculator:
             geometries whose trace failed. The 2D tracer returns MISSED rather
             than raising, so these paths were reached in practice.
         """
+        cached = self._field_cache_get("estimators", field_angle_deg, wavelength_nm)
+        if cached is not None:
+            return cached
         try:
             # Economical sampling shared verbatim with the system path, so
             # singlets and systems agree exactly for identical optics.
@@ -455,10 +471,11 @@ class AberrationsCalculator:
                 wavelength_nm=wavelength_nm,
             )
             astigmatism = abs(tan[-1] - sag[-1]) if tan and sag else 0.0
-            return coma, astigmatism
         except Exception as e:
             logger.warning("Field estimators ray trace failed: %s", e)
             return None
+        self._field_cache_put("estimators", field_angle_deg, wavelength_nm, (coma, astigmatism))
+        return coma, astigmatism
 
     def _calculate_coma(
         self,
@@ -671,13 +688,60 @@ class AberrationsCalculator:
             self._strehl_cache[key] = result
         return result
 
-    #: Lens fields that do not affect the pupil trace. Excluded from the Strehl
+    #: Cap on the traced-field cache (metrics and estimators share it).
+    _FIELD_CACHE_MAX = 16
+
+    #: Lens fields that do not affect the pupil trace. Excluded from the trace
     #: cache key so renaming a lens, reloading it from the database (a new id)
     #: or editing its free-form metadata does not throw the cache away.
     _STREHL_NON_OPTICAL_FIELDS = frozenset({"id", "name", "created_at", "modified_at", "metadata"})
 
+    def _field_cache_get(self, kind: str, field_angle: float, wavelength_nm: float) -> Any:
+        """Cached traced-field result, or None when it must be recomputed."""
+        key = self._field_state_key(kind, field_angle, wavelength_nm)
+        if key is None:
+            return None
+        return self._field_cache.get(key)
+
+    def _field_cache_put(
+        self, kind: str, field_angle: float, wavelength_nm: float, value: Any
+    ) -> None:
+        """Store a traced-field result, dropping the oldest when full."""
+        key = self._field_state_key(kind, field_angle, wavelength_nm)
+        if key is None:
+            return
+        if len(self._field_cache) >= self._FIELD_CACHE_MAX:
+            # Bounded FIFO, as the Strehl cache does: the working set is one
+            # entry per visible field angle.
+            self._field_cache.pop(next(iter(self._field_cache)))
+        self._field_cache[key] = value
+
+    def _field_state_key(
+        self, kind: str, field_angle: float, wavelength_nm: float
+    ) -> Optional[tuple]:
+        """Cache key for a traced field result.
+
+        ``kind`` separates the result shapes that share one optical state
+        (the metrics dict and the estimator tuple) so they cannot collide.
+        """
+        state = self._trace_state_key(wavelength_nm)
+        if state is None:
+            return None
+        return (kind, round(float(field_angle), 9)) + state
+
     def _strehl_state_key(self, wavelength_nm: float, grid_size: int) -> Optional[tuple]:
         """Hashable snapshot of everything the pupil trace depends on.
+
+        The optical state plus the pupil grid: the grid size is a property of
+        this trace, not of the optics.
+        """
+        state = self._trace_state_key(wavelength_nm)
+        if state is None:
+            return None
+        return state + (grid_size,)
+
+    def _trace_state_key(self, wavelength_nm: float) -> Optional[tuple]:
+        """Hashable snapshot of everything a ray trace depends on.
 
         Built from the serialized lens state rather than a hand-picked list of
         attributes. The list was the defect: it named radii, thickness,
@@ -731,13 +795,11 @@ class AberrationsCalculator:
                     stop,
                     _r(stop_diameter) if stop_diameter is not None else None,
                     _r(wavelength_nm),
-                    grid_size,
                 )
             return (
                 "lens",
                 _lens_state(self.lens),
                 _r(wavelength_nm),
-                grid_size,
             )
         except (AttributeError, TypeError, ValueError) as e:
             # The cache is an optimisation: a lens that cannot be
