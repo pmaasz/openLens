@@ -160,14 +160,48 @@ def _undoable_edit(method):
     return wrapper
 
 
+def _material_catalog():
+    """Return the glass database, or None when it cannot be loaded."""
+    try:
+        from ...material_database import get_material_database
+
+        return get_material_database()
+    except (ImportError, OSError, ValueError, KeyError, TypeError) as e:
+        logger.debug("Glass catalog unavailable: %s", e, exc_info=True)
+        return None
+
+
+def _canonical_material_name(material: str) -> str:
+    """Resolve a catalog alias ("Fused Silica") to its catalog name.
+
+    The static table uses display names while the catalog uses keys such as
+    "FUSEDSILICA". Loading an older lens with a display name must show the
+    catalog entry, not fall through to Custom, so the same alias resolution
+    the rest of the application uses is applied here. Unknown names are
+    returned unchanged for load_lens() to display as Custom.
+    """
+    if not material:
+        return material
+    database = _material_catalog()
+    if database is None:
+        return material
+    try:
+        match = database.get_material(material)
+    except (OSError, ValueError, KeyError, TypeError):
+        return material
+    return match.name if match is not None else material
+
+
 def _materials_with_indices():
     """Catalogued materials with their reference index, plus Custom.
 
-    Indices come from the glass database when it is available, falling back to
-    the static per-material defaults. The editor carried its own hard-coded dict
-    with different numbers for the same glasses - 1.4580 for Fused Silica here
-    against 1.4585 in constants - so the editor and the rest of the application
-    could disagree about what a material is.
+    The names and indices come from the glass database. The static
+    per-material defaults are only a fallback for when the catalog cannot be
+    read: the editor once carried its own hard-coded dict with different
+    numbers for the same glasses - 1.4580 for Fused Silica here against
+    1.4585 in constants - so the editor and the rest of the application could
+    disagree about what a material is. The catalog's own names are used, and
+    load_lens() resolves the static display aliases to them.
 
     Returns:
         List of ``(name, index)`` pairs. "Custom" carries ``None``: its index is
@@ -175,20 +209,23 @@ def _materials_with_indices():
     """
     from ...constants import DEFAULT_MATERIAL_INDICES, WAVELENGTH_D_LINE
 
-    indices = dict(DEFAULT_MATERIAL_INDICES)
-    try:
-        from ...material_database import MATERIAL_DB_AVAILABLE, get_material_database
+    pairs = None
+    database = _material_catalog()
+    if database is not None:
+        # list_materials() returns names, not records. Reading it as a list
+        # of dicts silently added nothing even once the import was fixed.
+        try:
+            pairs = [
+                (name, database.get_refractive_index(name, WAVELENGTH_D_LINE))
+                for name in database.list_materials()
+                if name
+            ]
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            logger.warning("Glass catalog could not be read (%s); using static indices", e)
 
-        if MATERIAL_DB_AVAILABLE:
-            db = get_material_database()
-            for entry in db.list_materials():
-                name = entry.get("name") if isinstance(entry, dict) else None
-                if name:
-                    indices[name] = db.get_refractive_index(name, WAVELENGTH_D_LINE)
-    except Exception:  # pragma: no cover - the catalog is optional
-        logger.debug("Glass catalog unavailable; using static indices", exc_info=True)
+    if pairs is None:
+        pairs = [(name, index) for name, index in DEFAULT_MATERIAL_INDICES.items()]
 
-    pairs = [(name, index) for name, index in indices.items()]
     pairs.append((CUSTOM_MATERIAL, None))
     return pairs
 
@@ -1303,7 +1340,7 @@ class LensEditorWidget(QWidget):
         # The combo's signals are blocked so the handler does not overwrite the
         # model with the combo's previous selection mid-load.
         loaded_index = lens.refractive_index
-        loaded_material = lens.material or CUSTOM_MATERIAL
+        loaded_material = _canonical_material_name(lens.material or CUSTOM_MATERIAL)
         known = [self._material_combo.itemText(i) for i in range(self._material_combo.count())]
         if loaded_material not in known:
             # setCurrentText on a non-editable combo is a no-op for a value
