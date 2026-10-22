@@ -165,18 +165,26 @@ class DesensitizationOptimizer(LensOptimizer):
         # Preserve constraints if they exist
         constraints = getattr(original_merit_function, "constraints", None)
 
-        self.merit_function = RobustMeritFunction(
-            self.system,
-            self.targets,
-            tolerances,
-            sensitivity_weight,
-            constraints=constraints,
+        # The merit cache is keyed by the variable values alone, so the swap
+        # has to drop it: otherwise every design the previous run saw is
+        # scored with the previous run's merit function, and the new
+        # sensitivity weight has no effect at all.
+        self._set_merit_function(
+            RobustMeritFunction(
+                self.system,
+                self.targets,
+                tolerances,
+                sensitivity_weight,
+                constraints=constraints,
+            )
         )
 
-        # Run simplex
-        result = self.optimize_simplex(max_iterations=max_iterations, callback=callback)
-
-        # Restore merit function
-        self.merit_function = original_merit_function
-
-        return result
+        try:
+            # Run simplex
+            return self.optimize_simplex(max_iterations=max_iterations, callback=callback)
+        finally:
+            # Restore the merit function - also when the run was cancelled
+            # (the GUI's callback raises), otherwise the next ordinary
+            # optimization on this instance silently uses the robust merit
+            # with the old tolerance list.
+            self._set_merit_function(original_merit_function)

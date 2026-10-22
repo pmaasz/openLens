@@ -84,5 +84,84 @@ class TestDesensitizationOptimizer(unittest.TestCase):
         self.assertLessEqual(r1, 120.001)
 
 
+class TestRobustRunState(unittest.TestCase):
+    """Each robust run must be independent of the one before it."""
+
+    def setUp(self):
+        self.system = OpticalSystem(name="desense")
+        self.system.add_lens(
+            Lens(
+                radius_of_curvature_1=70.0,
+                radius_of_curvature_2=-100.0,
+                thickness=5.0,
+                diameter=25.0,
+                refractive_index=1.5168,
+            )
+        )
+        self.variables = [
+            OptimizationVariable("R1", 0, "radius_of_curvature_1", 70.0, 60.0, 200.0, 5.0)
+        ]
+        self.targets = [OptimizationTarget("focal_length", 100.0, target_type="target")]
+        self.tolerances = [
+            ToleranceOperand(0, ToleranceType.RADIUS_1, -0.5, 0.5),
+            ToleranceOperand(0, ToleranceType.THICKNESS, -0.1, 0.1),
+        ]
+
+    def _optimizer(self):
+        return DesensitizationOptimizer(self.system, self.variables, self.targets)
+
+    def test_a_second_run_does_not_reuse_the_first_ones_merit(self):
+        """The merit cache is keyed by the design, not by the merit function"""
+        optimizer = self._optimizer()
+        first = optimizer.optimize_robust(
+            self.tolerances, sensitivity_weight=0.0, max_iterations=15
+        )
+        second = optimizer.optimize_robust(
+            self.tolerances, sensitivity_weight=200.0, max_iterations=15
+        )
+
+        self.assertNotEqual(
+            second.final_merit,
+            first.final_merit,
+            msg="the second run reused the first run's cached merit",
+        )
+
+    def test_a_second_run_matches_a_fresh_optimizer(self):
+        """The result must not depend on what the instance did before"""
+        reused = self._optimizer()
+        reused.optimize_robust(self.tolerances, sensitivity_weight=0.0, max_iterations=15)
+        after = reused.optimize_robust(self.tolerances, sensitivity_weight=200.0, max_iterations=15)
+
+        fresh = self._optimizer()
+        reference = fresh.optimize_robust(
+            self.tolerances, sensitivity_weight=200.0, max_iterations=15
+        )
+
+        self.assertAlmostEqual(after.final_merit, reference.final_merit, places=9)
+        self.assertAlmostEqual(
+            after.best_values[0] if after.best_values else 0.0,
+            reference.best_values[0] if reference.best_values else 0.0,
+            places=9,
+        )
+
+    def test_a_cancelled_run_restores_the_merit_function(self):
+        """A cancelled run must not leave the robust merit installed"""
+        optimizer = self._optimizer()
+        original = optimizer.merit_function
+
+        class Cancelled(Exception):
+            pass
+
+        def cancel(iteration, merit, values):
+            if iteration == 2:
+                raise Cancelled("user pressed Stop")
+
+        with self.assertRaises(Cancelled):
+            optimizer.optimize_robust(self.tolerances, max_iterations=10, callback=cancel)
+
+        self.assertIs(optimizer.merit_function, original)
+        self.assertNotIsInstance(optimizer.merit_function, RobustMeritFunction)
+
+
 if __name__ == "__main__":
     unittest.main()
