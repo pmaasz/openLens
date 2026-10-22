@@ -88,7 +88,9 @@ class MonteCarloWorker(QThread):
         """
         super().__init__(parent)
         self.current_lens = current_lens
-        self.tol_operands = tol_operands
+        # A copy: the worker must analyse the operands it was given, not
+        # whatever the table holds while it runs.
+        self.tol_operands = list(tol_operands)
         self.num_trials = num_trials
         self.criterion = criterion
         self.refocus = refocus
@@ -166,7 +168,9 @@ class InverseSensitivityWorker(QThread):
         """
         super().__init__(parent)
         self.current_lens = current_lens
-        self.tol_operands = tol_operands
+        # A copy: the worker must analyse the operands it was given, not
+        # whatever the table holds while it runs.
+        self.tol_operands = list(tol_operands)
         self.criterion = criterion
 
     def run(self) -> None:
@@ -660,7 +664,12 @@ class TolerancingTab(BaseTab):
 
         self._mc_worker = MonteCarloWorker(
             self._resolve_target(),
-            self._parent._tol_operands,
+            # A snapshot, not the window's live list: the analyzer iterates
+            # the operands once per trial, and the table is still editable
+            # while the run is in flight. Sharing the list let the user
+            # change the analysis' input from another thread - and adding
+            # rows made the run quadratic, so it never finished.
+            list(self._parent._tol_operands),
             self._tol_num_trials.value(),
             self._tol_criterion.value(),
             refocus=self._tol_refocus_check.isChecked(),
@@ -702,7 +711,9 @@ class TolerancingTab(BaseTab):
 
         self._inv_worker = InverseSensitivityWorker(
             self._resolve_target(),
-            self._parent._tol_operands,
+            # A snapshot, not the window's live list - see the Monte Carlo
+            # worker above.
+            list(self._parent._tol_operands),
             self._tol_criterion.value(),
             parent=self,
         )
