@@ -115,9 +115,9 @@ class TestMigratedContentSurvived(unittest.TestCase):
         self.assertIn("Telescopes", preset.typical_use)
 
     def test_optical_data_is_unchanged(self):
-        """Verbatim from the retired module."""
+        """Migrated from the retired module; Kellner rim corrected in #652."""
         expected = {
-            "Kellner Eyepiece": (15.0, -30.0, 4.0, 20.0),
+            "Kellner Eyepiece": (15.0, -30.0, 7.0, 20.0),
             "Telescope Objective": (200.0, -250.0, 10.0, 50.0),
             "Beam Expander Element": (-20.0, 40.0, 4.0, 25.4),
             "Edmund #45-166 (25mm PCX)": (25.8, None, 4.8, 25.0),
