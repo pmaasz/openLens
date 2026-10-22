@@ -60,7 +60,6 @@ class TestModelGlassCompanionIsSeeded(unittest.TestCase):
     def test_the_abbe_variable_keeps_the_index(self):
         """Optimising the Abbe number must not change the index"""
         system = _sf11_system()
-        lens = system.elements[0].lens
         optimizer = LensOptimizer(
             system,
             [OptimizationVariable("V", 0, "abbe_number", 25.68, 20.0, 80.0)],
