@@ -735,6 +735,15 @@ class Lens:
         # settings. Strip the ones to_dict emits so metadata holds only what
         # has no home on the model, instead of duplicating every attribute.
         blob = data.get("metadata") or {}
+        # A row written by an older version nested the model's metadata one
+        # level deeper ("metadata": {"metadata": {...}}). "metadata" is one
+        # of the model's own keys, so the nested copy was subtracted with the
+        # rest and the user's settings - the tolerance set - were dropped on
+        # the way back. Rescue it: the nested copy holds the real data.
+        nested = blob.get("metadata")
+        if isinstance(nested, dict):
+            blob = {k: v for k, v in blob.items() if k != "metadata"}
+            blob.update(nested)
         metadata = {k: v for k, v in blob.items() if k not in _LENS_SERIALIZED_KEYS}
 
         lens = cls(
