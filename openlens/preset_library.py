@@ -82,7 +82,9 @@ _CATALOG_PRESETS = (
         "description": "Popular eyepiece design with good field of view",
         "radius1": 15.0,
         "radius2": -30.0,
-        "thickness": 4.0,
+        # 4.0 mm left the rear surface in front of the front one at the
+        # 20 mm rim (edge -1.54 mm).  7.0 mm gives a 1.46 mm rim.
+        "thickness": 7.0,
         "diameter": 20.0,
         "material": "BK7",
         "applications": ["Telescopes", "Microscopes"],
@@ -282,7 +284,9 @@ class PresetLibrary:
                     radius_of_curvature_1=8.0,
                     radius_of_curvature_2=-12.0,
                     thickness=6.0,
-                    diameter=18.0,
+                    # D/2 was 9 mm against |R1| = 8 mm, so the surface did not
+                    # exist at the rim.  12 mm gives a 1.68 mm rim.
+                    diameter=12.0,
                     material="BK7",
                 ),
                 typical_use="Microscopy, 10x magnification",
@@ -299,7 +303,9 @@ class PresetLibrary:
                     name="Abbe Condenser",
                     radius_of_curvature_1=20.0,
                     radius_of_curvature_2=-20.0,
-                    thickness=12.0,
+                    # The 12 mm center left a -1.54 mm rim at 30 mm diameter.
+                    # 16 mm keeps the condenser aperture with a 2.46 mm rim.
+                    thickness=16.0,
                     diameter=30.0,
                     material="BK7",
                 ),
@@ -336,7 +342,9 @@ class PresetLibrary:
                     name="50mm Camera",
                     radius_of_curvature_1=45.0,
                     radius_of_curvature_2=-55.0,
-                    thickness=6.0,
+                    # 6 mm crossed at the 40 mm rim (edge -2.45 mm).
+                    # 10 mm gives a 1.55 mm rim and keeps f close to 50 mm.
+                    thickness=10.0,
                     diameter=40.0,
                     material="BK7",
                 ),
