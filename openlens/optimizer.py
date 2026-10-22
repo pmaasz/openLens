@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 
 from .constants import EPSILON, MIN_EDGE_THICKNESS, WAVELENGTH_GREEN
+from .lens import ensure_model_glass
 from .optical_system import OpticalSystem
 from .aberrations import AberrationsCalculator
 from .analysis import SpotDiagram
@@ -1026,12 +1027,18 @@ class LensOptimizer:
                 system.air_gaps[element_index].thickness = value
         elif parameter == "refractive_index":
             lens = system.elements[element_index].lens
-            lens.model_glass_mode = True
+            # Seed the model glass from the glass the lens actually is before
+            # changing either of its numbers. Switching to model-glass mode
+            # without seeding replaced the companion value with the model
+            # default (BK7's 1.5168 / 64.17), so optimising the index of an
+            # SF11 lens also changed its Abbe number - and optimising the
+            # Abbe number changed its index.
+            ensure_model_glass(lens)
             lens.model_nd = value
             lens.update_refractive_index()
         elif parameter == "abbe_number":
             lens = system.elements[element_index].lens
-            lens.model_glass_mode = True
+            ensure_model_glass(lens)
             lens.model_vd = value
             lens.update_refractive_index()
 

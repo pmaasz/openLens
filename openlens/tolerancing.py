@@ -429,19 +429,14 @@ def _apply_value(
 
 
 def _ensure_model_glass(lens) -> None:
-    """Switch a lens to model-glass mode, seeding nd/Vd from material."""
-    if lens.model_glass_mode:
-        return
-    lens.model_glass_mode = True
-    lens.model_nd = lens.refractive_index
-    try:
-        from .material_database import get_material_database
+    """Switch a lens to model-glass mode, seeding nd/Vd from material.
 
-        mat = get_material_database().get_material(lens.material)
-        if mat:
-            lens.model_vd = mat.vd
-    except Exception as e:
-        logger.debug("Material DB lookup for Vd failed: %s", e)
+    Thin wrapper kept for the callers in this module; the implementation
+    lives with the model, in :func:`openlens.lens.ensure_model_glass`.
+    """
+    from .lens import ensure_model_glass
+
+    ensure_model_glass(lens)
 
 
 class MonteCarloAnalyzer:
