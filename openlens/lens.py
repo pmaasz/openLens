@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 #: raise - they return defaults).
 _MATERIAL_DB_ERRORS = (ArithmeticError, ValueError, KeyError, sqlite3.Error)
 
+from .air_index import REFERENCE_PRESSURE_ATM, calculate_air_index
 from .constants import (
     DEFAULT_RADIUS_1,
     DEFAULT_RADIUS_2,
@@ -220,6 +221,7 @@ _LENS_SERIALIZED_KEYS = frozenset(
         "wavelength",
         "wavelength_nm",
         "temperature",
+        "pressure_atm",
         "is_fresnel",
         "groove_pitch",
         "num_grooves",
@@ -265,6 +267,7 @@ class Lens:
         wavelength_nm: float = WAVELENGTH_D_LINE,
         wavelength: Optional[float] = None,
         temperature: float = 20.0,
+        pressure_atm: float = REFERENCE_PRESSURE_ATM,
         is_fresnel: bool = False,
         groove_pitch: float = DEFAULT_THICKNESS,
         num_grooves: Optional[int] = None,
@@ -305,6 +308,11 @@ class Lens:
             wavelength if wavelength is not None else wavelength_nm
         )  # Design wavelength in nm
         self.temperature = temperature  # Operating temperature in °C
+        # Ambient pressure the lens is conditioned to. Catalog indices are
+        # relative to air at 1 atm; update_refractive_index() rescales them to
+        # this pressure so a refresh at an analysis wavelength cannot discard
+        # the correction. 1 atm is the unconditioned state.
+        self.pressure_atm = pressure_atm
 
         # Model Glass Properties
         self.model_glass_mode = model_glass_mode
@@ -569,17 +577,49 @@ class Lens:
 
         return coated_reflectance([], self._coating_substrate_index(wavelength_nm), wavelength_nm)
 
+    def _pressure_corrected_index(
+        self, relative_index: float, wavelength_nm: Optional[float] = None
+    ) -> float:
+        """Scale a 1-atm catalog index to the lens's ambient pressure.
+
+        Catalog and model indices are relative to air at 1 atm. A conditioned
+        lens keeps its absolute glass index while the surrounding air density
+        changes, so the relative index the tracer must use is
+        ``n_glass / n_air(T, P)``. The catalog value is
+        ``n_glass / n_air(T, 1 atm)``, hence this ratio.
+
+        Args:
+            relative_index: Index resolved at the reference pressure.
+            wavelength_nm: Wavelength the index belongs to; defaults to the
+                lens's design wavelength.
+        """
+        pressure = getattr(self, "pressure_atm", REFERENCE_PRESSURE_ATM)
+        if not math.isfinite(pressure) or abs(pressure - REFERENCE_PRESSURE_ATM) < EPSILON:
+            return relative_index
+        wavelength = self.wavelength if wavelength_nm is None else wavelength_nm
+        n_air_ref = calculate_air_index(wavelength, self.temperature, REFERENCE_PRESSURE_ATM)
+        n_air_now = calculate_air_index(wavelength, self.temperature, pressure)
+        if not math.isfinite(n_air_ref) or not math.isfinite(n_air_now) or n_air_now == 0:
+            return relative_index
+        return relative_index * (n_air_ref / n_air_now)
+
     def update_refractive_index(
         self, wavelength_nm: Optional[float] = None, temperature: Optional[float] = None
     ) -> None:
         """
         Update refractive index for new wavelength/temperature.
+
+        The value is resolved at the reference pressure and then scaled to
+        ``pressure_atm``. Analyses call this at their own wavelength; without
+        the rescale here they would overwrite a conditioned index and a
+        2 atm system would trace like 1 atm.
         """
         if wavelength_nm is not None:
             self.wavelength = wavelength_nm
         if temperature is not None:
             self.temperature = temperature
 
+        recomputed = False
         if self.model_glass_mode and MATERIAL_DB_AVAILABLE:
             try:
                 db = get_material_database()
@@ -593,6 +633,7 @@ class Lens:
                         self.model_nd,
                     )
                     self.refractive_index = self.model_nd
+                recomputed = True
             except _MATERIAL_DB_ERRORS as e:
                 logger.warning(
                     "Model-glass index update failed (wl=%snm): %s - " "keeping model index",
@@ -619,6 +660,7 @@ class Lens:
                 self.refractive_index = db.get_refractive_index(
                     self.material, self.wavelength, self.temperature
                 )
+                recomputed = True
             except _MATERIAL_DB_ERRORS as e:
                 logger.warning(
                     "Material index update failed for %s @ %snm/%sC: %s - "
@@ -629,6 +671,11 @@ class Lens:
                     e,
                     self.refractive_index,
                 )
+        # Only a freshly resolved reference-pressure value needs the air
+        # correction. The kept index on a failed lookup is already in the
+        # same state as the value it replaces.
+        if recomputed:
+            self.refractive_index = self._pressure_corrected_index(self.refractive_index)
 
     def refractive_index_at(self, wavelength_nm: float) -> float:
         """Return refractive index at *wavelength_nm* without mutating self."""
@@ -636,10 +683,13 @@ class Lens:
             try:
                 db = get_material_database()
                 if hasattr(db, "calculate_model_index"):
-                    return db.calculate_model_index(self.model_nd, self.model_vd, wavelength_nm)
+                    return self._pressure_corrected_index(
+                        db.calculate_model_index(self.model_nd, self.model_vd, wavelength_nm),
+                        wavelength_nm,
+                    )
             except _MATERIAL_DB_ERRORS as e:
                 logger.debug("Model index lookup failed: %s", e)
-            return self.model_nd
+            return self._pressure_corrected_index(self.model_nd, wavelength_nm)
         if MATERIAL_DB_AVAILABLE:
             try:
                 db = get_material_database()
@@ -649,7 +699,10 @@ class Lens:
                 # came back as 1.5168. The tracer uses the stored index, so the
                 # wavelength-dependent numbers and the geometry disagreed.
                 if db.has_material(self.material):
-                    return db.get_refractive_index(self.material, wavelength_nm, self.temperature)
+                    return self._pressure_corrected_index(
+                        db.get_refractive_index(self.material, wavelength_nm, self.temperature),
+                        wavelength_nm,
+                    )
             except _MATERIAL_DB_ERRORS as e:
                 logger.debug("Material index lookup failed: %s", e)
         return self.refractive_index
@@ -711,6 +764,7 @@ class Lens:
             "mount_type": self.mount_type,
             "wavelength": self.wavelength,
             "temperature": self.temperature,
+            "pressure_atm": self.pressure_atm,
             "is_fresnel": self.is_fresnel,
             "groove_pitch": self.groove_pitch,
             "num_grooves": self.num_grooves,
@@ -772,6 +826,7 @@ class Lens:
             mount_type=data.get("mount_type", DEFAULT_MOUNT_TYPE),
             wavelength_nm=data.get("wavelength_nm", data.get("wavelength", WAVELENGTH_D_LINE)),
             temperature=data.get("temperature", 20.0),
+            pressure_atm=data.get("pressure_atm", REFERENCE_PRESSURE_ATM),
             is_fresnel=data.get("is_fresnel", False),
             groove_pitch=data.get("groove_pitch", DEFAULT_THICKNESS),
             num_grooves=data.get("num_grooves", None),
