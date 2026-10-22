@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import logging
 
-from .constants import MIN_EDGE_THICKNESS, WAVELENGTH_GREEN
+from .constants import EPSILON, MIN_EDGE_THICKNESS, WAVELENGTH_GREEN
 from .optical_system import OpticalSystem
 from .aberrations import AberrationsCalculator
 from .analysis import SpotDiagram
@@ -352,7 +352,14 @@ class MeritFunction:
                 merit += 1e5
 
         for i, gap in enumerate(system.air_gaps):
-            if gap.thickness < min_ag:
+            # A gap of zero is a cemented interface, not an air space: the
+            # two surfaces meet and there is no clearance to keep. The checks
+            # below treated it as an air gap anyway, so every cemented
+            # doublet collected a soft penalty for the missing air and a hard
+            # 1e8 for a clearance of exactly zero - permanently infeasible,
+            # with the real merit invisible next to the penalty.
+            cemented = abs(gap.thickness) <= EPSILON
+            if not cemented and gap.thickness < min_ag:
                 merit += 1e5 * (min_ag - gap.thickness) ** 2
 
             if i < len(system.elements) - 1:
@@ -364,6 +371,9 @@ class MeritFunction:
                     or lens2.calculate_edge_thickness() is None
                 ):
                     merit += 1e8
+                    continue
+                if cemented:
+                    # The surfaces meet: there is no air space to keep clear.
                     continue
                 s_back_1 = lens1.get_sag_2(max_h)
                 s_front_2 = lens2.get_sag_1(max_h)
