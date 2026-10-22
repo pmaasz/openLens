@@ -596,3 +596,83 @@ class TestZemaxConicSurfaces(unittest.TestCase):
         rebuilt_lens = rebuilt.elements[0].lens
         self.assertAlmostEqual(rebuilt_lens.conic_constant_1, -0.5)
         self.assertAlmostEqual(rebuilt_lens.conic_constant_2, 1.0)
+
+
+class TestZemaxUnits(unittest.TestCase):
+    """The UNIT header decides the file's length unit; values import in mm."""
+
+    @staticmethod
+    def _inch_system():
+        return (
+            "VERS 200000\nMODE SEQ\nUNIT INCH\n\n"
+            "SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\n"
+            "SURF 1\n  TYPE STANDARD\n  CURV 0.5\n  DISZ 1.0\n"
+            "  GLAS BK7\n  DIAM 0.25\n\n"
+            "SURF 2\n  TYPE STANDARD\n  CURV -0.5\n  DIAM 0.25\n  DISZ 4.0\n\n"
+            "SURF 3\n  TYPE STANDARD\n  CURV 0.5\n  DISZ 0.5\n"
+            "  GLAS BK7\n  DIAM 0.5\n\n"
+            "SURF 4\n  TYPE STANDARD\n  CURV -0.5\n  DIAM 0.5\n  DISZ 0.0\n"
+        )
+
+    @staticmethod
+    def _millimetre_system(unit_line="UNIT MM\n"):
+        return (
+            "VERS 200000\nMODE SEQ\n" + unit_line + "\n"
+            "SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\n"
+            "SURF 1\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 5.0\n"
+            "  GLAS BK7\n  DIAM 25.0\n\n"
+            "SURF 2\n  TYPE STANDARD\n  CURV -0.02\n  DIAM 25.0\n  DISZ 0.0\n"
+        )
+
+    def test_inch_lengths_are_converted_to_millimetres(self):
+        rebuilt = _import_text(self._inch_system())
+
+        self.assertEqual(len(rebuilt.elements), 2)
+        first, second = [element.lens for element in rebuilt.elements]
+        # CURV 0.5 is a 2 inch radius; lengths scale by 25.4, curvature by
+        # the inverse factor.
+        self.assertAlmostEqual(first.radius_of_curvature_1, 50.8, places=6)
+        self.assertAlmostEqual(first.radius_of_curvature_2, -50.8, places=6)
+        self.assertAlmostEqual(first.thickness, 25.4, places=6)
+        # DIAM is a semi-diameter: 0.25 in radius -> 0.5 in = 12.7 mm.
+        self.assertAlmostEqual(first.diameter, 12.7, places=6)
+        self.assertAlmostEqual(second.thickness, 12.7, places=6)
+        self.assertAlmostEqual(second.diameter, 25.4, places=6)
+
+    def test_the_gap_between_elements_is_converted(self):
+        rebuilt = _import_text(self._inch_system())
+
+        self.assertEqual(len(rebuilt.air_gaps), 1)
+        self.assertAlmostEqual(rebuilt.air_gaps[0].thickness, 101.6, places=6)
+
+    def test_the_inch_spellings_are_recognised(self):
+        for unit in ("UNIT INCH", "UNIT IN", "unit inch"):
+            with self.subTest(unit=unit):
+                text = self._inch_system().replace("UNIT INCH", unit)
+                rebuilt = _import_text(text)
+                self.assertAlmostEqual(rebuilt.elements[0].lens.thickness, 25.4, places=6)
+
+    def test_a_millimetre_file_is_unchanged(self):
+        rebuilt = _import_text(self._millimetre_system())
+
+        lens = rebuilt.elements[0].lens
+        self.assertAlmostEqual(lens.radius_of_curvature_1, 50.0, places=6)
+        self.assertAlmostEqual(lens.thickness, 5.0, places=6)
+        self.assertAlmostEqual(lens.diameter, 50.0, places=6)
+
+    def test_a_missing_unit_line_keeps_millimetres(self):
+        rebuilt = _import_text(self._millimetre_system(unit_line=""))
+
+        self.assertAlmostEqual(rebuilt.elements[0].lens.thickness, 5.0, places=6)
+
+    def test_unknown_unit_warns_and_assumes_millimetres(self):
+        text = self._millimetre_system(unit_line="UNIT FURLONG\n")
+
+        with self.assertLogs("openlens.export_formats", level="WARNING") as captured:
+            rebuilt = _import_text(text)
+
+        self.assertTrue(
+            any("unit" in message.lower() for message in captured.output),
+            f"no warning named the unknown unit: {captured.output}",
+        )
+        self.assertAlmostEqual(rebuilt.elements[0].lens.thickness, 5.0, places=6)

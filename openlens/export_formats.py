@@ -1005,8 +1005,41 @@ class ZemaxSystemImporter:
         )
 
     @staticmethod
+    def _parse_unit_scale(text: str) -> float:
+        """Millimetres per length unit declared by the file's UNIT header.
+
+        Zemax writes ``UNIT MM`` or ``UNIT INCH``; older files also use
+        ``UNIT IN``. A file with no UNIT line is read as millimetres, which is
+        what Zemax assumes. An explicit unknown unit is reported and also read
+        as millimetres: refusing the whole file would lose the surfaces that
+        are otherwise usable, but silently guessing a factor would be worse.
+
+        Args:
+            text: The whole .zmx file.
+
+        Returns:
+            Factor that converts a length in the file to millimetres.
+        """
+        for raw in text.splitlines():
+            tokens = raw.strip().split()
+            if len(tokens) < 2 or tokens[0].upper() != "UNIT":
+                continue
+            unit = tokens[1].upper()
+            if unit in ("MM", "MILLIMETER", "MILLIMETRE", "MILLIMETERS", "MILLIMETRES"):
+                return 1.0
+            if unit in ("IN", "INCH", "INCHES"):
+                return 25.4
+            logger.warning("Zemax import: unknown length unit %r, assuming millimetres", tokens[1])
+            return 1.0
+        return 1.0
+
+    @staticmethod
     def import_system(filename: str, name: str = "Imported System") -> OpticalSystem:
         """Read a .zmx file into an OpticalSystem.
+
+        All lengths and curvatures are normalised to millimetres once, right
+        after parsing, according to the file's UNIT header. Every consumer
+        below then works in the application's single unit.
 
         Args:
             filename: Path to the .zmx file.
@@ -1020,7 +1053,18 @@ class ZemaxSystemImporter:
         """
         reject_oversized_file(filename)
         with open(filename) as f:
-            surfaces = ZemaxSystemImporter._parse_surfaces(f.read())
+            text = f.read()
+        surfaces = ZemaxSystemImporter._parse_surfaces(text)
+        scale = ZemaxSystemImporter._parse_unit_scale(text)
+        if scale != 1.0:
+            # Curvature is the inverse of a length, so it scales the other
+            # way; DISZ and DIAM are lengths. Non-finite values are marker
+            # values (DISZ INFINITY) and stay as they are.
+            for surf in surfaces:
+                for key, factor in (("curv", 1.0 / scale), ("disz", scale), ("diam", scale)):
+                    value = surf.get(key)
+                    if isinstance(value, (int, float)) and math.isfinite(value):
+                        surf[key] = value * factor
 
         system = OpticalSystem(name=name)
         pending_front: Optional[Dict[str, Any]] = None
