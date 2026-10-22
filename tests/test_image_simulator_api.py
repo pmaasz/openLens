@@ -32,6 +32,11 @@ def _system(r1=50.0, r2=-50.0, diameter=20.0, thickness=5.0, n=1.5):
             thickness=thickness,
             diameter=diameter,
             refractive_index=n,
+            # A custom glass keeps the stored index at every wavelength, so
+            # these tests exercise the lens equation at the design index
+            # instead of the catalog's index for "BK7" (which would silently
+            # replace the n=1.5 given here).
+            material="Custom",
         )
     )
     return system
