@@ -13,7 +13,9 @@ These tests pin the new contract:
 - a change to the lens state they snapshotted (the wavefront sensor swaps the
   refractive index for every wavelength) is picked up without the caller
   knowing the cache exists;
-- a change to the structure - positions - is dropped by ``invalidate()``;
+- a change to the structure or the positions is picked up the same way,
+  through the system's geometry revision (and ``invalidate()`` still forces
+  an immediate rebuild);
 - and none of this changes a single traced path.
 """
 
@@ -177,11 +179,10 @@ class TestCachingChangesNothingOptical(unittest.TestCase):
 
 class TestExplicitInvalidation(unittest.TestCase):
     def test_invalidate_rebuilds_after_a_position_change(self):
-        """A moved element is only visible after ``invalidate()``.
+        """``invalidate()`` still forces an immediate rebuild.
 
-        The batch validates the lens state it snapshotted, which cannot see a
-        transform change without the expensive node walk the cache exists to
-        avoid. Callers that keep a tracer across a layout edit announce it.
+        Layout edits are detected automatically now; the explicit call remains
+        for callers that want the scene dropped before the next trace.
         """
         system = _flat_system(position=0.0)
         tracer = SystemRayTracer3D(system)

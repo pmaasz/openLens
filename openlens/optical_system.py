@@ -137,8 +137,27 @@ class OpticalSystem:
         # diameter (mm). None gap = no defined stop.
         self.aperture_stop_gap: Optional[int] = None
         self.aperture_stop_diameter: Optional[float] = None
+        # Geometry edits are counted rather than hashed: a tracer that caches
+        # a prepared scene reads this number on every trace, which is cheap,
+        # while re-walking the node tree per ray is what the cache avoids.
+        self._geometry_revision = 0
         self.root = OpticalAssembly(name="Root")
+        self.root._geometry_owner = self
         self._update_positions()
+
+    @property
+    def geometry_revision(self) -> int:
+        """Monotonic count of layout edits (element positions and structure).
+
+        Bumped by every model edit and by assigning a node's position or
+        rotation, so a cached :class:`SystemRayTracer3D` scene can tell, in
+        constant time, that it no longer describes the system.
+        """
+        return self._geometry_revision
+
+    def _bump_geometry_revision(self) -> None:
+        """Record that the scene geometry changed."""
+        self._geometry_revision += 1
 
     def set_aperture_stop(self, gap_index: int, diameter: Optional[float] = None) -> None:
         """Place the aperture stop in an air gap.
@@ -387,6 +406,7 @@ class OpticalSystem:
 
     def _rebuild_from_tree(self):
         """Rebuild legacy flat lists from hierarchical tree."""
+        self._bump_geometry_revision()
         # Get flattened list of (node, global_pos)
         flat_nodes = self.root.get_flat_list()
 
@@ -461,6 +481,7 @@ class OpticalSystem:
         their assembly, so they take the layout shifted by their parent's
         global position.
         """
+        self._bump_geometry_revision()
         # Element nodes in flat order, with their global positions.
         element_nodes = [
             (node, position)

@@ -17,16 +17,52 @@ class OpticalNode:
         self.parent = parent
         self.children: List["OpticalNode"] = []
 
-        # Local transformation relative to parent
-        self.position = vec3(0, 0, 0)  # Translation (x, y, z)
-        self.rotation = vec3(0, 0, 0)  # Euler angles (deg): Tilt X, Tilt Y, Tilt Z
+        # Local transformation relative to parent. Assigning either value
+        # tells the owning system that the scene geometry changed, so a tracer
+        # caching a prepared scene notices a moved element. A Vector3 is
+        # mutated in place for the model's own layout edits; those methods
+        # bump the revision explicitly.
+        self._position = vec3(0, 0, 0)  # Translation (x, y, z)
+        self._rotation = vec3(0, 0, 0)  # Euler angles (deg): Tilt X, Tilt Y, Tilt Z
+        self._geometry_owner: Optional[Any] = None
 
         # Cache for global transform
         self._global_transform: Optional[Matrix4x4] = None
 
+    @property
+    def position(self) -> Vector3:
+        """Local translation relative to the parent."""
+        return self._position
+
+    @position.setter
+    def position(self, value: Vector3) -> None:
+        self._position = value
+        self._notify_geometry_changed()
+
+    @property
+    def rotation(self) -> Vector3:
+        """Local Euler angles (degrees) relative to the parent."""
+        return self._rotation
+
+    @rotation.setter
+    def rotation(self, value: Vector3) -> None:
+        self._rotation = value
+        self._notify_geometry_changed()
+
+    def _notify_geometry_changed(self) -> None:
+        """Tell the owning system that this node's placement changed."""
+        node: Optional["OpticalNode"] = self
+        while node is not None:
+            owner = node._geometry_owner
+            if owner is not None:
+                owner._bump_geometry_revision()
+                return
+            node = node.parent
+
     def add_child(self, node: "OpticalNode"):
         node.parent = self
         self.children.append(node)
+        self._notify_geometry_changed()
 
     def get_local_transform(self) -> Matrix4x4:
         """Calculates local transformation matrix (T * R)"""

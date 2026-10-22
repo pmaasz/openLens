@@ -692,8 +692,9 @@ class SystemRayTracer3D:
 
     The prepared lens state is revalidated on every trace, so an edit or the
     wavefront sensor's per-wavelength refractive-index swap is picked up
-    without the caller knowing the cache exists. Position and structure
-    changes are not re-walked - call :meth:`invalidate` after those.
+    without the caller knowing the cache exists. Layout edits are picked up
+    the same way through the system's geometry revision, which the model's
+    edits and node transform assignments bump; no node walk happens per ray.
     """
 
     def __init__(self, optical_system: "OpticalSystem") -> None:
@@ -701,16 +702,36 @@ class SystemRayTracer3D:
         self._batch: Optional[Dict[str, Any]] = None
 
     def invalidate(self) -> None:
-        """Drop the prepared scene after a position or structure change.
+        """Drop the prepared scene now.
 
-        Lens parameter changes, including the refractive index, are detected
-        automatically on the next trace. Moving or adding an element is not,
-        because checking would mean the full node walk the cache avoids.
+        Layout edits are detected automatically on the next trace through the
+        system's geometry revision (and, for duck-typed systems, the flat
+        element stations), so this is only needed to force an immediate
+        rebuild.
         """
         self._batch = None
 
+    def _flat_positions(self) -> tuple:
+        """Axial station of every flat element - the fallback scene key."""
+        return tuple(
+            getattr(element, "position", None) for element in getattr(self.system, "elements", ())
+        )
+
     def _scene_is_current(self, batch: Dict[str, Any]) -> bool:
-        """Whether every cached element tracer still matches its lens."""
+        """Whether the prepared scene still describes the system.
+
+        The lens state of every cached tracer is compared attribute by
+        attribute (the wavefront sensor swaps the index per wavelength). The
+        geometry is compared through the system's revision counter - bumped by
+        every model edit and by assigning a node transform - plus the flat
+        element stations for duck-typed systems. Neither needs the node walk
+        that the cache exists to avoid.
+        """
+        revision = getattr(self.system, "geometry_revision", None)
+        if revision is not None and revision != batch["revision"]:
+            return False
+        if self._flat_positions() != batch["flat_positions"]:
+            return False
         return all(tracer.matches(lens) for lens, tracer in batch["entries"])
 
     def _prepare(self) -> Dict[str, Any]:
@@ -741,6 +762,8 @@ class SystemRayTracer3D:
             "entries": [
                 (lens, LensRayTracer3D(lens, transform=transform)) for lens, transform in elements
             ],
+            "revision": getattr(self.system, "geometry_revision", None),
+            "flat_positions": self._flat_positions(),
             "stop_gap": stop_gap,
             "stop_semi": stop_semi,
             "stop_x": stop_x,
