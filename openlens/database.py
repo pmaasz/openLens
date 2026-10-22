@@ -500,7 +500,6 @@ class DatabaseManager:
         self,
         cursor: sqlite3.Cursor,
         lens_dict: Dict[str, Any],
-        flatten_metadata: bool = True,
         library_default: int = 1,
     ) -> None:
         """Insert/replace one lenses row inside the caller's transaction.
@@ -511,10 +510,9 @@ class DatabaseManager:
 
         Args:
             cursor: Cursor inside the caller's transaction.
-            lens_dict: Serialized lens.
-            flatten_metadata: Fold the model's metadata into the blob's top
-                level, as standalone lens saves have always done. Assembly
-                elements preserve the ``metadata`` key as-is.
+            lens_dict: Serialized lens. The model's own metadata is folded
+                into the blob's top level, so the blob has one shape for
+                every lens - standalone or an assembly member.
             library_default: The ``is_library`` value for a row that does not
                 exist yet - a standalone lens is a library item (1), an
                 assembly member is not (0). An existing row keeps the
@@ -602,10 +600,17 @@ class DatabaseManager:
                             # blob would store the membership twice and let
                             # the blob shadow the column on the way back.
                             "is_library",
+                            # A row marker, not metadata either.
+                            "row_type",
+                            # The model's own metadata is folded into the
+                            # blob below, so it must not be copied as a
+                            # nested key: the reader drops the nested form
+                            # ("metadata" is one of the model's own keys),
+                            # and the user's settings were lost with it.
+                            "metadata",
                         ]
-                        and not (flatten_metadata and k == "metadata")
                     }
-                    | (dict(lens_dict.get("metadata") or {}) if flatten_metadata else {})
+                    | dict(lens_dict.get("metadata") or {})
                 ),
             ),
         )
@@ -683,7 +688,7 @@ class DatabaseManager:
             # library_default=0: a lens that exists only inside an assembly is
             # not a library item. The membership write that follows decides
             # the rest - it promotes the ids that really are in the library.
-            self._save_lens_row(cursor, lens_data, flatten_metadata=False, library_default=0)
+            self._save_lens_row(cursor, lens_data, library_default=0)
 
             cursor.execute(
                 """
