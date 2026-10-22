@@ -468,6 +468,22 @@ class LensOptimizer:
         self.merit_function = MeritFunction(system, targets, constraints)
         self._merit_cache = {}
 
+    def _set_merit_function(self, merit_function) -> None:
+        """Install a merit function and drop the cached merits.
+
+        The cache is keyed by the variable values alone, so a merit function
+        with a different configuration - a robust merit with another
+        sensitivity weight, another tolerance set - must not read the values
+        the previous one produced. Swapping the merit function without
+        clearing the cache let a second run score every already-seen design
+        with the first run's merit function.
+
+        Args:
+            merit_function: The merit function to use from now on.
+        """
+        self.merit_function = merit_function
+        self._merit_cache.clear()
+
     def optimize(
         self,
         max_iterations: int = 100,
