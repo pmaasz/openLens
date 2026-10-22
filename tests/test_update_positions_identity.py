@@ -13,9 +13,10 @@ The method is called from refresh_references, design_air_spaced_doublet,
 tolerancing, desensitization, the optimizer and environmental analysis, so
 any of those silently changed assembly-based systems.
 
-Nodes are now matched to elements by identity of the lens model they wrap,
-and only direct children of root take their axial position from the flat
-layout.
+Nodes are matched to elements by identity of the lens model they wrap. Every
+element node - root-level or nested - follows the flat layout: a root child
+takes the global position, a nested one the same position shifted by its
+assembly's global position.
 """
 
 import unittest
@@ -105,18 +106,18 @@ class TestNestedSystem(unittest.TestCase):
         self.assertEqual(_flat_x(self.system), _tree_x(self.system))
         self.assertEqual(_tree_x(self.system)["M"], before + 2.0)
 
-    def test_nested_thickness_change_does_not_move_a_root_child(self):
-        """A nested element is not re-laid-out, and must not drag L along.
+    def test_nested_thickness_change_moves_the_nested_elements(self):
+        """A thickness edit re-lays the nested elements out as well.
 
-        The flat running sum cannot express nesting, so a nested thickness
-        change is not representable in the tree - a pre-existing limit of this
-        method. What matters here is that the unrelated root child keeps its
-        own identity-derived position instead of being handed a nested
-        element's number.
+        This used to leave A1 at its old local position while the flat list
+        moved on, so the two views disagreed. A nested node's local position
+        is now shifted to keep it at the flat list's global position, and the
+        unrelated root child keeps its own identity-derived position.
         """
         self.system.elements[0].thickness = 6.0  # A0, inside the assembly
         self.system._update_positions()
-        self.assertEqual(_tree_x(self.system)["A1"], 1.0)
+        self.assertEqual(_flat_x(self.system), _tree_x(self.system))
+        self.assertEqual(_tree_x(self.system)["A1"], 6.0)
         self.assertEqual(_tree_x(self.system)["L"], 7.0)
 
     def test_decenter_on_a_root_child_is_preserved(self):

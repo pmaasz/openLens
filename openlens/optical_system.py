@@ -394,17 +394,31 @@ class OpticalSystem:
         disagreeing, and so the 2D/ABCD tracer and the 3D tracer analysing
         different geometry.
 
-        Nodes are now matched to elements by identity of the lens model they
-        wrap, and only direct children of root take their axial position from
-        the flat layout. Nested positions belong to the enclosing assembly.
+        Nodes are matched to elements by identity of the lens model they wrap.
+        The layout starts where the first element stands rather than at zero:
+        an assembly inserted at 50 mm keeps its 50 mm, so the flat list and
+        the tree describe one geometry. Nested nodes store an offset inside
+        their assembly, so they take the layout shifted by their parent's
+        global position.
         """
-        current_pos = 0.0
+        # Element nodes in flat order, with their global positions.
+        element_nodes = [
+            (node, position)
+            for node, position in self.root.get_flat_list()
+            if getattr(node, "is_element", False)
+        ]
 
         nodes_by_model: Dict[int, OpticalNode] = {}
-        for node, _global_pos in self.root.get_flat_list():
+        for node, _global_pos in element_nodes:
             model = getattr(node, "element_model", None)
             if model is not None:
                 nodes_by_model.setdefault(id(model), node)
+
+        # Anchor the layout at the first element's global position. Starting
+        # at zero re-laid a nested system from the origin, leaving the flat
+        # list (2D/ABCD tracing) over the top of the assembly while the tree
+        # (3D tracing) kept its global positions.
+        current_pos = element_nodes[0][1].x if element_nodes else 0.0
 
         for i, element in enumerate(self.elements):
             element.position = current_pos
@@ -412,8 +426,16 @@ class OpticalSystem:
             # Preserve lateral offsets: only the axial position is managed
             # here; decenter lives on the node.
             node = nodes_by_model.get(id(element.lens))
-            if node is not None and node.parent is self.root:
-                node.position = vec3(current_pos, node.position.y, node.position.z)
+            if node is not None:
+                if node.parent is self.root:
+                    node_x = current_pos
+                else:
+                    # A nested node's x is relative to its assembly. The flat
+                    # layout is axial, so the parent's global x is the
+                    # reference - the same approximation _rebuild_from_tree
+                    # makes when it reads global positions.
+                    node_x = current_pos - node.parent.get_global_position().x
+                node.position = vec3(node_x, node.position.y, node.position.z)
 
             current_pos += element.thickness
 
