@@ -345,7 +345,11 @@ class MeritFunction:
                 merit += 1e3 * (center_thickness - max_ct) ** 2
 
             try:
-                y = lens.diameter / 2.0
+                # Judge the part where it is polished: a clear aperture
+                # smaller than the blank means the blank's rim is never
+                # reached. calculate_edge_thickness() uses the same radius, so
+                # the two checks agree about the same lens.
+                y = lens.get_manufacturing_radius()
                 edge_thickness = lens.calculate_edge_thickness()
                 if edge_thickness is None:
                     # Aperture overhangs a spherical surface (|R| < h):
@@ -385,7 +389,7 @@ class MeritFunction:
             if i < len(system.elements) - 1:
                 lens1 = system.elements[i].lens
                 lens2 = system.elements[i + 1].lens
-                max_h = min(lens1.diameter, lens2.diameter) / 2.0
+                max_h = min(lens1.get_manufacturing_radius(), lens2.get_manufacturing_radius())
                 if (
                     lens1.calculate_edge_thickness() is None
                     or lens2.calculate_edge_thickness() is None
