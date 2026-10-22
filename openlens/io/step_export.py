@@ -1,4 +1,5 @@
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +12,7 @@ Supports AP203/AP214 geometry (Manifold Solid B-Rep).
 from datetime import datetime
 from typing import List, Any, Optional
 from ..atomic import atomic_write_text
+from ..constants import EPSILON
 
 
 class StepRef(int):
@@ -213,6 +215,59 @@ END-ISO-10303-21;"""
         return header + "\n" + "\n".join(self.lines) + "\n" + footer
 
 
+def _is_flat_radius(radius: float) -> bool:
+    """Whether the writer treats a vertex radius as planar.
+
+    This is the writer's own threshold, kept so a near-flat sphere keeps
+    exporting exactly as before.
+    """
+    return abs(radius) < 1e-10 or abs(radius) > 1e10 or abs(radius) > 10000
+
+
+def _sphere_sag(radius: float, height: float) -> float:
+    """Sag of a spherical surface of ``radius`` at ``height``."""
+    if _is_flat_radius(radius) or not math.isfinite(radius):
+        return 0.0
+    radius_abs = abs(radius)
+    y = min(abs(height), radius_abs)
+    sag = radius_abs - math.sqrt(max(0.0, radius_abs * radius_abs - y * y))
+    return sag if radius > 0 else -sag
+
+
+def _conic_profile(lens: Any, side: int) -> Optional[str]:
+    """Name the non-spherical profile of one lens surface, or ``None``.
+
+    Parabolic surfaces store their sag at the rim instead of a conic
+    constant, so their effective vertex radius is not the stored radius.
+    A parabolic surface whose stored sag is zero is a plane.
+    """
+    if getattr(lens, f"is_parabolic_{side}", False):
+        sag = getattr(lens, f"parabolic_sag_{side}", 0.0)
+        diameter = getattr(lens, "diameter", 0.0)
+        if abs(sag) < EPSILON or abs(diameter) < EPSILON:
+            return None
+        return "parabolic"
+
+    radius = getattr(lens, f"radius_of_curvature_{side}", 0.0)
+    conic_constant = getattr(lens, f"conic_constant_{side}", 0.0)
+    if abs(conic_constant) > EPSILON and not _is_flat_radius(radius):
+        return f"conic (K={conic_constant:g})"
+    return None
+
+
+def _surface_is_flat(lens: Any, side: int) -> bool:
+    """Whether a surface is exactly planar for the exported B-rep.
+
+    A zero-sag parabolic surface is a plane even though its radius attribute
+    is finite, so the radius alone is not enough to decide.
+    """
+    if _conic_profile(lens, side) is not None:
+        return False
+    if getattr(lens, f"is_parabolic_{side}", False):
+        return True
+    return _is_flat_radius(getattr(lens, f"radius_of_curvature_{side}", 0.0))
+
+
 class StepExporter:
     """Exports optical systems to STEP format."""
 
@@ -246,6 +301,12 @@ class StepExporter:
             result are unaffected. A malformed part used to be logged at
             DEBUG, which is invisible at default verbosity - the drawing came
             out with silently missing solids and nothing said so.
+
+        Raises:
+            ValueError: If a lens has a parabolic or general conic surface.
+                A ``SPHERICAL_SURFACE`` cannot pass through the modelled rim,
+                so the solid would not close. Refusing leaves no file: the
+                buffer is only written once every part has been built.
         """
         # Start from a clean buffer and a clean id sequence.
         self.writer = StepWriter()
@@ -419,10 +480,32 @@ class StepExporter:
         diam = lens.diameter
         h = diam / 2.0
 
+        # A sphere cannot follow a parabola or a general conic: at the rim it
+        # would not pass through the point the model puts there, so the B-rep
+        # would not close. This writer has no analytic non-spherical surface
+        # entity, and a STEP file is CAD/manufacturing input, so refuse the
+        # lens rather than emit a plausible-looking wrong shape.
+        for side, label in ((1, "front"), (2, "back")):
+            profile = _conic_profile(lens, side)
+            if profile is None:
+                continue
+            stored_radius = getattr(lens, f"radius_of_curvature_{side}")
+            modelled_sag = lens.get_sag_1(h) if side == 1 else lens.get_sag_2(h)
+            sphere_sag = _sphere_sag(stored_radius, h)
+            raise ValueError(
+                f"STEP export writes spherical and flat surfaces only; lens "
+                f"{getattr(lens, 'name', '?')!r} has a {profile} {label} "
+                f"surface. At the rim (h={h:g} mm) the model sags "
+                f"{modelled_sag:.6f} mm but a sphere of radius "
+                f"{stored_radius:g} mm sags {sphere_sag:.6f} mm, so the "
+                f"exported rim would not lie on the exported surface."
+            )
+
         # Rim sag from the single source of truth (Lens.get_sag_1/2).
-        # Near-flat surfaces stay exactly planar for CAD topology.
-        is_flat1 = abs(r1) < 1e-10 or abs(r1) > 1e10 or abs(r1) > 10000
-        is_flat2 = abs(r2) < 1e-10 or abs(r2) > 1e10 or abs(r2) > 10000
+        # Near-flat surfaces stay exactly planar for CAD topology; a
+        # zero-sag parabola is flat even though its radius is finite.
+        is_flat1 = _surface_is_flat(lens, 1)
+        is_flat2 = _surface_is_flat(lens, 2)
 
         z_edge1 = z_offset + (0.0 if is_flat1 else lens.get_sag_1(h))  # z of top rim
         z_edge2 = z_offset + thick + (0.0 if is_flat2 else lens.get_sag_2(h))
