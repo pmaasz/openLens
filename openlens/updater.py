@@ -10,6 +10,7 @@ this module owns the network request, version comparison, asset selection, and
 the small helper script that replaces a running executable once it exits.
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -44,6 +45,23 @@ STATUS_ERROR = "error"
 #: How much of an asset response is read at a time.
 _DOWNLOAD_CHUNK = 256 * 1024
 
+#: Magic bytes that identify a downloadable executable or archive. A payload
+#: that does not start with one of these is not an installer (for example an
+#: HTML error page) and must never be executed.
+_EXECUTABLE_MAGICS = (
+    b"\x7fELF",  # ELF (Linux)
+    b"MZ",  # PE (Windows)
+    b"PK\x03\x04",  # ZIP (macOS bundle)
+    b"\xcf\xfa\xed\xfe",  # Mach-O 64-bit
+    b"\xca\xfe\xba\xbe",  # Mach-O universal / Java class
+    b"\xfe\xed\xfa\xce",  # Mach-O 32-bit (big endian)
+    b"\xfe\xed\xfa\xcf",  # Mach-O 64-bit (big endian)
+)
+
+#: A release digest is published as ``sha256:<hex>`` (GitHub's ``digest``
+#: field) or as a bare hex string.
+_DIGEST_RE = re.compile(r"^(?:sha256:)?([0-9a-fA-F]{64})$")
+
 #: Network operations get a bound so a dead connection cannot leave the
 #: startup check spinning forever. The work happens on a worker thread.
 _DEFAULT_TIMEOUT = 8.0
@@ -63,6 +81,16 @@ class ReleaseAsset:
     name: str
     url: str
     size: int = 0
+    digest: str = ""
+    sha256: str = ""
+    checksum: str = ""
+
+    def __post_init__(self) -> None:
+        # Accept any of the common spellings so callers (and the GitHub API,
+        # which uses ``digest``) all populate the same field.
+        chosen = self.digest or self.sha256 or self.checksum
+        if chosen and chosen != self.digest:
+            object.__setattr__(self, "digest", chosen)
 
 
 @dataclass(frozen=True)
@@ -210,10 +238,14 @@ def asset_for_platform(
             continue
         if name.endswith(suffix):
             size = asset.get("size", 0)
+            digest = asset.get("digest") or asset.get("sha256") or asset.get("checksum") or ""
+            if not isinstance(digest, str):
+                digest = ""
             return ReleaseAsset(
                 name=name,
                 url=url,
                 size=size if isinstance(size, int) and size > 0 else 0,
+                digest=digest,
             )
     return None
 
@@ -367,6 +399,10 @@ class UpdateChecker:
         asset = result.asset
         if asset is None:
             raise ValueError("No release asset to download")
+        if not asset.size or asset.size <= 0:
+            raise ValueError(
+                f"Release asset {asset.name!r} has no known size; refusing to download"
+            )
 
         target_dir = (
             Path(destination)
@@ -398,9 +434,36 @@ class UpdateChecker:
             response.close()
 
         received = partial.stat().st_size
-        if asset.size and received != asset.size:
+        if received != asset.size:
             partial.unlink(missing_ok=True)
             raise ValueError(f"Downloaded {received} bytes for {asset.name}, expected {asset.size}")
+
+        body = partial.read_bytes()
+
+        # Verify the published digest when one is available.
+        digest_match = _DIGEST_RE.match(asset.digest.strip()) if asset.digest else None
+        if asset.digest and digest_match is None:
+            partial.unlink(missing_ok=True)
+            raise ValueError(
+                f"Release asset {asset.name!r} has an invalid digest: {asset.digest!r}"
+            )
+        if digest_match is not None:
+            expected = digest_match.group(1).lower()
+            actual = hashlib.sha256(body).hexdigest()
+            if actual != expected:
+                partial.unlink(missing_ok=True)
+                raise ValueError(
+                    f"Digest mismatch for {asset.name}: expected {expected}, got {actual}"
+                )
+
+        # Sanity-check that the payload is an executable/archive and not, for
+        # example, an HTML error page.
+        if not any(body.startswith(magic) for magic in _EXECUTABLE_MAGICS):
+            partial.unlink(missing_ok=True)
+            raise ValueError(
+                f"Downloaded payload for {asset.name} is not a recognised executable "
+                f"(first bytes: {body[:8]!r})"
+            )
 
         try:
             partial.replace(target)
@@ -418,6 +481,7 @@ def is_frozen() -> bool:
 def _linux_update_script(downloaded: Path, target: Path, pid: int, log: Path) -> str:
     """Build the shell script that swaps a Linux executable after exit."""
     new_file = target.with_name(target.name + ".new")
+    backup_file = target.with_name(target.name + ".old")
     return """#!/bin/sh
 # OpenLens updater: wait for the running copy to exit, then replace it.
 set -u
@@ -425,6 +489,8 @@ pid={pid}
 while kill -0 "$pid" 2>/dev/null; do
     sleep 0.2
 done
+# Keep the previous binary so a failed update can be rolled back.
+cp -p -- {target} {backup_file} 2>/dev/null || true
 if cp -- {downloaded} {new_file} && chmod +x {new_file} && mv -f -- {new_file} {target}; then
     rm -f -- {downloaded}
     nohup {target} >/dev/null 2>&1 &
@@ -439,6 +505,7 @@ rm -f -- "$0"
         downloaded=shlex.quote(str(downloaded)),
         new_file=shlex.quote(str(new_file)),
         target=shlex.quote(str(target)),
+        backup_file=shlex.quote(str(backup_file)),
         log=shlex.quote(str(log)),
     )
 
@@ -453,6 +520,7 @@ if not errorlevel 1 (
     timeout /t 1 /nobreak >NUL
     goto wait
 )
+copy /Y "{target}" "{target}.old" >NUL
 copy /Y "{downloaded}" "{target}" >NUL
 if errorlevel 1 (
     echo Could not replace "{target}" > "{log}"
