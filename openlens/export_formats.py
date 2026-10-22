@@ -27,6 +27,7 @@ from .validation import (
     reject_oversized_file,
     validate_clear_aperture,
     validate_lens_parameters,
+    validate_wavelength,
 )
 
 
@@ -81,6 +82,7 @@ class ZemaxExporter:
             f.write(f"  DISZ {lens.thickness}\n")
             f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_1())}\n")
             f.write(f"  GLAS {_zemax_material(lens.material)}\n")
+            f.write(f"  WAVE {lens.wavelength:g}\n")
             coat1 = lens.coating_label(1)
             if coat1 != "Uncoated":
                 f.write(f"  COAT {coat1}\n")
@@ -699,8 +701,8 @@ def _zemax_material(material: str) -> str:
     return name
 
 
-def _material_design_index(material: str) -> float:
-    """The d-line refractive index the catalog gives *material*, in air.
+def _material_design_index(material: str, wavelength: float = WAVELENGTH_D_LINE) -> float:
+    """The catalog refractive index of *material* at *wavelength*, in air.
 
     A .zmx GLAS line names its glass and says nothing about its index, so the
     catalog is the only source that knows what F2 is. Resolving through
@@ -711,11 +713,15 @@ def _material_design_index(material: str) -> float:
 
     The fallback keeps imports working for names the catalog does not hold,
     including the display names the table exists for.
+
+    Args:
+        material: Glass name as written in the file.
+        wavelength: Design wavelength in nm.
     """
     try:
         database = get_material_database()
         if database.has_material(material):
-            return database.get_refractive_index(material, WAVELENGTH_D_LINE)
+            return database.get_refractive_index(material, wavelength)
     except (ArithmeticError, KeyError, OSError, ValueError) as e:
         # An unreadable catalog must not fail the import; the static table
         # below still gives a usable design index.
@@ -785,6 +791,14 @@ class ZemaxSystemExporter:
                 f.write(f"  DISZ {lens.thickness}\n")
                 f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_1())}\n")
                 f.write(f"  GLAS {_zemax_material(lens.material)}\n")
+                f.write(f"  WAVE {lens.wavelength:g}\n")
+                if any(abs(value) > EPSILON for value in (element.decenter_y, element.decenter_z)):
+                    f.write(f"  DECE {element.decenter_y:g} {element.decenter_z:g}\n")
+                if any(
+                    abs(value) > EPSILON
+                    for value in (element.tilt_x, element.tilt_y, element.tilt_z)
+                ):
+                    f.write(f"  TILT {element.tilt_x:g} {element.tilt_y:g} {element.tilt_z:g}\n")
                 coat = lens.coating_label(1)
                 if coat != "Uncoated":
                     f.write(f"  COAT {coat}\n")
@@ -875,6 +889,22 @@ class ZemaxSystemImporter:
                         current[key.lower()] = float(token)
                     except ValueError:
                         logger.debug("Zemax import: bad %s value %r", key, token)
+            elif key == "WAVE":
+                token = rest.split()[0] if rest.split() else ""
+                try:
+                    current["wave"] = float(token)
+                except ValueError:
+                    logger.debug("Zemax import: bad WAVE value %r", token)
+            elif key in ("DECE", "TILT"):
+                try:
+                    numbers = [float(value) for value in rest.split()]
+                except ValueError:
+                    logger.debug("Zemax import: bad %s values %r", key, rest)
+                    continue
+                if key == "DECE" and len(numbers) >= 2:
+                    current["dece"] = (numbers[0], numbers[1])
+                elif key == "TILT" and len(numbers) >= 3:
+                    current["tilt"] = (numbers[0], numbers[1], numbers[2])
             elif key == "GLAS":
                 # A glass name may contain spaces - real files use names like
                 # "Fused Silica" - so take the whole argument, and accept the
@@ -901,6 +931,7 @@ class ZemaxSystemImporter:
         ca2: Optional[float],
         conic1: float = 0.0,
         conic2: float = 0.0,
+        wavelength: float = WAVELENGTH_D_LINE,
     ) -> Optional[Lens]:
         """Validate one imported element and build a Lens, or return None.
 
@@ -922,6 +953,7 @@ class ZemaxSystemImporter:
             ca2: Back clear aperture (mm), or None for full diameter.
             conic1: Front conic constant from CONI (0.0 when absent).
             conic2: Back conic constant from CONI.
+            wavelength: Design wavelength in nm from the WAVE keyword.
 
         Returns:
             The validated Lens, or None if validation failed.
@@ -958,7 +990,12 @@ class ZemaxSystemImporter:
         # Preserve the glass name as written: it is shown in the UI, and the
         # catalog lookup accepts it in any case or punctuation.
         material_name = (material or "BK7").strip() or "BK7"
-        n = _material_design_index(material_name)
+        try:
+            wavelength = validate_wavelength(wavelength)
+        except ValidationError as exc:
+            logger.warning("Zemax import: element %d uses the default wavelength: %s", index, exc)
+            wavelength = WAVELENGTH_D_LINE
+        n = _material_design_index(material_name, wavelength)
         try:
             validate_lens_parameters(
                 radius1=probe if not math.isfinite(r1) else r1,
@@ -1002,6 +1039,7 @@ class ZemaxSystemImporter:
             parabolic_sag_2=sag_2,
             conic_constant_1=conic1,
             conic_constant_2=conic2,
+            wavelength=wavelength,
         )
 
     @staticmethod
@@ -1065,6 +1103,10 @@ class ZemaxSystemImporter:
                     value = surf.get(key)
                     if isinstance(value, (int, float)) and math.isfinite(value):
                         surf[key] = value * factor
+                # DECE is a length; TILT is degrees and WAVE is nanometres,
+                # so neither of those follows the file's length unit.
+                if "dece" in surf:
+                    surf["dece"] = tuple(value * scale for value in surf["dece"])
 
         system = OpticalSystem(name=name)
         pending_front: Optional[Dict[str, Any]] = None
@@ -1116,6 +1158,9 @@ class ZemaxSystemImporter:
                     "conic1": surf.get("coni", 0.0),
                     "material": surf.get("glas", "BK7"),
                     "gap_before": gap_before,
+                    "wave": surf.get("wave", WAVELENGTH_D_LINE),
+                    "dece": surf.get("dece", (0.0, 0.0)),
+                    "tilt": surf.get("tilt", (0.0, 0.0, 0.0)),
                 }
                 cursor_x += disz
                 continue
@@ -1145,9 +1190,27 @@ class ZemaxSystemImporter:
                     ca2=ca2,
                     conic1=pending_front.get("conic1", 0.0),
                     conic2=surf.get("coni", 0.0),
+                    wavelength=pending_front.get("wave", WAVELENGTH_D_LINE),
                 )
                 if lens is not None:
                     system.add_lens(lens, air_gap_before=pending_front["gap_before"])
+                    # The transform belongs to the element, and the front
+                    # vertex is the element's origin, so it is written on the
+                    # front surface.
+                    decenter_y, decenter_z = pending_front.get("dece", (0.0, 0.0))
+                    tilt_x, tilt_y, tilt_z = pending_front.get("tilt", (0.0, 0.0, 0.0))
+                    if any(
+                        abs(value) > EPSILON
+                        for value in (decenter_y, decenter_z, tilt_x, tilt_y, tilt_z)
+                    ):
+                        system.set_element_alignment(
+                            len(system.elements) - 1,
+                            decenter_y=decenter_y,
+                            decenter_z=decenter_z,
+                            tilt_x=tilt_x,
+                            tilt_y=tilt_y,
+                            tilt_z=tilt_z,
+                        )
                     last_back_x = cursor_x
                 pending_front = None
                 cursor_x += disz
