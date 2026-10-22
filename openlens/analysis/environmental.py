@@ -12,6 +12,24 @@ if TYPE_CHECKING:
     from ..lens import Lens
 
 
+def _thermal_scale(
+    alpha_per_k: float, state_c: float, target_c: float, reference_c: float
+) -> float:
+    """Expansion factor from *state_c* to *target_c*.
+
+    Both endpoints are relative to the unstressed reference geometry.
+    Dividing the two linear CTE factors makes the operation reversible:
+    20 -> 120 -> 20 applies ``(1 + e) / 1`` and then ``1 / (1 + e)`` and
+    lands back on the original length, while a second 120 -> 120 step is a
+    no-op.
+    """
+    state_factor = 1.0 + alpha_per_k * (state_c - reference_c)
+    target_factor = 1.0 + alpha_per_k * (target_c - reference_c)
+    if abs(state_factor) < EPSILON:
+        return 1.0
+    return target_factor / state_factor
+
+
 class EnvironmentalAnalyzer:
     """
     Analyzes optical system performance under environmental changes
@@ -72,8 +90,6 @@ class EnvironmentalAnalyzer:
 
         db = get_material_database()
 
-        delta_T_k = temperature_c - cls.REF_TEMP
-
         # 1. Update Elements (Glass)
         for element in new_system.elements:
             lens = element.lens
@@ -86,7 +102,12 @@ class EnvironmentalAnalyzer:
             alpha_k = mat.thermal_expansion if mat else 7.1e-6
 
             # --- Apply Thermal Expansion to Geometry ---
-            scaling_factor = 1.0 + alpha_k * delta_T_k
+            # Expand from the state the current geometry is valid at, not by
+            # compounding a delta onto already-expanded values. That makes
+            # conditioning idempotent (120 -> 120 is a no-op) and reversible
+            # (120 -> 20 restores the reference geometry).
+            state_c = float(getattr(lens, "thermal_state_temperature", cls.REF_TEMP))
+            scaling_factor = _thermal_scale(alpha_k, state_c, temperature_c, cls.REF_TEMP)
 
             # Radius
             lens.radius_of_curvature_1 *= scaling_factor
@@ -97,29 +118,30 @@ class EnvironmentalAnalyzer:
 
             # Diameter (mechanical only, but good to update)
             lens.diameter *= scaling_factor
+            lens.thermal_state_temperature = temperature_c
 
             # --- Apply Refractive Index Changes ---
-            # Catalog glasses carry dn/dT data. A custom glass has no catalog
-            # entry; asking the database anyway would silently replace its
-            # index with the BK7 fallback. Model glass is analytic and has no
-            # temperature coefficients either.
             # Record the ambient pressure on the lens itself: catalog indices
             # are relative to air at 1 atm, and every analysis refreshes the
             # index at its own wavelength. update_refractive_index() applies
             # the air correction from this value, so the conditioned index
             # survives that refresh instead of silently reverting.
+            #
+            # Always refresh, including for a custom glass: the update keeps
+            # an index it has no model for, but it records the new
+            # temperature. Skipping it left the old value behind and made the
+            # index's temperature disagree with the conditioned geometry.
             lens.pressure_atm = pressure_atm
-            has_index_model = mat is not None or bool(getattr(lens, "model_glass_mode", False))
-            if has_index_model:
-                lens.update_refractive_index(temperature=temperature_c)
+            lens.update_refractive_index(temperature=temperature_c)
 
         # 2. Update Air Gaps (Housing Expansion)
         # Gaps scale with the housing CTE (parameter; defaults to aluminum).
         housing_alpha_k = housing_cte
-        gap_scaling = 1.0 + housing_alpha_k * delta_T_k
-
+        system_state_c = float(getattr(new_system, "thermal_state_temperature", cls.REF_TEMP))
+        gap_scaling = _thermal_scale(housing_alpha_k, system_state_c, temperature_c, cls.REF_TEMP)
         for gap in new_system.air_gaps:
             gap.thickness *= gap_scaling
+        new_system.thermal_state_temperature = temperature_c
 
         # 3. Update positions based on new thicknesses
         new_system._update_positions()
@@ -164,16 +186,27 @@ class EnvironmentalAnalyzer:
 
         at_reference_pressure = abs(pressure_atm - cls.REF_PRESSURE) < EPSILON
 
+        def at_state(lens: "Lens") -> bool:
+            """Both the geometry and the index are already at the target."""
+            state = float(getattr(lens, "thermal_state_temperature", cls.REF_TEMP))
+            index_temperature = float(getattr(lens, "temperature", cls.REF_TEMP))
+            return (
+                abs(state - temperature_c) < EPSILON
+                and abs(index_temperature - temperature_c) < EPSILON
+            )
+
         if isinstance(target, OpticalSystem):
-            if at_reference_pressure and all(
-                abs(element.lens.temperature - temperature_c) < EPSILON
-                for element in target.elements
+            system_state = float(getattr(target, "thermal_state_temperature", cls.REF_TEMP))
+            if (
+                at_reference_pressure
+                and abs(system_state - temperature_c) < EPSILON
+                and all(at_state(element.lens) for element in target.elements)
             ):
                 return target
             return cls.apply_environment(target, temperature_c, pressure_atm, housing_cte)
 
         lens = target
-        if at_reference_pressure and abs(lens.temperature - temperature_c) < EPSILON:
+        if at_reference_pressure and at_state(lens):
             return lens
 
         wrapper = OpticalSystem(name=f"{lens.name} @ {temperature_c:g} °C")

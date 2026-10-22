@@ -19,6 +19,7 @@ from .constants import (
     WAVELENGTH_C_LINE,
     WAVELENGTH_F_LINE,
     DEFAULT_MATERIAL_INDICES,
+    DEFAULT_TEMPERATURE,
 )
 from .optical_node import (
     OpticalElement,
@@ -115,6 +116,7 @@ _SYSTEM_SERIALIZED_KEYS = frozenset(
         # Serialized by us, so it must not also be treated as a user setting
         # that happens to have no home on the model.
         "node_tree",
+        "thermal_state_temperature",
     }
 )
 
@@ -137,6 +139,11 @@ class OpticalSystem:
         # diameter (mm). None gap = no defined stop.
         self.aperture_stop_gap: Optional[int] = None
         self.aperture_stop_diameter: Optional[float] = None
+        # Temperature the housing/air-gap geometry is valid at. Like the
+        # per-lens field, this makes thermal conditioning reversible: the
+        # gaps expand relative to the reference length, not by compounding a
+        # percentage on the already-expanded value.
+        self.thermal_state_temperature = DEFAULT_TEMPERATURE
         self.root = OpticalAssembly(name="Root")
         self._update_positions()
 
@@ -592,6 +599,7 @@ class OpticalSystem:
             "modified_at": self.modified_at,
             "aperture_stop_gap": self.aperture_stop_gap,
             "aperture_stop_diameter": self.aperture_stop_diameter,
+            "thermal_state_temperature": self.thermal_state_temperature,
             "elements": [
                 {
                     "lens": e.lens.to_dict(),
@@ -642,6 +650,9 @@ class OpticalSystem:
         system.modified_at = data.get("modified_at", system.modified_at)
         system.aperture_stop_gap = data.get("aperture_stop_gap")
         system.aperture_stop_diameter = data.get("aperture_stop_diameter")
+        system.thermal_state_temperature = data.get(
+            "thermal_state_temperature", DEFAULT_TEMPERATURE
+        )
 
         # Clear default tree/flat state to avoid duplication.
         system.elements = []
