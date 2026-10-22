@@ -676,3 +676,115 @@ class TestZemaxUnits(unittest.TestCase):
             f"no warning named the unknown unit: {captured.output}",
         )
         self.assertAlmostEqual(rebuilt.elements[0].lens.thickness, 5.0, places=6)
+
+    def test_a_decentred_element_is_scaled_with_the_rest_of_the_file(self):
+        """DECE is a length in the file's unit; TILT is degrees and stays."""
+        front = "  CURV 0.5\n  DISZ 1.0\n"
+        text = self._inch_system().replace(front, front + "  DECE 0.5 0.25\n  TILT 3 -2 1\n")
+
+        rebuilt = _import_text(text)
+
+        element = rebuilt.elements[0]
+        self.assertAlmostEqual(element.decenter_y, 12.7, places=6)
+        self.assertAlmostEqual(element.decenter_z, 6.35, places=6)
+        self.assertAlmostEqual(element.tilt_x, 3.0, places=6)
+        self.assertAlmostEqual(element.tilt_y, -2.0, places=6)
+        self.assertAlmostEqual(element.tilt_z, 1.0, places=6)
+
+
+class TestZemaxAlignmentAndWavelength(unittest.TestCase):
+    """A round trip must keep the element transform and the design wavelength."""
+
+    def _round_trip(self, system):
+        tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+        tmp.close()
+        try:
+            ZemaxSystemExporter.export_system(system, tmp.name)
+            with open(tmp.name) as handle:
+                text = handle.read()
+            return text, ZemaxSystemImporter.import_system(tmp.name)
+        finally:
+            os.unlink(tmp.name)
+
+    @staticmethod
+    def _aligned_system():
+        system = OpticalSystem(name="Aligned")
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=25.0,
+                wavelength=532.0,
+            )
+        )
+        system.set_element_alignment(
+            0, decenter_y=5.0, decenter_z=2.0, tilt_x=3.0, tilt_y=-2.0, tilt_z=1.5
+        )
+        return system
+
+    def test_the_file_declares_alignment_and_wavelength(self):
+        text, _ = self._round_trip(self._aligned_system())
+
+        self.assertIn("WAVE 532", text)
+        self.assertIn("DECE 5 2", text)
+        self.assertIn("TILT 3 -2 1.5", text)
+
+    def test_round_trip_preserves_the_element_transform(self):
+        _, rebuilt = self._round_trip(self._aligned_system())
+
+        element = rebuilt.elements[0]
+        self.assertAlmostEqual(element.decenter_y, 5.0, places=6)
+        self.assertAlmostEqual(element.decenter_z, 2.0, places=6)
+        self.assertAlmostEqual(element.tilt_x, 3.0, places=6)
+        self.assertAlmostEqual(element.tilt_y, -2.0, places=6)
+        self.assertAlmostEqual(element.tilt_z, 1.5, places=6)
+
+    def test_round_trip_preserves_the_design_wavelength(self):
+        _, rebuilt = self._round_trip(self._aligned_system())
+
+        self.assertAlmostEqual(rebuilt.elements[0].lens.wavelength, 532.0, places=6)
+
+    def test_round_trip_keeps_the_axial_positions_with_alignment(self):
+        system = OpticalSystem(name="Two elements")
+        system.add_lens(Lens(thickness=5.0, diameter=25.0))
+        system.add_lens(Lens(thickness=4.0, diameter=20.0), air_gap_before=10.0)
+        system.set_element_alignment(1, decenter_y=-3.0, tilt_z=2.0)
+
+        _, rebuilt = self._round_trip(system)
+
+        self.assertEqual(len(rebuilt.elements), 2)
+        self.assertAlmostEqual(rebuilt.elements[0].position, 0.0, places=6)
+        self.assertAlmostEqual(rebuilt.elements[1].position, 15.0, places=6)
+        self.assertAlmostEqual(rebuilt.elements[1].decenter_y, -3.0, places=6)
+        self.assertAlmostEqual(rebuilt.air_gaps[0].thickness, 10.0, places=6)
+
+    def test_a_single_lens_export_keeps_its_wavelength(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+        tmp.close()
+        try:
+            ZemaxExporter.export_lens(Lens(wavelength=532.0), tmp.name)
+            rebuilt = ZemaxSystemImporter.import_system(tmp.name)
+        finally:
+            os.unlink(tmp.name)
+
+        self.assertAlmostEqual(rebuilt.elements[0].lens.wavelength, 532.0, places=6)
+
+    def test_an_invalid_wavelength_falls_back_to_the_default(self):
+        system = OpticalSystem(name="Bad wavelength")
+        system.add_lens(Lens(wavelength=532.0))
+        text, _ = self._round_trip(system)
+        bad = text.replace("WAVE 532", "WAVE nan")
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+        tmp.close()
+        try:
+            with open(tmp.name, "w") as handle:
+                handle.write(bad)
+            with self.assertLogs("openlens.export_formats", level="WARNING") as captured:
+                rebuilt = ZemaxSystemImporter.import_system(tmp.name)
+        finally:
+            os.unlink(tmp.name)
+
+        self.assertTrue(any("wavelength" in message.lower() for message in captured.output))
+        self.assertAlmostEqual(rebuilt.elements[0].lens.wavelength, 587.6, places=6)
