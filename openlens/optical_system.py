@@ -267,6 +267,66 @@ class OpticalSystem:
         # Rebuild flat lists from tree to maintain compatibility
         self._rebuild_from_tree()
 
+    def move_element(self, index: int, delta: int) -> bool:
+        """Move an element one place earlier or later in the system.
+
+        The node tree is the authority: the element's node is moved inside
+        its parent and the flat list is rebuilt from it. Swapping entries in
+        the flat list alone left the tree in the old order, so the
+        tree-based tracer, the visualisation and the flat-list analyses
+        disagreed about the system - and the element positions no longer
+        increased along the axis.
+
+        Args:
+            index: Index of the element in the flat element list.
+            delta: -1 to move it earlier, +1 to move it later.
+
+        Returns:
+            True when the element was moved.
+        """
+        elements = self.elements
+        if not 0 <= index < len(elements) or delta not in (-1, 1):
+            return False
+        target = index + delta
+        if not 0 <= target < len(elements):
+            return False
+
+        # The nodes of the two elements, matched by the lens model they hold
+        # - the same identity match the rest of the model uses.
+        nodes = {}
+        for node, _pos in self.root.get_flat_list():
+            model = getattr(node, "element_model", None)
+            if model is not None:
+                nodes.setdefault(id(model), node)
+
+        node = nodes.get(id(elements[index].lens))
+        other = nodes.get(id(elements[target].lens))
+        if node is None or other is None:
+            return False
+        parent = node.parent
+        if parent is None or other.parent is not parent:
+            # The neighbour lives in another parent (a nested assembly), so
+            # there is no single place to swap the two.
+            logger.warning("Cannot move element %d: its neighbour is in another assembly", index)
+            return False
+
+        children = parent.children
+        first = children.index(node)
+        second = children.index(other)
+        children[first], children[second] = children[second], children[first]
+
+        # The two elements exchange their axial stations: the one that moves
+        # up takes the place of the one it passes, and the spacing between
+        # the stations - the air gaps - stays what it was. Only the axial
+        # component moves: the lateral offset and the tilt belong to the
+        # element and travel with it.
+        node.position.x, other.position.x = other.position.x, node.position.x
+
+        self._rebuild_from_tree()
+        self._update_positions()
+        self.modified_at = datetime.now().isoformat()
+        return True
+
     def remove_lens(self, index: int) -> bool:
         """Remove a lens element by index"""
         if not 0 <= index < len(self.elements):

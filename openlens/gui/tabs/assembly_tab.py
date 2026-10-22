@@ -532,35 +532,23 @@ class AssemblyTab(BaseTab):
 
     @_undoable_assembly_edit("Move element up")
     def _on_move_lens_up(self) -> None:
-        """Move lens up in system."""
+        """Move the selected element towards the front of the system."""
         current = self._system_list.currentRow()
-        if current > 0:
-            (
-                self._optical_system.elements[current],
-                self._optical_system.elements[current - 1],
-            ) = (
-                self._optical_system.elements[current - 1],
-                self._optical_system.elements[current],
-            )
-            self._update_system_list()
-            self._assembly_viz.update_system(self._optical_system)
-            self._on_assembly_changed()
+        if not self._optical_system.move_element(current, -1):
+            return
+        self._update_system_list()
+        self._assembly_viz.update_system(self._optical_system)
+        self._on_assembly_changed()
 
     @_undoable_assembly_edit("Move element down")
     def _on_move_lens_down(self) -> None:
-        """Move lens down in system."""
+        """Move the selected element towards the back of the system."""
         current = self._system_list.currentRow()
-        if current >= 0 and current < len(self._optical_system.elements) - 1:
-            (
-                self._optical_system.elements[current],
-                self._optical_system.elements[current + 1],
-            ) = (
-                self._optical_system.elements[current + 1],
-                self._optical_system.elements[current],
-            )
-            self._update_system_list()
-            self._assembly_viz.update_system(self._optical_system)
-            self._on_assembly_changed()
+        if not self._optical_system.move_element(current, 1):
+            return
+        self._update_system_list()
+        self._assembly_viz.update_system(self._optical_system)
+        self._on_assembly_changed()
 
     def _on_system_item_selected(self, index: int) -> None:
         """Handle system item selection.
