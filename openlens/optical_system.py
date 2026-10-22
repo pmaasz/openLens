@@ -55,18 +55,35 @@ class LensElement:
     tilt_z: float = 0.0  # Roll about the optical axis (deg)
 
     def __post_init__(self) -> None:
-        """Calculate element thickness and ensure ID is set"""
-        self.thickness = self.lens.thickness
+        """Ensure the ID is set."""
         if self.lens_id is None and hasattr(self.lens, "id"):
             self.lens_id = self.lens.id
+
+    @property
+    def thickness(self) -> float:
+        """The element's own thickness - the lens's, always.
+
+        This used to be a copy taken when the element was built (or
+        refreshed), and the copy went stale as soon as the lens changed. The
+        stale value decided where the next element sat, so a thickness change
+        moved the air gap instead of the elements behind it. Reading it from
+        the lens makes the copy unnecessary.
+        """
+        return self.lens.thickness
+
+    @thickness.setter
+    def thickness(self, value: float) -> None:
+        """Set the element's thickness - on the lens it holds.
+
+        The element and its lens are one thing, so there is no second copy
+        to keep in step.
+        """
+        self.lens.thickness = value
 
     def refresh(self, lens_lookup: Optional[dict] = None) -> None:
         """Update the lens reference if it exists in the lookup table"""
         if lens_lookup and self.lens_id in lens_lookup:
             self.lens = lens_lookup[self.lens_id]
-            self.thickness = self.lens.thickness
-        else:
-            self.thickness = self.lens.thickness
 
 
 @dataclass

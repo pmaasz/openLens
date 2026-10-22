@@ -118,7 +118,6 @@ class EnvironmentalAnalyzer:
 
             # Thickness
             lens.thickness *= scaling_factor
-            element.thickness = lens.thickness  # Update wrapper too
 
             # Diameter (mechanical only, but good to update)
             lens.diameter *= scaling_factor
