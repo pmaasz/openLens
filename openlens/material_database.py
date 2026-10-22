@@ -26,6 +26,19 @@ logger = logging.getLogger(__name__)
 _AGF_SUPPORTED_FORMULAS = frozenset({1, 2})
 
 
+def _material_key(name: str) -> str:
+    """The punctuation- and case-insensitive form of a material name.
+
+    Catalog keys are the glass names as the vendor writes them ("N-BK7",
+    "FUSEDSILICA"), while the lens model, the defaults and the UI carry
+    display names ("Fused Silica") and users type whatever punctuation comes
+    to hand. Comparing only the uppercased name kept those apart; comparing
+    the alphanumeric characters folds them together, because none of the
+    real glass names differ only in punctuation.
+    """
+    return "".join(char for char in name.upper() if char.isalnum())
+
+
 @dataclass
 class MaterialProperties:
     """Optical material properties"""
@@ -109,6 +122,9 @@ class MaterialDatabase:
         # without bound and no instance was ever collected. A per-instance dict
         # dies with the instance and cannot be flushed by another instance.
         self._index_cache: Dict[Tuple[str, float, float], float] = {}
+        # Normalised name -> catalog key. Built on the first miss and dropped
+        # whenever the catalog changes; see _normalised_keys().
+        self._alias_keys: Optional[Dict[str, str]] = None
         self._load_builtin_materials()
         self._load_database()
 
@@ -368,8 +384,44 @@ class MaterialDatabase:
         atomic_write_json(self.db_path, data)
 
     def get_material(self, name: str) -> Optional[MaterialProperties]:
-        """Get material by name"""
-        return self.materials.get(name.upper())
+        """Get material by name.
+
+        The exact uppercased key wins, then any spacing/punctuation variant:
+        "Fused Silica", "fused-silica" and "FUSEDSILICA" all name the same
+        glass. Without the second step a display name missed the catalog
+        entirely, which was silent - ``refractive_index_at`` fell back to the
+        stored index (no dispersion) and ``update_refractive_index`` stored
+        the BK7 fallback (a lens that was not BK7 became 1.5168).
+        """
+        material = self.materials.get(name.upper())
+        if material is not None:
+            return material
+        key = self._normalised_keys().get(_material_key(name))
+        if key is None:
+            return None
+        return self.materials.get(key)
+
+    def has_material(self, name: str) -> bool:
+        """Whether the catalog holds this material under any known name form.
+
+        Callers that must not accept the BK7 fallback of
+        ``get_refractive_index`` test this first, so that an unknown name
+        keeps the index it already has instead of silently becoming BK7.
+        """
+        return self.get_material(name) is not None
+
+    def _normalised_keys(self) -> Dict[str, str]:
+        """Normalised name -> catalog key, rebuilt after catalog changes.
+
+        The first catalog key wins, so the built-in glasses keep their names
+        when an imported catalog repeats one under different punctuation.
+        """
+        if self._alias_keys is None:
+            alias_keys: Dict[str, str] = {}
+            for key in self.materials:
+                alias_keys.setdefault(_material_key(key), key)
+            self._alias_keys = alias_keys
+        return self._alias_keys
 
     def add_material(self, material: MaterialProperties, save: bool = True):
         """Add or update material.
@@ -405,6 +457,10 @@ class MaterialDatabase:
 
         Cached per instance (bounded at 1024 entries, cleared wholesale when
         full). Call clear_cache() after mutating ``materials`` directly.
+
+        A name the catalog does not know returns the BK7 index. Callers that
+        can tell the user, or keep the index they have, should ask
+        ``has_material`` first.
         """
         key = (material_name, wavelength_nm, temperature_c)
         cached = self._index_cache.get(key)
@@ -418,6 +474,7 @@ class MaterialDatabase:
             # of wavelengths per material, so a precise eviction policy buys
             # nothing here.
             self._index_cache.clear()
+        self._alias_keys = None
         self._index_cache[key] = value
         return value
 
@@ -505,6 +562,7 @@ class MaterialDatabase:
         instance's cache.
         """
         self._index_cache.clear()
+        self._alias_keys = None
 
     def get_transmission(
         self, material_name: str, wavelength_nm: float, thickness_mm: float = 10.0

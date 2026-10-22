@@ -529,7 +529,7 @@ class Lens:
         if MATERIAL_DB_AVAILABLE:
             try:
                 db = get_material_database()
-                if db.get_material(self.material) is not None:
+                if db.has_material(self.material):
                     return self.refractive_index_at(wavelength_nm)
             except _MATERIAL_DB_ERRORS as e:
                 logger.debug("Substrate index lookup failed: %s", e)
@@ -602,6 +602,20 @@ class Lens:
         elif MATERIAL_DB_AVAILABLE:
             try:
                 db = get_material_database()
+                # get_refractive_index() answers with the BK7 index for a name
+                # it does not know. That fallback is a last resort for callers
+                # that cannot handle a miss, not a value to store on the
+                # model: refreshing the wavelength would silently turn a
+                # "Sapphire" lens (1.77) into BK7, and the ray tracer - which
+                # uses the stored index - would follow it. Keep the index the
+                # lens already has, as refractive_index_at() does.
+                if not db.has_material(self.material):
+                    logger.debug(
+                        "Material %r is not in the catalog; keeping index %.6f",
+                        self.material,
+                        self.refractive_index,
+                    )
+                    return
                 self.refractive_index = db.get_refractive_index(
                     self.material, self.wavelength, self.temperature
                 )
@@ -634,7 +648,7 @@ class Lens:
                 # lens given its own index - "Custom", refractive_index=1.7 -
                 # came back as 1.5168. The tracer uses the stored index, so the
                 # wavelength-dependent numbers and the geometry disagreed.
-                if db.get_material(self.material) is not None:
+                if db.has_material(self.material):
                     return db.get_refractive_index(self.material, wavelength_nm, self.temperature)
             except _MATERIAL_DB_ERRORS as e:
                 logger.debug("Material index lookup failed: %s", e)
