@@ -163,6 +163,21 @@ jobs:
             cp "dist/${APP_NAME}" "package/${APP_NAME}"
           fi
           ls -lh package/
+      - name: Generate SHA-256 checksums
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          directory = Path("package")
+          for entry in directory.iterdir():
+              if entry.is_file() and not entry.name.endswith(".sha256"):
+                  digest = hashlib.sha256(entry.read_bytes()).hexdigest()
+                  (directory / (entry.name + ".sha256")).write_text(
+                      f"{digest}  {entry.name}\n", encoding="utf-8"
+                  )
+          PY
+
       - name: Upload build-only artifact
         if: env.RELEASE_TAG == ''
         uses: actions/upload-artifact@v4

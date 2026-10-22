@@ -232,7 +232,7 @@ class TestUpdateCheck(unittest.TestCase):
 class TestDownload(unittest.TestCase):
     def test_asset_is_written_and_size_checked(self):
         asset = ReleaseAsset("OpenLens-0.8.0-Linux", "https://example.test/OpenLens-Linux", 7)
-        opener = FakeOpener({asset.url: b"payload"})
+        opener = FakeOpener({asset.url: b"\x7fELF" + b"\x00" * 3})
         checker = UpdateChecker(opener=opener)
         result = UpdateCheckResult(
             status=STATUS_UPDATE_AVAILABLE,
@@ -244,7 +244,7 @@ class TestDownload(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             path = checker.download(result, destination=temp)
 
-            self.assertEqual(path.read_bytes(), b"payload")
+            self.assertEqual(path.read_bytes(), b"\x7fELF" + b"\x00" * 3)
             self.assertEqual(path.name, "OpenLens-0.8.0-Linux")
 
     def test_size_mismatch_removes_the_partial_file(self):
