@@ -59,7 +59,10 @@ class PerformanceMetrics:
         return None
 
     def calculate_numerical_aperture(
-        self, half_angle_deg: Optional[float] = None, medium_index: float = 1.0
+        self,
+        half_angle_deg: Optional[float] = None,
+        medium_index: float = 1.0,
+        entrance_pupil_diameter: Optional[float] = None,
     ) -> Optional[float]:
         """
         Calculate numerical aperture (NA)
@@ -69,6 +72,8 @@ class PerformanceMetrics:
             half_angle_deg: Half-angle of the maximum cone of light (degrees)
                            If not provided, calculates from f-number
             medium_index: Refractive index of the medium (default 1.0 for air)
+            entrance_pupil_diameter: Optional entrance pupil diameter (mm).
+                Defaults to the first element's mechanical diameter.
 
         Returns:
             Numerical aperture value
@@ -81,10 +86,12 @@ class PerformanceMetrics:
         # Calculate from lens geometry
         if self.lens:
             f = self.lens.calculate_focal_length()
-            D = self.lens.diameter
+            D = entrance_pupil_diameter if entrance_pupil_diameter else self.lens.diameter
         elif self.system:
             f = self.system.get_system_focal_length()
-            if self.system.elements:
+            if entrance_pupil_diameter:
+                D = entrance_pupil_diameter
+            elif self.system.elements:
                 D = self.system.elements[0].lens.diameter
             else:
                 return None
@@ -160,25 +167,33 @@ class PerformanceMetrics:
             return f / (f - object_distance)
         return None
 
-    def calculate_resolution_rayleigh(self) -> Optional[float]:
+    def calculate_resolution_rayleigh(self, wavelength: Optional[float] = None) -> Optional[float]:
         """
         Calculate Rayleigh resolution limit (angular)
         θ = 1.22 * λ / D (radians)
+
+        Args:
+            wavelength: Wavelength in nanometers. Defaults to the lens's
+                design wavelength, or 550 nm for a system.
+
         Returns resolution in microradians
         """
-        wavelength = 550e-6  # Default 550nm in mm
+        if wavelength is not None:
+            wavelength_mm = wavelength * NM_TO_MM  # nm to mm
+        elif self.lens and hasattr(self.lens, "wavelength"):
+            wavelength_mm = self.lens.wavelength * NM_TO_MM  # nm to mm
+        else:
+            wavelength_mm = 550e-6  # Default 550nm in mm
 
         if self.lens:
             D = self.lens.diameter
-            if hasattr(self.lens, "wavelength"):
-                wavelength = self.lens.wavelength * NM_TO_MM  # nm to mm
         elif self.system and self.system.elements:
             D = self.system.elements[0].lens.diameter
         else:
             return None
 
         if D > 0:
-            theta_rad = 1.22 * wavelength / D
+            theta_rad = 1.22 * wavelength_mm / D
             return theta_rad * 1e6  # Convert to microradians
         return None
 
@@ -238,13 +253,19 @@ class PerformanceMetrics:
 
         return mtf_cutoff
 
-    def calculate_airy_disk_radius(self, wavelength: float = WAVELENGTH_GREEN) -> Optional[float]:
+    def calculate_airy_disk_radius(
+        self,
+        wavelength: float = WAVELENGTH_GREEN,
+        entrance_pupil_diameter: Optional[float] = None,
+    ) -> Optional[float]:
         """
         Calculate Airy disk radius at focal plane
         r = 1.22 * λ * f / D (mm)
 
         Args:
             wavelength: Wavelength in nanometers (default 550nm)
+            entrance_pupil_diameter: Optional entrance pupil diameter (mm).
+                Defaults to the first element's mechanical diameter.
 
         Returns:
             Airy disk radius in mm
@@ -253,10 +274,13 @@ class PerformanceMetrics:
 
         if self.lens:
             f = self.lens.calculate_focal_length()
-            D = self.lens.diameter
+            D = entrance_pupil_diameter if entrance_pupil_diameter else self.lens.diameter
         elif self.system:
             f = self.system.get_system_focal_length()
-            D = self.system.elements[0].lens.diameter if self.system.elements else None
+            if entrance_pupil_diameter:
+                D = entrance_pupil_diameter
+            else:
+                D = self.system.elements[0].lens.diameter if self.system.elements else None
         else:
             return None
 
@@ -363,7 +387,9 @@ class PerformanceMetrics:
 
         # Basic metrics
         metrics["f_number"] = self.calculate_f_number(entrance_pupil_diameter)
-        metrics["numerical_aperture"] = self.calculate_numerical_aperture()
+        metrics["numerical_aperture"] = self.calculate_numerical_aperture(
+            entrance_pupil_diameter=entrance_pupil_diameter
+        )
         metrics["back_focal_length"] = self.calculate_back_focal_length()
         metrics["working_distance_1x"] = self.calculate_working_distance(1.0)
 
@@ -381,8 +407,10 @@ class PerformanceMetrics:
         f_num = metrics["f_number"]
         metrics["resolution_um"] = self.estimate_resolution_rayleigh(wavelength, f_num)
         metrics["mtf_cutoff_lpmm"] = self.estimate_mtf_cutoff(wavelength, f_num)
-        metrics["rayleigh_limit_urad"] = self.calculate_resolution_rayleigh()
-        metrics["airy_disk_radius_mm"] = self.calculate_airy_disk_radius(wavelength)
+        metrics["rayleigh_limit_urad"] = self.calculate_resolution_rayleigh(wavelength)
+        metrics["airy_disk_radius_mm"] = self.calculate_airy_disk_radius(
+            wavelength, entrance_pupil_diameter
+        )
 
         # Field of view
         metrics["field_of_view_deg"] = self.calculate_field_of_view(sensor_size)
