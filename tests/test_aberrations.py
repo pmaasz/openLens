@@ -335,12 +335,12 @@ class TestAberrationsCalculator(unittest.TestCase):
         self.assertTrue(math.isfinite(fallback))
         self.assertAlmostEqual(fallback / exact, 1.0, delta=0.15)
 
-    def test_field_curvature_calculation(self):
-        """Test field curvature (Petzval) calculation"""
+    def test_petzval_radius_calculation(self):
+        """The analytic Petzval radius of a single lens"""
         calc = AberrationsCalculator(self.biconvex)
         focal_length = self.biconvex.calculate_focal_length()
 
-        field_curv = calc._calculate_field_curvature(focal_length)
+        field_curv = calc._calculate_petzval_radius(focal_length)
 
         # Field curvature (Petzval radius) has same sign as focal length
         # For a positive lens, the Petzval surface curves towards the lens
@@ -472,7 +472,7 @@ class TestAberrationsBehavior(unittest.TestCase):
 
         calc = AberrationsCalculator(biconvex)
         focal_length = biconvex.calculate_focal_length()
-        distortion = calc._calculate_distortion(focal_length, field_angle_deg=10.0)
+        distortion = calc._calculate_third_order_distortion(focal_length, field_angle_deg=10.0)
 
         # For a single thin lens with stop AT the lens, distortion is 0
         self.assertAlmostEqual(distortion, 0.0, places=5)
@@ -590,8 +590,8 @@ class TestAberrationsBehavior(unittest.TestCase):
         # Poor lens should have more issues
         self.assertGreaterEqual(len(quality_poor["issues"]), len(quality_good["issues"]))
 
-    def test_field_curvature_sign(self):
-        """Field curvature sign: Petzval radius matches the focal-length sign."""
+    def test_petzval_radius_sign(self):
+        """The Petzval radius matches the focal-length sign."""
         lens = Lens(
             name="Test",
             radius_of_curvature_1=100.0,
@@ -604,9 +604,9 @@ class TestAberrationsBehavior(unittest.TestCase):
 
         calc = AberrationsCalculator(lens)
         focal_length = lens.calculate_focal_length()
-        field_curv = calc._calculate_field_curvature(focal_length)
+        field_curv = calc._calculate_petzval_radius(focal_length)
 
-        # Field curvature (Petzval radius) is positive for positive focal length
+        # The Petzval radius is positive for a positive focal length
         self.assertGreater(field_curv, 0)
 
     def test_airy_disk_increases_with_f_number(self):
@@ -717,7 +717,9 @@ class TestAberrationsBehavior(unittest.TestCase):
         results_0 = calc.calculate_all_aberrations(field_angle_deg=0.0)
         self.assertEqual(results_0["coma"], 0)
         self.assertEqual(results_0["astigmatism"], 0)
-        self.assertEqual(results_0["distortion"], 0)
+        # The distortion is traced, so the on-axis value is zero within the
+        # trace's numerical residue rather than exactly zero.
+        self.assertAlmostEqual(results_0["distortion"], 0.0, delta=1e-4)
 
         # Test at wide field angle
         results_wide = calc.calculate_all_aberrations(field_angle_deg=20.0)

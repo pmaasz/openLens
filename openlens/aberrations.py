@@ -62,6 +62,14 @@ class AberrationsCalculator:
     4. Field Curvature
     5. Distortion
 
+    A lens and the one-element system that holds it report the same numbers:
+    the field curvature is the traced tangential focus shift (mm) and the
+    distortion the traced value (%), for both. The analytic singlet estimates
+    (the Petzval radius, the third-order distortion) are available under
+    their own names - ``_calculate_petzval_radius`` and
+    ``_calculate_third_order_distortion`` - because they are a different
+    quantity, not a cheaper way of measuring the same one.
+
     Additionally calculates chromatic aberration when Abbe number is available.
     """
 
@@ -236,14 +244,27 @@ class AberrationsCalculator:
                 "valid": _all_valid(field_data, spherical, chromatic, airy, strehl, spot_rms),
             }
 
-        field_curvature = self._calculate_field_curvature(focal_length)
-        distortion = self._calculate_distortion(focal_length, field_angle_deg)
+        # Field curvature and distortion come from the same trace the
+        # system path uses, so a lens and the one-element system that holds
+        # it report the same numbers. The analytic singlet estimates were
+        # different quantities altogether: the Petzval *radius* (n * f) and a
+        # distortion of exactly zero "by construction" - the same key, a
+        # hundred-fold different value, and a GUI label that only fitted the
+        # analytic one.
+        field_data = self._calculate_field_metrics_system(
+            field_angle_deg, wavelength_nm=wavelength_nm, system=self._single_element_system()
+        )
+        if field_data is None:
+            field_curvature, distortion = None, None
+        else:
+            field_curvature = field_data["field_curvature"]
+            distortion = field_data["distortion"]
+
         singlet_field = self._calculate_singlet_field_estimators(field_angle_deg, wavelength_nm)
         if singlet_field is None:
             coma_val, astig_val = None, None
         else:
             coma_val, astig_val = singlet_field
-
         return {
             "focal_length": focal_length,
             "numerical_aperture": na,
@@ -304,6 +325,21 @@ class AberrationsCalculator:
             return [element.lens for element in self.target.elements]
         return [self.lens]
 
+    def _single_element_system(self) -> Any:
+        """The lens as a one-element system, for the traces that need one.
+
+        The field-curvature and distortion trace works on a system. Wrapping
+        the lens is what makes the two paths agree: the same lens, the same
+        trace, the same numbers.
+        """
+        if self.is_system:
+            return self.target
+        from .optical_system import OpticalSystem
+
+        system = OpticalSystem(name="Single lens")
+        system.add_lens(self.lens)
+        return system
+
     def _set_wavelength_for_trace(self, wavelength_nm: float) -> list:
         """Point all traceable lenses at wavelength_nm; return restore state."""
         saved = []
@@ -320,13 +356,27 @@ class AberrationsCalculator:
             lens.refractive_index = refractive_index
 
     def _calculate_field_metrics_system(
-        self, field_angle: float, wavelength_nm: float = WAVELENGTH_GREEN
+        self,
+        field_angle: float,
+        wavelength_nm: float = WAVELENGTH_GREEN,
+        system: Optional[Any] = None,
     ) -> Dict[str, float]:
-        """Calculate field-dependent aberrations for an optical system using real ray tracing"""
+        """Calculate field-dependent aberrations for an optical system using real ray tracing
+
+        Args:
+            field_angle: Field angle in degrees.
+            wavelength_nm: Traced wavelength in nm.
+            system: The system to trace. Defaults to the calculator's own
+                target; a single lens is wrapped in a one-element system, so
+                both paths measure the same thing.
+
+        Returns:
+            The traced field metrics, or None when the trace failed.
+        """
         try:
             from .analysis.geometric import GeometricTraceAnalysis
 
-            analysis = GeometricTraceAnalysis(self.target)
+            analysis = GeometricTraceAnalysis(system if system is not None else self.target)
 
             # 1. Field Curvature and Distortion
             # Sample out to the requested field. The magnitude is used:
@@ -446,19 +496,28 @@ class AberrationsCalculator:
         _, astigmatism = self._calculate_field_estimators(field_angle_deg, wavelength_nm)
         return astigmatism
 
-    def _calculate_field_curvature(self, focal_length: float) -> float:
-        """Calculate Petzval field curvature for a single lens"""
+    def _calculate_petzval_radius(self, focal_length: float) -> float:
+        """The Petzval radius of a single lens, in mm.
+
+        Not the reported ``field_curvature``: that is the traced tangential
+        focus shift, for the lens and for a system alike. This is the
+        analytic third-order quantity, kept because it is a useful
+        reference - and named for what it is, so the two cannot be confused
+        again.
+        """
         # Petzval Radius R_p = n * f (for a single thin lens)
         return self.n * focal_length
 
-    def _calculate_distortion(self, focal_length: float, field_angle_deg: float) -> float:
-        """
-        Third-order Seidel distortion for a single lens: 0.0 by construction.
+    def _calculate_third_order_distortion(
+        self, focal_length: float, field_angle_deg: float
+    ) -> float:
+        """The third-order Seidel distortion of a single lens: 0.0 by construction.
 
-        With the stop AT the lens the chief ray passes through the lens
-        centre undeviated, so the Seidel distortion coefficient S5 is
-        exactly zero (not an approximation). Distortion appears only when
-        the stop is shifted away from the lens; use
+        Not the reported ``distortion``: that is the traced value, for the
+        lens and for a system alike. With the stop AT the lens the chief ray
+        passes through the lens centre undeviated, so the Seidel distortion
+        coefficient S5 is exactly zero (not an approximation). Distortion
+        appears only when the stop is shifted away from the lens; use
         calculate_distortion_curve() for the exact traced distortion of any
         stop position.
         """
@@ -1078,7 +1137,7 @@ class AberrationsCalculator:
 ║ Spherical Aberration:  {_metric('spherical', '.4f', ' mm (longitudinal)')}      ║
 ║ Coma (@ {field_angle}°):         {_metric('coma', '.4f', ' (relative)')}              ║
 ║ Astigmatism (@ {field_angle}°):  {_metric('astigmatism', '.4f', ' mm')}                       ║
-║ Field Curvature:       {_metric('field_curvature', '.2f', ' mm (Petzval radius)')}     ║
+║ Field Curvature:       {_metric('field_curvature', '.2f', ' mm (tangential focus shift)')} ║
 ║ Distortion (@ {field_angle}°):   {_metric('distortion', '.4f', ' %')}                        ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║ CHROMATIC ABERRATION                                          ║
