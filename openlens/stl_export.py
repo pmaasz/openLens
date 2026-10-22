@@ -390,7 +390,16 @@ def export_lens_stl(item: Any, filename: str, resolution: int = 50) -> int:
             if profile2:
                 exporter.triangles.extend(
                     exporter.generate_surface_triangles(
-                        profile2, pos + lens.thickness, num_segments=resolution * 2
+                        profile2,
+                        pos + lens.thickness,
+                        num_segments=resolution * 2,
+                        # The back cap is wound like the front one unless it
+                        # says otherwise: the half of the solid with the
+                        # wrong winding has its normals pointing into the
+                        # glass, and the exported mesh is inside-out (its
+                        # signed volume is negative). The single-lens path
+                        # already passes is_front=False here.
+                        is_front=False,
                     )
                 )
                 last_z_back = profile2[-1][1] + pos + lens.thickness
