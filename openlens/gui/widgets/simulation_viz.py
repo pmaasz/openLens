@@ -3,7 +3,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 import logging
 import math
-from typing import Optional, Sequence, TYPE_CHECKING, Union
+from typing import Any, Callable, Optional, Sequence, TYPE_CHECKING, Union
 
 from ...constants import COLOR_LENS_FILL, NM_TO_MM, WAVELENGTH_GREEN
 from ..theme import DARK, get_palette
@@ -30,6 +30,10 @@ class SimulationVisualizationWidget(QWidget):
         super().__init__(parent)
         self._lens = None
         self._system = None
+        # Applied to the model at trace time (a conditioned copy, for
+        # instance). The widget keeps the live model, so an edit is picked up
+        # by the next trace.
+        self._conditioner = None
         self._rays = []
         self._ray_groups = []
         self._wavelength = WAVELENGTH_GREEN  # Primary wavelength in nm
@@ -187,6 +191,7 @@ class SimulationVisualizationWidget(QWidget):
         show_ghosts: bool = False,
         wavelength: float = WAVELENGTH_GREEN,
         wavelengths: Optional[Sequence[float]] = None,
+        conditioner: Optional[Callable[[Any], Any]] = None,
     ) -> None:
         """Run ray tracing simulation
 
@@ -203,6 +208,11 @@ class SimulationVisualizationWidget(QWidget):
             wavelengths: Multiple wavelengths in nanometers. Each gets its
                 own trace group and spectral colour; duplicates are ignored.
                 When given, ``wavelength`` is ignored.
+            conditioner: Applied to the model at trace time, returning the
+                model to trace (a conditioned copy, for instance). The widget
+                keeps a live reference to the model, so an edit is picked up
+                by the next trace; the environment is applied here rather
+                than once, so a trace never works on a stale snapshot.
         """
         from ...optical_system import OpticalSystem
 
@@ -212,6 +222,7 @@ class SimulationVisualizationWidget(QWidget):
         else:
             self._lens = lens_or_system
             self._system = None
+        self._conditioner = conditioner
 
         selected = wavelengths if wavelengths is not None else [wavelength]
         unique = [float(nm) for nm in dict.fromkeys(selected)]
@@ -230,12 +241,19 @@ class SimulationVisualizationWidget(QWidget):
         try:
             from ...ray_tracer import LensRayTracer, Ray, SystemRayTracer
 
+            # The model to trace: the live one, conditioned for the
+            # environment. The live model is what the widget holds, so an
+            # edit is picked up by the next trace.
+            traced = self._traced_target()
+            system = traced if isinstance(traced, OpticalSystem) else None
+            lens = None if system is not None else traced
+
             # Use appropriate tracer. Each wavelength gets its own tracer so
             # the dispersion curve is evaluated once per element, not per ray.
-            if self._system:
-                diameter = self._system.elements[0].lens.diameter if self._system.elements else 25.0
+            if system is not None:
+                diameter = system.elements[0].lens.diameter if system.elements else 25.0
             else:
-                diameter = self._lens.diameter
+                diameter = lens.diameter if lens is not None else 25.0
 
             angle_rad = angle * math.pi / 180.0
 
@@ -243,10 +261,10 @@ class SimulationVisualizationWidget(QWidget):
                 group = []
                 color = self.wavelength_to_color(trace_wavelength)
                 try:
-                    if self._system:
-                        tracer = SystemRayTracer(self._system, wavelength_nm=trace_wavelength)
+                    if system is not None:
+                        tracer = SystemRayTracer(system, wavelength_nm=trace_wavelength)
                     else:
-                        tracer = LensRayTracer(self._lens, wavelength_nm=trace_wavelength)
+                        tracer = LensRayTracer(lens, wavelength_nm=trace_wavelength)
 
                     for i in range(num_rays):
                         if num_rays == 1:
@@ -270,18 +288,34 @@ class SimulationVisualizationWidget(QWidget):
                 self._ray_groups.append((color, group))
 
             if show_ghosts:
-                if self._system:
-                    self._run_ghost_analysis(self._system, SystemRayTracer(self._system))
-                elif self._lens:
+                if system is not None:
+                    self._run_ghost_analysis(system, SystemRayTracer(system))
+                elif lens is not None:
                     # Wrap lens in temporary system for GhostAnalyzer
                     temp_system = OpticalSystem(name="Ghost Analysis")
-                    temp_system.add_lens(self._lens)
-                    self._run_ghost_analysis(temp_system, LensRayTracer(self._lens))
+                    temp_system.add_lens(lens)
+                    self._run_ghost_analysis(temp_system, LensRayTracer(lens))
 
         except Exception as e:
             logger.error("Simulation failed: %s", e)
 
         self.update()
+
+    def _traced_target(self) -> Any:
+        """The model to trace: the live one, conditioned for the environment.
+
+        The widget holds a live reference to the model, so an edit is picked
+        up by the next trace. The environment (a temperature, a pressure) is
+        applied here, at trace time: applying it once and storing the result
+        left the widget with a snapshot, and every later edit was silently
+        discarded.
+        """
+        target = self._system if self._system is not None else self._lens
+        if target is None:
+            return None
+        if self._conditioner is not None:
+            return self._conditioner(target)
+        return target
 
     def _run_ghost_analysis(self, system: "OpticalSystem", tracer: "SystemRayTracer") -> None:
         """Run ghost analysis for 2nd order reflections"""
@@ -337,18 +371,21 @@ class SimulationVisualizationWidget(QWidget):
             self.update()
             return
 
-        target = self._system if self._system is not None else self._lens
-        if target is None:
+        # The live model, not the last traced one: the environment is applied
+        # by run_simulation, so the trace works on the current design.
+        live = self._system if self._system is not None else self._lens
+        if live is None:
             self.update()
             return
 
         self.run_simulation(
-            target,
+            live,
             num_rays=self._last_num_rays,
             angle=self._last_angle,
             source_height=self._last_source_height,
             show_ghosts=self._show_ghosts,
             wavelengths=self._wavelengths,
+            conditioner=self._conditioner,
         )
         self.update()
 
