@@ -1010,7 +1010,15 @@ class LensOptimizer:
             system.elements[element_index].lens.is_parabolic_2 = True
             system.elements[element_index].lens.parabolic_sag_2 = value
         elif parameter == "thickness":
-            system.elements[element_index].lens.thickness = value
+            element = system.elements[element_index]
+            element.lens.thickness = value
+            # The element's own thickness wrapper is a copy of the lens value,
+            # and it is what _update_positions() advances by. Leaving it
+            # stale meant the element did not move: the air gap the positions
+            # implied no longer matched air_gaps, so the ABCD model and the
+            # tracer analysed two different systems - and a thick enough lens
+            # could pass through its neighbour without any penalty.
+            element.thickness = value
         elif parameter == "diameter":
             system.elements[element_index].lens.diameter = value
         elif parameter == "air_gap":
