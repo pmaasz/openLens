@@ -158,7 +158,9 @@ class TestBoundaryConditions(unittest.TestCase):
         # On-axis: no coma, astigmatism, or distortion
         self.assertEqual(results["coma"], 0)
         self.assertEqual(results["astigmatism"], 0)
-        self.assertEqual(results["distortion"], 0)
+        # The distortion is traced, so the on-axis value is zero within the
+        # trace's numerical residue rather than exactly zero.
+        self.assertAlmostEqual(results["distortion"], 0.0, delta=1e-4)
 
     def test_aberrations_at_extreme_field_angle(self):
         """Test aberrations at extreme field angles"""
