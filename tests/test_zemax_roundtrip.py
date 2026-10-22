@@ -164,13 +164,19 @@ class TestZemaxSystemImportValidation(unittest.TestCase):
             os.unlink(tmp.name)
 
     @staticmethod
-    def _zmx(front_curv="0.02", disz="5.0", front_diam="25.0", back_diam="25.0"):
+    def _zmx(
+        front_curv="0.02",
+        disz="5.0",
+        front_diam="25.0",
+        back_diam="25.0",
+        back_curv="-0.02",
+    ):
         return (
             "VERS 200000\nMODE SEQ\nUNIT MM\n\n"
             "SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\n"
             f"SURF 1\n  TYPE STANDARD\n  CURV {front_curv}\n  DISZ {disz}\n"
             f"  GLAS BK7\n  DIAM {front_diam}\n\n"
-            f"SURF 2\n  TYPE STANDARD\n  CURV -0.02\n  DIAM {back_diam}\n  DISZ 50.0\n\n"
+            f"SURF 2\n  TYPE STANDARD\n  CURV {back_curv}\n  DIAM {back_diam}\n  DISZ 50.0\n\n"
             "SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0.0\n"
         )
 
@@ -192,6 +198,48 @@ class TestZemaxSystemImportValidation(unittest.TestCase):
     def test_plano_surface_still_imports(self):
         """CURV 0.0 means a legitimate plano surface, not an invalid value."""
         rebuilt = self._import(self._zmx(front_curv="0.0"))
+        self.assertEqual(len(rebuilt.elements), 1)
+        self.assertEqual(rebuilt.elements[0].lens.radius_of_curvature_1, float("inf"))
+
+    def test_non_finite_front_curvature_is_rejected(self):
+        """NaN/inf CURV must be dropped, not injected as NaN geometry."""
+        for curv in ("nan", "inf", "-inf"):
+            with self.subTest(curv=curv):
+                with self.assertLogs("openlens.export_formats", level="WARNING") as captured:
+                    rebuilt = self._import(self._zmx(front_curv=curv))
+
+                self.assertEqual(len(rebuilt.elements), 0)
+                self.assertTrue(
+                    any("finite" in message for message in captured.output),
+                    f"no warning explained the dropped element: {captured.output}",
+                )
+
+    def test_non_finite_back_curvature_is_rejected(self):
+        """A bad CURV on the closing surface drops the element too."""
+        for curv in ("nan", "inf", "-inf"):
+            with self.subTest(curv=curv):
+                rebuilt = self._import(self._zmx(back_curv=curv))
+                self.assertEqual(len(rebuilt.elements), 0)
+
+    def test_a_non_finite_element_does_not_discard_the_next(self):
+        """The import continues with the remaining surfaces."""
+        text = (
+            "VERS 200000\nMODE SEQ\nUNIT MM\n\n"
+            "SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\n"
+            "SURF 1\n  TYPE STANDARD\n  CURV nan\n  DISZ 5.0\n"
+            "  GLAS BK7\n  DIAM 25.0\n\n"
+            "SURF 2\n  TYPE STANDARD\n  CURV -0.02\n  DIAM 25.0\n  DISZ 50.0\n\n"
+            "SURF 3\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 4.0\n"
+            "  GLAS BK7\n  DIAM 30.0\n\n"
+            "SURF 4\n  TYPE STANDARD\n  CURV -0.02\n  DIAM 30.0\n  DISZ 0.0\n"
+        )
+        rebuilt = self._import(text)
+        self.assertEqual(len(rebuilt.elements), 1)
+        self.assertAlmostEqual(rebuilt.elements[0].lens.thickness, 4.0)
+
+    def test_the_explicit_infinity_token_still_means_plano(self):
+        """``CURV INFINITY`` is the format's plano spelling, not corrupt input."""
+        rebuilt = self._import(self._zmx(front_curv="INFINITY"))
         self.assertEqual(len(rebuilt.elements), 1)
         self.assertEqual(rebuilt.elements[0].lens.radius_of_curvature_1, float("inf"))
 

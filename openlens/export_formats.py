@@ -865,7 +865,11 @@ class ZemaxSystemImporter:
             elif key in ("CURV", "DISZ", "DIAM", "CONI"):
                 token = rest.split()[0] if rest.split() else ""
                 if token.upper() == "INFINITY":
-                    current[key.lower()] = float("inf")
+                    # Curvature INFINITY is the format's spelling of a plano
+                    # surface (radius infinity), not a curvature. Store zero
+                    # so it takes the same path as CURV 0; for the linear
+                    # keywords INFINITY really is an unbounded value.
+                    current[key.lower()] = 0.0 if key == "CURV" else float("inf")
                 else:
                     try:
                         current[key.lower()] = float(token)
@@ -888,8 +892,8 @@ class ZemaxSystemImporter:
     @staticmethod
     def _build_validated_lens(
         index: int,
-        r1: float,
-        r2: float,
+        r1: Optional[float],
+        r2: Optional[float],
         thickness: float,
         diameter: float,
         material: str,
@@ -907,8 +911,10 @@ class ZemaxSystemImporter:
 
         Args:
             index: 1-based element number, used for the element name.
-            r1: Front radius of curvature (mm); ``inf`` for a plano surface.
-            r2: Back radius of curvature (mm); ``inf`` for a plano surface.
+            r1: Front radius of curvature (mm); ``inf`` for a plano surface,
+                or None when the front CURV was not a real number.
+            r2: Back radius of curvature (mm); ``inf`` for a plano surface,
+                or None when the back CURV was not a real number.
             thickness: Center thickness (mm).
             diameter: Mechanical diameter (mm).
             material: Glass name from the GLAS keyword.
@@ -920,6 +926,15 @@ class ZemaxSystemImporter:
         Returns:
             The validated Lens, or None if validation failed.
         """
+        if r1 is None or r2 is None:
+            side = "front" if r1 is None else "back"
+            logger.warning(
+                "Zemax import: element %d dropped, %s curvature (CURV) is not finite",
+                index,
+                side,
+            )
+            return None
+
         if ca1 is not None and ca1 > diameter:
             logger.warning(
                 "Zemax import: element %d dropped, front clear aperture "
@@ -1013,9 +1028,19 @@ class ZemaxSystemImporter:
         cursor_x = 0.0
         last_back_x: Optional[float] = None
 
-        def _curv_to_radius(curv: float) -> float:
+        def _curv_to_radius(curv: Optional[float]) -> Optional[float]:
+            """Radius for a CURV value, ``None`` when the value is not real.
+
+            A non-finite curvature has no radius: 1/nan is nan, and 1/inf or
+            1/-inf is zero, which the Lens model would turn into a flat
+            surface. Both would be invented geometry, so the caller drops the
+            element instead. ``CURV 0`` (and the INFINITY token, normalised by
+            the parser) means a plano surface.
+            """
             if curv is None or abs(curv) < 1e-12:
                 return float("inf")
+            if not math.isfinite(curv):
+                return None
             return 1.0 / curv
 
         for surf in surfaces:
