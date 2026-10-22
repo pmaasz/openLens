@@ -8,12 +8,15 @@ Handles lens housing, mounting, and spacing calculations.
 # else in the project - took down mechanical design too. It also misreported
 # the failure as a missing pythonocc-core, because callers that catch ImportError
 # around the CAD imports attribute it to the wrong package.
+import logging
 import math
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 
 from .constants import DEFAULT_MOUNT_TYPE
 from .mounts import MountCatalog
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -93,6 +96,11 @@ class MechanicalDesigner:
     # Standard mount specifications (the authoritative table lives in mounts).
     STANDARD_MOUNTS = MountCatalog.STANDARD_MOUNTS
 
+    #: Axial clearance a lens cell carries beyond the element's centre
+    #: thickness. Documented because the mechanical total exceeds the optical
+    #: stack by this much per element.
+    CELL_MARGIN_MM = 5.0
+
     def __init__(
         self,
         optical_system=None,
@@ -135,7 +143,11 @@ class MechanicalDesigner:
     def design_lens_cells(
         self, wall_thickness: float = 2.0, material: str = "aluminum"
     ) -> List[LensCell]:
-        """Design lens cells for all elements in the system."""
+        """Design lens cells for all elements in the system.
+
+        The cell length is the element's centre thickness plus
+        ``CELL_MARGIN_MM`` for the retaining shoulder and cement clearance.
+        """
         self.lens_cells.clear()
 
         elements = getattr(self.optical_system, "elements", None)
@@ -157,11 +169,23 @@ class MechanicalDesigner:
             inner_diameter = lens_diameter + 0.1  # Clearance
             outer_diameter = inner_diameter + 2 * wall_thickness
 
-            # Estimate length (depends on edge thickness)
-            if hasattr(lens, "center_thickness"):
-                length = lens.center_thickness + 5.0  # Add margin
-            else:
+            # Length from the element's own thickness. ``Lens`` exposes
+            # ``thickness``; the old probe for ``center_thickness`` never
+            # matched, so every cell was the 10 mm fallback regardless of the
+            # element it had to hold.
+            center_thickness = getattr(lens, "center_thickness", None)
+            if center_thickness is None:
+                center_thickness = getattr(lens, "thickness", None)
+            if center_thickness is None:
+                logger.warning(
+                    "Mechanical design: lens %r exposes neither center_thickness nor "
+                    "thickness; using the %.1f mm fallback cell length",
+                    getattr(lens, "name", lens),
+                    10.0,
+                )
                 length = 10.0
+            else:
+                length = float(center_thickness) + self.CELL_MARGIN_MM
 
             cell = LensCell(
                 inner_diameter=inner_diameter,
@@ -177,10 +201,29 @@ class MechanicalDesigner:
 
         return self.lens_cells
 
+    def _default_spacings(self, num_lenses: int) -> List[float]:
+        """Air gap before each element after the first, in axial order."""
+        gaps = list(getattr(self.optical_system, "air_gaps", None) or [])
+        if gaps:
+            return [float(getattr(gap, "thickness", gap)) for gap in gaps]
+
+        spacing = getattr(self.optical_system, "element_spacing", None)
+        if spacing is not None:
+            return list(spacing)
+
+        # Neither model exposes gaps; keep the historical default so a
+        # duck-typed target still gets a spacer between each pair.
+        return [10.0] * max(num_lenses - 1, 0)
+
     def calculate_spacers(
         self, target_spacing: Optional[List[float]] = None, tolerance: float = 0.1
     ) -> List[Spacer]:
-        """Calculate required spacers between lens elements."""
+        """Calculate required spacers between lens elements.
+
+        Without an explicit ``target_spacing`` the spacers are the system's
+        own air gaps; the old probe for ``element_spacing`` never matched an
+        ``OpticalSystem``, so every spacer was a fabricated 10 mm.
+        """
         self.spacers.clear()
 
         elements = getattr(self.optical_system, "elements", None)
@@ -192,11 +235,7 @@ class MechanicalDesigner:
             return []
 
         if target_spacing is None:
-            # Use default spacing from optical design
-            if hasattr(self.optical_system, "element_spacing"):
-                target_spacing = self.optical_system.element_spacing
-            else:
-                target_spacing = [10.0] * (num_lenses - 1)
+            target_spacing = self._default_spacings(num_lenses)
 
         for i, spacing in enumerate(target_spacing):
             # Determine spacer dimensions
@@ -246,7 +285,12 @@ class MechanicalDesigner:
         return mount
 
     def calculate_total_length(self) -> float:
-        """Calculate total mechanical length of assembly."""
+        """Total mechanical length of the cells and the spacers.
+
+        Cells carry ``CELL_MARGIN_MM`` each beyond the element thickness, so
+        the total exceeds the optical stack length by
+        ``number_of_elements * CELL_MARGIN_MM``.
+        """
         total = 0.0
 
         for cell in self.lens_cells:
