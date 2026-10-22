@@ -412,6 +412,28 @@ class TolerancingTab(BaseTab):
             return False
         return True
 
+    def _mark_dirty(self) -> None:
+        """Persist the tolerance set and schedule the window's debounced save.
+
+        The tolerance set lives in the window's operand list, and the save
+        path is what stamps it into the target's metadata. Mutating the list
+        without telling the window left the set in memory only: it was lost
+        when the window closed, unless the user happened to edit another
+        property or press Ctrl+S.
+
+        Every operand mutation goes through here, so a new button cannot
+        forget to save. The parent's helpers are looked up defensively: the
+        tab is exercised with partial parent doubles.
+        """
+        if not self._parent:
+            return
+        sync = getattr(self._parent, "_sync_tolerances_to_metadata", None)
+        if callable(sync):
+            sync()
+        schedule = getattr(self._parent, "_schedule_edit_commit", None)
+        if callable(schedule):
+            schedule("Tolerances updated")
+
     def _on_add_tolerance(self) -> None:
         """Add a new tolerance operand.
 
@@ -476,6 +498,7 @@ class TolerancingTab(BaseTab):
             )
             self._parent._tol_operands.append(operand)
             self._update_tolerance_operands_display()
+            self._mark_dirty()
 
     def _on_add_default_tolerances(self) -> None:
         """Add standard tolerances."""
@@ -500,6 +523,7 @@ class TolerancingTab(BaseTab):
 
         self._parent._tol_operands.extend(new_operands)
         self._update_tolerance_operands_display()
+        self._mark_dirty()
 
     def _on_load_grade(self) -> None:
         """Build a full shop-grade tolerance set for the current target."""
@@ -514,6 +538,7 @@ class TolerancingTab(BaseTab):
             return
         self._parent._tol_operands.extend(new_operands)
         self._update_tolerance_operands_display()
+        self._mark_dirty()
 
     def _on_remove_tolerance(self) -> None:
         """Remove selected tolerance operands."""
@@ -531,6 +556,7 @@ class TolerancingTab(BaseTab):
                     self._parent._tol_operands.pop(row)
 
         self._update_tolerance_operands_display()
+        self._mark_dirty()
 
     def _on_clear_tolerances(self) -> None:
         """Clear all tolerances."""
@@ -548,6 +574,7 @@ class TolerancingTab(BaseTab):
         ):
             self._parent._tol_operands = []
             self._update_tolerance_operands_display()
+            self._mark_dirty()
 
     def _on_tol_item_changed(self, item: QTableWidgetItem) -> None:
         """Handle manual edits.
@@ -567,6 +594,7 @@ class TolerancingTab(BaseTab):
                     self._parent._tol_operands[row].min_val = val
                 else:
                     self._parent._tol_operands[row].max_val = val
+                self._mark_dirty()
             except ValueError:
                 self._update_tolerance_operands_display()
 
