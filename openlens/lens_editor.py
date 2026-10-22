@@ -5,7 +5,7 @@ openlens - Interactive Optical Lens Creation and Modification Tool
 
 import logging
 from datetime import datetime
-from typing import Optional, List
+from typing import Any, Dict, Optional, List
 
 # Setup module logger
 logger = logging.getLogger(__name__)
@@ -229,60 +229,86 @@ class LensManager:
             print(f"\nModifying: {lens.name}")
             print("(Press Enter to keep current value)")
 
+            # Collect the edits first. Writing each answer into the lens as it
+            # is read allowed a partly applied edit and never checked the
+            # combination - the same geometry create_lens() refuses could be
+            # stored here.
+            updates: Dict[str, Any] = {}
+
             new_name = input(f"Name [{lens.name}]: ").strip()
             if new_name:
-                lens.name = validate_lens_name(new_name)
+                try:
+                    updates["name"] = validate_lens_name(new_name)
+                except ValidationError as e:
+                    print(f"\n  cannot update lens: {e}")
+                    return
+            else:
+                updates["name"] = lens.name
 
-            def _apply(attr, prompt, validator, current):
+            def _read(prompt: str, validator, current):
+                """Read one value, keeping ``current`` for blank/invalid input."""
                 raw = input(prompt).strip()
                 if not raw:
-                    return
+                    return current
                 try:
-                    setattr(lens, attr, validator(float(raw)))
+                    return validator(float(raw))
                 except ValueError:
                     print(f"  not a number: {raw!r} - keeping {current}")
                 except ValidationError as e:
                     print(f"  invalid: {e} - keeping {current}")
+                return current
 
-            _apply(
-                "radius_of_curvature_1",
+            updates["radius_of_curvature_1"] = _read(
                 f"Radius of curvature 1 [{lens.radius_of_curvature_1}]: ",
                 lambda v: validate_radius(v, param_name="Radius 1"),
                 lens.radius_of_curvature_1,
             )
-            _apply(
-                "radius_of_curvature_2",
+            updates["radius_of_curvature_2"] = _read(
                 f"Radius of curvature 2 [{lens.radius_of_curvature_2}]: ",
                 lambda v: validate_radius(v, param_name="Radius 2"),
                 lens.radius_of_curvature_2,
             )
-            _apply(
-                "thickness",
-                f"Thickness [{lens.thickness}]: ",
-                validate_thickness,
-                lens.thickness,
+            updates["thickness"] = _read(
+                f"Thickness [{lens.thickness}]: ", validate_thickness, lens.thickness
             )
-            _apply(
-                "diameter",
-                f"Diameter [{lens.diameter}]: ",
-                validate_diameter,
-                lens.diameter,
+            updates["diameter"] = _read(
+                f"Diameter [{lens.diameter}]: ", validate_diameter, lens.diameter
             )
-            _apply(
-                "refractive_index",
+            updates["refractive_index"] = _read(
                 f"Refractive index [{lens.refractive_index}]: ",
                 validate_refractive_index,
                 lens.refractive_index,
             )
 
             new_type = input(f"Type [{lens.lens_type}]: ").strip()
-            if new_type:
-                lens.lens_type = new_type
-
+            updates["lens_type"] = new_type or lens.lens_type
             new_material = input(f"Material [{lens.material}]: ").strip()
-            if new_material:
-                lens.material = new_material
+            updates["material"] = new_material or lens.material
 
+            # Cross-parameter check on the edited result, exactly as create.
+            # Parabolic/conic surfaces and a mounted clear aperture are part
+            # of that geometry, so they are passed from the lens itself.
+            feasible, reason = check_physical_feasibility(
+                updates["radius_of_curvature_1"],
+                updates["radius_of_curvature_2"],
+                updates["thickness"],
+                updates["diameter"],
+                bool(getattr(lens, "is_parabolic_1", False)),
+                float(getattr(lens, "parabolic_sag_1", 0.0)),
+                bool(getattr(lens, "is_parabolic_2", False)),
+                float(getattr(lens, "parabolic_sag_2", 0.0)),
+                clear_aperture_1=getattr(lens, "clear_aperture_1", None),
+                clear_aperture_2=getattr(lens, "clear_aperture_2", None),
+                conic_constant_1=float(getattr(lens, "conic_constant_1", 0.0)),
+                conic_constant_2=float(getattr(lens, "conic_constant_2", 0.0)),
+            )
+            if not feasible:
+                print(f"\n  cannot update lens: {reason}")
+                return
+
+            # Everything passed: apply the edit atomically and persist once.
+            for attribute, value in updates.items():
+                setattr(lens, attribute, value)
             lens.modified_at = datetime.now().isoformat()
             self.save_lenses()
 
