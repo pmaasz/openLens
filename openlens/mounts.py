@@ -23,15 +23,60 @@ PathLike = Union[str, Path]
 #: Standard mounts, in the order shown in the UI. Bayonet mounts have no
 #: thread, so their diameter and pitch are zero.
 STANDARD_MOUNTS: Dict[str, Dict[str, float]] = {
-    "C-mount": {"thread_diameter": 25.4, "thread_pitch": 0.794, "flange_distance": 17.526},
-    "CS-mount": {"thread_diameter": 25.4, "thread_pitch": 0.794, "flange_distance": 12.526},
-    "M42": {"thread_diameter": 42.0, "thread_pitch": 1.0, "flange_distance": 45.46},
-    "M39": {"thread_diameter": 39.0, "thread_pitch": 1.0, "flange_distance": 28.8},
-    "T-mount": {"thread_diameter": 42.0, "thread_pitch": 0.75, "flange_distance": 55.0},
-    "X-mount": {"thread_diameter": 0.0, "thread_pitch": 0.0, "flange_distance": 17.7},
-    "M-mount": {"thread_diameter": 0.0, "thread_pitch": 0.0, "flange_distance": 27.8},
-    "EF-mount": {"thread_diameter": 54.0, "thread_pitch": 1.0, "flange_distance": 44.0},
-    "F-mount": {"thread_diameter": 44.0, "thread_pitch": 1.0, "flange_distance": 46.5},
+    "C-mount": {
+        "thread_diameter": 25.4,
+        "thread_pitch": 0.794,
+        "flange_distance": 17.526,
+        "register_diameter": 0.0,
+    },
+    "CS-mount": {
+        "thread_diameter": 25.4,
+        "thread_pitch": 0.794,
+        "flange_distance": 12.526,
+        "register_diameter": 0.0,
+    },
+    "M42": {
+        "thread_diameter": 42.0,
+        "thread_pitch": 1.0,
+        "flange_distance": 45.46,
+        "register_diameter": 0.0,
+    },
+    "M39": {
+        "thread_diameter": 39.0,
+        "thread_pitch": 1.0,
+        "flange_distance": 28.8,
+        "register_diameter": 0.0,
+    },
+    "T-mount": {
+        "thread_diameter": 42.0,
+        "thread_pitch": 0.75,
+        "flange_distance": 55.0,
+        "register_diameter": 0.0,
+    },
+    "X-mount": {
+        "thread_diameter": 0.0,
+        "thread_pitch": 0.0,
+        "flange_distance": 17.7,
+        "register_diameter": 0.0,
+    },
+    "M-mount": {
+        "thread_diameter": 0.0,
+        "thread_pitch": 0.0,
+        "flange_distance": 27.8,
+        "register_diameter": 0.0,
+    },
+    "EF-mount": {
+        "thread_diameter": 0.0,
+        "thread_pitch": 0.0,
+        "flange_distance": 44.0,
+        "register_diameter": 54.0,
+    },
+    "F-mount": {
+        "thread_diameter": 0.0,
+        "thread_pitch": 0.0,
+        "flange_distance": 46.5,
+        "register_diameter": 44.0,
+    },
 }
 
 
@@ -94,6 +139,7 @@ class MountCatalog:
         flange_distance: float,
         thread_diameter: float = 0.0,
         thread_pitch: float = 0.0,
+        register_diameter: float = 0.0,
     ) -> Dict[str, Any]:
         """Add or replace a user-defined mount.
 
@@ -116,7 +162,9 @@ class MountCatalog:
         if clean_name.lower() in {standard.lower() for standard in self.STANDARD_MOUNTS}:
             raise ValueError(f"{clean_name!r} is a standard mount and cannot be redefined")
 
-        spec = self._normalize_spec(flange_distance, thread_diameter, thread_pitch)
+        spec = self._normalize_spec(
+            flange_distance, thread_diameter, thread_pitch, register_diameter
+        )
         self._custom_mounts[clean_name] = spec
         return {**spec, "custom": True}
 
@@ -196,6 +244,7 @@ class MountCatalog:
                     raw_spec.get("flange_distance"),
                     raw_spec.get("thread_diameter", 0.0),
                     raw_spec.get("thread_pitch", 0.0),
+                    raw_spec.get("register_diameter", 0.0),
                 )
             except (TypeError, ValueError) as exc:
                 logger.warning("Ignoring invalid mount %r in %s: %s", name, self.path, exc)
@@ -206,19 +255,24 @@ class MountCatalog:
 
     @staticmethod
     def _normalize_spec(
-        flange_distance: Any, thread_diameter: Any, thread_pitch: Any
+        flange_distance: Any, thread_diameter: Any, thread_pitch: Any, register_diameter: Any = 0.0
     ) -> Dict[str, float]:
         """Validate and normalize one mount specification."""
         try:
             flange = float(flange_distance)
             diameter = float(thread_diameter or 0.0)
             pitch = float(thread_pitch or 0.0)
+            register = float(register_diameter or 0.0)
         except (TypeError, ValueError) as exc:
             raise ValueError("Mount dimensions must be numbers") from exc
 
         if not math.isfinite(flange) or flange <= 0:
             raise ValueError(f"Flange distance must be a positive finite number, got {flange}")
-        for label, value in (("thread diameter", diameter), ("thread pitch", pitch)):
+        for label, value in (
+            ("thread diameter", diameter),
+            ("thread pitch", pitch),
+            ("register diameter", register),
+        ):
             if not math.isfinite(value) or value < 0:
                 raise ValueError(f"{label} must be a finite, non-negative number, got {value}")
 
@@ -226,4 +280,5 @@ class MountCatalog:
             "thread_diameter": diameter,
             "thread_pitch": pitch,
             "flange_distance": flange,
+            "register_diameter": register,
         }

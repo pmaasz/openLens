@@ -29,6 +29,7 @@ class LensMount:
     thread_pitch: float  # mm
     flange_distance: float  # mm
     clear_aperture: float  # mm
+    register_diameter: float = 0.0  # mm (bayonet outer diameter, 0 for threaded)
 
     def get_specifications(self) -> Dict[str, Any]:
         """Get mount specifications."""
@@ -39,6 +40,7 @@ class LensMount:
             "thread_pitch": self.thread_pitch,
             "flange_distance": self.flange_distance,
             "clear_aperture": self.clear_aperture,
+            "register_diameter": self.register_diameter,
         }
 
 
@@ -122,10 +124,11 @@ class MechanicalDesigner:
         flange_distance: float,
         thread_diameter: float = 0.0,
         thread_pitch: float = 0.0,
+        register_diameter: float = 0.0,
     ) -> Dict[str, Any]:
         """Add a user-defined mount to this designer's catalog."""
         return self.mount_catalog.add_custom_mount(
-            name, flange_distance, thread_diameter, thread_pitch
+            name, flange_distance, thread_diameter, thread_pitch, register_diameter
         )
 
     def remove_custom_mount(self, name: str) -> bool:
@@ -279,6 +282,7 @@ class MechanicalDesigner:
             thread_pitch=specs["thread_pitch"],
             flange_distance=specs["flange_distance"],
             clear_aperture=lens_diameter * 0.8,
+            register_diameter=specs.get("register_diameter", 0.0),
         )
 
         self.mounts.append(mount)

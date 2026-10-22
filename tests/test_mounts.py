@@ -54,7 +54,7 @@ class TestStandardMountCatalog(unittest.TestCase):
     def test_bayonet_mounts_may_have_no_thread(self):
         available = self.catalog.get_available_mounts()
 
-        for name in ("X-mount", "M-mount"):
+        for name in ("X-mount", "M-mount", "EF-mount", "F-mount"):
             with self.subTest(mount=name):
                 self.assertEqual(available[name]["thread_diameter"], 0.0)
                 self.assertEqual(available[name]["thread_pitch"], 0.0)
