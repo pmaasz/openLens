@@ -20,6 +20,7 @@ from .constants import (
     DEFAULT_THICKNESS,
     DEFAULT_DIAMETER,
     DEFAULT_MOUNT_TYPE,
+    DEFAULT_TEMPERATURE,
     REFRACTIVE_INDEX_BK7,
     EPSILON,
     LARGE_NUMBER,
@@ -222,6 +223,7 @@ _LENS_SERIALIZED_KEYS = frozenset(
         "wavelength_nm",
         "temperature",
         "pressure_atm",
+        "thermal_state_temperature",
         "is_fresnel",
         "groove_pitch",
         "num_grooves",
@@ -268,6 +270,7 @@ class Lens:
         wavelength: Optional[float] = None,
         temperature: float = 20.0,
         pressure_atm: float = REFERENCE_PRESSURE_ATM,
+        thermal_state_temperature: float = DEFAULT_TEMPERATURE,
         is_fresnel: bool = False,
         groove_pitch: float = DEFAULT_THICKNESS,
         num_grooves: Optional[int] = None,
@@ -313,6 +316,12 @@ class Lens:
         # this pressure so a refresh at an analysis wavelength cannot discard
         # the correction. 1 atm is the unconditioned state.
         self.pressure_atm = pressure_atm
+        # Temperature the *geometry* is valid at, not the temperature the
+        # index was resolved at. The two differ: Lens.for_material(...,
+        # temperature=120) has a 120 C index on 20 C geometry, and a custom
+        # glass has no index model at all. Thermal conditioning expands
+        # relative to this state, which makes it idempotent and reversible.
+        self.thermal_state_temperature = thermal_state_temperature
 
         # Model Glass Properties
         self.model_glass_mode = model_glass_mode
@@ -765,6 +774,7 @@ class Lens:
             "wavelength": self.wavelength,
             "temperature": self.temperature,
             "pressure_atm": self.pressure_atm,
+            "thermal_state_temperature": self.thermal_state_temperature,
             "is_fresnel": self.is_fresnel,
             "groove_pitch": self.groove_pitch,
             "num_grooves": self.num_grooves,
@@ -827,6 +837,7 @@ class Lens:
             wavelength_nm=data.get("wavelength_nm", data.get("wavelength", WAVELENGTH_D_LINE)),
             temperature=data.get("temperature", 20.0),
             pressure_atm=data.get("pressure_atm", REFERENCE_PRESSURE_ATM),
+            thermal_state_temperature=data.get("thermal_state_temperature", DEFAULT_TEMPERATURE),
             is_fresnel=data.get("is_fresnel", False),
             groove_pitch=data.get("groove_pitch", DEFAULT_THICKNESS),
             num_grooves=data.get("num_grooves", None),
