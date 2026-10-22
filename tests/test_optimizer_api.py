@@ -12,12 +12,15 @@ from openlens.optimizer import LensOptimizer, OptimizationVariable, Optimization
 
 class TestLensOptimizerAPI(unittest.TestCase):
     def setUp(self):
-        # Create a simple system for testing
+        # Create a simple system for testing.
+        # The diameter is 25 mm, not 50: with R = 50 mm the rim of a 50 mm
+        # lens crosses itself (the edge thickness is negative), and a design
+        # that cannot be made is not a successful optimization.
         self.lens = Lens(
             radius_of_curvature_1=50.0,
             radius_of_curvature_2=-50.0,
             thickness=10.0,
-            diameter=50.0,
+            diameter=25.0,
             refractive_index=1.5,
         )
         self.system = OpticalSystem("Test System")
