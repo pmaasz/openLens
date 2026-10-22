@@ -19,7 +19,9 @@ from .constants import (
     EPSILON,
     MAX_RADIUS_OF_CURVATURE,
     REFRACTIVE_INDEX_BK7,
+    WAVELENGTH_D_LINE,
 )
+from .material_database import get_material_database
 from .validation import (
     ValidationError,
     reject_oversized_file,
@@ -697,6 +699,34 @@ def _zemax_material(material: str) -> str:
     return name
 
 
+def _material_design_index(material: str) -> float:
+    """The d-line refractive index the catalog gives *material*, in air.
+
+    A .zmx GLAS line names its glass and says nothing about its index, so the
+    catalog is the only source that knows what F2 is. Resolving through
+    DEFAULT_MATERIAL_INDICES alone was a six-glass table: every other glass
+    was stored as BK7 while the name (and therefore the dispersion) stayed
+    the real one, so the paraxial numbers and the traced ones described
+    different glasses.
+
+    The fallback keeps imports working for names the catalog does not hold,
+    including the display names the table exists for.
+    """
+    try:
+        database = get_material_database()
+        if database.has_material(material):
+            return database.get_refractive_index(material, WAVELENGTH_D_LINE)
+    except (ArithmeticError, KeyError, OSError, ValueError) as e:
+        # An unreadable catalog must not fail the import; the static table
+        # below still gives a usable design index.
+        logger.debug("Zemax import: catalog lookup for %r failed: %s", material, e)
+
+    for name, index in DEFAULT_MATERIAL_INDICES.items():
+        if name.lower() == material.lower():
+            return index
+    return REFRACTIVE_INDEX_BK7
+
+
 def _zemax_diam(full_aperture: float) -> float:
     """Convert an OpenLens full aperture to Zemax's semi-diameter.
 
@@ -910,18 +940,10 @@ class ZemaxSystemImporter:
             logger.warning("Zemax import: element %d dropped, zero radius", index)
             return None
 
-        # Preserve the glass name as written. It is shown in the UI, and
-        # upper-casing it made every mixed-case catalog name ("Fused Silica")
-        # miss DEFAULT_MATERIAL_INDICES and silently fall back to BK7.
+        # Preserve the glass name as written: it is shown in the UI, and the
+        # catalog lookup accepts it in any case or punctuation.
         material_name = (material or "BK7").strip() or "BK7"
-        n = next(
-            (
-                index_value
-                for name, index_value in DEFAULT_MATERIAL_INDICES.items()
-                if name.lower() == material_name.lower()
-            ),
-            REFRACTIVE_INDEX_BK7,
-        )
+        n = _material_design_index(material_name)
         try:
             validate_lens_parameters(
                 radius1=probe if not math.isfinite(r1) else r1,

@@ -411,7 +411,10 @@ class TestZemaxMaterialsWithSpaces(unittest.TestCase):
 
         lens = rebuilt.elements[0].lens
         self.assertEqual(lens.material, "Fused Silica")
-        self.assertAlmostEqual(lens.refractive_index, 1.4585)
+        # The catalog's Sellmeier fit (1.45846) rather than the rounded
+        # static table (1.4585), so the stored index agrees with the
+        # dispersion (see test_zemax_material_index.py).
+        self.assertAlmostEqual(lens.refractive_index, 1.4585, places=3)
 
     def test_material_name_lookup_ignores_case(self):
         """Preserving case must not cost the catalog lookup."""
@@ -421,7 +424,7 @@ class TestZemaxMaterialsWithSpaces(unittest.TestCase):
 
         lens = rebuilt.elements[0].lens
         self.assertEqual(lens.material, "fused silica")
-        self.assertAlmostEqual(lens.refractive_index, 1.4585)
+        self.assertAlmostEqual(lens.refractive_index, 1.4585, places=3)
 
     def test_export_quotes_a_material_name_with_spaces(self):
         lens = Lens(
@@ -462,7 +465,7 @@ class TestZemaxMaterialsWithSpaces(unittest.TestCase):
 
         imported = rebuilt.elements[0].lens
         self.assertEqual(imported.material, "Fused Silica")
-        self.assertAlmostEqual(imported.refractive_index, 1.4585)
+        self.assertAlmostEqual(imported.refractive_index, 1.4585, places=3)
 
 
 if __name__ == "__main__":
