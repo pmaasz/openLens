@@ -54,8 +54,6 @@ class TestOptimizationTargetNames(unittest.TestCase):
 
     def test_the_spot_size_checkbox_asks_for_the_rms_spot_radius(self):
         """The default-checked box must reach a real merit term"""
-        from openlens.optimizer import MeritFunction
-
         self.tab._opt_target_spot.setChecked(True)
         names = [target.name for target in self.tab._collect_targets()]
 
