@@ -86,11 +86,13 @@ class LibraryService:
     def load(self) -> LibraryLoad:
         """Load and partition the stored library.
 
+        A storage read that raises is a failure, not an empty library: the
+        difference matters, because the window may reconcile the database
+        against the result, which would delete every row that could not be
+        read.
+
         Returns:
-            The loaded lenses/assemblies, or a failure result. A storage that
-            swallows its own errors and returns an empty list is indistinguishable
-            from an empty library here; that is a storage-layer limitation, not
-            something this service hides.
+            The loaded lenses/assemblies, or a failure result.
         """
         try:
             items = list(self._storage_provider().load_lenses())

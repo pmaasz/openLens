@@ -67,52 +67,61 @@ class LensStorage:
 
         Returns:
             List of Lens and OpticalSystem objects loaded from the database.
-            Returns empty list if database is unavailable or contains invalid data.
+            Empty list if the database is unavailable or contains invalid data.
+
+        Raises:
+            Exception: Whatever the database raised while reading. A read
+                failure is not an empty library, and the difference matters:
+                the caller may reconcile the database against the result, which
+                would delete every row it could not read. The per-item errors
+                below (one corrupt lens) are still only warnings - they must
+                not cost the user the rest of their library.
         """
         if not self.db:
             logger.error("DatabaseManager not available")
+            self.last_error = "DatabaseManager not available"
             return []
 
         try:
             # Load from DB
             data = self.db.load_all()
-
-            # 1. Load all lenses first and create a lookup
-            lens_lookup = {}
-            items = []
-
-            # Pass 1: Create Lens objects
-            for item_data in data:
-                # row_type is the row marker; "type" is the payload's own type
-                # (for a lens, the lens type: "Biconvex", ...). Dispatching on
-                # "type" happened to work only because the merge overwrote the
-                # marker - and it left the lens type as the only value, so a
-                # filter on type == "Lens" matched nothing (#488).
-                if item_data.get("row_type") != "OpticalSystem":
-                    try:
-                        lens = Lens.from_dict(item_data)
-                        lens_lookup[lens.id] = lens
-                        items.append(lens)
-                    except Exception as e:
-                        logger.warning("Failed to load lens: %s", e)
-
-            # Pass 2: Create OpticalSystem objects using the lookup
-            for item_data in data:
-                if item_data.get("row_type") == "OpticalSystem":
-                    try:
-                        system = OpticalSystem.from_dict(item_data)
-                        # Refresh references to ensure identity match with Pass 1 lenses
-                        if hasattr(system, "refresh_references"):
-                            system.refresh_references(lens_lookup)
-                        items.append(system)
-                    except Exception as e:
-                        logger.warning("Failed to load assembly: %s", e)
-
-            return items
-
         except Exception as e:
             logger.error("Failed to load lenses from database: %s", e)
-            return []
+            self.last_error = str(e)
+            raise
+
+        self.last_error = None
+        lens_lookup = {}
+        items = []
+
+        # Pass 1: Create Lens objects
+        for item_data in data:
+            # row_type is the row marker; "type" is the payload's own type
+            # (for a lens, the lens type: "Biconvex", ...). Dispatching on
+            # "type" happened to work only because the merge overwrote the
+            # marker - and it left the lens type as the only value, so a
+            # filter on type == "Lens" matched nothing (#488).
+            if item_data.get("row_type") != "OpticalSystem":
+                try:
+                    lens = Lens.from_dict(item_data)
+                    lens_lookup[lens.id] = lens
+                    items.append(lens)
+                except Exception as e:
+                    logger.warning("Failed to load lens: %s", e)
+
+        # Pass 2: Create OpticalSystem objects using the lookup
+        for item_data in data:
+            if item_data.get("row_type") == "OpticalSystem":
+                try:
+                    system = OpticalSystem.from_dict(item_data)
+                    # Refresh references to ensure identity match with Pass 1 lenses
+                    if hasattr(system, "refresh_references"):
+                        system.refresh_references(lens_lookup)
+                    items.append(system)
+                except Exception as e:
+                    logger.warning("Failed to load assembly: %s", e)
+
+        return items
 
     def delete_item(self, item_id: str) -> bool:
         """Delete a lens or assembly from the database by id.
@@ -208,6 +217,20 @@ class LensStorage:
         """Delete rows whose ids are absent from the full snapshot."""
         keep = {item.id for item in items if hasattr(item, "id")}
         existing = self.db.all_ids()
+
+        # Defence in depth: an empty snapshot against a non-empty database is
+        # the signature of a library that was never read (a failed load), not
+        # of a library the user emptied. Reconciling here would delete every
+        # stored row. Deletions go through delete_item, which is the path that
+        # asks the user.
+        if not keep and (existing["lenses"] or existing["assemblies"]):
+            logger.warning(
+                "Refusing to reconcile an empty snapshot against a non-empty "
+                "database: %d lens(es) and %d assembly(ies) kept",
+                len(existing["lenses"]),
+                len(existing["assemblies"]),
+            )
+            return
 
         # Assemblies first: removing them releases lens references so the
         # lens pass cannot trip the in-use guard for stale pairs.
