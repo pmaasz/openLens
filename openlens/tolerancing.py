@@ -702,6 +702,10 @@ class InverseSensitivityAnalyzer:
     Calculates required tolerances to achieve a target performance.
     """
 
+    #: The metric this analyzer measures, shared with MonteCarloAnalyzer so
+    #: the two tolerance tools accept the same criterion names.
+    SUPPORTED_CRITERIA = MonteCarloAnalyzer.SUPPORTED_CRITERIA
+
     def __init__(self, system: OpticalSystem, tolerances: List[ToleranceOperand]):
         self.system = system
         self.tolerances = tolerances
@@ -717,8 +721,25 @@ class InverseSensitivityAnalyzer:
     def calculate_sensitivities(self, criterion: str = "rms_spot_radius") -> List[Dict[str, Any]]:
         """
         Calculate sensitivity of each operand.
-        Returns list of dicts with 'operand', 'sensitivity', 'change'.
+
+        Args:
+            criterion: Performance metric. Only ``"rms_spot_radius"`` is
+                implemented, the same set MonteCarloAnalyzer accepts.
+
+        Returns:
+            List of dicts with 'operand', 'sensitivity', 'change'.
+
+        Raises:
+            ValueError: If *criterion* is unsupported. The argument used to be
+                ignored, so a caller asking for another metric silently got
+                RMS-spot sensitivities and budgeted tolerances against the
+                wrong performance measure.
         """
+        if criterion != self.SUPPORTED_CRITERIA:
+            raise ValueError(
+                f"Unsupported criterion {criterion!r}; " f"supported: {self.SUPPORTED_CRITERIA!r}"
+            )
+
         results = []
 
         # Nominal performance
