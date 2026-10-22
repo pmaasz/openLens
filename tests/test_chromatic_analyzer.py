@@ -4,6 +4,7 @@ Functional tests for Chromatic Analyzer
 Tests wavelength-dependent calculations and chromatic aberration analysis
 """
 
+import math
 import unittest
 
 from openlens.chromatic_analyzer import ChromaticAnalyzer, ChromaticResult
@@ -216,8 +217,6 @@ class TestChromaticAnalyzer(unittest.TestCase):
 
     def test_analyze_lens_chromatic_metrics(self):
         """Axial shift must match f/V order; lateral color physical."""
-        import math
-
         lens_params = {
             "radius1": 50.0,
             "radius2": -50.0,
@@ -233,12 +232,10 @@ class TestChromaticAnalyzer(unittest.TestCase):
         self.assertAlmostEqual(
             result.axial_chromatic_aberration, f_d / abbe, delta=0.1 * f_d / abbe
         )
-        # Lateral color at 5 deg field is order |fF-fC|*tan(5deg)
-        paraxial = abs(result.focal_lengths[0] - result.focal_lengths[2]) * math.tan(
-            math.radians(5.0)
-        )
-        self.assertGreater(result.lateral_color, 0.2 * paraxial)
-        self.assertLess(result.lateral_color, 5.0 * paraxial)
+        # Lateral color is the chief ray's image-height difference, not a
+        # bundle centroid: the chief ray passes through the front vertex, so
+        # only the second-surface chromatic deviation contributes (~3 um).
+        self.assertAlmostEqual(result.lateral_color, 0.002995446, places=6)
 
     def test_analyze_lens_afocal_raises(self):
         """Afocal geometry (flat window) raises instead of returning zeros."""
@@ -478,6 +475,89 @@ class TestAchromatDegenerateInputs(unittest.TestCase):
                 analyzer.calculate_abbe_number("FLAT")
         finally:
             analyzer.material_db.get_refractive_index = original
+
+
+class TestLateralColorIsTheChiefRay(unittest.TestCase):
+    """Lateral color is a chief-ray height, so it cannot scale with the stop.
+
+    The reported value used to be the separation of two hexapolar bundle
+    centroids: 0.0052 mm at 5 mm diameter, 0.0141 mm at 10 mm and 0.0536 mm
+    at 25 mm for the same singlet. The chief ray through the pupil centre is
+    0.002995 mm at every aperture.
+    """
+
+    BASE = {
+        "radius1": 50.0,
+        "radius2": -50.0,
+        "thickness": 5.0,
+        "material": "BK7",
+    }
+    WAVELENGTHS = [486.1, 587.6, 656.3]
+    CHIEF_RAY_LATERAL_COLOR_MM = 0.002995446
+
+    def setUp(self):
+        self.analyzer = ChromaticAnalyzer()
+
+    def _lateral_color(self, diameter):
+        return self.analyzer.analyze_lens(
+            dict(self.BASE, diameter=diameter),
+            wavelengths=self.WAVELENGTHS,
+            num_rays=37,
+        ).lateral_color
+
+    def test_lateral_color_does_not_depend_on_the_aperture(self):
+        values = [self._lateral_color(diameter) for diameter in (5.0, 10.0, 25.0, 40.0)]
+
+        self.assertLess(max(values) - min(values), 1e-9)
+        self.assertAlmostEqual(values[0], self.CHIEF_RAY_LATERAL_COLOR_MM, places=9)
+
+    def test_lateral_color_matches_a_hand_traced_chief_ray(self):
+        from openlens.analysis.spot_diagram import SpotDiagram
+        from openlens.constants import NM_TO_MM
+        from openlens.lens import Lens
+        from openlens.material_database import MaterialDatabase
+        from openlens.optical_system import OpticalSystem
+        from openlens.ray_tracer import Ray3D
+        from openlens.vector3 import vec3
+
+        database = MaterialDatabase()
+        diameter = 25.0
+
+        def build_system(wavelength_nm):
+            lens = Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=diameter,
+                refractive_index=database.get_refractive_index("BK7", wavelength_nm, 20.0),
+                material="BK7",
+                wavelength=wavelength_nm,
+            )
+            system = OpticalSystem("hand trace")
+            system.add_lens(lens)
+            return system
+
+        # The analysis evaluates both wavelengths at the d-line image plane.
+        reference = build_system(587.6)
+        plane = SpotDiagram(reference).trace_spot(wavelength_nm=587.6)["image_plane_x"]
+
+        def chief_height(wavelength_nm):
+            system = build_system(wavelength_nm)
+            direction = vec3(1.0, math.tan(math.radians(5.0)), 0.0).normalize()
+            first_lens_x = system.elements[0].position
+            start_x = first_lens_x - 50.0
+            t = (first_lens_x - start_x) / direction.x
+            origin = vec3(first_lens_x, 0.0, 0.0) - direction * t
+
+            ray = Ray3D(origin, direction, wavelength=wavelength_nm * NM_TO_MM)
+            SpotDiagram(system).tracer.trace_ray(ray)
+            t = (plane - ray.origin.x) / ray.direction.x
+            return ray.origin.y + t * ray.direction.y
+
+        expected = abs(chief_height(self.WAVELENGTHS[0]) - chief_height(self.WAVELENGTHS[-1]))
+        reported = self._lateral_color(diameter)
+
+        self.assertAlmostEqual(reported, expected, places=9)
 
 
 if __name__ == "__main__":

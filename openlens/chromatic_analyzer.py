@@ -211,10 +211,8 @@ class ChromaticAnalyzer:
             material_name,
             wavelengths[0],
             wavelengths[-1],
-            wavelengths[len(wavelengths) // 2],
             image_planes[len(wavelengths) // 2],
             temperature_c,
-            num_rings,
         )
 
         return ChromaticResult(
@@ -236,17 +234,17 @@ class ChromaticAnalyzer:
         material_name: str,
         wl_first: float,
         wl_last: float,
-        wl_ref: float,
         image_plane_x_mm: float,
         temperature_c: float,
-        num_rings: int,
     ) -> float:
         """Chief-ray image-height difference between two wavelengths.
 
-        Traces hexapolar bundles at REFERENCE_FIELD_DEG through lenses
-        whose indices are set at each extreme wavelength, and returns the
-        centroid separation at the reference image plane. Returns 0.0 for
-        a single wavelength and NaN if either trace fails.
+        Traces the single ray through the pupil centre at
+        REFERENCE_FIELD_DEG through lenses whose indices are set at each
+        extreme wavelength, and returns the distance between the two heights
+        at the reference image plane. The chief ray carries no coma or
+        spherical aberration, so the result does not depend on the aperture.
+        Returns 0.0 for a single wavelength and NaN if either trace fails.
         """
         from .lens import Lens
         from .optical_system import OpticalSystem
@@ -255,7 +253,7 @@ class ChromaticAnalyzer:
         if wl_first == wl_last or not math.isfinite(image_plane_x_mm):
             return 0.0
 
-        centroids = []
+        heights = []
         for wavelength in (wl_first, wl_last):
             n = self.material_db.get_refractive_index(material_name, wavelength, temperature_c)
             lens = Lens(
@@ -271,22 +269,21 @@ class ChromaticAnalyzer:
             )
             system = OpticalSystem(name=f"lateral@{wavelength:g}nm")
             system.add_lens(lens)
-            spot = SpotDiagram(system).trace_spot(
+            height = SpotDiagram(system).trace_chief_ray(
                 field_angle_y_deg=REFERENCE_FIELD_DEG,
                 wavelength_nm=wavelength,
                 image_plane_x_mm=image_plane_x_mm,
-                num_rings=num_rings,
             )
-            if spot.get("error") or not spot.get("valid_rays"):
+            if height is None:
                 logger.warning(
-                    "Lateral-color trace failed at %.1fnm; reporting NaN",
+                    "Lateral-color chief-ray trace failed at %.1fnm; reporting NaN",
                     wavelength,
                 )
                 return float("nan")
-            centroids.append(spot["centroid"])
+            heights.append(height)
 
-        dy = centroids[0][0] - centroids[1][0]
-        dz = centroids[0][1] - centroids[1][1]
+        dy = heights[0][0] - heights[1][0]
+        dz = heights[0][1] - heights[1][1]
         return math.sqrt(dy * dy + dz * dz)
 
     def calculate_abbe_number(self, material_name: str) -> float:

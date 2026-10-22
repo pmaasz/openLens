@@ -208,3 +208,71 @@ class SpotDiagram:
             "valid_rays": valid_rays,
             "image_plane_x": target_x,
         }
+
+    def trace_chief_ray(
+        self,
+        field_angle_x_deg: float = 0.0,
+        field_angle_y_deg: float = 0.0,
+        wavelength_nm: float = WAVELENGTH_GREEN,
+        image_plane_x_mm: Optional[float] = None,
+        focus_shift_mm: float = 0.0,
+    ) -> Optional[Tuple[float, float]]:
+        """Trace the single ray through the centre of the entrance pupil.
+
+        Unlike the hexapolar bundle, this ray carries no coma or spherical
+        aberration, so its image height is the chief-ray height that lateral
+        color is defined by and does not depend on the aperture.
+
+        Args:
+            field_angle_x_deg: Field angle in the X-Z plane (degrees).
+            field_angle_y_deg: Field angle in the X-Y plane (degrees).
+            wavelength_nm: Wavelength in nm.
+            image_plane_x_mm: Absolute X position of the image plane. If None,
+                uses the paraxial focus.
+            focus_shift_mm: Offset from the nominal image plane (defocus).
+
+        Returns:
+            The ``(y, z)`` intersection with the image plane, or None if the
+            system is empty or the ray never reaches the plane.
+        """
+        if not self.system.elements:
+            return None
+
+        wl_mm = wavelength_nm * NM_TO_MM
+        original_states = []
+        for element in self.system.elements:
+            lens = element.lens
+            original_states.append((lens, lens.wavelength, lens.refractive_index))
+            lens.update_refractive_index(wavelength_nm=wavelength_nm)
+
+        try:
+            if image_plane_x_mm is None:
+                image_plane_x_mm = find_paraxial_focus(
+                    self.system, wavelength_nm, tracer=self.tracer
+                )
+                if image_plane_x_mm is None:
+                    image_plane_x_mm = self.system.get_total_length() + 100
+            target_x = image_plane_x_mm + focus_shift_mm
+
+            tan_y = math.tan(math.radians(field_angle_y_deg))
+            tan_z = math.tan(math.radians(field_angle_x_deg))
+            direction = vec3(1.0, tan_y, tan_z).normalize()
+
+            first_lens_x = self.system.elements[0].position
+            start_x = first_lens_x - 50.0
+            t = (first_lens_x - start_x) / direction.x
+            origin = vec3(first_lens_x, 0.0, 0.0) - direction * t
+
+            ray = Ray3D(origin, direction, wavelength=wl_mm)
+            self.tracer.trace_ray(ray)
+            if ray.terminated or abs(ray.direction.x) <= 1e-6:
+                return None
+            t = (target_x - ray.origin.x) / ray.direction.x
+            return (
+                ray.origin.y + t * ray.direction.y,
+                ray.origin.z + t * ray.direction.z,
+            )
+        finally:
+            for lens, wavelength, index in original_states:
+                lens.wavelength = wavelength
+                lens.refractive_index = index
