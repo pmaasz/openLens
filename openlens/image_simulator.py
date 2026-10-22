@@ -275,8 +275,14 @@ class ImageSimulator:
                 lens.refractive_index = index
 
     def _calculate_image_distance(self, object_distance: float, wavelength: float) -> float:
-        """Calculate image distance using lens equation."""
-        f = self._system_focal_length()
+        """Calculate image distance using the lens equation at *wavelength*.
+
+        The focal length is a function of the refractive index, and the index
+        is a function of wavelength. Measuring it at the design index made the
+        image plane - and the magnification and vignetting derived from it -
+        identical at every wavelength.
+        """
+        f = self._system_focal_length_at(wavelength)
 
         if abs(object_distance - f) < 0.001:
             return float("inf")  # Object at focal point
@@ -614,7 +620,12 @@ class ImageSimulator:
         r = np.sqrt((x - cx) ** 2 + (y - cy) ** 2)
 
         mask = (r >= nyquist_idx - 2) & (r <= nyquist_idx + 2)
-        ratio = magnitude[mask].mean() / magnitude[cy, cx]
+        dc = float(magnitude[cy, cx])
+        if dc <= 0.0:
+            # A blank (or purely negative-cancelling) image has no DC energy
+            # to normalise against; 0/0 used to return nan and warn.
+            return 0.0
+        ratio = magnitude[mask].mean() / dc
 
         return float(ratio)
 
