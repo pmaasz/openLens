@@ -55,6 +55,16 @@ class StepDerived(str):
         return super().__new__(cls, "*")
 
 
+class StepTyped(str):
+    """A typed parameter, serialized bare: ``LENGTH_MEASURE(1.E-06)``.
+
+    Part 21 selects take a typed value - an uncertainty is a
+    ``LENGTH_MEASURE``, not a bare real - so the type name is part of the
+    syntax. Construct this only from constants written here or in the
+    exporter, never from user text.
+    """
+
+
 #: Enumeration values used by the exporter. ``STEP_FALSE`` exists for
 #: completeness; booleans render through the bool branch of _format_scalar.
 STEP_TRUE = StepEnum(".T.")
@@ -132,7 +142,7 @@ class StepWriter:
         if isinstance(arg, StepRef):
             return f"#{int(arg)}"
         # Before str and bool/int: the markers subclass str.
-        if isinstance(arg, (StepEnum, StepDerived)):
+        if isinstance(arg, (StepEnum, StepDerived, StepTyped)):
             return str(arg)
         if isinstance(arg, bool):  # must precede int: bool subclasses it
             return ".T." if arg else ".F."
@@ -154,16 +164,37 @@ class StepWriter:
         idx = self.id_counter
         self.id_counter += 1
 
-        arg_strs = []
-        for arg in args:
-            if isinstance(arg, (list, tuple)):
-                # Aggregate: format each element with the same rules.
-                arg_strs.append(f"({','.join(self._format_scalar(s) for s in arg)})")
-            else:
-                arg_strs.append(self._format_scalar(arg))
+        arg_strs = [self._format_arg(arg) for arg in args]
 
         line = f"#{idx}={name}({','.join(arg_strs)});"
         self.lines.append(line)
+        return StepRef(idx)
+
+    @classmethod
+    def _format_arg(cls, arg: Any) -> str:
+        """Render one argument, as an aggregate when it is a list or tuple."""
+        if isinstance(arg, (list, tuple)):
+            return f"({','.join(cls._format_scalar(item) for item in arg)})"
+        return cls._format_scalar(arg)
+
+    def add_complex_entity(self, parts: List[tuple]) -> StepRef:
+        """Add a complex entity and return its ID as an entity reference.
+
+        Part 21 writes an instance that is several entity types at once - a
+        millimetre is a ``LENGTH_UNIT`` *and* a ``NAMED_UNIT`` *and* an
+        ``SI_UNIT`` - as one instance whose type names are concatenated:
+        ``#7=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.));``.
+
+        Args:
+            parts: ``(entity_name, arguments)`` pairs, in schema order.
+        """
+        idx = self.id_counter
+        self.id_counter += 1
+
+        body = "".join(
+            f"{name}({','.join(self._format_arg(arg) for arg in args)})" for name, args in parts
+        )
+        self.lines.append(f"#{idx}=({body});")
         return StepRef(idx)
 
     def generate(self) -> str:
@@ -228,6 +259,8 @@ class StepExporter:
         self.uncertainty = 0
         self.related_context = 0
         self.geom_context = 0
+        self.length_unit = 0
+        self.application_context = 0
 
         # Standard setup entities
         self._create_context()
@@ -310,7 +343,14 @@ class StepExporter:
         return {"shapes": len(shape_ids), "skipped": len(skipped), "skipped_parts": skipped}
 
     def _create_context(self):
-        """Create common context entities."""
+        """Create the units, contexts and directions the solids refer to.
+
+        The file has to say what its numbers mean and which context it
+        belongs to. It used to refer to ``'#unit_mm'`` and
+        ``'#application_context'`` as text - references no reader resolves -
+        and neither entity was written anywhere, so the exported geometry had
+        no length unit at all.
+        """
         # Directions
         self.dir_z = self.writer.add_entity("DIRECTION", ["axis_z", (0.0, 0.0, 1.0)])
         self.dir_x = self.writer.add_entity("DIRECTION", ["axis_x", (1.0, 0.0, 0.0)])
@@ -322,27 +362,53 @@ class StepExporter:
             "AXIS2_PLACEMENT_3D", ["global_axis", self.origin, self.dir_z, self.dir_x]
         )
 
-        # Context
-        self.context = self.writer.add_entity(
-            "MECHANICAL_CONTEXT",
-            ["3D Mechanical Context", "mechanical", "assembly"],
+        # Length unit: millimetres, the model's own unit. A millimetre is a
+        # length unit, a named unit and an SI unit at once, which Part 21
+        # writes as one complex entity.
+        self.length_unit = self.writer.add_complex_entity(
+            [
+                ("LENGTH_UNIT", []),
+                ("NAMED_UNIT", [STEP_DERIVED]),
+                ("SI_UNIT", [StepEnum(".MILLI."), StepEnum(".METRE.")]),
+            ]
         )
 
         self.uncertainty = self.writer.add_entity(
             "UNCERTAINTY_MEASURE_WITH_UNIT",
-            [1.0e-6, "#unit_mm", "distance_accuracy_value", "confusion accuracy"],
+            [
+                StepTyped("LENGTH_MEASURE(1.E-06)"),
+                self.length_unit,
+                "distance_accuracy_value",
+                "confusion accuracy",
+            ],
+        )
+
+        # Contexts. The product and mechanical contexts name the application
+        # context, so it has to exist first.
+        self.application_context = self.writer.add_entity(
+            "APPLICATION_CONTEXT",
+            ["core data for automotive mechanical design processes"],
         )
 
         self.related_context = self.writer.add_entity(
             "PRODUCT_CONTEXT",
-            ["part definition", "#application_context", "mechanical"],
+            ["part definition", self.application_context, "mechanical"],
         )
 
-        # We cheat a bit and don't link everything perfectly for a minimal valid file
-        # But we need Dimensional Units
-        # We'll just define the geometric context reference for the solids
-        self.geom_context = self.writer.add_entity(
-            "GEOMETRIC_REPRESENTATION_CONTEXT", ["3D", "Geometric Context", 3]
+        self.context = self.writer.add_entity(
+            "MECHANICAL_CONTEXT", ["3D Mechanical Context", self.application_context]
+        )
+
+        # The geometric context carries the dimension count, the uncertainty
+        # and the units together; without the unit assignment the solids'
+        # coordinates are unitless numbers.
+        self.geom_context = self.writer.add_complex_entity(
+            [
+                ("GEOMETRIC_REPRESENTATION_CONTEXT", [3]),
+                ("GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT", [[self.uncertainty]]),
+                ("GLOBAL_UNIT_ASSIGNED_CONTEXT", [[self.length_unit]]),
+                ("REPRESENTATION_CONTEXT", ["", ""]),
+            ]
         )
 
     def _export_lens_solid(self, lens, z_offset):
@@ -699,12 +765,9 @@ class StepExporter:
         if not shape_ids:
             return
 
-        # Create a Shape Representation containing all solids
-        rep_items = []
-        for sid in shape_ids:
-            rep_items.append(f"#{sid}")
-
+        # The ids from add_entity are StepRefs, so they are written as
+        # references. Interpolating them into "#47" strings quoted them.
         self.writer.add_entity(
             "ADVANCED_BREP_SHAPE_REPRESENTATION",
-            ["lens_geom", tuple(rep_items), self.geom_context],
+            ["lens_geom", list(shape_ids), self.geom_context],
         )
