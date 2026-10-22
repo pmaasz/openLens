@@ -296,6 +296,25 @@ class MeritFunction:
     # Physical constraint helpers
     # ------------------------------------------------------------------
 
+    #: The penalty one hard physical violation carries. A design that collects
+    #: it cannot be made, whatever else the merit says.
+    HARD_PENALTY = 1e8
+
+    def has_hard_violation(self, system: OpticalSystem) -> bool:
+        """Whether the design breaks a hard physical constraint.
+
+        A hard violation is one the merit function cannot soften: a negative
+        edge thickness, vertices that cross, an element inside its neighbour,
+        a gap that is not there. The design cannot be made as it is.
+
+        Args:
+            system: The design to check.
+
+        Returns:
+            True when the design carries at least one hard violation.
+        """
+        return self._penalty_physical(system) >= self.HARD_PENALTY
+
     def _penalty_physical(self, system: OpticalSystem) -> float:
         """Penalties for invalid geometries (thickness, air gaps, edge clearance).
 
@@ -319,7 +338,7 @@ class MeritFunction:
             center_thickness = lens.thickness
             if center_thickness <= 0:
                 # Hard infeasible: vertices crossed/coincident (inside-out lens).
-                merit += 1e8
+                merit += self.HARD_PENALTY
             if center_thickness < min_ct:
                 merit += 1e5 * (min_ct - center_thickness) ** 2
             if center_thickness > max_ct:
@@ -331,11 +350,11 @@ class MeritFunction:
                 if edge_thickness is None:
                     # Aperture overhangs a spherical surface (|R| < h):
                     # sag is undefined there.
-                    merit += 1e8
+                    merit += self.HARD_PENALTY
                     continue
                 if edge_thickness <= 0:
                     # Hard infeasible: rim collapse / surfaces crossed at edge.
-                    merit += 1e8
+                    merit += self.HARD_PENALTY
                 if edge_thickness < min_et:
                     merit += 1e4 * (min_et - edge_thickness) ** 2
                 # Interior check: meniscus shapes can self-intersect inside
@@ -345,7 +364,7 @@ class MeritFunction:
                     yi = y * frac
                     ti = center_thickness - lens.get_sag_1(yi) + lens.get_sag_2(yi)
                     if ti <= 0:
-                        merit += 1e8
+                        merit += self.HARD_PENALTY
                         break
                     if ti < min_et:
                         merit += 1e4 * (min_et - ti) ** 2
@@ -371,7 +390,7 @@ class MeritFunction:
                     lens1.calculate_edge_thickness() is None
                     or lens2.calculate_edge_thickness() is None
                 ):
-                    merit += 1e8
+                    merit += self.HARD_PENALTY
                     continue
                 if cemented:
                     # The surfaces meet: there is no air space to keep clear.
@@ -380,7 +399,7 @@ class MeritFunction:
                 s_front_2 = lens2.get_sag_1(max_h)
                 edge_clearance = gap.thickness + s_front_2 - s_back_1
                 if edge_clearance <= 0:
-                    merit += 1e8
+                    merit += self.HARD_PENALTY
                 if edge_clearance < min_ec:
                     merit += 1e5 * (min_ec - edge_clearance) ** 2
 
@@ -537,12 +556,31 @@ class LensOptimizer:
 
         optimized_system = self._apply_variables(best_values)
 
+        # A design that breaks a hard physical constraint is not a success,
+        # however well the merit converged: the variables may be inside their
+        # box while the geometry they describe cannot be made (a negative edge
+        # thickness, vertices that cross, an element inside its neighbour).
+        # The merit function already knows - it adds a hard 1e8 penalty for
+        # each violation - so the check reuses that number.
+        feasible = not self.merit_function.has_hard_violation(optimized_system)
+        success = best_valid and feasible
+
         improvement = (
             ((initial_merit - final_merit) / initial_merit * 100) if initial_merit > 0 else 0
         )
 
+        if success:
+            message = converged_message
+        elif not best_valid:
+            message = out_of_bounds_message
+        else:
+            message = (
+                "Converged, but the design breaks a physical constraint "
+                "(it cannot be made as it is)"
+            )
+
         return OptimizationResult(
-            success=best_valid,
+            success=success,
             iterations=iterations,
             initial_merit=initial_merit,
             final_merit=final_merit,
@@ -550,7 +588,7 @@ class LensOptimizer:
             optimized_system=optimized_system,
             variable_history=variable_history,
             merit_history=merit_history,
-            message=converged_message if best_valid else out_of_bounds_message,
+            message=message,
             best_values=list(best_values),
         )
 
