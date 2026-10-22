@@ -715,6 +715,10 @@ class ZemaxSystemExporter:
     gap to the next surface (back DISZ), clear-aperture DIAMs, GLAS and
     COAT lines, an explicit STOP surface inside the stop gap when the
     system defines one, and a trailing image surface.
+
+    The dialect carries one semi-diameter per surface and no separate
+    mechanical diameter, so the blank diameter is not represented: the
+    importer reconstructs it from the apertures (the larger of the two).
     """
 
     @staticmethod
@@ -1027,15 +1031,18 @@ class ZemaxSystemImporter:
             if pending_front is not None:
                 # Back surface closes the element.
                 diam = surf.get("diam")
-                if diam is not None:
-                    diameter = diam * 2.0
-                    ca2 = diam * 2.0
-                elif pending_front.get("ca1") is not None:
-                    diameter = pending_front["ca1"]
-                    ca2 = None
-                else:
-                    diameter = 25.0
-                    ca2 = None
+                ca2 = None if diam is None else diam * 2.0
+                ca1 = pending_front.get("ca1")
+                # The mechanical diameter is the larger of the two clear
+                # apertures. The .zmx dialect carries one semi-diameter per
+                # surface and no separate mechanical diameter, so the smallest
+                # blank that holds both apertures is the best reconstruction
+                # available. Taking the back surface alone dropped every
+                # element whose front aperture was the larger one (the
+                # validation then saw a diameter smaller than the front clear
+                # aperture and rejected the whole element).
+                apertures = [aperture for aperture in (ca1, ca2) if aperture is not None]
+                diameter = max(apertures) if apertures else 25.0
                 lens = ZemaxSystemImporter._build_validated_lens(
                     index=len(system.elements) + 1,
                     r1=pending_front["r1"],
