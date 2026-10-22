@@ -58,6 +58,7 @@ from ..vector3 import vec3
 from ..ray_tracer import RefractionResult, Ray3D, LensRayTracer3D, SystemRayTracer3D
 from ..optical_system import OpticalSystem
 from ..constants import NM_TO_MM, WAVELENGTH_GREEN
+from .paraxial import find_paraxial_focus
 
 
 @dataclass
@@ -181,9 +182,44 @@ class BeamSynthesisPropagator:
     (Beam Synthesis Propagation / BSP)
     """
 
+    #: Detector offset used only when the system has no paraxial focus: an
+    #: afocal system (a flat plate, a telescope) has no image plane to find.
+    #: The plane is then past the last surface by this documented distance,
+    #: the fixed choice this method used to make for every system.
+    DEFAULT_IMAGE_PLANE_PAST_LAST_SURFACE = 50.0
+
     def __init__(self, system: OpticalSystem):
         self.system = system
         self.tracer = SystemRayTracer3D(system)
+
+    def _default_image_plane(self, wavelength_mm: float) -> float:
+        """Detector x for a caller that did not name one.
+
+        The paraxial focus, found with the same search the diffraction PSF
+        uses, so the two analyses of one system are measured at the same
+        plane. A fixed 50 mm past the last vertex put a 100 mm singlet's
+        detector at 55 mm - about 46 mm short of focus - and made its PSF
+        incomparable with ``DiffractionPSF``.
+
+        Args:
+            wavelength_mm: Vacuum wavelength the beamlets are traced at.
+
+        Returns:
+            The focus x in mm, or the documented fallback distance past the
+            last surface when the exit ray is collimated or cannot be traced.
+        """
+        focus = find_paraxial_focus(self.system, wavelength_mm / NM_TO_MM, tracer=self.tracer)
+        if focus is not None and math.isfinite(focus):
+            return focus
+
+        fallback = self.system.get_total_length() + self.DEFAULT_IMAGE_PLANE_PAST_LAST_SURFACE
+        logger.warning(
+            "Beam synthesis: no paraxial focus (afocal or untraceable system); "
+            "placing the detector %.1f mm past the last surface at x=%.3f",
+            self.DEFAULT_IMAGE_PLANE_PAST_LAST_SURFACE,
+            fallback,
+        )
+        return fallback
 
     def propagate_to_image(
         self,
@@ -258,8 +294,7 @@ class BeamSynthesisPropagator:
 
         # 2. Define Detector Grid
         if image_plane_x is None:
-            # Default to paraxial focus (approx)
-            image_plane_x = self.system.get_total_length() + 50
+            image_plane_x = self._default_image_plane(wavelength_mm)
 
         det_y = np.linspace(-detector_size / 2, detector_size / 2, detector_pixels)
         det_z = np.linspace(-detector_size / 2, detector_size / 2, detector_pixels)
