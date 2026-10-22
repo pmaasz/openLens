@@ -127,6 +127,35 @@ def _conic_domain_radius(radius: float, conic_constant: float) -> float:
     return 1.0 / (abs(1.0 / radius) * math.sqrt(1.0 + conic_constant))
 
 
+def ensure_model_glass(lens: "Lens") -> None:
+    """Switch a lens to model-glass mode, seeding nd/Vd from its material.
+
+    A model glass is defined by its nd/Vd pair, so both have to describe the
+    glass the lens actually is before either of them is changed. The model's
+    defaults are BK7's numbers (1.5168 / 64.17), so switching a lens to
+    model-glass mode without seeding them replaced the glass with BK7: an
+    SF11 lens (nd 1.78472, Vd 25.68) silently became a 1.5168 / 64.17 glass.
+
+    Args:
+        lens: The lens to switch. Already in model-glass mode is left alone -
+            its nd/Vd are the glass the user chose.
+    """
+    if lens.model_glass_mode:
+        return
+    lens.model_glass_mode = True
+    lens.model_nd = lens.refractive_index
+    try:
+        from .material_database import get_material_database
+
+        mat = get_material_database().get_material(lens.material)
+        if mat:
+            lens.model_vd = mat.vd
+    except (OSError, AttributeError, *_MATERIAL_DB_ERRORS) as e:  # pragma: no cover
+        # The catalog is optional: a missing or unreadable one leaves the
+        # model at its default Vd rather than failing the edit.
+        logger.debug("Material DB lookup for Vd failed: %s", e)
+
+
 def _conic_sag(radius: float, conic_constant: float, y: float) -> float:
     """Vertex-referenced sag of a conic surface at height ``y``.
 
