@@ -2,6 +2,7 @@ import copy
 import math
 from typing import TYPE_CHECKING, Union
 
+from ..air_index import REFERENCE_PRESSURE_ATM, calculate_air_index
 from ..constants import ABSOLUTE_ZERO_C, EPSILON
 from ..material_database import get_material_database
 from ..optical_system import OpticalSystem
@@ -19,7 +20,7 @@ class EnvironmentalAnalyzer:
 
     # Standard reference conditions
     REF_TEMP = 20.0  # °C
-    REF_PRESSURE = 1.0  # atm (101.325 kPa)
+    REF_PRESSURE = REFERENCE_PRESSURE_ATM  # atm (101.325 kPa)
     DEFAULT_HOUSING_CTE = 23.6e-6  # 1/K, aluminium
 
     @staticmethod
@@ -29,6 +30,10 @@ class EnvironmentalAnalyzer:
         """
         Calculate refractive index of air using the Edlen equation.
 
+        Kept as an analyzer API for callers that already use it; the
+        implementation lives in ``openlens.air_index`` so that ``Lens`` can
+        apply the same correction without importing the analysis package.
+
         Args:
             wavelength_nm: Wavelength in nanometers
             temperature_c: Temperature in Celsius
@@ -37,36 +42,7 @@ class EnvironmentalAnalyzer:
         Returns:
             Absolute refractive index of air
         """
-        # Convert wavelength to microns
-        wl_um = wavelength_nm / 1000.0
-        if wl_um <= 0:
-            return 1.0
-
-        # Dispersion formula for standard air (15°C, 1013.25 mbar, dry)
-        # (n-1) * 10^8
-        # Formula from NIST / Ciddor (simplified Edlen)
-        s2 = 1.0 / (wl_um * wl_um)
-        n_s_minus_1_e8 = 8342.54 + 2406147.0 / (130.0 - s2) + 15998.0 / (38.9 - s2)
-        n_s_minus_1 = n_s_minus_1_e8 * 1e-8
-
-        # Temperature and Pressure correction
-        # P in Pa, T in K
-        # Here input is atm and C
-        P_pa = pressure_atm * 101325.0
-        T_k = temperature_c - ABSOLUTE_ZERO_C
-
-        # At absolute zero the ideal-gas model is singular. The simulator
-        # still allows 0 K as the lower bound, so treat the remaining medium
-        # as vacuum rather than dividing by zero.
-        if T_k <= 0:
-            return 1.0
-
-        # Ideal Gas Law approximation:
-        # n_tp - 1 = (n_s - 1) * (P / 101325) * (288.15 / T)
-
-        n_tp = 1.0 + n_s_minus_1 * (P_pa / 101325.0) * (288.15 / T_k)
-
-        return n_tp
+        return calculate_air_index(wavelength_nm, temperature_c, pressure_atm)
 
     @classmethod
     def apply_environment(
@@ -127,27 +103,15 @@ class EnvironmentalAnalyzer:
             # entry; asking the database anyway would silently replace its
             # index with the BK7 fallback. Model glass is analytic and has no
             # temperature coefficients either.
+            # Record the ambient pressure on the lens itself: catalog indices
+            # are relative to air at 1 atm, and every analysis refreshes the
+            # index at its own wavelength. update_refractive_index() applies
+            # the air correction from this value, so the conditioned index
+            # survives that refresh instead of silently reverting.
+            lens.pressure_atm = pressure_atm
             has_index_model = mat is not None or bool(getattr(lens, "model_glass_mode", False))
             if has_index_model:
-                # 1. Get relative index at new Temperature (assuming P=1 atm
-                # constant in catalog data).
                 lens.update_refractive_index(temperature=temperature_c)
-                n_rel_T = lens.refractive_index
-
-                # 2. Correct for Pressure change (Index of Air)
-                # n_glass_abs = n_rel_T * n_air(T, P_ref)
-                # n_new_rel = n_glass_abs / n_air(T, P_new)
-                # n_new_rel = n_rel_T * (n_air(T, P_ref) / n_air(T, P_new))
-
-                # Note: n_rel_T is relative to air at the NEW temperature T
-                # (but reference pressure).
-                n_air_ref = cls.calculate_air_index(
-                    lens.wavelength, temperature_c, cls.REF_PRESSURE
-                )
-                n_air_new = cls.calculate_air_index(lens.wavelength, temperature_c, pressure_atm)
-
-                if n_air_new != 0:
-                    lens.refractive_index = n_rel_T * (n_air_ref / n_air_new)
 
         # 2. Update Air Gaps (Housing Expansion)
         # Gaps scale with the housing CTE (parameter; defaults to aluminum).
