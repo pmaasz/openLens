@@ -8,20 +8,27 @@ the previous good one already gone.
 These helpers write to a temporary file in the same directory and then
 ``os.replace`` it over the target, which is atomic on POSIX and Windows as
 long as both paths are on the same filesystem - hence the same directory.
-The temporary file is removed on any failure, so the original is never
-modified unless the write fully succeeded.
+The temporary name is unique per call, so concurrent writers of one target do
+not share (and destroy) each other's temporary file. The temporary file is
+removed on any failure, so the original is never modified unless the write
+fully succeeded.
 """
 
 import os
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator, TextIO
 
 
 def _temp_path(path: Path) -> Path:
-    # Same directory, so os.replace stays within one filesystem. The suffix
-    # keeps partial files recognisable if the process dies outright.
-    return path.with_name(path.name + ".tmp")
+    # Unique per write. Deriving the name from the target alone made every
+    # concurrent writer - two threads, two processes, a worker and the GUI -
+    # use the same inode; the first os.replace() moved it away and the others
+    # failed with FileNotFoundError after writing their payload. The prefix
+    # keeps abandoned files recognisable and the directory is unchanged so
+    # os.replace stays within one filesystem.
+    return path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
 
 
 def _discard(path: Path) -> None:
@@ -47,10 +54,12 @@ def atomic_write_text(path: Any, encoding: str = "utf-8") -> Iterator[TextIO]:
     """
     target = Path(path)
     # Deliberately no mkdir: creating missing parent directories would change
-    # save()'s documented failure behaviour on a bad path.
+    # save()'s documented failure behaviour on a bad path. "x" keeps the
+    # unique name exclusive; a collision must not truncate another writer.
     tmp = _temp_path(target)
+    handle = open(tmp, "x", encoding=encoding)
     try:
-        with open(tmp, "w", encoding=encoding) as handle:
+        with handle:
             yield handle
         os.replace(tmp, target)
     except BaseException:
@@ -63,8 +72,9 @@ def atomic_write_bytes(path: Any) -> Iterator[Any]:
     """Binary counterpart of :func:`atomic_write_text`."""
     target = Path(path)
     tmp = _temp_path(target)
+    handle = open(tmp, "xb")
     try:
-        with open(tmp, "wb") as handle:
+        with handle:
             yield handle
         os.replace(tmp, target)
     except BaseException:
