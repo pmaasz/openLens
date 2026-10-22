@@ -407,7 +407,15 @@ class MeritFunction:
             for target in self.targets:
                 handler = self._TARGET_DISPATCH.get(target.name)
                 if handler is None:
-                    continue
+                    # An unknown name is a mistake, not a target that happens
+                    # to contribute nothing. Skipping it silently made the
+                    # GUI's "spot size" and "spherical" checkboxes - which
+                    # used names the dispatch table does not have - look like
+                    # they were working.
+                    raise ValueError(
+                        f"Unknown optimization target {target.name!r}; "
+                        f"known targets: {', '.join(sorted(self._TARGET_DISPATCH))}"
+                    )
                 # handler may be a plain function (for staticmethods) or unbound method
                 # Compare underlying function via getattr to handle both
                 h = getattr(handler, "__func__", handler)

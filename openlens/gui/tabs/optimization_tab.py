@@ -674,6 +674,40 @@ class OptimizationTab(BaseTab):
                 )
         return variables
 
+    def _collect_targets(self) -> List[OptimizationTarget]:
+        """The targets the checkboxes ask for, by their canonical names.
+
+        The names must be the ones the merit function can evaluate: it used
+        to pass "spot_size" and "spherical", which are not in its dispatch
+        table, so the checkboxes did nothing at all - the default-checked
+        spot-size box was silently ignored, and an optimization with only that
+        box selected "converged" after one iteration without changing the
+        design.
+        """
+        targets = []
+        if self._opt_target_fl_enabled.isChecked():
+            targets.append(
+                OptimizationTarget(
+                    "focal_length",
+                    self._opt_target_fl.value(),
+                    weight=1.0,
+                    target_type="target",
+                )
+            )
+        if self._opt_target_spot.isChecked():
+            targets.append(
+                OptimizationTarget("rms_spot_radius", 0, weight=1.0, target_type="minimize")
+            )
+        if self._opt_target_spherical.isChecked():
+            targets.append(
+                OptimizationTarget("spherical_aberration", 0, weight=1.0, target_type="minimize")
+            )
+        if self._opt_target_coma.isChecked():
+            targets.append(OptimizationTarget("coma", 0, weight=1.0, target_type="minimize"))
+        if self._opt_target_astig.isChecked():
+            targets.append(OptimizationTarget("astigmatism", 0, weight=1.0, target_type="minimize"))
+        return targets
+
     def _on_run_optimization(self) -> None:
         """Run system optimization.
 
@@ -712,24 +746,7 @@ class OptimizationTab(BaseTab):
             return
 
         # Collect targets
-        targets = []
-        if self._opt_target_fl_enabled.isChecked():
-            targets.append(
-                OptimizationTarget(
-                    "focal_length",
-                    self._opt_target_fl.value(),
-                    weight=1.0,
-                    target_type="target",
-                )
-            )
-        if self._opt_target_spot.isChecked():
-            targets.append(OptimizationTarget("spot_size", 0, weight=1.0, target_type="minimize"))
-        if self._opt_target_spherical.isChecked():
-            targets.append(OptimizationTarget("spherical", 0, weight=1.0, target_type="minimize"))
-        if self._opt_target_coma.isChecked():
-            targets.append(OptimizationTarget("coma", 0, weight=1.0, target_type="minimize"))
-        if self._opt_target_astig.isChecked():
-            targets.append(OptimizationTarget("astigmatism", 0, weight=1.0, target_type="minimize"))
+        targets = self._collect_targets()
 
         if not targets:
             self._opt_results_text.setPlainText("Select at least one target.")
