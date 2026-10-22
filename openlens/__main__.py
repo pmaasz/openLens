@@ -138,6 +138,11 @@ class OpenLensWindow(QMainWindow):
         self._assemblies = []
         self._current_lens = None
         self._current_assembly = None
+        # False until a library load has succeeded. A save may only reconcile
+        # (delete the rows missing from the snapshot) after a successful read:
+        # reconciling against a library that was never read deletes every row
+        # that failed to load.
+        self._library_load_ok = False
         # Whether the "saving is broken" dialog has already been shown for the
         # current streak of failures. Saving runs on every edit, so a modal
         # dialog per failed save would be unusable; it is shown once per
@@ -195,6 +200,8 @@ class OpenLensWindow(QMainWindow):
 
             self._lenses = loaded.lenses
             self._assemblies = loaded.assemblies
+            # The library has been read: a save may reconcile against it.
+            self._library_load_ok = True
 
             logger.info(
                 "Loaded %d lenses and %d assemblies from database",
@@ -249,10 +256,11 @@ class OpenLensWindow(QMainWindow):
 
         except Exception as e:
             logger.error("Failed to load from database: %s", e)
-            self._lenses = []
-            self._assemblies = []
-            self._current_lens = None
-            self._current_assembly = None
+            # The in-memory library is left alone. It is the user's work, and
+            # the rows that failed to load are still on disk: emptying it here
+            # left the window with a default lens, which the next explicit
+            # save then reconciled against - deleting every stored row.
+            self._library_load_ok = False
             # Resetting the library in silence used to leave the user with an
             # empty window and no idea why. If the editor still holds a lens,
             # their edits have nowhere to go, so say so.
@@ -260,8 +268,8 @@ class OpenLensWindow(QMainWindow):
             self._notify_problem(
                 "Load failed",
                 f"Could not read the lens library from '{self._db_path}':\n\n{e}\n\n"
-                "The library has been emptied. Edits you make now cannot be "
-                "saved until this is resolved.",
+                "The library was not replaced, and the stored rows are kept. "
+                "Edits you make now cannot be saved until this is resolved.",
             )
 
     def _sync_tolerances_to_metadata(self, target=None) -> None:
@@ -331,6 +339,18 @@ class OpenLensWindow(QMainWindow):
         try:
             # Sync tolerances to current target metadata before saving
             self._sync_tolerances_to_metadata()
+
+            if reconcile and not self._library_load_ok:
+                # Reconciling deletes the rows that are missing from the
+                # snapshot. After a failed load the snapshot is not the
+                # library - it is whatever the window happened to hold - so
+                # reconciling would delete every row that could not be read.
+                # The rows stay; the user can delete them one by one.
+                reconcile = False
+                logger.warning(
+                    "Skipping reconciliation: the library was never read "
+                    "successfully, so the snapshot is not a complete picture"
+                )
 
             # The service de-duplicates by id and passes the complete snapshot
             # to LensStorage. It keeps the storage's last_error, which is the
