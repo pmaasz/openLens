@@ -3,6 +3,7 @@ Desensitization Optimization Module.
 Optimizes optical systems for manufacturing yield by minimizing sensitivity to tolerances.
 """
 
+import logging
 import math
 from typing import List, Dict, Optional, Callable
 
@@ -13,7 +14,9 @@ from .optimizer import (
     MeritFunction,
 )
 from .optical_system import OpticalSystem
-from .tolerancing import ToleranceOperand, ToleranceType
+from .tolerancing import ToleranceOperand, ToleranceType, _apply_value
+
+logger = logging.getLogger(__name__)
 
 
 class RobustMeritFunction(MeritFunction):
@@ -21,6 +24,13 @@ class RobustMeritFunction(MeritFunction):
     Wraps a standard MeritFunction to add sensitivity penalties.
     Merit = Nominal_Merit + Weight * Sensitivity
     """
+
+    #: Operand types the robust merit cannot perturb. FOCUS lives in the
+    #: evaluation (it is a compensator, not a geometric quantity), and
+    #: IRREGULARITY is a fringe count whose radius mapping is not exactly
+    #: reversible - undoing the draw would leave the surface slightly
+    #: different from the nominal one, and the run would drift.
+    _UNPERTURBABLE = (ToleranceType.FOCUS, ToleranceType.IRREGULARITY)
 
     def __init__(
         self,
@@ -35,113 +45,57 @@ class RobustMeritFunction(MeritFunction):
         self.sensitivity_weight = sensitivity_weight
 
     def evaluate(self, system: OpticalSystem) -> float:
-        # 1. Calculate Nominal Merit
+        """Nominal merit plus the weighted sensitivity to the tolerances.
+
+        Each toleranced parameter is perturbed by its maximum deviation, the
+        merit is evaluated again, and the differences are combined in
+        quadrature. The perturbation is applied with the same code the Monte
+        Carlo analysis uses (:func:`openlens.tolerancing._apply_value`), so
+        the two agree on what a tolerance does to a design - and every
+        operand type the Monte Carlo can randomise can be measured here too.
+        """
         nominal_merit = super().evaluate(system)
 
-        # 2. Calculate Sensitivity (RSS of change in merit)
-        # We use a simplified approach: perturb each toleranced parameter by a small amount
-        # (e.g. 1 sigma or a fixed fraction of the tolerance range)
-        # and measure the change in merit.
-
         sum_sq_diff = 0.0
-
-        # To avoid excessive computation, we might only check a subset or use a larger step?
-        # For true desensitization, we need to check the local curvature of the merit landscape.
-
-        # Let's use a small subset of tolerances or just the variables being optimized?
-        # Usually, we care about sensitivity to ALL tolerances, not just the variables.
-        # But iterating through 50 tolerances for every merit evaluation is too slow.
-        # Strategy: Use a few key tolerances or a random subset?
-        # Strategy: Use the "Gaussian Quadrature" method (sample at +/- sigma)
-
-        # For this implementation, we will check sensitivity to the OPTIMIZATION VARIABLES
-        # assuming they are the ones that drift.
-        # Or better, iterate through self.tolerances.
-
-        # Limit to first 5 tolerances for performance if list is long?
-        # Or just use the first few that match optimization variables?
-
-        # Let's try a deterministic approach: Perturb each tolerance by its max value
-        # and sum the squared differences.
-
-        # Optimization: Reuse the system object?
-        # Deepcopy is slow.
-        # We can apply perturbation, evaluate, then un-apply.
+        skipped = []
 
         for tol in self.tolerances:
-            # Save original value
-            original_val = self._get_param_value(system, tol)
-            if original_val is None:
+            if tol.param_type in self._UNPERTURBABLE:
+                skipped.append(f"Element {tol.element_index + 1} {tol.param_type.value}")
                 continue
 
-            # Perturb +
             delta = tol.max_val  # Check at the limit
-            self._set_param_value(system, tol, original_val + delta)
-
-            merit_plus = super().evaluate(system)
-
-            # Perturb - (optional, assuming linearity one side might be enough)
-            # self._set_param_value(system, tol, original_val - delta)
-            # merit_minus = super().evaluate(system)
-
-            # Restore
-            self._set_param_value(system, tol, original_val)
+            applied = _apply_value(
+                system, tol.param_type, tol.element_index, delta, surface=tol.surface
+            )
+            if not applied:
+                # The operand addresses nothing here (an air gap after the
+                # last element, a decenter on the first one).
+                skipped.append(f"Element {tol.element_index + 1} {tol.param_type.value}")
+                continue
+            try:
+                merit_plus = super().evaluate(system)
+            finally:
+                # Undo the draw. Every operand the Monte Carlo randomises is
+                # additive, so the inverse draw restores the nominal design
+                # exactly.
+                _apply_value(system, tol.param_type, tol.element_index, -delta, surface=tol.surface)
 
             # Difference
             diff = merit_plus - nominal_merit
             sum_sq_diff += diff * diff
 
+        if skipped:
+            logger.warning(
+                "Robust merit: %d tolerance operand(s) could not be perturbed "
+                "and are not in the sensitivity: %s",
+                len(skipped),
+                ", ".join(skipped),
+            )
+
         sensitivity = math.sqrt(sum_sq_diff)
 
         return nominal_merit + self.sensitivity_weight * sensitivity
-
-    def _get_param_value(self, system: OpticalSystem, tol: ToleranceOperand) -> Optional[float]:
-        # Helper to get value based on tolerance operand
-        # Needs to handle the flattened index logic from tolerancing.py
-        # This is duplicated logic, ideally should be refactored.
-        nodes = system.root.get_flat_list()
-        element_nodes = [n for n, _ in nodes if getattr(n, "is_element", False)]
-
-        if tol.element_index >= len(element_nodes):
-            return None
-        node = element_nodes[tol.element_index]
-        lens = getattr(node, "element_model", None)
-        if not lens:
-            return None
-
-        if tol.param_type == ToleranceType.RADIUS_1:
-            return lens.radius_of_curvature_1
-        if tol.param_type == ToleranceType.RADIUS_2:
-            return lens.radius_of_curvature_2
-        if tol.param_type == ToleranceType.THICKNESS:
-            return lens.thickness
-        if tol.param_type == ToleranceType.REFRACTIVE_INDEX:
-            return lens.refractive_index
-        return None
-
-    def _set_param_value(self, system: OpticalSystem, tol: ToleranceOperand, value: float):
-        nodes = system.root.get_flat_list()
-        element_nodes = [n for n, _ in nodes if getattr(n, "is_element", False)]
-
-        if tol.element_index >= len(element_nodes):
-            return
-        node = element_nodes[tol.element_index]
-        lens = getattr(node, "element_model", None)
-        if not lens:
-            return
-
-        if tol.param_type == ToleranceType.RADIUS_1:
-            lens.radius_of_curvature_1 = value
-        if tol.param_type == ToleranceType.RADIUS_2:
-            lens.radius_of_curvature_2 = value
-        if tol.param_type == ToleranceType.THICKNESS:
-            lens.thickness = value
-        if tol.param_type == ToleranceType.REFRACTIVE_INDEX:
-            lens.refractive_index = value
-
-        # Important: Update positions if thickness changed
-        if tol.param_type == ToleranceType.THICKNESS:
-            system._update_positions()
 
 
 class DesensitizationOptimizer(LensOptimizer):
