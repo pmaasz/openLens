@@ -205,17 +205,25 @@ class SimulationTab(BaseTab):
             angle = self._sim_angle.value()
             source_height = self._sim_source_height.value()
             show_ghosts = self._ghost_analysis.isChecked()
-            conditioned = EnvironmentalAnalyzer.condition_at_temperature(
-                active_system, self._sim_temperature.value()
-            )
+
+            # The live model goes to the widget, and the environment is
+            # applied at trace time. Handing over a conditioned copy instead
+            # left the widget with a snapshot: every later edit of the lens
+            # was silently discarded, because the refresh re-traced that
+            # snapshot.
+            def _conditioned(target):
+                return EnvironmentalAnalyzer.condition_at_temperature(
+                    target, self._sim_temperature.value()
+                )
 
             self._sim_viz.run_simulation(
-                conditioned,
+                active_system,
                 num_rays,
                 angle,
                 source_height,
                 show_ghosts,
                 wavelengths=self._selected_wavelengths(),
+                conditioner=_conditioned,
             )
 
     def _add_wavelength_item(self, nanometres: float) -> QListWidgetItem:

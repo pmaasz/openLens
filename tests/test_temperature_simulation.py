@@ -185,7 +185,7 @@ class TestSimulationTemperatureControls(unittest.TestCase):
 
         self.assertEqual(control.value(), ABSOLUTE_ZERO_C)
 
-    def test_run_traces_a_conditioned_copy(self):
+    def test_run_traces_the_live_model_with_a_conditioner(self):
         from openlens.gui.widgets.simulation_viz import SimulationVisualizationWidget
 
         calls = []
@@ -201,10 +201,17 @@ class TestSimulationTemperatureControls(unittest.TestCase):
 
         self.tab._on_run_simulation()
 
+        # The widget gets the live model; the environment is applied at trace
+        # time, so a later edit of the lens is not silently discarded.
         target = calls[-1][0][0]
-        self.assertIsNot(target, lens)
-        self.assertEqual(target.temperature, 120.0)
-        self.assertGreater(target.radius_of_curvature_1, lens.radius_of_curvature_1)
+        self.assertIs(target, lens)
+
+        conditioner = calls[-1][1]["conditioner"]
+        conditioned = conditioner(lens)
+        self.assertIsNot(conditioned, lens)
+        self.assertEqual(conditioned.temperature, 120.0)
+        self.assertGreater(conditioned.radius_of_curvature_1, lens.radius_of_curvature_1)
+        # The stored model is never mutated.
         self.assertEqual(lens.temperature, DEFAULT_TEMPERATURE)
         self.assertEqual(calls[-1][1]["wavelengths"], [WAVELENGTH_GREEN])
 
@@ -245,8 +252,13 @@ class TestSimulationTemperatureControls(unittest.TestCase):
 
         target = calls[-1][0][0]
         self.assertIsInstance(target, OpticalSystem)
-        self.assertIsNot(target, system)
-        self.assertEqual([element.lens.temperature for element in target.elements], [120.0, 120.0])
+        self.assertIs(target, system)
+
+        conditioned = calls[-1][1]["conditioner"](system)
+        self.assertIsNot(conditioned, system)
+        self.assertEqual(
+            [element.lens.temperature for element in conditioned.elements], [120.0, 120.0]
+        )
         self.assertEqual(system.elements[0].lens.temperature, DEFAULT_TEMPERATURE)
 
     def test_a_hot_simulation_changes_the_traced_path(self):
@@ -280,7 +292,10 @@ class TestSimulationTemperatureControls(unittest.TestCase):
 
         self.tab._on_run_simulation()
 
-        self.assertEqual(self.tab._sim_viz._lens.temperature, 120.0)
+        # The widget holds the live lens; the temperature reaches the trace
+        # through the conditioner.
+        conditioned = self.tab._sim_viz._conditioner(self.tab._sim_viz._lens)
+        self.assertEqual(conditioned.temperature, 120.0)
         self.assertEqual(len(self.tab._sim_viz._ray_groups), 2)
 
 
