@@ -85,7 +85,10 @@ class AssemblyVisualizationWidget(QWidget):
 
         max_diameter = max(e.lens.diameter for e in self._system.elements)
 
-        max_dim = max(total_thickness * 1.5, max_diameter * 1.3)
+        # Floor the divisor like the other 2D views: Lens accepts a zero
+        # thickness and diameter, so a degenerate model would otherwise
+        # divide by zero inside the paint event on every repaint.
+        max_dim = max(total_thickness * 1.5, max_diameter * 1.3, 1.0)
         scale = min(w, h) / max_dim / 2
 
         cx = 30
