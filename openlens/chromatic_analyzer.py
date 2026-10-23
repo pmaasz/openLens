@@ -306,6 +306,30 @@ class ChromaticAnalyzer:
         dz = heights[0][1] - heights[1][1]
         return math.sqrt(dy * dy + dz * dz)
 
+    def _f_to_c_dispersion(self, material_name: str, quantity: str) -> float:
+        """Return n_F - n_C, rejecting a material with no dispersion.
+
+        Args:
+            material_name: Catalog material name.
+            quantity: Human name of the value being divided by the
+                dispersion, used in the error message.
+
+        Raises:
+            ValueError: If the material has no dispersion over F..C, which
+                makes the requested quantity undefined (and infinite).
+        """
+        n_F = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["F"])
+        n_C = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["C"])
+
+        dispersion = n_F - n_C
+        if abs(dispersion) < 1e-12:
+            raise ValueError(
+                f"Material {material_name!r} has no dispersion between the F "
+                f"and C lines (n_F - n_C = {dispersion}); its {quantity} is "
+                "undefined."
+            )
+        return dispersion
+
     def calculate_abbe_number(self, material_name: str) -> float:
         """
         Calculate Abbe number (V_d) from material data
@@ -316,17 +340,7 @@ class ChromaticAnalyzer:
                 makes V_d undefined (and infinite).
         """
         n_d = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["d"])
-        n_F = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["F"])
-        n_C = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["C"])
-
-        dispersion = n_F - n_C
-        if abs(dispersion) < 1e-12:
-            raise ValueError(
-                f"Material {material_name!r} has no dispersion between the F "
-                f"and C lines (n_F - n_C = {dispersion}); its Abbe number is "
-                "undefined."
-            )
-
+        dispersion = self._f_to_c_dispersion(material_name, "Abbe number")
         return (n_d - 1.0) / dispersion
 
     def calculate_partial_dispersion(
@@ -334,13 +348,15 @@ class ChromaticAnalyzer:
     ) -> float:
         """
         Calculate partial dispersion P_x,y = (n_x - n_y) / (n_F - n_C)
+
+        Raises:
+            ValueError: If the material has no dispersion over F..C, which
+                makes the partial dispersion undefined.
         """
         n_x = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS[line1])
         n_y = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS[line2])
-        n_F = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["F"])
-        n_C = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["C"])
-
-        return (n_x - n_y) / (n_F - n_C)
+        dispersion = self._f_to_c_dispersion(material_name, "partial dispersion")
+        return (n_x - n_y) / dispersion
 
     def design_achromatic_doublet(
         self,
@@ -427,6 +443,11 @@ class ChromaticAnalyzer:
             Dictionary with 'wavelengths' and 'focal_lengths' lists
             (focal length is None at any wavelength with afocal power)
         """
+        if num_points < 2:
+            raise ValueError(
+                "num_points must be at least 2 to sweep a wavelength range, " f"got {num_points}."
+            )
+
         wavelengths = []
         focal_lengths = []
 
