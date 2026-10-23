@@ -101,6 +101,47 @@ class ChromaticAnalyzer:
     def __init__(self, material_db: Optional[MaterialDatabase] = None):
         self.material_db = material_db or MaterialDatabase()
 
+    def _build_lens(
+        self,
+        R1: float,
+        R2: float,
+        d: float,
+        diameter: float,
+        material_name: str,
+        wavelength: float,
+        temperature_c: float,
+    ):
+        """Build one wavelength's lens with the full environmental model.
+
+        Applying dn/dT alone is not the thermal model the rest of the
+        application uses: at high temperature the CTE expansion dominates the
+        index change, so the two predicted defocus with opposite signs. Route
+        the geometry through ``EnvironmentalAnalyzer`` so there is a single
+        expansion implementation.
+        """
+        from .lens import Lens
+        from .analysis.environmental import EnvironmentalAnalyzer
+
+        n = self.material_db.get_refractive_index(material_name, wavelength, temperature_c)
+        lens = Lens(
+            name=f"chromatic@{wavelength:g}nm",
+            radius_of_curvature_1=R1,
+            radius_of_curvature_2=R2,
+            thickness=d,
+            diameter=diameter,
+            refractive_index=n,
+            material=material_name,
+            wavelength=wavelength,
+            temperature=temperature_c,
+        )
+        conditioned = EnvironmentalAnalyzer.condition_at_temperature(lens, temperature_c)
+        # The analyzer's catalog value is authoritative for this wavelength;
+        # conditioning refreshes the index from the lens's model glass, which
+        # need not carry the same custom material data.
+        conditioned.refractive_index = n
+        conditioned.wavelength = wavelength
+        return conditioned
+
     def analyze_lens(
         self,
         lens_params: dict,
@@ -132,7 +173,6 @@ class ChromaticAnalyzer:
         Raises:
             ValueError: If the geometry is afocal (no finite focal length).
         """
-        from .lens import Lens
         from .optical_system import OpticalSystem
         from .analysis.spot_diagram import SpotDiagram
 
@@ -157,20 +197,7 @@ class ChromaticAnalyzer:
         image_planes = []
 
         for wavelength in wavelengths:
-            # Wavelength-dependent refractive index (Sellmeier + TIE-19).
-            n = self.material_db.get_refractive_index(material_name, wavelength, temperature_c)
-
-            lens = Lens(
-                name=f"chromatic@{wavelength:g}nm",
-                radius_of_curvature_1=R1,
-                radius_of_curvature_2=R2,
-                thickness=d,
-                diameter=diameter,
-                refractive_index=n,
-                material=material_name,
-                wavelength=wavelength,
-                temperature=temperature_c,
-            )
+            lens = self._build_lens(R1, R2, d, diameter, material_name, wavelength, temperature_c)
             focal_length = lens.calculate_focal_length()
             if focal_length is None:
                 raise ValueError(
@@ -246,7 +273,6 @@ class ChromaticAnalyzer:
         spherical aberration, so the result does not depend on the aperture.
         Returns 0.0 for a single wavelength and NaN if either trace fails.
         """
-        from .lens import Lens
         from .optical_system import OpticalSystem
         from .analysis.spot_diagram import SpotDiagram
 
@@ -255,18 +281,7 @@ class ChromaticAnalyzer:
 
         heights = []
         for wavelength in (wl_first, wl_last):
-            n = self.material_db.get_refractive_index(material_name, wavelength, temperature_c)
-            lens = Lens(
-                name=f"lateral@{wavelength:g}nm",
-                radius_of_curvature_1=R1,
-                radius_of_curvature_2=R2,
-                thickness=d,
-                diameter=diameter,
-                refractive_index=n,
-                material=material_name,
-                wavelength=wavelength,
-                temperature=temperature_c,
-            )
+            lens = self._build_lens(R1, R2, d, diameter, material_name, wavelength, temperature_c)
             system = OpticalSystem(name=f"lateral@{wavelength:g}nm")
             system.add_lens(lens)
             height = SpotDiagram(system).trace_chief_ray(
