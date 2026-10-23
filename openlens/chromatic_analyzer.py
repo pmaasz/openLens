@@ -223,22 +223,27 @@ class ChromaticAnalyzer:
 
             focal_lengths.append(focal_length)
 
-        # Calculate chromatic aberration metrics
+        # Calculate chromatic aberration metrics. ``wavelengths`` is an
+        # arbitrary list, so pick the extremes by value: using the first and
+        # last entries made axial colour and lateral colour depend on the
+        # caller's ordering.
         focal_shift = max(focal_lengths) - min(focal_lengths)
-        axial_chromatic = abs(focal_lengths[0] - focal_lengths[-1])
+        axial_chromatic = focal_shift
 
         # Lateral color: chief-ray image-height difference between the
-        # extreme wavelengths at the reference field, evaluated at the
-        # middle wavelength's image plane.
+        # shortest and longest wavelengths at the reference field, evaluated
+        # at the middle wavelength's image plane.
+        order = sorted(range(len(wavelengths)), key=lambda i: wavelengths[i])
+        middle = order[len(order) // 2]
         lateral_color = self._lateral_color(
             R1,
             R2,
             d,
             diameter,
             material_name,
-            wavelengths[0],
-            wavelengths[-1],
-            image_planes[len(wavelengths) // 2],
+            wavelengths[order[0]],
+            wavelengths[order[-1]],
+            image_planes[middle],
             temperature_c,
         )
 

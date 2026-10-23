@@ -560,5 +560,59 @@ class TestLateralColorIsTheChiefRay(unittest.TestCase):
         self.assertAlmostEqual(reported, expected, places=9)
 
 
+class TestWavelengthOrderIndependence(unittest.TestCase):
+    """#644: the caller may list the wavelengths in any order."""
+
+    PARAMS = {
+        "radius1": 50.0,
+        "radius2": -50.0,
+        "thickness": 5.0,
+        "diameter": 25.0,
+        "material": "BK7",
+    }
+    WAVELENGTHS = [486.1, 587.6, 656.3]
+
+    def setUp(self):
+        self.analyzer = ChromaticAnalyzer()
+
+    def test_permuted_wavelengths_give_the_same_scalar_metrics(self):
+        import itertools
+
+        reference = None
+        for permutation in itertools.permutations(self.WAVELENGTHS):
+            result = self.analyzer.analyze_lens(
+                self.PARAMS, wavelengths=list(permutation), num_rays=11
+            )
+            if reference is None:
+                reference = result
+                continue
+            self.assertAlmostEqual(
+                result.axial_chromatic_aberration,
+                reference.axial_chromatic_aberration,
+                places=9,
+                msg=f"axial colour changed for {permutation}",
+            )
+            self.assertAlmostEqual(
+                result.focal_shift,
+                reference.focal_shift,
+                places=9,
+                msg=f"focal shift changed for {permutation}",
+            )
+            self.assertAlmostEqual(
+                result.lateral_color,
+                reference.lateral_color,
+                places=9,
+                msg=f"lateral colour changed for {permutation}",
+            )
+
+    def test_axial_colour_agrees_with_the_focal_shift(self):
+        result = self.analyzer.analyze_lens(
+            self.PARAMS, wavelengths=[587.6, 486.1, 656.3], num_rays=11
+        )
+
+        self.assertAlmostEqual(result.axial_chromatic_aberration, result.focal_shift, places=12)
+        self.assertGreater(result.axial_chromatic_aberration, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
