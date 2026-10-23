@@ -236,8 +236,9 @@ class TolerancingTab(BaseTab):
 
         add_btn = QPushButton("Add Tolerance")
         add_btn.clicked.connect(self._on_add_tolerance)
-        remove_btn = QPushButton("Remove")
-        remove_btn.clicked.connect(self._on_remove_tolerance)
+        self._remove_btn = QPushButton("Remove")
+        self._remove_btn.setEnabled(False)
+        self._remove_btn.clicked.connect(self._on_remove_tolerance)
         clear_btn = QPushButton("Clear All")
         clear_btn.clicked.connect(self._on_clear_tolerances)
         default_btn = QPushButton("Default Set")
@@ -249,7 +250,7 @@ class TolerancingTab(BaseTab):
         grade_btn.clicked.connect(self._on_load_grade)
 
         toolbar_layout.addWidget(add_btn)
-        toolbar_layout.addWidget(remove_btn)
+        toolbar_layout.addWidget(self._remove_btn)
         toolbar_layout.addWidget(clear_btn)
         toolbar_layout.addWidget(default_btn)
         toolbar_layout.addWidget(self._grade_combo)
@@ -258,6 +259,7 @@ class TolerancingTab(BaseTab):
 
         # Operands table
         self._tol_table = QTableWidget()
+        self._tol_table.itemSelectionChanged.connect(self._on_tolerance_selection_changed)
         self._tol_table.setColumnCount(5)
         self._tol_table.setHorizontalHeaderLabels(
             ["Element #", "Type", "Min", "Max", "Distribution"]
@@ -552,15 +554,23 @@ class TolerancingTab(BaseTab):
             set(index.row() for index in self._tol_table.selectedIndexes()),
             reverse=True,
         )
-        if not selected_rows and self._parent._tol_operands:
-            self._parent._tol_operands.pop()
-        else:
-            for row in selected_rows:
-                if row < len(self._parent._tol_operands):
-                    self._parent._tol_operands.pop(row)
+        if not selected_rows:
+            # Nothing selected: deleting an arbitrary (last) operand is never
+            # what the user asked for.
+            return
+
+        for row in selected_rows:
+            if row < len(self._parent._tol_operands):
+                self._parent._tol_operands.pop(row)
 
         self._update_tolerance_operands_display()
         self._mark_dirty()
+
+    def _on_tolerance_selection_changed(self) -> None:
+        """Enable Remove only while an operand is selected."""
+        if not hasattr(self, "_remove_btn"):
+            return
+        self._remove_btn.setEnabled(bool(self._tol_table.selectedIndexes()))
 
     def _on_clear_tolerances(self) -> None:
         """Clear all tolerances."""
@@ -627,6 +637,7 @@ class TolerancingTab(BaseTab):
             self._tol_table.setItem(i, 4, item4)
 
         self._tol_table.blockSignals(False)
+        self._on_tolerance_selection_changed()
 
     def _on_run_monte_carlo(self) -> None:
         """Run Monte Carlo analysis.
