@@ -92,6 +92,34 @@ class TestEveryArPresetBeatsTheBareSubstrate(unittest.TestCase):
                 self.assertTrue(layers, f"the {name} preset is empty")
 
 
+class TestReflectivityCurveSampling(unittest.TestCase):
+    """#662: num_points is honoured, including the single-point case."""
+
+    def setUp(self):
+        self.designer = CoatingDesigner()
+
+    def test_one_point_returns_one_sample_at_the_start(self):
+        curve = self.designer.calculate_reflectivity_curve([], BAND, num_points=1)
+
+        self.assertEqual(len(curve), 1)
+        self.assertEqual(curve[0][0], BAND[0])
+
+    def test_num_points_controls_the_number_of_samples(self):
+        for num_points in (2, 10, 100):
+            with self.subTest(num_points=num_points):
+                curve = self.designer.calculate_reflectivity_curve([], BAND, num_points=num_points)
+
+                self.assertEqual(len(curve), num_points)
+                self.assertEqual(curve[0][0], BAND[0])
+                self.assertEqual(curve[-1][0], BAND[1])
+
+    def test_zero_or_negative_points_are_rejected(self):
+        for num_points in (0, -1):
+            with self.subTest(num_points=num_points):
+                with self.assertRaisesRegex(ValueError, "num_points"):
+                    self.designer.calculate_reflectivity_curve([], BAND, num_points=num_points)
+
+
 class TestDualLayerUsesAQuarterWavePairThatCanCancel(unittest.TestCase):
     """The index condition, which is what makes two layers worth having."""
 
