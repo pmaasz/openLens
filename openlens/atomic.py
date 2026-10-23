@@ -18,7 +18,7 @@ import os
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator, TextIO
+from typing import Any, Iterator, Optional, TextIO
 
 
 def _temp_path(path: Path) -> Path:
@@ -39,12 +39,16 @@ def _discard(path: Path) -> None:
 
 
 @contextmanager
-def atomic_write_text(path: Any, encoding: str = "utf-8") -> Iterator[TextIO]:
+def atomic_write_text(
+    path: Any, encoding: str = "utf-8", newline: Optional[str] = None
+) -> Iterator[TextIO]:
     """Yield a text handle whose contents replace ``path`` only on success.
 
     Args:
         path: Destination file path.
         encoding: Text encoding for the temporary file.
+        newline: Newline translation passed to :func:`open`. Use ``""`` for
+            writers such as :mod:`csv` that emit their own line endings.
 
     Yields:
         An open write-mode text handle.
@@ -57,7 +61,7 @@ def atomic_write_text(path: Any, encoding: str = "utf-8") -> Iterator[TextIO]:
     # save()'s documented failure behaviour on a bad path. "x" keeps the
     # unique name exclusive; a collision must not truncate another writer.
     tmp = _temp_path(target)
-    handle = open(tmp, "x", encoding=encoding)
+    handle = open(tmp, "x", encoding=encoding, newline=newline)
     try:
         with handle:
             yield handle

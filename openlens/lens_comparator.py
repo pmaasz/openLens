@@ -4,9 +4,11 @@ Lens Comparison Tool
 Side-by-side comparison of multiple lens designs
 """
 
-from typing import List, Dict, Any
+import csv
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
+from .atomic import atomic_write_text
 from .lens import Lens
 from .performance_metrics import PerformanceMetrics
 from .aberrations import AberrationsCalculator
@@ -223,12 +225,20 @@ class LensComparator:
 
         return "\n".join(lines)
 
-    def export_to_csv(self, filename: str):
-        """Export comparison to CSV file"""
-        import csv
+    def export_to_csv(self, filename: str) -> Optional[str]:
+        """Export comparison to CSV file.
 
-        with open(filename, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=self.results[0].to_dict().keys())
+        Returns:
+            ``"No lenses to compare"`` when no comparison has run, otherwise
+            ``None``.
+        """
+        if not self.results:
+            return "No lenses to compare"
+
+        fieldnames = self.results[0].to_dict().keys()
+        with atomic_write_text(filename, newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
             writer.writeheader()
             for result in self.results:
                 writer.writerow(result.to_dict())
+        return None

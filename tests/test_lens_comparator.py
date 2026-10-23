@@ -3,9 +3,12 @@
 Functional tests for Lens Comparison Mode
 """
 
+import os
 import sys
+import tempfile
 
 import unittest
+from unittest import mock
 from openlens.lens import Lens
 from openlens.lens_comparator import LensComparator, ComparisonResult
 
@@ -194,6 +197,63 @@ class TestComparisonEdgeCases(unittest.TestCase):
 
         self.assertEqual(len(results), 0)
         print("✓ Handled empty comparator correctly")
+
+    def test_export_without_results_returns_the_friendly_message(self):
+        """#659: exporting before comparing must not raise IndexError."""
+        comparator = LensComparator()
+
+        with tempfile.TemporaryDirectory() as temp:
+            path = os.path.join(temp, "out.csv")
+            message = comparator.export_to_csv(path)
+
+            self.assertEqual(message, "No lenses to compare")
+            self.assertFalse(os.path.exists(path))
+
+    def test_export_without_results_leaves_an_existing_file_untouched(self):
+        """#659: the early return must happen before the file is opened."""
+        comparator = LensComparator()
+
+        with tempfile.TemporaryDirectory() as temp:
+            path = os.path.join(temp, "out.csv")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("previous contents")
+
+            message = comparator.export_to_csv(path)
+
+            self.assertEqual(message, "No lenses to compare")
+            with open(path, encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "previous contents")
+
+    def test_a_failed_export_keeps_the_previous_csv(self):
+        """#659: write through atomic_write_text, not a truncating open()."""
+        comparator = LensComparator()
+        comparator.results = [
+            ComparisonResult(
+                name="Lens A",
+                focal_length=50.0,
+                f_number=2.0,
+                numerical_aperture=0.25,
+                spherical_aberration=0.0,
+                chromatic_aberration=0.0,
+                coma=0.0,
+                diameter=25.0,
+                thickness=5.0,
+                material="BK7",
+                airy_disk_radius=0.001,
+            )
+        ]
+
+        with tempfile.TemporaryDirectory() as temp:
+            path = os.path.join(temp, "out.csv")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("previous contents")
+
+            with mock.patch.object(ComparisonResult, "to_dict", side_effect=RuntimeError("boom")):
+                with self.assertRaises(RuntimeError):
+                    comparator.export_to_csv(path)
+
+            with open(path, encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "previous contents")
 
     def test_single_lens_comparison(self):
         """Test comparison with single lens"""
