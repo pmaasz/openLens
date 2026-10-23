@@ -6,7 +6,7 @@ Specialized visualization for performance metrics (MTF, PSF, etc.)
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPainter, QColor
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, Mapping, Optional, TYPE_CHECKING
 
 from ..theme import DARK, get_palette
 
@@ -14,6 +14,22 @@ if TYPE_CHECKING:
     from PySide6.QtGui import QPaintEvent
 
     from ...lens import Lens
+
+
+def format_rms_spot(metrics: Optional[Mapping[str, Any]]) -> str:
+    """Format the RMS-spot label from the calculator's metric mapping.
+
+    ``spot_rms`` is the real key produced by ``AberrationsCalculator`` and is
+    measured in micrometres. A missing or unmeasurable value is reported as
+    "n/a" rather than a fictional zero.
+    """
+    value = (metrics or {}).get("spot_rms")
+    if value is None:
+        return "RMS Spot: n/a"
+    try:
+        return f"RMS Spot: {float(value):.3f} µm"
+    except (TypeError, ValueError):
+        return "RMS Spot: n/a"
 
 
 class PerformanceVisualizationWidget(QWidget):
@@ -60,7 +76,7 @@ class PerformanceVisualizationWidget(QWidget):
 
         Args:
             metrics: Mapping of metric names to values (e.g.
-                ``{'rms_spot': 0.012}``), or None to clear them.
+                ``{'spot_rms': 12.3}``), or None to clear them.
         """
         self._metrics = metrics
         self.update()
@@ -79,4 +95,4 @@ class PerformanceVisualizationWidget(QWidget):
         painter.setPen(self._accent_color)
         painter.drawText(20, 30, f"Performance: {self._lens.name}")
         if self._metrics:
-            painter.drawText(20, 50, f"RMS Spot: {self._metrics.get('rms_spot', 0):.4f}")
+            painter.drawText(20, 50, format_rms_spot(self._metrics))
