@@ -64,27 +64,27 @@ class STLExporter:
         # r1=+50, r2=-50, t=5, D=25 the back rim came out at 6.588 instead of
         # 3.412, and because both surfaces came out identical the biconvex
         # solid was a straight cylinder of constant 5 mm.
-        half_profile = []
-
         h = diameter / 2.0
+        if abs(radius) < 1e-10 or abs(radius) > 1e10:
+            # Flat: the exporters have a dedicated flat-fan generator.
+            return None
+
+        half_profile = []
         for i in range(resolution + 1):
             y = (i / resolution) * h  # 0 to h
-            if abs(radius) < 1e-10 or abs(radius) > 1e10:
-                z_sag = 0.0
-            else:
-                # sqrt(R^2 - y^2) has no real solution once y > |R|: a sphere
-                # of this radius simply does not reach out that far. Swallowing
-                # that and using 0.0 exported a flat disc where a curved surface
-                # should be, with no error anywhere - the geometry was simply
-                # wrong. A flat surface is the |R| ~ 0 case above and is fine.
-                radicand = radius**2 - y**2
-                if radicand < 0.0:
-                    raise ValueError(
-                        f"Surface of radius {radius} mm does not extend to "
-                        f"{y:.4f} mm: |R| must be at least half the diameter "
-                        f"({h:.4f} mm). Widen the radius or reduce the diameter."
-                    )
-                z_sag = (y**2) / (radius + math.copysign(math.sqrt(radicand), radius))
+            # sqrt(R^2 - y^2) has no real solution once y > |R|: a sphere
+            # of this radius simply does not reach out that far. Swallowing
+            # that and using 0.0 exported a flat disc where a curved surface
+            # should be, with no error anywhere - the geometry was simply
+            # wrong.
+            radicand = radius**2 - y**2
+            if radicand < 0.0:
+                raise ValueError(
+                    f"Surface of radius {radius} mm does not extend to "
+                    f"{y:.4f} mm: |R| must be at least half the diameter "
+                    f"({h:.4f} mm). Widen the radius or reduce the diameter."
+                )
+            z_sag = (y**2) / (radius + math.copysign(math.sqrt(radicand), radius))
 
             half_profile.append((y, z_sag))
 
@@ -202,9 +202,18 @@ class STLExporter:
     ):
         """
         Generate triangles for the cylindrical edge.
-        z_front_arr: Z coordinate of front edge (float or list)
-        z_back_arr: Z coordinate of back edge (float or list)
+        z_front_arr: Z coordinate of the front edge: a float, or a list of
+            ``num_segments`` values (closed profile) / ``num_segments + 1``
+            values (open profile).
+        z_back_arr: Z coordinate of the back edge, with the same forms.
         """
+        for name, values in (("z_front_arr", z_front_arr), ("z_back_arr", z_back_arr)):
+            if isinstance(values, list) and len(values) not in (num_segments, num_segments + 1):
+                raise ValueError(
+                    f"{name} must have {num_segments} or {num_segments + 1} "
+                    f"values, got {len(values)}"
+                )
+
         triangles = []
         radius = diameter / 2.0
         angle_step = 2 * math.pi / num_segments
@@ -219,10 +228,18 @@ class STLExporter:
             cos2, sin2 = math.cos(angle2), math.sin(angle2)
 
             zf1 = z_front_arr[seg] if isinstance(z_front_arr, list) else z_front_arr
-            zf2 = z_front_arr[seg + 1] if isinstance(z_front_arr, list) else z_front_arr
+            zf2 = (
+                z_front_arr[(seg + 1) % len(z_front_arr)]
+                if isinstance(z_front_arr, list)
+                else z_front_arr
+            )
 
             zb1 = z_back_arr[seg] if isinstance(z_back_arr, list) else z_back_arr
-            zb2 = z_back_arr[seg + 1] if isinstance(z_back_arr, list) else z_back_arr
+            zb2 = (
+                z_back_arr[(seg + 1) % len(z_back_arr)]
+                if isinstance(z_back_arr, list)
+                else z_back_arr
+            )
 
             # Four corners
             p1 = (radius * cos1, radius * sin1, zf1)  # Front 1

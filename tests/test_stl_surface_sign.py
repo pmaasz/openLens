@@ -93,9 +93,11 @@ class TestEdgeGeometry(unittest.TestCase):
         self.exporter = STLExporter()
 
     def _rims(self, r1, r2, thickness, diameter=25.0):
-        front = self.exporter.calculate_surface_profile(r1, diameter)[-1][1]
-        back = self.exporter.calculate_surface_profile(r2, diameter)[-1][1] + thickness
-        return front, back
+        front_profile = self.exporter.calculate_surface_profile(r1, diameter)
+        back_profile = self.exporter.calculate_surface_profile(r2, diameter)
+        front = 0.0 if front_profile is None else front_profile[-1][1]
+        back = 0.0 if back_profile is None else back_profile[-1][1]
+        return front, back + thickness
 
     def test_biconvex_is_thinner_at_the_edge(self):
         front, back = self._rims(50.0, -50.0, 5.0)
@@ -116,11 +118,10 @@ class TestEdgeGeometry(unittest.TestCase):
         self.assertAlmostEqual(front, 0.0)
         self.assertLess(back - front, 5.0)
 
-    def test_flat_radii_produce_zero_sag(self):
-        for radius in (0.0, 1e-12):
+    def test_flat_radii_return_none_for_the_dedicated_flat_path(self):
+        for radius in (0.0, 1e-12, float("inf")):
             with self.subTest(radius=radius):
-                profile = self.exporter.calculate_surface_profile(radius, 25.0)
-                self.assertTrue(all(z == 0.0 for _, z in profile))
+                self.assertIsNone(self.exporter.calculate_surface_profile(radius, 25.0))
 
 
 class TestExportedSolid(unittest.TestCase):
