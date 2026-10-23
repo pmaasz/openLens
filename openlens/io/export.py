@@ -222,7 +222,10 @@ class ISO10110Generator:
         ]
         lines = [f'<text x="{x}" y="{y}" class="text" font-weight="bold">ISO 10110 NOTES</text>']
         for i, note in enumerate(notes):
-            lines.append(f'<text x="{x}" y="{y + 18 + i * 15}" class="text">{note}</text>')
+            # Coating layer names are free-form user input, so a note can
+            # contain &, < or >. Unescaped, the exported SVG is not well-formed
+            # XML and no consumer can open it.
+            lines.append(f'<text x="{x}" y="{y + 18 + i * 15}" class="text">{escape(note)}</text>')
         return lines
 
     def _generate_dimensions(
