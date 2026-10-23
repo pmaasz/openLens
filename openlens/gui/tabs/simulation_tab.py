@@ -144,7 +144,8 @@ class SimulationTab(BaseTab):
         self._sim_show_focal_plane = QCheckBox("Show on view")
         self._sim_show_focal_plane.setChecked(True)
         self._sim_show_focal_plane.setToolTip(
-            "Draw the detector plane and report the RMS spot measured there"
+            "Draw an explicitly configured detector plane; the RMS spot is "
+            "reported in both auto and manual mode"
         )
         focal_layout.addRow(self._sim_show_focal_plane)
 

@@ -227,7 +227,9 @@ class SimulationVisualizationWidget(QWidget):
             image_plane_x_mm: Absolute X position of the detector plane. If
                 None, uses the model's ``image_plane_x_mm``, else the paraxial
                 focus.
-            show_focal_plane: Draw the plane and its RMS spot on the view.
+            show_focal_plane: Draw an explicitly configured plane and its RMS
+                spot on the view. Auto mode reports the paraxial focus in the
+                tab but leaves the default view uncluttered.
         """
         from ...optical_system import OpticalSystem
 
@@ -538,7 +540,12 @@ class SimulationVisualizationWidget(QWidget):
             max_diameter = self._lens.diameter
 
         plane_extent = 0.0
-        if self._focal_plane_x_mm is not None and math.isfinite(self._focal_plane_x_mm):
+        if (
+            self._show_focal_plane
+            and not self._focal_plane_auto
+            and self._focal_plane_x_mm is not None
+            and math.isfinite(self._focal_plane_x_mm)
+        ):
             plane_extent = abs(self._focal_plane_x_mm) * 1.5
         max_dim = max(total_thickness * 2, max_diameter, 30, plane_extent) * 1.2
         scale = min(w, h) / max_dim * self._zoom
@@ -677,6 +684,7 @@ class SimulationVisualizationWidget(QWidget):
         # converging fan crosses it.
         if (
             self._show_focal_plane
+            and not self._focal_plane_auto
             and not self._show_image_sim
             and self._focal_plane_x_mm is not None
             and math.isfinite(self._focal_plane_x_mm)
