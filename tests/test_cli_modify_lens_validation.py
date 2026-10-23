@@ -75,6 +75,15 @@ class TestModifyLensValidation(unittest.TestCase):
         self.assertEqual(self.lens.material, "Fused Silica")
         save.assert_called_once()
 
+    def test_an_over_long_name_is_refused_and_nothing_is_applied(self):
+        """#646: a name over 100 characters must not escape as an exception."""
+        answers = ["1", "x" * 101, "", "", "", "", "", "", ""]
+
+        save = self._run_modify(answers)
+
+        self.assertEqual(self.lens.name, "demo")
+        save.assert_not_called()
+
     def test_an_invalid_single_field_keeps_the_current_value(self):
         answers = ["1", "", "not-a-number", "-80", "6", "40", "", "", ""]
 
