@@ -13,7 +13,8 @@ These tests pin the new contract:
 - a change to the lens state they snapshotted (the wavefront sensor swaps the
   refractive index for every wavelength) is picked up without the caller
   knowing the cache exists;
-- a change to the structure - positions - is dropped by ``invalidate()``;
+- a change to the structure - positions - is picked up automatically, and
+  ``invalidate()`` still forces a rebuild;
 - and none of this changes a single traced path.
 """
 
@@ -177,11 +178,10 @@ class TestCachingChangesNothingOptical(unittest.TestCase):
 
 class TestExplicitInvalidation(unittest.TestCase):
     def test_invalidate_rebuilds_after_a_position_change(self):
-        """A moved element is only visible after ``invalidate()``.
+        """``invalidate()`` still forces a rebuild after a layout edit.
 
-        The batch validates the lens state it snapshotted, which cannot see a
-        transform change without the expensive node walk the cache exists to
-        avoid. Callers that keep a tracer across a layout edit announce it.
+        The next trace would also notice the move through the scene signature;
+        this pins the explicit path callers used before detection existed.
         """
         system = _flat_system(position=0.0)
         tracer = SystemRayTracer3D(system)
@@ -200,6 +200,65 @@ class TestExplicitInvalidation(unittest.TestCase):
         tracer.invalidate()
         tracer.invalidate()
         self.assertEqual(len(tracer.trace_off_axis_rays(0.0, num_rays=2)), 2)
+
+
+class TestPositionChangesAreDetected(unittest.TestCase):
+    """A long-lived tracer must not trace yesterday's layout (#614)."""
+
+    def test_a_moved_node_is_picked_up_without_invalidate(self):
+        system = create_doublet()
+        tracer = SystemRayTracer3D(system)
+        before = _paths(tracer.trace_off_axis_rays(0.0, num_rays=3))
+
+        system.root.children[0].position = vec3(20.0, 0.0, 0.0)
+        after = _paths(tracer.trace_off_axis_rays(0.0, num_rays=3))
+
+        fresh = _paths(SystemRayTracer3D(system).trace_off_axis_rays(0.0, num_rays=3))
+        self.assertNotEqual(before, after, "the cached scene kept the old position")
+        self.assertEqual(after, fresh)
+
+    def test_a_moved_flat_element_is_picked_up_without_invalidate(self):
+        system = _flat_system(position=0.0)
+        tracer = SystemRayTracer3D(system)
+        before = _paths(tracer.trace_off_axis_rays(0.0, num_rays=3))
+
+        system.elements[0].position = 12.0
+        after = _paths(tracer.trace_off_axis_rays(0.0, num_rays=3))
+
+        fresh = _paths(SystemRayTracer3D(system).trace_off_axis_rays(0.0, num_rays=3))
+        self.assertNotEqual(before, after)
+        self.assertEqual(after, fresh)
+
+    def test_an_added_element_invalidates_the_scene(self):
+        system = create_doublet()
+        tracer = SystemRayTracer3D(system)
+        tracer.trace_off_axis_rays(0.0, num_rays=2)
+
+        # A second element at the same station still changes the traced path.
+        system.add_lens(Lens(name="Extra", diameter=25.0), air_gap_before=1.0)
+        after = _paths(tracer.trace_off_axis_rays(0.0, num_rays=2))
+        fresh = _paths(SystemRayTracer3D(system).trace_off_axis_rays(0.0, num_rays=2))
+
+        self.assertEqual(after, fresh)
+
+    def test_a_moved_element_changes_a_spot_diagram(self):
+        """The integration case: SpotDiagram keeps its tracer for its lifetime."""
+        from openlens.analysis.spot_diagram import SpotDiagram
+
+        system = create_doublet()
+        diagram = SpotDiagram(system)
+        plane = 120.0
+        before = diagram.trace_spot(field_angle_y_deg=2.0, image_plane_x_mm=plane, num_rings=2)
+
+        system.root.children[0].position = vec3(15.0, 0.0, 0.0)
+        after = diagram.trace_spot(field_angle_y_deg=2.0, image_plane_x_mm=plane, num_rings=2)
+
+        self.assertNotEqual(before["centroid"], after["centroid"])
+        fresh = SpotDiagram(system).trace_spot(
+            field_angle_y_deg=2.0, image_plane_x_mm=plane, num_rings=2
+        )
+        self.assertAlmostEqual(after["centroid"][0], fresh["centroid"][0], places=9)
+        self.assertAlmostEqual(after["centroid"][1], fresh["centroid"][1], places=9)
 
 
 class TestSingleLensTracerIsUnchanged(unittest.TestCase):
