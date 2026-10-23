@@ -120,12 +120,12 @@ class LensManager:
         r1 = self._prompt_float(
             f"Radius of curvature 1 (mm) [{DEFAULT_RADIUS_1}]: ",
             DEFAULT_RADIUS_1,
-            lambda v: validate_radius(v, param_name="Radius 1"),
+            lambda v: validate_radius(v, param_name="Radius 1", allow_flat=True),
         )
         r2 = self._prompt_float(
             f"Radius of curvature 2 (mm) [{DEFAULT_RADIUS_2}]: ",
             DEFAULT_RADIUS_2,
-            lambda v: validate_radius(v, param_name="Radius 2"),
+            lambda v: validate_radius(v, param_name="Radius 2", allow_flat=True),
         )
         thickness = self._prompt_float(
             f"Center thickness (mm) [{DEFAULT_THICKNESS}]: ",
@@ -271,12 +271,12 @@ class LensManager:
 
             updates["radius_of_curvature_1"] = _read(
                 f"Radius of curvature 1 [{lens.radius_of_curvature_1}]: ",
-                lambda v: validate_radius(v, param_name="Radius 1"),
+                lambda v: validate_radius(v, param_name="Radius 1", allow_flat=True),
                 lens.radius_of_curvature_1,
             )
             updates["radius_of_curvature_2"] = _read(
                 f"Radius of curvature 2 [{lens.radius_of_curvature_2}]: ",
-                lambda v: validate_radius(v, param_name="Radius 2"),
+                lambda v: validate_radius(v, param_name="Radius 2", allow_flat=True),
                 lens.radius_of_curvature_2,
             )
             updates["thickness"] = _read(

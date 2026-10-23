@@ -17,7 +17,6 @@ from .atomic import atomic_write_text
 from .constants import (
     DEFAULT_MATERIAL_INDICES,
     EPSILON,
-    MAX_RADIUS_OF_CURVATURE,
     REFRACTIVE_INDEX_BK7,
     WAVELENGTH_D_LINE,
 )
@@ -977,16 +976,6 @@ class ZemaxSystemImporter:
             )
             return None
 
-        # validate_lens_parameters rejects inf radii because a literal 0 is an
-        # upstream mistake. A .zmx CURV of 0.0 legitimately means a plano
-        # surface, so probe with the largest allowed finite radius.
-        probe = min(
-            abs(r) if math.isfinite(r) and r != 0.0 else MAX_RADIUS_OF_CURVATURE for r in (r1, r2)
-        )
-        if probe == 0.0:
-            logger.warning("Zemax import: element %d dropped, zero radius", index)
-            return None
-
         # Preserve the glass name as written: it is shown in the UI, and the
         # catalog lookup accepts it in any case or punctuation.
         material_name = (material or "BK7").strip() or "BK7"
@@ -998,8 +987,8 @@ class ZemaxSystemImporter:
         n = _material_design_index(material_name, wavelength)
         try:
             validate_lens_parameters(
-                radius1=probe if not math.isfinite(r1) else r1,
-                radius2=probe if not math.isfinite(r2) else r2,
+                radius1=r1,
+                radius2=r2,
                 thickness=thickness,
                 diameter=diameter,
                 refractive_index=n,

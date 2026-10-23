@@ -8,21 +8,8 @@ import uuid
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 
+from .constants import FLAT_RADIUS
 from .lens import Lens
-
-#: Radius marking a flat surface.
-#:
-#: lens._is_flat treats a surface as flat when it is zero, non-finite, or
-#: |r| > LARGE_NUMBER - a *strict* inequality. So LARGE_NUMBER itself is NOT
-#: flat, and the bare 1e10 this module used to write for the plano-convex
-#: preset sat exactly on that boundary: flat to the eye, curved to every
-#: code path that branches on _is_flat. Non-finite is unambiguous and is what
-#: the retired preset_lenses.py used.
-#:
-#: Note that validate_radius cannot express "flat" at all - it caps |r| at
-#: 10000 mm and rejects non-finite values - so a flat radius is internal-only
-#: and must not be round-tripped through that validator.
-FLAT_RADIUS = float("inf")
 
 
 @dataclass
@@ -55,7 +42,7 @@ class LensPreset:
 #
 # The optical data below is preserved verbatim; only the representation
 # changed. `applications` became typical_use, `vendor` became manufacturer,
-# and the flat-surface radius now uses the module's FLAT_RADIUS constant,
+# and the flat-surface radius now uses the shared FLAT_RADIUS constant,
 # which _is_flat actually recognises - see its docstring for why 1e10 and
 # LARGE_NUMBER both sit on the wrong side of the boundary.
 #
