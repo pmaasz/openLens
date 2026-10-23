@@ -116,6 +116,10 @@ The **Simulation** tab traces rays through a lens or assembly:
 - set ray count, field angle, and ray height range;
 - trace at one or more wavelengths;
 - enable ghost reflections to inspect unwanted paths;
+- place the detector at an absolute image plane, or leave it on **Auto** for
+  the paraxial focus. The view marks the plane and reports the RMS spot
+  measured there; the Performance spot metric and the optimizer's RMS-spot
+  target use the same plane;
 - switch between 2-D and 3-D views;
 - clear the trace and reset the view without changing the optical model.
 

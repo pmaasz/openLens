@@ -947,8 +947,12 @@ class AberrationsCalculator:
         wavelength_mm = wavelength_nm * 1e-6  # nm to mm
         return 1.0 / (wavelength_mm * f_num)
 
-    def _calculate_spot_rms(self) -> float:
-        """Calculate RMS spot size using ray tracing (System only)"""
+    def _calculate_spot_rms(self) -> Optional[float]:
+        """Calculate RMS spot size using ray tracing (System only).
+
+        The measurement plane is the system's configured
+        ``image_plane_x_mm`` when set; otherwise it is the back-focal plane.
+        """
         if not self.is_system:
             return 0
         try:
@@ -959,17 +963,26 @@ class AberrationsCalculator:
             # Use trace_off_axis_rays for consistent bundle generation
             rays = tracer.trace_off_axis_rays(field_angle_deg=0.0, num_rays=21)
 
-            # Find best focus (minimum RMS)
-            f = self.target.get_system_focal_length()
-            if not f:
-                return 0
+            focus_x = getattr(self.target, "image_plane_x_mm", None)
+            if focus_x is not None:
+                try:
+                    focus_x = float(focus_x)
+                except (TypeError, ValueError):
+                    focus_x = None
+                if focus_x is not None and not math.isfinite(focus_x):
+                    focus_x = None
 
-            bfl = self.target.calculate_back_focal_length()
-            if bfl is None:
-                return 0
+            if focus_x is None:
+                f = self.target.get_system_focal_length()
+                if not f:
+                    return None
 
-            last_elem = self.target.elements[-1]
-            focus_x = last_elem.position + last_elem.thickness + bfl
+                bfl = self.target.calculate_back_focal_length()
+                if bfl is None:
+                    return None
+
+                last_elem = self.target.elements[-1]
+                focus_x = last_elem.position + last_elem.thickness + bfl
 
             y_hits = []
             for ray in rays:
@@ -980,7 +993,7 @@ class AberrationsCalculator:
                     y_hits.append(y_at_focus)
 
             if not y_hits:
-                return 0
+                return None
 
             mean_y = sum(y_hits) / len(y_hits)
             rms = math.sqrt(sum((y - mean_y) ** 2 for y in y_hits) / len(y_hits))

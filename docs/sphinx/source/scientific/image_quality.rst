@@ -189,7 +189,11 @@ Through-Focus and Tolerancing
 -----------------------------
 
 Image quality changes with focus. OpenLens can evaluate metrics at a requested
-focus shift instead of assuming the paraxial image plane. Tolerancing extends
+focus shift instead of assuming the paraxial image plane. A lens or assembly
+can also pin an absolute detector plane with ``image_plane_x_mm``: spot-based
+analyses, the RMS spot metric, and the optimizer's RMS-spot target then
+measure at that plane. An unset plane keeps the paraxial focus as the default.
+Tolerancing extends
 this idea to manufacturing errors: element decentre, tilt, thickness, radius,
 and index perturbations are sampled, and the resulting metric distribution is
 reported. A nominal design with a good spot but no tolerance margin is not a

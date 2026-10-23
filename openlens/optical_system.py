@@ -13,7 +13,7 @@ import uuid
 import logging
 from datetime import datetime
 
-from .lens import Lens, json_safe_radii
+from .lens import Lens, json_safe_radii, validate_image_plane_x
 from .constants import (
     WAVELENGTH_D_LINE,
     WAVELENGTH_C_LINE,
@@ -117,6 +117,7 @@ _SYSTEM_SERIALIZED_KEYS = frozenset(
         # that happens to have no home on the model.
         "node_tree",
         "thermal_state_temperature",
+        "image_plane_x_mm",
     }
 )
 
@@ -144,6 +145,9 @@ class OpticalSystem:
         # gaps expand relative to the reference length, not by compounding a
         # percentage on the already-expanded value.
         self.thermal_state_temperature = DEFAULT_TEMPERATURE
+        # Detector/sensor plane on the optical axis (mm). None means "use the
+        # paraxial focus"; see the matching note on Lens.
+        self.image_plane_x_mm: Optional[float] = None
         self.root = OpticalAssembly(name="Root")
         self._update_positions()
 
@@ -600,6 +604,7 @@ class OpticalSystem:
             "aperture_stop_gap": self.aperture_stop_gap,
             "aperture_stop_diameter": self.aperture_stop_diameter,
             "thermal_state_temperature": self.thermal_state_temperature,
+            "image_plane_x_mm": self.image_plane_x_mm,
             "elements": [
                 {
                     "lens": e.lens.to_dict(),
@@ -653,6 +658,7 @@ class OpticalSystem:
         system.thermal_state_temperature = data.get(
             "thermal_state_temperature", DEFAULT_TEMPERATURE
         )
+        system.image_plane_x_mm = validate_image_plane_x(data.get("image_plane_x_mm"))
 
         # Clear default tree/flat state to avoid duplication.
         system.elements = []
@@ -1162,4 +1168,8 @@ def as_system(
     lens = copy.deepcopy(target) if copy_system else target
     system = OpticalSystem(name=name or lens.name)
     system.add_lens(lens)
+    # The detector plane is part of the design; a wrapper that dropped it
+    # would measure the same lens at a different plane from the one the user
+    # chose.
+    system.image_plane_x_mm = getattr(lens, "image_plane_x_mm", None)
     return system
