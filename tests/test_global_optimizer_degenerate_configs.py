@@ -65,8 +65,32 @@ def _ga(**kwargs):
     return GlobalOptimizer(_system(), _variables(), _targets()).optimize_genetic(**kwargs)
 
 
+class _CountingAnnealer(GlobalOptimizer):
+    """Count the annealing loop's evaluations before the local refinement."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.calls = 0
+        self.annealing_iterations = None
+
+    def _evaluate_design(self, values):
+        self.calls += 1
+        return super()._evaluate_design(values)
+
+    def optimize_simplex(self, *args, **kwargs):
+        self.annealing_iterations = self.calls - 1  # one initial evaluation
+        return super().optimize_simplex(*args, **kwargs)
+
+
 class TestTemperatureGuard(unittest.TestCase):
     """Regression: ZeroDivisionError on the first iteration."""
+
+    def _annealing_iterations(self, initial_temperature):
+        optimizer = _CountingAnnealer(_system(), _variables(), _targets(), seed=7)
+        optimizer.optimize_simulated_annealing(
+            max_iterations=20, initial_temperature=initial_temperature
+        )
+        return optimizer.annealing_iterations
 
     def test_zero_initial_temperature_runs(self):
         result = _sa(initial_temperature=0.0, max_iterations=5)
@@ -75,6 +99,13 @@ class TestTemperatureGuard(unittest.TestCase):
     def test_negative_initial_temperature_runs(self):
         result = _sa(initial_temperature=-5.0, max_iterations=5)
         self.assertGreaterEqual(result.iterations, 1)
+
+    def test_negative_initial_temperature_runs_the_full_schedule(self):
+        """The clamp must reach the loop variable, not only the log message."""
+        self.assertEqual(self._annealing_iterations(-100.0), 20)
+
+    def test_zero_initial_temperature_runs_the_full_schedule(self):
+        self.assertEqual(self._annealing_iterations(0.0), 20)
 
     def test_tiny_initial_temperature_runs(self):
         self.assertGreaterEqual(_sa(initial_temperature=1e-12, max_iterations=5).iterations, 1)
