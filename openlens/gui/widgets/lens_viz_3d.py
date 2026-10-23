@@ -32,6 +32,7 @@ class _3DVisualizationWidget(QWidget):
         self._ax_coords = None
         self._surface_profiles = {}
         self._theme = DARK
+        self._caption_bad = False
 
         self.setMinimumSize(400, 300)
         self.setStyleSheet(f"background-color: {get_palette(DARK)['plot_bg']};")
@@ -117,6 +118,15 @@ class _3DVisualizationWidget(QWidget):
         for axis in (coords.xaxis, coords.yaxis, coords.zaxis):
             axis.label.set_color(palette["plot_axis"])
             axis.pane.set_facecolor(background)
+
+        # The caption is a text artist, not an axis: refresh it explicitly so
+        # a theme switch after update_lens() does not leave it invisible.
+        from ...constants import COLOR_LENS_BAD
+
+        caption_color = COLOR_LENS_BAD if self._caption_bad else palette["plot_text"]
+        for text in getattr(self._ax, "texts", ()):
+            text.set_color(caption_color)
+
         self._canvas.draw_idle()
 
     def update_lens(self, lens: "Lens") -> None:
@@ -240,12 +250,13 @@ class _3DVisualizationWidget(QWidget):
             dim_text += f"  Fresnel ({grooves} grooves)"
         if _bad:
             dim_text += "  (infeasible)"
+        self._caption_bad = _bad
         self._ax.text2D(
             0.02,
             0.98,
             dim_text,
             transform=self._ax.transAxes,
-            color=COLOR_LENS_BAD if _bad else "white",
+            color=COLOR_LENS_BAD if _bad else get_palette(self._theme)["plot_text"],
             fontsize=10,
             fontweight="bold",
         )
