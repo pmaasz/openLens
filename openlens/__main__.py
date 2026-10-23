@@ -1359,6 +1359,20 @@ Ctrl+6         Tolerancing
                 QMessageBox.critical(self, "Export Error", f"Failed to export STEP: {result.error}")
             return
 
+        if result.warnings:
+            logger.warning("STEP export was partial: %s", "; ".join(result.warnings))
+            QMessageBox.warning(
+                self,
+                "Export Partially Complete",
+                "The STEP file was written, but these parts are missing:\n\n"
+                + "\n".join(result.warnings),
+            )
+            self._update_status(
+                f"Exported to STEP with {len(result.warnings)} skipped part(s): "
+                f"{os.path.basename(filepath)}"
+            )
+            return
+
         self._update_status(f"Exported to STEP: {os.path.basename(filepath)}")
 
     def _on_export_iso10110(self) -> None:

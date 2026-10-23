@@ -110,6 +110,39 @@ class TestStepExportGuiWiring(unittest.TestCase):
         status = self.window.statusBar().currentMessage()
         self.assertIn("STEP", status)
 
+    def test_partial_export_warns_about_the_skipped_parts(self):
+        from openlens.gui.services import ExportResult
+
+        partial = ExportResult(
+            ok=True,
+            kind="step",
+            path=self.step_path,
+            bytes_written=123,
+            details={"shapes": 1, "skipped": 1, "skipped_parts": ["barrel"]},
+            warnings=("barrel was skipped and is missing from the STEP file",),
+        )
+        warnings = []
+        errors = []
+
+        with mock.patch.object(
+            self.window._export_service, "export_step", return_value=partial
+        ), mock.patch(
+            "openlens.__main__.QFileDialog.getSaveFileName",
+            return_value=(self.step_path, ""),
+        ), mock.patch(
+            "openlens.__main__.QMessageBox.warning",
+            side_effect=lambda *args, **kwargs: warnings.append(args),
+        ), mock.patch(
+            "openlens.__main__.QMessageBox.critical",
+            side_effect=lambda *args, **kwargs: errors.append(args),
+        ):
+            self.window._on_export_step()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("barrel", warnings[0][2])
+        self.assertIn("skipped", self.window.statusBar().currentMessage())
+
     def test_exporter_name_resolves_in_the_gui_module(self):
         """The GUI module must expose the class name it imports.
 

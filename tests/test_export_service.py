@@ -92,6 +92,30 @@ class TestExportService(unittest.TestCase):
         self.assertGreaterEqual(result.details["shapes"], 1)
         self.assertIn("skipped", result.details)
 
+    def test_export_step_reports_skipped_parts_as_warnings(self):
+        path = self.tmp / "partial.step"
+        bad_housing = [{"name": "barrel", "z0": 0.0, "z1": 10.0, "r_inner": 12.0, "r_outer": 8.0}]
+
+        result = ExportService(housing_factory=lambda system: bad_housing).export_step(
+            self.lens, str(path)
+        )
+
+        self.assertTrue(result.ok, result.error)
+        self.assertTrue(result.partial)
+        self.assertEqual(result.details["skipped_parts"], ["barrel"])
+        self.assertEqual(len(result.warnings), 1)
+        self.assertIn("barrel", result.warnings[0])
+        self.assertIn("missing", result.warnings[0])
+
+    def test_export_step_without_skips_is_not_partial(self):
+        path = self.tmp / "lens.step"
+
+        result = ExportService().export_step(self.lens, str(path))
+
+        self.assertTrue(result.ok, result.error)
+        self.assertFalse(result.partial)
+        self.assertEqual(result.warnings, ())
+
     def test_export_step_import_error_is_reported_as_missing_dependency(self):
         path = self.tmp / "lens.step"
 
