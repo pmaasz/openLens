@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional
 from openlens.io.export import ISO10110Generator
 from openlens.io.step_export import StepExporter
 from openlens.lens import Lens, json_safe_radii
-from openlens.optical_system import as_system
+from openlens.optical_system import OpticalSystem, as_system
 from openlens.stl_export import export_lens_stl
 
 
@@ -100,6 +100,33 @@ class ExportService:
                 # again. ``allow_nan=False`` fails the export instead of
                 # writing a file that cannot be read.
                 json.dump(json_safe_radii(lens.to_dict()), handle, indent=2, allow_nan=False)
+            return self._success("json", path)
+        except Exception as exc:
+            return self._failure("json", path, exc)
+
+    def save_system_json(self, system: OpticalSystem, path: str) -> ExportResult:
+        """Write an assembly in the File > Save As JSON interchange format.
+
+        ``OpticalSystem.save()`` wrote the same document, but it swallowed the
+        exception and returned a bool, so the window could not report why an
+        export failed. This mirrors ``save_lens_json`` and keeps the failure
+        text.
+
+        Args:
+            system: Assembly to serialize.
+            path: Destination file.
+
+        Returns:
+            The export result.
+        """
+        try:
+            with open(path, "w") as handle:
+                json.dump(
+                    json_safe_radii(system.to_dict()),
+                    handle,
+                    indent=2,
+                    allow_nan=False,
+                )
             return self._success("json", path)
         except Exception as exc:
             return self._failure("json", path, exc)
