@@ -30,6 +30,26 @@ J0_FIRST_ZERO = -0.4027593957
 EXPECTED_AT_FIRST_ZERO = 1.0 - J0_FIRST_ZERO**2
 
 
+class TestEncircledEnergySampling(unittest.TestCase):
+    """#662: num_points controls the number of returned samples."""
+
+    def setUp(self):
+        self.calc = DiffractionCalculator()
+
+    def test_num_points_controls_the_number_of_samples(self):
+        for num_points in (10, 100, 1000):
+            with self.subTest(num_points=num_points):
+                radii, ee = self.calc.encircled_energy(
+                    FOCAL_LENGTH_MM,
+                    APERTURE_MM,
+                    max_radius_um=50.0,
+                    num_points=num_points,
+                )
+
+                self.assertEqual(len(radii), num_points)
+                self.assertEqual(len(ee), num_points)
+
+
 class TestEncircledEnergyIsAnalytic(unittest.TestCase):
     """The curve is the analytic Airy encircled energy, not a rescaled integral."""
 
@@ -63,10 +83,10 @@ class TestEncircledEnergyIsAnalytic(unittest.TestCase):
         """The defect: the answer changed with max_radius_um."""
         airy_r = self.calc.airy_disk_radius_um(FOCAL_LENGTH_MM, APERTURE_MM)
         radii_ref, ee_ref = self.calc.encircled_energy(
-            FOCAL_LENGTH_MM, APERTURE_MM, max_radius_um=2 * airy_r
+            FOCAL_LENGTH_MM, APERTURE_MM, max_radius_um=2 * airy_r, num_points=1000
         )
         radii_wide, ee_wide = self.calc.encircled_energy(
-            FOCAL_LENGTH_MM, APERTURE_MM, max_radius_um=20 * airy_r
+            FOCAL_LENGTH_MM, APERTURE_MM, max_radius_um=20 * airy_r, num_points=1000
         )
 
         # Compare the overlapping range: where both curves are defined, the
@@ -137,7 +157,9 @@ class TestEncircledEnergyIsAnalytic(unittest.TestCase):
 
         self.assertAlmostEqual(float(radii[-1]), 5 * airy_r, places=6)
         self.assertEqual(len(radii), len(ee))
-        self.assertGreater(len(radii), 100)
+        # The documented default is 100 samples; the old code always returned
+        # 1000 and ignored the parameter.
+        self.assertEqual(len(radii), 100)
 
 
 class TestEncircledEnergyTracksAperture(unittest.TestCase):
