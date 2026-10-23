@@ -107,8 +107,6 @@ class GlobalOptimizer(LensOptimizer):
         best_values = list(current_values)
         best_merit = current_merit
 
-        temperature = initial_temperature
-
         variable_history = []
         merit_history = [current_merit]
 
@@ -125,6 +123,11 @@ class GlobalOptimizer(LensOptimizer):
                 initial_temperature,
             )
             initial_temperature = 1e-6
+
+        # Initialise the loop variable *after* the clamp: assigning it first
+        # copied the unclamped value, so a negative start made the first
+        # iteration break on the temperature floor and no annealing ran.
+        temperature = initial_temperature
 
         # The schedule has to fit inside max_iterations, or the run stops on
         # the temperature floor long before the caller asked it to. With the
