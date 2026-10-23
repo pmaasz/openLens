@@ -690,10 +690,12 @@ class SystemRayTracer3D:
     ray dominated a pupil-grid trace: a 64x64 wavefront on a doublet spent
     more time walking the node tree than refracting.
 
-    The prepared lens state is revalidated on every trace, so an edit or the
-    wavefront sensor's per-wavelength refractive-index swap is picked up
-    without the caller knowing the cache exists. Position and structure
-    changes are not re-walked - call :meth:`invalidate` after those.
+    The prepared scene is revalidated on every trace: the lens state (an edit
+    or the wavefront sensor's per-wavelength refractive-index swap) through
+    each tracer's ``matches`` check, and the structure and transforms through
+    a cheap scene signature. Moving an element or adding one is therefore
+    picked up without the caller knowing the cache exists; :meth:`invalidate`
+    remains available to force a rebuild.
     """
 
     def __init__(self, optical_system: "OpticalSystem") -> None:
@@ -701,16 +703,73 @@ class SystemRayTracer3D:
         self._batch: Optional[Dict[str, Any]] = None
 
     def invalidate(self) -> None:
-        """Drop the prepared scene after a position or structure change.
+        """Drop the prepared scene, forcing a rebuild on the next trace.
 
-        Lens parameter changes, including the refractive index, are detected
-        automatically on the next trace. Moving or adding an element is not,
-        because checking would mean the full node walk the cache avoids.
+        Position, structure and lens changes are detected automatically on the
+        next trace, so this is only needed to release the cached scene (for
+        example when the caller knows the model is about to be discarded).
         """
         self._batch = None
 
+    def _scene_signature(self) -> Tuple[Any, ...]:
+        """A cheap description of the scene's structure and transforms.
+
+        The lens state a tracer bakes in is validated separately by
+        ``matches``; this catches what that check cannot see - a moved or
+        added element, a replaced element model, a re-stationed gap, or a
+        changed aperture stop.
+
+        Only local position/rotation values and identities are read: no
+        matrix is built and no global transform is recomputed, so the check
+        stays cheap enough to run on every ray without defeating the cache.
+        """
+        parts: List[Any] = []
+
+        def walk(node: Any) -> None:
+            position = getattr(node, "position", None)
+            rotation = getattr(node, "rotation", None)
+            parts.append(
+                (
+                    id(node),
+                    getattr(position, "x", position),
+                    getattr(position, "y", None),
+                    getattr(position, "z", None),
+                    getattr(rotation, "x", None),
+                    getattr(rotation, "y", None),
+                    getattr(rotation, "z", None),
+                    id(getattr(node, "element_model", None)),
+                )
+            )
+            for child in getattr(node, "children", []) or []:
+                walk(child)
+
+        root = getattr(self.system, "root", None)
+        if root is not None:
+            walk(root)
+        else:
+            for elem in self.system.elements:
+                position = getattr(elem, "position", None)
+                if hasattr(position, "x"):
+                    parts.append((id(elem), position.x, position.y, position.z))
+                else:
+                    parts.append((id(elem), position))
+                parts.append(("lens", id(getattr(elem, "lens", None))))
+
+        for gap in getattr(self.system, "air_gaps", []) or []:
+            parts.append(("gap", id(gap), getattr(gap, "position", None)))
+
+        stop_getter = getattr(self.system, "get_aperture_stop", None)
+        stop = stop_getter() if callable(stop_getter) else None
+        if stop:
+            parts.append(("stop", stop.get("gap_index"), stop.get("diameter")))
+        else:
+            parts.append(("stop", None, None))
+        return tuple(parts)
+
     def _scene_is_current(self, batch: Dict[str, Any]) -> bool:
-        """Whether every cached element tracer still matches its lens."""
+        """Whether the cached scene still matches the system and its lenses."""
+        if batch.get("signature") != self._scene_signature():
+            return False
         return all(tracer.matches(lens) for lens, tracer in batch["entries"])
 
     def _prepare(self) -> Dict[str, Any]:
@@ -738,6 +797,7 @@ class SystemRayTracer3D:
             stop_x = flat_gaps[stop_gap].position
 
         self._batch = {
+            "signature": self._scene_signature(),
             "entries": [
                 (lens, LensRayTracer3D(lens, transform=transform)) for lens, transform in elements
             ],
