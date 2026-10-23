@@ -10,7 +10,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Mapping, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from openlens.io.export import ISO10110Generator
 from openlens.io.step_export import StepExporter
@@ -37,6 +37,7 @@ class ExportResult:
         dependency_missing: True when the failure was an ``ImportError``, so
             the window can show the dependency hint instead of a generic
             error.
+        warnings: Human-readable notes about parts omitted from the file.
     """
 
     ok: bool
@@ -46,6 +47,12 @@ class ExportResult:
     details: Mapping[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
     dependency_missing: bool = False
+    warnings: Tuple[str, ...] = ()
+
+    @property
+    def partial(self) -> bool:
+        """Whether the file was written but some parts were skipped."""
+        return bool(self.warnings)
 
 
 def _suggest_housing(system: Any) -> List[Dict[str, Any]]:
@@ -166,7 +173,13 @@ class ExportService:
             housing = self._housing_factory(system)
             summary = StepExporter(system).export(path, housing=housing)
             details = summary if isinstance(summary, dict) else {}
-            return self._success("step", path, details)
+            skipped_parts = details.get("skipped_parts") or []
+            warnings = tuple(
+                f"{part} was skipped and is missing from the STEP file" for part in skipped_parts
+            )
+            if details.get("skipped") and not warnings:
+                warnings = ("one or more parts were skipped and are missing from the STEP file",)
+            return self._success("step", path, details, warnings=warnings)
         except ImportError as exc:
             return self._failure("step", path, exc, dependency_missing=True)
         except Exception as exc:
@@ -230,7 +243,12 @@ class ExportService:
             return self._failure("report", path, exc)
 
     @staticmethod
-    def _success(kind: str, path: str, details: Optional[Mapping[str, Any]] = None) -> ExportResult:
+    def _success(
+        kind: str,
+        path: str,
+        details: Optional[Mapping[str, Any]] = None,
+        warnings: Sequence[str] = (),
+    ) -> ExportResult:
         """Build a successful result, measuring the file that was written."""
         try:
             size = Path(path).stat().st_size
@@ -242,6 +260,7 @@ class ExportService:
             path=path,
             bytes_written=size,
             details=details or {},
+            warnings=tuple(warnings),
         )
 
     @staticmethod
