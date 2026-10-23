@@ -614,5 +614,47 @@ class TestWavelengthOrderIndependence(unittest.TestCase):
         self.assertGreater(result.axial_chromatic_aberration, 0.0)
 
 
+class TestErrorTypes(unittest.TestCase):
+    """#645: edge inputs must raise ValueError, not ZeroDivisionError."""
+
+    PARAMS = {
+        "radius1": 50.0,
+        "radius2": -50.0,
+        "thickness": 5.0,
+        "diameter": 25.0,
+        "material": "BK7",
+    }
+
+    def setUp(self):
+        self.analyzer = ChromaticAnalyzer()
+
+    def test_partial_dispersion_of_a_flat_material_raises_value_error(self):
+        original = self.analyzer.material_db.get_refractive_index
+        self.analyzer.material_db.get_refractive_index = lambda material, wavelength: 1.5
+        try:
+            with self.assertRaises(ValueError) as ctx:
+                self.analyzer.calculate_partial_dispersion("FLAT")
+        finally:
+            self.analyzer.material_db.get_refractive_index = original
+        self.assertIn("partial dispersion", str(ctx.exception))
+
+    def test_partial_dispersion_of_an_unknown_material_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self.analyzer.calculate_partial_dispersion("NOT_A_GLASS")
+
+    def test_plot_chromatic_focal_shift_requires_at_least_two_points(self):
+        for num_points in (1, 0, -1):
+            with self.subTest(num_points=num_points):
+                with self.assertRaises(ValueError) as ctx:
+                    self.analyzer.plot_chromatic_focal_shift(self.PARAMS, num_points=num_points)
+                self.assertIn("num_points", str(ctx.exception))
+
+    def test_plot_chromatic_focal_shift_still_accepts_two_points(self):
+        result = self.analyzer.plot_chromatic_focal_shift(self.PARAMS, num_points=2)
+
+        self.assertEqual(len(result["wavelengths"]), 2)
+        self.assertEqual(len(result["focal_lengths"]), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
