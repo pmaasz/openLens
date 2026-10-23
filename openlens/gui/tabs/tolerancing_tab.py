@@ -37,6 +37,7 @@ from ...tolerancing import (
     InverseSensitivityAnalyzer,
     ToleranceOperand,
     ToleranceType,
+    randomisable_tolerance_types,
 )
 
 logger = logging.getLogger(__name__)
@@ -464,7 +465,22 @@ class TolerancingTab(BaseTab):
         form.addRow("Element Index:", elem_combo)
 
         type_combo = QComboBox()
-        type_combo.addItems([t.value for t in ToleranceType])
+
+        def _populate_types() -> None:
+            # Offer only operands the analysis will actually randomise for the
+            # selected element: FOCUS is compensator-only and is never drawn,
+            # and the structural operands do not exist for every element.
+            previous = type_combo.currentText()
+            type_combo.clear()
+            valid = randomisable_tolerance_types(int(elem_combo.currentText()), num_elements)
+            type_combo.addItems([t.value for t in valid])
+            if previous:
+                index = type_combo.findText(previous)
+                if index >= 0:
+                    type_combo.setCurrentIndex(index)
+
+        _populate_types()
+        elem_combo.currentIndexChanged.connect(lambda _index: _populate_types())
         form.addRow("Parameter Type:", type_combo)
 
         min_spin = QDoubleSpinBox()
