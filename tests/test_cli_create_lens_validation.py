@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+from openlens.constants import MIN_EDGE_THICKNESS
 from openlens.lens import Lens
 from openlens.lens_editor import LensManager
 
@@ -43,6 +44,15 @@ class TestCreateLensValidation(unittest.TestCase):
 
         self.assertIsNone(result)
         self.assertEqual(self.manager.lenses, [])
+
+    def test_the_prompt_defaults_create_a_feasible_lens(self):
+        """#648: pressing Enter on every prompt must produce a valid lens."""
+        lens = self._run_create(["demo", "", "", "", "", "", "", ""])
+
+        self.assertIsInstance(lens, Lens)
+        self.assertEqual(lens.name, "demo")
+        self.assertEqual(len(self.manager.lenses), 1)
+        self.assertGreaterEqual(lens.calculate_edge_thickness(), MIN_EDGE_THICKNESS)
 
     def test_a_feasible_lens_is_still_created(self):
         lens = self._run_create(["Good", "50", "-50", "5", "25", "1.5168", "Biconvex", "BK7"])
