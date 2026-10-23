@@ -19,6 +19,12 @@ from .vector3 import Vector3
 from .ray_tracer import Ray3D, SystemRayTracer3D
 
 
+def _check_direction_magnitude(magnitude: float) -> None:
+    """Reject a degenerate direction instead of normalising it to NaN."""
+    if not math.isfinite(magnitude) or magnitude < 1e-15:
+        raise ValueError("ray direction must be a non-zero, finite vector")
+
+
 @dataclass
 class InteractiveRay:
     """Represents an interactive ray that can be manipulated by user."""
@@ -32,14 +38,23 @@ class InteractiveRay:
     def __post_init__(self):
         if HAS_NUMPY and isinstance(self.origin, (list, tuple, np.ndarray)):
             self.origin = np.array(self.origin)
-            self.direction = np.array(self.direction)
-            self.direction = self.direction / np.linalg.norm(self.direction)
+            if isinstance(self.direction, Vector3):
+                self.direction = np.array(self.direction.to_tuple(), dtype=float)
+            else:
+                self.direction = np.array(self.direction, dtype=float)
+            if self.direction.shape != (3,):
+                raise ValueError("ray direction must have three components")
+            magnitude = float(np.linalg.norm(self.direction))
+            _check_direction_magnitude(magnitude)
+            self.direction = self.direction / magnitude
         else:
             if not isinstance(self.origin, Vector3):
                 self.origin = Vector3(*self.origin)
             if not isinstance(self.direction, Vector3):
                 self.direction = Vector3(*self.direction)
-            self.direction = self.direction.normalize()
+            magnitude = self.direction.magnitude()
+            _check_direction_magnitude(magnitude)
+            self.direction = self.direction / magnitude
 
 
 class InteractiveRayTracer:
@@ -56,20 +71,29 @@ class InteractiveRayTracer:
         self,
         origin: Tuple[float, float, float],
         direction: Tuple[float, float, float],
-        wavelength: float = 0.0005876,
+        wavelength_nm: float = 587.6,
     ) -> InteractiveRay:
-        """Add a new interactive ray."""
+        """Add a new interactive ray.
+
+        Args:
+            origin: Ray origin in millimetres.
+            direction: Ray direction; normalised internally. Must be non-zero.
+            wavelength_nm: Vacuum wavelength in nanometres.
+
+        Raises:
+            ValueError: If the direction is degenerate or the wavelength is
+                not a positive finite number.
+        """
+        if not math.isfinite(wavelength_nm) or wavelength_nm <= 0.0:
+            raise ValueError("wavelength_nm must be a positive finite value")
+
         color = self.ray_colors[len(self.interactive_rays) % len(self.ray_colors)]
 
-        # Internal wavelength convention is mm
-        # 587.6 nm -> 0.0005876 mm
-        if wavelength > 1.0:  # Likely nm
-            wavelength = wavelength * 1e-6
-
+        # The public API is nanometres; the tracer's internal convention is mm.
         ray = InteractiveRay(
             origin=origin,
             direction=direction,
-            wavelength=wavelength,
+            wavelength=wavelength_nm * 1e-6,
             color=color,
             path_segments=[],
         )
@@ -98,12 +122,23 @@ class InteractiveRayTracer:
         self._trace_ray(ray)
 
     def update_ray_direction(self, ray: InteractiveRay, new_direction: Tuple[float, float, float]):
-        """Update ray direction and retrace."""
+        """Update ray direction and retrace.
+
+        Raises:
+            ValueError: If the new direction is degenerate.
+        """
         if HAS_NUMPY:
-            ray.direction = np.array(new_direction)
-            ray.direction = ray.direction / np.linalg.norm(ray.direction)
+            direction = np.array(new_direction, dtype=float)
+            if direction.shape != (3,):
+                raise ValueError("ray direction must have three components")
+            magnitude = float(np.linalg.norm(direction))
+            _check_direction_magnitude(magnitude)
+            ray.direction = direction / magnitude
         else:
-            ray.direction = Vector3(*new_direction).normalize()
+            direction = Vector3(*new_direction)
+            magnitude = direction.magnitude()
+            _check_direction_magnitude(magnitude)
+            ray.direction = direction / magnitude
         self._trace_ray(ray)
 
     def update_ray_angle(self, ray: InteractiveRay, angle_degrees: float):
