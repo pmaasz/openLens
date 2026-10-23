@@ -106,6 +106,22 @@ class ImageQualityAnalyzer:
             raise AssertionError(f"calculate_psf result is missing keys: {sorted(missing)}")
         return fields
 
+    @staticmethod
+    def _wavefront_is_degenerate(wf: Any) -> bool:
+        """Whether a pupil wavefront has too few samples to FFT.
+
+        An empty or lens-less system yields a zero-length wavefront. The FFT
+        raises ``ValueError: Invalid number of FFT data points (0)``, so the
+        degenerate case must be recognised before the transform.
+        """
+        if wf is None or getattr(wf, "W", None) is None:
+            return True
+        try:
+            samples = np.asarray(wf.W)
+        except (TypeError, ValueError):
+            return True
+        return samples.ndim < 2 or samples.shape[0] < 2 or samples.shape[1] < 2
+
     def calculate_spot_diagram(
         self,
         field_angle_deg: float = 0.0,
@@ -154,6 +170,23 @@ class ImageQualityAnalyzer:
                 - centroid: (y, z) of the centroid in mm
                 - step_size: pixel size in mm
         """
+        if not self.system.elements:
+            # An empty system is what a new document shows before the user
+            # adds a lens. There is no pupil and no ray, so return the
+            # well-formed zero result rather than letting the tracer index
+            # elements[0] or the FFT see a zero-length wavefront.
+            logger.warning("PSF: system has no elements; returning a zero PSF")
+            axis = np.linspace(-sensor_size_mm / 2, sensor_size_mm / 2, pixels)
+            return self._psf_result(
+                image=np.zeros((pixels, pixels)),
+                y_axis=axis,
+                z_axis=axis.copy(),
+                centroid=(0.0, 0.0),
+                step_size=sensor_size_mm / pixels,
+                raw_count=0,
+                captured_fraction=0.0,
+            )
+
         if use_diffraction:
             return self._calculate_diffraction_psf(
                 field_angle_deg, wavelength_nm, focus_shift_mm, sensor_size_mm, pixels
@@ -309,6 +342,14 @@ class ImageQualityAnalyzer:
             max_freq = kwargs.pop("max_freq")
         if kwargs:
             raise TypeError(f"Unexpected kwargs: {list(kwargs.keys())}")
+        if not self.system.elements:
+            logger.warning("MTF: system has no elements; returning an empty MTF")
+            empty = np.array([])
+            return {
+                "freq": empty,
+                "mtf_tan": empty.copy(),
+                "mtf_sag": empty.copy(),
+            }
         if use_diffraction:
             # For diffraction MTF, we calculate the autocorrelation of the pupil function
             # OR take the FFT of the Diffraction PSF.
@@ -321,6 +362,17 @@ class ImageQualityAnalyzer:
                 wavelength_nm=wavelength_nm,
                 grid_size=pupil_grid_size,
             )
+            if self._wavefront_is_degenerate(wf):
+                logger.warning(
+                    "MTF: empty pupil wavefront for %s; returning an empty MTF",
+                    self.system.name,
+                )
+                empty = np.array([])
+                return {
+                    "freq": empty,
+                    "mtf_tan": empty.copy(),
+                    "mtf_sag": empty.copy(),
+                }
 
             # 1b. Apply the defocus. This branch had its own copy of the
             # wavefront->PSF chain and dropped focus_shift_mm on the floor, so
@@ -583,6 +635,21 @@ class ImageQualityAnalyzer:
             wavelength_nm=wavelength_nm,
             grid_size=pupil_grid_size,
         )
+        if self._wavefront_is_degenerate(wf):
+            logger.warning(
+                "PSF: empty pupil wavefront for %s; returning a zero PSF",
+                self.system.name,
+            )
+            axis = np.linspace(-sensor_size_mm / 2, sensor_size_mm / 2, pixels)
+            return self._psf_result(
+                image=np.zeros((pixels, pixels)),
+                y_axis=axis,
+                z_axis=axis.copy(),
+                centroid=(0.0, 0.0),
+                step_size=sensor_size_mm / pixels,
+                raw_count=0,
+                captured_fraction=0.0,
+            )
 
         # 1b. Apply the defocus. The wavefront is referenced to the Gaussian
         # focus, so without this the defocus argument had no effect at all.
@@ -621,14 +688,15 @@ class ImageQualityAnalyzer:
             # Spelled out rather than reusing a helper so this stays
             # independently mergeable.
             axis = np.linspace(-sensor_size_mm / 2, sensor_size_mm / 2, pixels)
-            return {
-                "image": np.zeros((pixels, pixels)),
-                "y_axis": axis,
-                "z_axis": axis.copy(),
-                "centroid": (0.0, 0.0),
-                "step_size": sensor_size_mm / pixels,
-                "raw_count": 0,
-            }
+            return self._psf_result(
+                image=np.zeros((pixels, pixels)),
+                y_axis=axis,
+                z_axis=axis.copy(),
+                centroid=(0.0, 0.0),
+                step_size=sensor_size_mm / pixels,
+                raw_count=0,
+                captured_fraction=0.0,
+            )
 
         raw_extent = padded_N * dx_psf
 
