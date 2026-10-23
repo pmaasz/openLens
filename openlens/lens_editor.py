@@ -4,6 +4,7 @@ openlens - Interactive Optical Lens Creation and Modification Tool
 """
 
 import logging
+import sys
 from datetime import datetime
 from typing import Any, Dict, Optional, List
 
@@ -423,7 +424,16 @@ class LensManager:
 
 
 def main() -> None:
-    """Main entry point for the interactive CLI lens editor."""
+    """Main entry point for the interactive CLI lens editor.
+
+    Passing ``mcp`` as the first argument starts the MCP stdio server instead
+    of the interactive menu, so an AI client can launch ``openlens-cli mcp``.
+    """
+    if len(sys.argv) > 1 and sys.argv[1] == "mcp":
+        from .mcp_server import main as mcp_main
+
+        raise SystemExit(mcp_main())
+
     setup_logging(verbose=verbose_requested())
     manager = LensManager()
 
