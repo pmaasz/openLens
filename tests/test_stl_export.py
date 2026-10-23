@@ -64,3 +64,54 @@ class TestSTLExport(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSTLHelperContracts(unittest.TestCase):
+    """#663: the helpers do what their docstrings say."""
+
+    def setUp(self):
+        self.exporter = STLExporter()
+
+    def test_a_flat_surface_profile_is_none(self):
+        for radius in (0.0, float("inf"), -float("inf")):
+            with self.subTest(radius=radius):
+                self.assertIsNone(
+                    self.exporter.calculate_surface_profile(
+                        radius, 25.0, is_front=True, resolution=5
+                    )
+                )
+
+    def test_a_curved_surface_profile_is_still_returned(self):
+        profile = self.exporter.calculate_surface_profile(50.0, 25.0, resolution=5)
+
+        self.assertIsNotNone(profile)
+        self.assertEqual(len(profile), 6)
+
+    def test_a_closed_edge_list_wraps_the_last_segment(self):
+        triangles = self.exporter.generate_edge_triangles(
+            10.0, [0.0, 1.0, 2.0, 3.0], [5.0, 6.0, 7.0, 8.0], num_segments=4
+        )
+
+        self.assertEqual(len(triangles), 8)
+        # Last segment: p1 = index 3, p2 wraps to index 0.
+        self.assertEqual(triangles[-2][0][2], 3.0)
+        self.assertEqual(triangles[-2][1][2], 0.0)
+        self.assertEqual(triangles[-1][1][2], 5.0)
+
+    def test_an_open_edge_list_uses_the_final_value(self):
+        triangles = self.exporter.generate_edge_triangles(
+            10.0,
+            [0.0, 1.0, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0, 9.0],
+            num_segments=4,
+        )
+
+        self.assertEqual(len(triangles), 8)
+        # Last segment: p1 = index 3, p2 = index 4 (no wrap).
+        self.assertEqual(triangles[-2][0][2], 3.0)
+        self.assertEqual(triangles[-2][1][2], 4.0)
+        self.assertEqual(triangles[-1][1][2], 9.0)
+
+    def test_an_edge_list_of_the_wrong_length_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "must have 4 or 5 values"):
+            self.exporter.generate_edge_triangles(10.0, [0.0, 1.0], [5.0, 6.0], num_segments=4)
