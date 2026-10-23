@@ -146,6 +146,63 @@ class TestExportService(unittest.TestCase):
         self.assertIn("Element 2:", text)
         self.assertIn("Position:", text)
 
+    def test_save_system_json_writes_the_system_dict(self):
+        system = create_doublet(focal_length=100.0, diameter=40.0)
+        path = self.tmp / "assembly.json"
+
+        result = ExportService().save_system_json(system, str(path))
+
+        self.assertIsInstance(result, ExportResult)
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(result.kind, "json")
+        self.assertEqual(result.path, str(path))
+        self.assertGreater(result.bytes_written, 0)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(data["type"], "OpticalSystem")
+        self.assertEqual(data["name"], system.name)
+        self.assertEqual(len(data["elements"]), len(system.elements))
+
+    def test_save_system_json_round_trips_through_load(self):
+        from openlens.optical_system import OpticalSystem
+
+        system = create_doublet(focal_length=100.0, diameter=40.0)
+        path = self.tmp / "assembly.json"
+
+        self.assertTrue(ExportService().save_system_json(system, str(path)).ok)
+        loaded = OpticalSystem.load(str(path))
+
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded.name, system.name)
+        self.assertEqual(len(loaded.elements), len(system.elements))
+        self.assertAlmostEqual(
+            loaded.elements[0].lens.radius_of_curvature_1,
+            system.elements[0].lens.radius_of_curvature_1,
+            places=9,
+        )
+
+    def test_save_system_json_writes_a_flat_surface_as_null(self):
+        """The assembly export must keep the Json interchange spelling."""
+        system = create_doublet(focal_length=100.0, diameter=40.0)
+        system.elements[0].lens.radius_of_curvature_1 = float("inf")
+        path = self.tmp / "assembly-plano.json"
+
+        result = ExportService().save_system_json(system, str(path))
+
+        self.assertTrue(result.ok, result.error)
+        text = path.read_text(encoding="utf-8")
+        self.assertNotIn("Infinity", text)
+        self.assertIn("null", text)
+
+    def test_save_system_json_failure_returns_a_result(self):
+        missing = self.tmp / "missing" / "assembly.json"
+
+        result = ExportService().save_system_json(create_doublet(), str(missing))
+
+        self.assertFalse(result.ok)
+        self.assertFalse(result.dependency_missing)
+        self.assertIsNotNone(result.error)
+        self.assertEqual(result.bytes_written, 0)
+
     def test_failures_return_a_result_instead_of_raising(self):
         missing = self.tmp / "missing" / "lens.json"
 

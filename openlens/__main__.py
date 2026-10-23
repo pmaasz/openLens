@@ -1150,24 +1150,41 @@ class OpenLensWindow(QMainWindow):
             self._update_status("Saved to database")
 
     def _on_save_as(self) -> None:
-        """Save lens with new filename"""
-        if not self._current_lens:
+        """Export the active lens or assembly to a JSON interchange file.
+
+        The action used to return silently whenever ``_current_lens`` was
+        None, which is exactly the state while an assembly is active: the
+        enabled Ctrl+Shift+S did nothing and said nothing. Assemblies are the
+        main multi-element artifact, so they are exported through the same
+        JSON interchange path instead.
+        """
+        target = self._current_lens if self._current_lens else self._current_assembly
+        if target is None:
+            self._update_status("Nothing to save")
             return
 
+        is_assembly = isinstance(target, OpticalSystem)
+        kind = "Assembly" if is_assembly else "Lens"
         filepath, _ = QFileDialog.getSaveFileName(
             self,
-            "Save Lens As",
-            f"{self._current_lens.name}.json",
+            f"Save {kind} As",
+            f"{target.name}.json",
             "JSON Files (*.json);;All Files (*)",
         )
 
         if not filepath:
             return
 
-        result = self._export_service.save_lens_json(self._current_lens, filepath)
+        if is_assembly:
+            result = self._export_service.save_system_json(target, filepath)
+        else:
+            result = self._export_service.save_lens_json(target, filepath)
+
         if not result.ok:
             logger.error("Failed to save file: %s", result.error)
             QMessageBox.critical(self, "Error", f"Failed to save file: {result.error}")
+        else:
+            self._update_status(f"Saved {kind.lower()} to {filepath}")
 
     def _on_about(self) -> None:
         """Show about dialog"""
