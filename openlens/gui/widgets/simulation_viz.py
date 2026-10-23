@@ -6,6 +6,7 @@ import math
 from typing import Any, Callable, Optional, Sequence, TYPE_CHECKING, Union
 
 from ...constants import COLOR_LENS_FILL, NM_TO_MM, WAVELENGTH_GREEN
+from ...analysis.paraxial import resolve_image_plane_x
 from ..theme import DARK, get_palette
 
 if TYPE_CHECKING:
@@ -56,6 +57,14 @@ class SimulationVisualizationWidget(QWidget):
         self._last_num_rays = 11
         self._last_angle = 0.0
         self._last_source_height = 0.0
+        self._last_show_focal_plane = True
+
+        # Focal-plane display: resolved from the model at trace time, so an
+        # edit is picked up by the next trace.
+        self._focal_plane_x_mm: Optional[float] = None
+        self._focal_plane_auto = True
+        self._show_focal_plane = True
+        self._focal_plane_rms_um: Optional[float] = None
 
         # Zoom and pan state
         self._zoom = 1.0
@@ -192,6 +201,8 @@ class SimulationVisualizationWidget(QWidget):
         wavelength: float = WAVELENGTH_GREEN,
         wavelengths: Optional[Sequence[float]] = None,
         conditioner: Optional[Callable[[Any], Any]] = None,
+        image_plane_x_mm: Optional[float] = None,
+        show_focal_plane: bool = True,
     ) -> None:
         """Run ray tracing simulation
 
@@ -213,6 +224,12 @@ class SimulationVisualizationWidget(QWidget):
                 keeps a live reference to the model, so an edit is picked up
                 by the next trace; the environment is applied here rather
                 than once, so a trace never works on a stale snapshot.
+            image_plane_x_mm: Absolute X position of the detector plane. If
+                None, uses the model's ``image_plane_x_mm``, else the paraxial
+                focus.
+            show_focal_plane: Draw an explicitly configured plane and its RMS
+                spot on the view. Auto mode reports the paraxial focus in the
+                tab but leaves the default view uncluttered.
         """
         from ...optical_system import OpticalSystem
 
@@ -236,6 +253,7 @@ class SimulationVisualizationWidget(QWidget):
         self._last_num_rays = num_rays
         self._last_angle = angle
         self._last_source_height = source_height
+        self._last_show_focal_plane = show_focal_plane
         self._ray_color = self.wavelength_to_color(self._wavelength)
 
         try:
@@ -296,10 +314,102 @@ class SimulationVisualizationWidget(QWidget):
                     temp_system.add_lens(lens)
                     self._run_ghost_analysis(temp_system, LensRayTracer(lens))
 
+            self._resolve_focal_plane(image_plane_x_mm, show_focal_plane)
         except Exception as e:
             logger.error("Simulation failed: %s", e)
 
         self.update()
+
+    def _resolve_focal_plane(
+        self, image_plane_x_mm: Optional[float], show_focal_plane: bool
+    ) -> None:
+        """Resolve the plane this trace is evaluated at and measure its spot.
+
+        A caller's explicit plane wins, then the model's stored plane, then
+        the paraxial focus. The RMS spot is measured at the resolved plane so
+        the label describes the trace that is actually drawn, not an
+        unrelated best focus.
+
+        Args:
+            image_plane_x_mm: Explicit plane in mm, or None to follow the model.
+            show_focal_plane: Whether the painter should draw the plane.
+        """
+        self._show_focal_plane = show_focal_plane
+        target = self._traced_target()
+        if target is None:
+            self._focal_plane_x_mm = None
+            self._focal_plane_auto = True
+            self._focal_plane_rms_um = None
+            return
+
+        if image_plane_x_mm is None:
+            image_plane_x_mm = getattr(target, "image_plane_x_mm", None)
+
+        plane: Optional[float] = None
+        if image_plane_x_mm is not None:
+            try:
+                plane = float(image_plane_x_mm)
+            except (TypeError, ValueError):
+                plane = None
+            if plane is not None and not math.isfinite(plane):
+                logger.warning("Ignoring non-finite simulation image plane %r", image_plane_x_mm)
+                plane = None
+
+        self._focal_plane_auto = plane is None
+        system = None
+        try:
+            from ...optical_system import as_system
+
+            system = as_system(target)
+        except (TypeError, ValueError) as exc:
+            logger.warning("Could not resolve a focal plane: %s", exc)
+
+        if plane is None and system is not None:
+            plane = resolve_image_plane_x(system, self._wavelength)
+
+        self._focal_plane_x_mm = plane
+        self._focal_plane_rms_um = self._measure_plane_spot(system, plane)
+
+    def _measure_plane_spot(self, system: Any, plane: Optional[float]) -> Optional[float]:
+        """Return the RMS spot radius at *plane* in micrometres, or None."""
+        if system is None or plane is None or not system.elements:
+            return None
+        try:
+            from ...analysis.spot_diagram import SpotDiagram
+
+            result = SpotDiagram(system).trace_spot(
+                field_angle_y_deg=self._last_angle,
+                wavelength_nm=self._wavelength,
+                image_plane_x_mm=plane,
+                num_rings=2,
+            )
+            rms = result.get("rms_radius")
+            if rms is None:
+                return None
+            return float(rms) * 1000.0
+        except Exception as e:
+            logger.warning("Focal-plane spot measurement failed: %s", e)
+            return None
+
+    @property
+    def focal_plane_x_mm(self) -> Optional[float]:
+        """X position of the plane the last trace was measured at, in mm."""
+        return self._focal_plane_x_mm
+
+    @property
+    def focal_plane_rms_um(self) -> Optional[float]:
+        """RMS spot radius at the last focal plane, in micrometres."""
+        return self._focal_plane_rms_um
+
+    @property
+    def focal_plane_is_auto(self) -> bool:
+        """Whether the last plane came from the paraxial focus."""
+        return self._focal_plane_auto
+
+    @property
+    def focal_plane_wavelength_nm(self) -> float:
+        """Wavelength the focal-plane spot was measured at, in nm."""
+        return self._wavelength
 
     def _traced_target(self) -> Any:
         """The model to trace: the live one, conditioned for the environment.
@@ -356,6 +466,9 @@ class SimulationVisualizationWidget(QWidget):
         self._lens = None
         self._system = None
         self._show_image_sim = False
+        self._focal_plane_x_mm = None
+        self._focal_plane_auto = True
+        self._focal_plane_rms_um = None
         self.update()
 
     def refresh(self) -> None:
@@ -392,6 +505,8 @@ class SimulationVisualizationWidget(QWidget):
             show_ghosts=self._show_ghosts,
             wavelengths=self._wavelengths,
             conditioner=self._conditioner,
+            image_plane_x_mm=getattr(live, "image_plane_x_mm", None),
+            show_focal_plane=self._last_show_focal_plane,
         )
         self.update()
 
@@ -424,7 +539,15 @@ class SimulationVisualizationWidget(QWidget):
             total_thickness = self._lens.thickness
             max_diameter = self._lens.diameter
 
-        max_dim = max(total_thickness * 2, max_diameter, 30) * 1.2
+        plane_extent = 0.0
+        if (
+            self._show_focal_plane
+            and not self._focal_plane_auto
+            and self._focal_plane_x_mm is not None
+            and math.isfinite(self._focal_plane_x_mm)
+        ):
+            plane_extent = abs(self._focal_plane_x_mm) * 1.5
+        max_dim = max(total_thickness * 2, max_diameter, 30, plane_extent) * 1.2
         scale = min(w, h) / max_dim * self._zoom
 
         cx = w / 4 + self._pan_x
@@ -556,6 +679,31 @@ class SimulationVisualizationWidget(QWidget):
                             int(cx + x2 * scale),
                             int(cy - y2 * scale),
                         )
+
+        # Detector plane: drawn over the rays so it stays legible where a
+        # converging fan crosses it.
+        if (
+            self._show_focal_plane
+            and not self._focal_plane_auto
+            and not self._show_image_sim
+            and self._focal_plane_x_mm is not None
+            and math.isfinite(self._focal_plane_x_mm)
+        ):
+            plane_px = int(cx + self._focal_plane_x_mm * scale)
+            if 0 <= plane_px <= w:
+                painter.setPen(QPen(self._axis_color, 1, Qt.DashLine))
+                painter.drawLine(plane_px, 24, plane_px, h - 12)
+                label = f"Focal plane {self._focal_plane_x_mm:.2f} mm"
+                if self._focal_plane_rms_um is not None:
+                    label += (
+                        f"  |  RMS {self._focal_plane_rms_um:.3f} µm" f" @ {self._wavelength:g} nm"
+                    )
+                painter.setPen(QPen(self._text_color, 1))
+                label_width = painter.fontMetrics().horizontalAdvance(label)
+                label_x = plane_px + 6
+                if label_x + label_width > w - 4:
+                    label_x = max(4, plane_px - label_width - 6)
+                painter.drawText(label_x, 16, label)
 
         if self._show_image_sim and self._lens:
             painter.setPen(QPen(QColor(0, 255, 136), 2))

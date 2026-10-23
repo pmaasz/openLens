@@ -297,14 +297,10 @@ class PerformanceTab(BaseTab):
             return
 
         try:
-            from ...optical_system import OpticalSystem
+            from ...optical_system import as_system
             from ..dialogs.image_sim import ImageSimulationDialog
 
-            if not isinstance(active_system, OpticalSystem):
-                system = OpticalSystem(name=active_system.name)
-                system.add_lens(active_system)
-            else:
-                system = active_system
+            system = as_system(active_system)
 
             dialog = ImageSimulationDialog(system, self._parent)
             dialog.exec()
@@ -442,7 +438,18 @@ class PerformanceTab(BaseTab):
             else:
                 validity_note = ""
 
-            # Build metrics text
+            # Build metrics text. State the measurement plane explicitly:
+            # the spot metric follows the model's plane, so a report that
+            # omitted it would leave the number ambiguous.
+            plane = getattr(system, "image_plane_x_mm", None)
+            if plane is None:
+                plane_text = "auto (paraxial focus)"
+            else:
+                try:
+                    plane_text = f"{float(plane):.3f} mm"
+                except (TypeError, ValueError):
+                    plane_text = "auto (paraxial focus)"
+
             text = f"""=== OPTICAL PERFORMANCE METRICS ===
 System: {system.name}
 Type: {"Assembly" if isinstance(active_system, OpticalSystem) else "Single Lens"}
@@ -457,6 +464,7 @@ f-number (f/#): {results.get('f_number', 0):.2f}
 --- Calculation Parameters ---
 Wavelength: {wavelength} nm
 Object Distance: infinity (collimated; finite conjugates are not modelled)
+Image Plane: {plane_text}
 Max Field Angle: {field_angle:.2f} deg (derived from {sensor_size}mm sensor)
 
 --- Primary Aberrations ---

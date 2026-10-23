@@ -195,11 +195,12 @@ class BeamSynthesisPropagator:
     def _default_image_plane(self, wavelength_mm: float) -> float:
         """Detector x for a caller that did not name one.
 
-        The paraxial focus, found with the same search the diffraction PSF
-        uses, so the two analyses of one system are measured at the same
-        plane. A fixed 50 mm past the last vertex put a 100 mm singlet's
-        detector at 55 mm - about 46 mm short of focus - and made its PSF
-        incomparable with ``DiffractionPSF``.
+        The system's configured plane when set; otherwise the paraxial focus,
+        found with the same search the diffraction PSF uses, so the two
+        analyses of one system are measured at the same plane. A fixed 50 mm
+        past the last vertex put a 100 mm singlet's detector at 55 mm - about
+        46 mm short of focus - and made its PSF incomparable with
+        ``DiffractionPSF``.
 
         Args:
             wavelength_mm: Vacuum wavelength the beamlets are traced at.
@@ -208,6 +209,19 @@ class BeamSynthesisPropagator:
             The focus x in mm, or the documented fallback distance past the
             last surface when the exit ray is collimated or cannot be traced.
         """
+        configured = getattr(self.system, "image_plane_x_mm", None)
+        if configured is not None:
+            try:
+                configured = float(configured)
+            except (TypeError, ValueError):
+                configured = None
+            if configured is not None and math.isfinite(configured):
+                return configured
+            logger.warning(
+                "Beam synthesis: ignoring non-finite image plane %r",
+                getattr(self.system, "image_plane_x_mm", None),
+            )
+
         focus = find_paraxial_focus(self.system, wavelength_mm / NM_TO_MM, tracer=self.tracer)
         if focus is not None and math.isfinite(focus):
             return focus

@@ -3,6 +3,9 @@ OpenLens PySide6 Simulation Tab
 Simulation controls and visualization
 """
 
+import math
+from typing import Optional
+
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -132,6 +135,47 @@ class SimulationTab(BaseTab):
         environment_layout.addRow("Temperature:", self._sim_temperature)
         controls_layout.addWidget(environment_group)
 
+        # Focal plane: a fixed detector position, or auto for the paraxial
+        # focus. The value lives on the active lens/system, so the optimizer
+        # and performance report measure at the same plane.
+        focal_group = QGroupBox("Focal Plane")
+        focal_layout = QFormLayout(focal_group)
+
+        self._sim_show_focal_plane = QCheckBox("Show on view")
+        self._sim_show_focal_plane.setChecked(True)
+        self._sim_show_focal_plane.setToolTip(
+            "Draw an explicitly configured detector plane; the RMS spot is "
+            "reported in both auto and manual mode"
+        )
+        focal_layout.addRow(self._sim_show_focal_plane)
+
+        self._sim_auto_focal_plane = QCheckBox("Auto (paraxial focus)")
+        self._sim_auto_focal_plane.setChecked(True)
+        self._sim_auto_focal_plane.setToolTip(
+            "Measure at the paraxial focus instead of a fixed detector plane"
+        )
+        focal_layout.addRow(self._sim_auto_focal_plane)
+
+        self._sim_focal_plane_x = QDoubleSpinBox()
+        self._sim_focal_plane_x.setRange(-10000.0, 10000.0)
+        self._sim_focal_plane_x.setDecimals(3)
+        self._sim_focal_plane_x.setSingleStep(1.0)
+        self._sim_focal_plane_x.setSuffix(" mm")
+        self._sim_focal_plane_x.setEnabled(False)
+        self._sim_focal_plane_x.setToolTip(
+            "Absolute X position of the detector plane in the model's coordinates"
+        )
+        focal_layout.addRow("Image plane X:", self._sim_focal_plane_x)
+
+        self._sim_focal_status = QLabel("Focal plane: auto")
+        self._sim_focal_status.setWordWrap(True)
+        self._sim_focal_status.setStyleSheet("color: #888; font-size: 10px;")
+        focal_layout.addRow(self._sim_focal_status)
+
+        self._sim_auto_focal_plane.toggled.connect(self._on_auto_focal_plane_toggled)
+        self._sim_focal_plane_x.valueChanged.connect(self._on_focal_plane_value_changed)
+        controls_layout.addWidget(focal_group)
+
         # Selected wavelengths: the picker above chooses one, Add appends it
         # here, and the simulation traces every entry.
         wavelength_group = QGroupBox("Wavelengths")
@@ -216,6 +260,10 @@ class SimulationTab(BaseTab):
                     target, self._sim_temperature.value()
                 )
 
+            plane = self._focal_plane_value()
+            if hasattr(active_system, "image_plane_x_mm"):
+                active_system.image_plane_x_mm = plane
+
             self._sim_viz.run_simulation(
                 active_system,
                 num_rays,
@@ -224,7 +272,77 @@ class SimulationTab(BaseTab):
                 show_ghosts,
                 wavelengths=self._selected_wavelengths(),
                 conditioner=_conditioned,
+                image_plane_x_mm=plane,
+                show_focal_plane=self._sim_show_focal_plane.isChecked(),
             )
+            self._update_focal_plane_status()
+
+    def _focal_plane_value(self) -> Optional[float]:
+        """Return the manual plane in mm, or None in auto mode."""
+        if self._sim_auto_focal_plane.isChecked():
+            return None
+        return float(self._sim_focal_plane_x.value())
+
+    def _store_focal_plane(self, value: Optional[float]) -> None:
+        """Write *value* onto the active model when it supports a plane."""
+        target = self._active_target()
+        if target is not None and hasattr(target, "image_plane_x_mm"):
+            target.image_plane_x_mm = value
+
+    def _on_auto_focal_plane_toggled(self, auto: bool) -> None:
+        """Switch between the paraxial focus and a fixed detector plane."""
+        self._sim_focal_plane_x.setEnabled(not auto)
+        self._store_focal_plane(None if auto else float(self._sim_focal_plane_x.value()))
+        self._sim_focal_status.setText(
+            "Focal plane: auto (run to measure)" if auto else "Focal plane set; run to measure"
+        )
+
+    def _on_focal_plane_value_changed(self, value: float) -> None:
+        """Keep the model's plane in step with the manual spin box."""
+        if self._sim_auto_focal_plane.isChecked():
+            return
+        self._store_focal_plane(float(value))
+        self._sim_focal_status.setText("Focal plane set; run to measure")
+
+    def _sync_focal_plane_controls(self) -> None:
+        """Show the active model's plane without echoing back a model write."""
+        target = self._active_target()
+        raw_plane = getattr(target, "image_plane_x_mm", None) if target is not None else None
+        plane = None
+        if raw_plane is not None:
+            try:
+                plane = float(raw_plane)
+            except (TypeError, ValueError):
+                plane = None
+            if plane is not None and not math.isfinite(plane):
+                plane = None
+        auto = plane is None
+
+        self._sim_auto_focal_plane.blockSignals(True)
+        self._sim_focal_plane_x.blockSignals(True)
+        try:
+            self._sim_auto_focal_plane.setChecked(auto)
+            if plane is not None:
+                self._sim_focal_plane_x.setValue(plane)
+            self._sim_focal_plane_x.setEnabled(not auto)
+        finally:
+            self._sim_auto_focal_plane.blockSignals(False)
+            self._sim_focal_plane_x.blockSignals(False)
+
+    def _update_focal_plane_status(self) -> None:
+        """Describe the plane the last trace was measured at."""
+        plane = self._sim_viz.focal_plane_x_mm
+        rms = self._sim_viz.focal_plane_rms_um
+        if plane is None:
+            self._sim_focal_status.setText("Focal plane: not available")
+            return
+        mode = "auto" if self._sim_viz.focal_plane_is_auto else "manual"
+        text = f"Focal plane ({mode}): {plane:.3f} mm"
+        if rms is not None:
+            text += (
+                f"  ·  RMS spot @ {self._sim_viz.focal_plane_wavelength_nm:g} nm: " f"{rms:.3f} µm"
+            )
+        self._sim_focal_status.setText(text)
 
     def _add_wavelength_item(self, nanometres: float) -> QListWidgetItem:
         """Append one wavelength entry to the list.
@@ -323,6 +441,9 @@ class SimulationTab(BaseTab):
     def _on_clear_simulation(self) -> None:
         """Clear simulation visualization."""
         self._sim_viz.clear_simulation()
+        self._sim_focal_status.setText(
+            "Focal plane: auto" if self._sim_auto_focal_plane.isChecked() else "Focal plane set"
+        )
 
     def _reset_simulation_view(self) -> None:
         """Reset the simulation view (zoom and pan)."""
@@ -342,4 +463,6 @@ class SimulationTab(BaseTab):
         Returns:
             None
         """
+        self._sync_focal_plane_controls()
         self._sim_viz.refresh()
+        self._update_focal_plane_status()

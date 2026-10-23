@@ -55,6 +55,29 @@ def _is_flat(r):
 _RADIUS_KEYS = ("radius_of_curvature_1", "radius_of_curvature_2")
 
 
+def validate_image_plane_x(value: Optional[float]) -> Optional[float]:
+    """Validate a detector-plane X position.
+
+    Args:
+        value: Absolute X position in mm, or None for the paraxial focus.
+
+    Returns:
+        The position as a float, or None.
+
+    Raises:
+        ValueError: If *value* is not None and is not a finite number.
+    """
+    if value is None:
+        return None
+    try:
+        plane = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"image plane must be a finite X position in mm, got {value!r}") from None
+    if not math.isfinite(plane):
+        raise ValueError(f"image plane must be a finite X position in mm, got {value!r}")
+    return plane
+
+
 def decode_radius(value: Any) -> Any:
     """The radius as it is stored in a serialized lens.
 
@@ -224,6 +247,7 @@ _LENS_SERIALIZED_KEYS = frozenset(
         "temperature",
         "pressure_atm",
         "thermal_state_temperature",
+        "image_plane_x_mm",
         "is_fresnel",
         "groove_pitch",
         "num_grooves",
@@ -291,6 +315,7 @@ class Lens:
         coating_1: Optional[List[Dict[str, Any]]] = None,
         coating_2: Optional[List[Dict[str, Any]]] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        image_plane_x_mm: Optional[float] = None,
     ) -> None:
 
         self.id = uuid.uuid4().hex
@@ -301,6 +326,10 @@ class Lens:
         # reloaded lens has nowhere to keep it. Copied on the way in so a
         # caller mutating the dict it passed cannot reach back into the model.
         self.metadata: Dict[str, Any] = dict(metadata) if metadata else {}
+        # Detector/sensor plane on the optical axis (mm). None means "use the
+        # paraxial focus"; an explicit value pins spot-based analyses and the
+        # optimizer's RMS spot merit to that plane.
+        self.image_plane_x_mm = validate_image_plane_x(image_plane_x_mm)
         self.radius_of_curvature_1 = radius_of_curvature_1
         self.radius_of_curvature_2 = radius_of_curvature_2
         self.thickness = thickness
@@ -775,6 +804,7 @@ class Lens:
             "temperature": self.temperature,
             "pressure_atm": self.pressure_atm,
             "thermal_state_temperature": self.thermal_state_temperature,
+            "image_plane_x_mm": self.image_plane_x_mm,
             "is_fresnel": self.is_fresnel,
             "groove_pitch": self.groove_pitch,
             "num_grooves": self.num_grooves,
@@ -844,6 +874,7 @@ class Lens:
             temperature=data.get("temperature", 20.0),
             pressure_atm=data.get("pressure_atm", REFERENCE_PRESSURE_ATM),
             thermal_state_temperature=data.get("thermal_state_temperature", DEFAULT_TEMPERATURE),
+            image_plane_x_mm=data.get("image_plane_x_mm"),
             is_fresnel=data.get("is_fresnel", False),
             groove_pitch=cls._clamp_groove_pitch(data.get("groove_pitch", DEFAULT_THICKNESS)),
             num_grooves=data.get("num_grooves", None),

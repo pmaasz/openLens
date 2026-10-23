@@ -5,7 +5,7 @@ from ..vector3 import vec3
 from ..ray_tracer import Ray3D, SystemRayTracer3D
 from ..optical_system import OpticalSystem
 from ..constants import NM_TO_MM, WAVELENGTH_GREEN
-from .paraxial import find_paraxial_focus
+from .paraxial import resolve_image_plane_x
 
 
 def _sagittal_focus_on_chief_ray(chief_ray: Ray3D, sag_ray: Ray3D) -> Optional[float]:
@@ -47,12 +47,13 @@ class GeometricTraceAnalysis:
 
     def _get_image_plane_x(self, wavelength_nm: float = WAVELENGTH_GREEN) -> float:
         """
-        Determine the image plane position (paraxial focus) for the system.
+        Determine the image plane position for the system.
 
-        The focus comes from the shared paraxial search (#460), which also
-        sets and restores the lens indices for ``wavelength_nm``.
+        A configured ``image_plane_x_mm`` wins; otherwise the shared paraxial
+        search (#460) supplies the focus, and also sets and restores the lens
+        indices for ``wavelength_nm``.
         """
-        focus = find_paraxial_focus(self.system, wavelength_nm, tracer=self.tracer)
+        focus = resolve_image_plane_x(self.system, wavelength_nm, tracer=self.tracer)
         if focus is None:
             return self.system.get_total_length() + 10.0
         return focus

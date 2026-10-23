@@ -8,7 +8,7 @@ from ..vector3 import vec3
 from ..ray_tracer import Ray3D, SystemRayTracer3D
 from ..optical_system import OpticalSystem
 from ..constants import NM_TO_MM, WAVELENGTH_GREEN
-from .paraxial import find_paraxial_focus
+from .paraxial import resolve_image_plane_x
 
 
 class SpotDiagram:
@@ -70,7 +70,8 @@ class SpotDiagram:
             field_angle_x_deg: Field angle in degrees (X-Z plane tilt)
             field_angle_y_deg: Angle in degrees relative to optical axis in XY plane.
             wavelength_nm: Wavelength in nm.
-            image_plane_x_mm: Absolute X position of image plane. If None, uses paraxial focus.
+            image_plane_x_mm: Absolute X position of the image plane. If None,
+                uses the system's configured plane, else the paraxial focus.
             num_rings: Sampling density.
             focus_shift_mm: Offset from the nominal image plane (defocus).
 
@@ -95,11 +96,11 @@ class SpotDiagram:
         valid_rays = 0
 
         try:
-            # Determine image plane position
+            # Determine image plane position. A stored detector plane wins;
+            # otherwise the shared paraxial-focus search (#460) places it at
+            # the focus, or well behind a collimated system.
             if image_plane_x_mm is None:
-                # Shared paraxial-focus search (#460): the image plane is at
-                # the focus, or well behind a collimated system.
-                image_plane_x_mm = find_paraxial_focus(
+                image_plane_x_mm = resolve_image_plane_x(
                     self.system, wavelength_nm, tracer=self.tracer
                 )
                 if image_plane_x_mm is None:
@@ -228,7 +229,7 @@ class SpotDiagram:
             field_angle_y_deg: Field angle in the X-Y plane (degrees).
             wavelength_nm: Wavelength in nm.
             image_plane_x_mm: Absolute X position of the image plane. If None,
-                uses the paraxial focus.
+                uses the system's configured plane, else the paraxial focus.
             focus_shift_mm: Offset from the nominal image plane (defocus).
 
         Returns:
@@ -247,7 +248,7 @@ class SpotDiagram:
 
         try:
             if image_plane_x_mm is None:
-                image_plane_x_mm = find_paraxial_focus(
+                image_plane_x_mm = resolve_image_plane_x(
                     self.system, wavelength_nm, tracer=self.tracer
                 )
                 if image_plane_x_mm is None:
