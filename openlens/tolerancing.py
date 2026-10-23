@@ -60,6 +60,32 @@ class ToleranceType(enum.Enum):
     FOCUS = "Focus"
 
 
+#: Operand types that are compensator-only: the analysis handles them in the
+#: compensator path and never draws them as a random variable, so the Add
+#: Tolerance dialog must not offer them.
+COMPENSATOR_ONLY_TYPES = frozenset({ToleranceType.FOCUS})
+
+
+def randomisable_tolerance_types(element_index: int, num_elements: int) -> List[ToleranceType]:
+    """Return the operand types the analysis can randomise for one element.
+
+    Args:
+        element_index: Zero-based flattened element index.
+        num_elements: Number of elements in the target.
+
+    Returns:
+        The valid types in enum order, excluding compensator-only operands and
+        those that cannot address the element: ``DECENTER_X`` has no gap before
+        element 0, and ``AIR_GAP`` has no gap after the last element.
+    """
+    types = [t for t in ToleranceType if t not in COMPENSATOR_ONLY_TYPES]
+    if element_index <= 0:
+        types.remove(ToleranceType.DECENTER_X)
+    if element_index >= max(num_elements - 1, 0):
+        types.remove(ToleranceType.AIR_GAP)
+    return types
+
+
 #: Fringe-to-sag conversion (reflection, HeNe 632.8 nm): PV surface sag
 #: per fringe in mm.
 FRINGE_SAG_MM = 632.8e-6 / 2
