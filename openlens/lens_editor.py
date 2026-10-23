@@ -315,7 +315,7 @@ class LensManager:
             print("\n✓ Lens updated successfully!")
             print(lens)
 
-        except (ValueError, IndexError):
+        except (ValueError, IndexError, ValidationError):
             print("Invalid input.")
 
     def view_lens(self) -> None:
