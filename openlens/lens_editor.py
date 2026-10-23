@@ -10,6 +10,13 @@ from typing import Any, Dict, Optional, List
 # Setup module logger
 logger = logging.getLogger(__name__)
 
+from .constants import (
+    DEFAULT_DIAMETER,
+    DEFAULT_RADIUS_1,
+    DEFAULT_RADIUS_2,
+    DEFAULT_THICKNESS,
+    REFRACTIVE_INDEX_BK7,
+)
 from .lens import Lens
 from .logging_setup import setup_logging, verbose_requested
 from .paths import default_db_path, resolve_db_path
@@ -111,24 +118,28 @@ class LensManager:
             return None
 
         r1 = self._prompt_float(
-            "Radius of curvature 1 (mm) [100.0]: ",
-            100.0,
+            f"Radius of curvature 1 (mm) [{DEFAULT_RADIUS_1}]: ",
+            DEFAULT_RADIUS_1,
             lambda v: validate_radius(v, param_name="Radius 1"),
         )
         r2 = self._prompt_float(
-            "Radius of curvature 2 (mm) [-100.0]: ",
-            -100.0,
+            f"Radius of curvature 2 (mm) [{DEFAULT_RADIUS_2}]: ",
+            DEFAULT_RADIUS_2,
             lambda v: validate_radius(v, param_name="Radius 2"),
         )
         thickness = self._prompt_float(
-            "Center thickness (mm) [5.0]: ", 5.0, lambda v: validate_thickness(v)
+            f"Center thickness (mm) [{DEFAULT_THICKNESS}]: ",
+            DEFAULT_THICKNESS,
+            lambda v: validate_thickness(v),
         )
         diameter = self._prompt_float(
-            "Diameter (mm) [50.0]: ", 50.0, lambda v: validate_diameter(v)
+            f"Diameter (mm) [{DEFAULT_DIAMETER}]: ",
+            DEFAULT_DIAMETER,
+            lambda v: validate_diameter(v),
         )
         refractive_index = self._prompt_float(
-            "Refractive index [1.5168]: ",
-            1.5168,
+            f"Refractive index [{REFRACTIVE_INDEX_BK7}]: ",
+            REFRACTIVE_INDEX_BK7,
             lambda v: validate_refractive_index(v),
         )
 
