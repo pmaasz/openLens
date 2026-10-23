@@ -4,6 +4,7 @@
 import io
 import json
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -24,6 +25,7 @@ from openlens.updater import (
     UpdateChecker,
     UpdateInstaller,
     asset_for_platform,
+    cleanup_download,
     is_newer,
     version_key,
 )
@@ -279,6 +281,25 @@ class TestDownload(unittest.TestCase):
                 checker.download(result, destination=temp)
             self.assertEqual(list(Path(temp).iterdir()), [])
 
+    def test_failed_download_removes_its_temporary_directory(self):
+        asset = ReleaseAsset("OpenLens-0.8.0-Linux", "https://example.test/OpenLens-Linux", 7)
+        opener = FakeOpener({asset.url: b"short"})
+        checker = UpdateChecker(opener=opener)
+        result = UpdateCheckResult(
+            status=STATUS_UPDATE_AVAILABLE,
+            current_version="0.7.0",
+            latest_version="0.8.0",
+            asset=asset,
+        )
+
+        with tempfile.TemporaryDirectory() as temp:
+            download_dir = Path(temp) / "openlens-update-test"
+            with mock.patch("openlens.updater.tempfile.mkdtemp", return_value=str(download_dir)):
+                with self.assertRaises(ValueError):
+                    checker.download(result)
+
+            self.assertFalse(download_dir.exists())
+
 
 class TestInstallPlanning(unittest.TestCase):
     def _downloaded(self, temp, name="OpenLens-0.8.0-Linux", body=b"new build"):
@@ -344,6 +365,61 @@ class TestInstallPlanning(unittest.TestCase):
             self.assertTrue(marker.is_file())
             self.assertEqual(target.read_text(encoding="utf-8"), new_content)
 
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux helper script")
+    def test_linux_helper_removes_the_temporary_download_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch("tempfile.tempdir", temp):
+                download_dir = Path(tempfile.mkdtemp(prefix="openlens-update-"))
+            downloaded = download_dir / "OpenLens-0.8.0-Linux"
+            marker = Path(temp) / "relaunched.txt"
+            new_content = "#!/bin/sh\n" f"printf 'new version' > {shlex.quote(str(marker))}\n"
+            downloaded.write_text(new_content, encoding="utf-8")
+            target = Path(temp) / "OpenLens"
+            installer = UpdateInstaller(
+                frozen=True, system="Linux", executable=target, pid=2**31 - 1
+            )
+
+            plan = installer.prepare(downloaded, self._result())
+
+            self.assertIn("rmdir", plan.script.read_text(encoding="utf-8"))
+            subprocess.run(["/bin/sh", str(plan.script)], check=True, timeout=5)
+
+            deadline = time.monotonic() + 3
+            while not marker.exists() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertTrue(marker.is_file())
+            self.assertEqual(target.read_text(encoding="utf-8"), new_content)
+            self.assertFalse(download_dir.exists())
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux helper script")
+    def test_linux_helper_failure_removes_the_payload_and_temporary_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch("tempfile.tempdir", temp):
+                download_dir = Path(tempfile.mkdtemp(prefix="openlens-update-"))
+            downloaded = download_dir / "OpenLens-0.8.0-Linux"
+            downloaded.write_text("new build", encoding="utf-8")
+            # A regular file cannot contain the target, so the replacement
+            # fails even if the test suite runs as root.
+            not_a_dir = Path(temp) / "not-a-dir"
+            not_a_dir.write_text("file", encoding="utf-8")
+            target = not_a_dir / "OpenLens"
+            installer = UpdateInstaller(
+                frozen=True, system="Linux", executable=target, pid=2**31 - 1
+            )
+
+            plan = installer.prepare(downloaded, self._result())
+            subprocess.run(
+                ["/bin/sh", str(plan.script)],
+                check=True,
+                timeout=5,
+                stderr=subprocess.DEVNULL,
+            )
+
+            self.assertFalse(download_dir.exists())
+            log = Path(temp) / "openlens-update-error.log"
+            self.assertTrue(log.is_file())
+            self.assertIn("Could not replace", log.read_text(encoding="utf-8"))
+
     def test_frozen_windows_build_prepares_a_batch_script(self):
         with tempfile.TemporaryDirectory() as temp:
             downloaded = self._downloaded(temp, name="OpenLens-0.8.0-Windows.exe")
@@ -396,6 +472,29 @@ class TestInstallPlanning(unittest.TestCase):
                 installer.prepare(archive, self._result())
 
             self.assertFalse((Path(temp) / "escaped.txt").exists())
+
+
+class TestDownloadCleanup(unittest.TestCase):
+    def test_cleanup_download_removes_the_updater_temporary_directory(self):
+        download_dir = Path(tempfile.mkdtemp(prefix="openlens-update-"))
+        self.addCleanup(lambda: shutil.rmtree(download_dir, ignore_errors=True))
+        payload = download_dir / "OpenLens-0.8.0-Linux"
+        payload.write_bytes(b"payload")
+        (download_dir / "apply_openlens_update.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+
+        cleanup_download(payload)
+
+        self.assertFalse(download_dir.exists())
+
+    def test_cleanup_download_keeps_a_caller_supplied_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            payload = Path(temp) / "OpenLens-0.8.0-Linux"
+            payload.write_bytes(b"payload")
+
+            cleanup_download(payload)
+
+            self.assertFalse(payload.exists())
+            self.assertTrue(Path(temp).is_dir())
 
 
 class TestInstallLaunch(unittest.TestCase):
