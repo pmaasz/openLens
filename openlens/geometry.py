@@ -5,6 +5,7 @@ Used by exporters (SVG, STL, STEP) and visualization modules.
 
 from bisect import bisect_left
 from dataclasses import dataclass
+import logging
 import math
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -35,6 +36,11 @@ class FresnelFacet:
         fraction = (radial - self.r_start) / (self.r_end - self.r_start)
         fraction = max(0.0, min(1.0, fraction))
         return self.z_start + fraction * (self.z_end - self.z_start)
+
+
+MAX_FRESNEL_ZONES = 10000
+
+logger = logging.getLogger(__name__)
 
 
 class LensGeometry:
@@ -89,6 +95,13 @@ class LensGeometry:
         full_zones = int(math.floor(half_d / pitch + 1e-9))
         if full_zones < 1:
             return []
+        if full_zones > MAX_FRESNEL_ZONES:
+            logger.warning(
+                "Fresnel facet count %d exceeds the cap of %d; clamping.",
+                full_zones,
+                MAX_FRESNEL_ZONES,
+            )
+            full_zones = MAX_FRESNEL_ZONES
 
         facets = []
         for index in range(full_zones):
@@ -103,7 +116,7 @@ class LensGeometry:
             facets.append(FresnelFacet(r_start, r_end, z_start, z_end))
 
         last_radius = facets[-1].r_end if facets else 0.0
-        if half_d - last_radius > EPSILON:
+        if half_d - last_radius > EPSILON and len(facets) < MAX_FRESNEL_ZONES:
             z_end = LensGeometry._parent_sag(lens, surface, half_d) - LensGeometry._parent_sag(
                 lens, surface, last_radius
             )

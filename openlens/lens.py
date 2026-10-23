@@ -800,6 +800,12 @@ class Lens:
             "metadata": dict(self.metadata),
         }
 
+    @staticmethod
+    def _clamp_groove_pitch(value):
+        from .validation import validate_groove_pitch
+
+        return validate_groove_pitch(value)
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Lens":
         """Create lens from dictionary representation."""
@@ -839,7 +845,7 @@ class Lens:
             pressure_atm=data.get("pressure_atm", REFERENCE_PRESSURE_ATM),
             thermal_state_temperature=data.get("thermal_state_temperature", DEFAULT_TEMPERATURE),
             is_fresnel=data.get("is_fresnel", False),
-            groove_pitch=data.get("groove_pitch", DEFAULT_THICKNESS),
+            groove_pitch=cls._clamp_groove_pitch(data.get("groove_pitch", DEFAULT_THICKNESS)),
             num_grooves=data.get("num_grooves", None),
             model_glass_mode=data.get("model_glass_mode", False),
             model_nd=data.get("model_nd", 1.5168),
