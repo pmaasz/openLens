@@ -344,11 +344,17 @@ class SimulationVisualizationWidget(QWidget):
         self.update()
 
     def clear_simulation(self) -> None:
-        """Clear simulation results"""
+        """Clear simulation results.
+
+        Both target types are dropped: ``refresh()`` prefers ``_system`` over
+        ``_lens``, so nulling only the lens made an assembly's rays come back
+        at the next refresh, while a single lens really stayed cleared.
+        """
         self._rays = []
         self._ray_groups = []
         self._ghost_rays = []
         self._lens = None
+        self._system = None
         self._show_image_sim = False
         self.update()
 
