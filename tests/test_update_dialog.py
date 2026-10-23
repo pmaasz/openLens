@@ -2,6 +2,7 @@
 """Startup update-status UI tests (#42)."""
 
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -221,6 +222,21 @@ class TestStartupUpdateStatus(unittest.TestCase):
             dialog._download_and_install(result)
 
         self.assertFalse(downloaded.exists())
+
+    def test_download_failure_removes_the_updater_temporary_directory(self):
+        dialog, checker, installer = self._dialog()
+        result = update_result()
+        download_dir = Path(tempfile.mkdtemp(prefix="openlens-update-"))
+        self.addCleanup(lambda: shutil.rmtree(download_dir, ignore_errors=True))
+        downloaded = download_dir / "OpenLens"
+        downloaded.write_bytes(b"partial")
+        checker.download = mock.Mock(return_value=downloaded)
+        installer.prepare = mock.Mock(side_effect=OSError("disk full"))
+
+        with self.assertRaises(OSError):
+            dialog._download_and_install(result)
+
+        self.assertFalse(download_dir.exists())
 
     def test_replace_plan_restarts_by_dismissing_the_welcome_screen(self):
         dialog, _checker, _installer = self._dialog()
