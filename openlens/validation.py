@@ -9,6 +9,7 @@ bool, NaN and Inf checks. Domain-specific validators add their range
 semantics on top of it.
 """
 
+import logging
 import math
 import numbers
 import os
@@ -28,6 +29,8 @@ from .constants import (
     EPSILON,
 )
 from .lens import Lens
+
+logger = logging.getLogger(__name__)
 
 
 class ValidationError(Exception):
@@ -1170,3 +1173,46 @@ def validate_lenses_json_schema(data: list) -> list:
         validate_lens_data_schema(lens_data, lens_index=i)
 
     return data
+
+
+#: Sensible range for a Fresnel groove pitch, matching the GUI spin box.
+FRESNEL_GROOVE_PITCH_MIN = 0.01
+FRESNEL_GROOVE_PITCH_MAX = 10.0
+
+
+def validate_groove_pitch(value: Any, param_name: str = "groove pitch") -> float:
+    """Validate and clamp a Fresnel groove pitch.
+
+    Values outside ``[FRESNEL_GROOVE_PITCH_MIN, FRESNEL_GROOVE_PITCH_MAX]`` are
+    clamped rather than rejected, with a warning, so an imported lens cannot
+    materialise millions of facets.
+
+    Args:
+        value: Groove pitch in mm.
+        param_name: Parameter name for error messages.
+
+    Returns:
+        The validated (clamped) groove pitch.
+
+    Raises:
+        ValidationError: If ``value`` is not a finite number.
+    """
+    try:
+        pitch = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(f"{param_name} must be a number, got {value!r}") from exc
+
+    if not math.isfinite(pitch):
+        raise ValidationError(f"{param_name} must be finite, got {pitch}")
+
+    if pitch < FRESNEL_GROOVE_PITCH_MIN or pitch > FRESNEL_GROOVE_PITCH_MAX:
+        logger.warning(
+            "%s %.6g mm is outside [%.2f, %.2f]; clamping.",
+            param_name,
+            pitch,
+            FRESNEL_GROOVE_PITCH_MIN,
+            FRESNEL_GROOVE_PITCH_MAX,
+        )
+        pitch = max(FRESNEL_GROOVE_PITCH_MIN, min(FRESNEL_GROOVE_PITCH_MAX, pitch))
+
+    return pitch
