@@ -282,7 +282,11 @@ def ensure_nikon_series_e_example(db_or_path: Union[str, Any]) -> bool:
                     for i, lens_dict in enumerate(lens_list)
                 ],
                 "air_gaps": [
-                    {"thickness": gap, "position": 0.0} for gap in NIKON_SERIES_E_AIR_GAPS
+                    # positions[i + 1] is the station after this gap, so the
+                    # gap starts one gap-thickness before it - the same
+                    # new_pos - air_gap_before arithmetic as add_lens().
+                    {"thickness": gap, "position": positions[i + 1] - gap}
+                    for i, gap in enumerate(NIKON_SERIES_E_AIR_GAPS)
                 ],
             }
             db.save_assembly(assembly_dict)
