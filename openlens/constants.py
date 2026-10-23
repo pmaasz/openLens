@@ -191,6 +191,10 @@ TOOLTIP_OFFSET_Y = 25
 # Physical constraints
 MIN_RADIUS_OF_CURVATURE = 1.0  # mm
 MAX_RADIUS_OF_CURVATURE = 10000.0  # mm
+#: Radius marking a flat (plano) surface. This is the model's spelling;
+#: validate_radius(..., allow_flat=True) accepts 0 or +inf and returns it,
+#: and JSON stores it as null.
+FLAT_RADIUS = float("inf")
 MIN_THICKNESS = 0.1  # mm
 MAX_THICKNESS = 100.0  # mm
 MIN_DIAMETER = 1.0  # mm

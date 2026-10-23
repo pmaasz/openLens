@@ -19,6 +19,7 @@ from typing import Any, Union, Tuple, Optional
 from .constants import (
     MIN_RADIUS_OF_CURVATURE,
     MAX_RADIUS_OF_CURVATURE,
+    FLAT_RADIUS,
     MIN_THICKNESS,
     MAX_THICKNESS,
     MIN_DIAMETER,
@@ -101,28 +102,47 @@ def _validate_number(value: float, param_name: str = "value") -> float:
 
 
 def validate_radius(
-    radius: float, allow_negative: bool = True, param_name: str = "radius"
+    radius: float,
+    allow_negative: bool = True,
+    param_name: str = "radius",
+    allow_flat: bool = False,
 ) -> float:
     """
     Validate radius of curvature.
 
-    Note: zero is rejected here on purpose. Flat surfaces are represented
-    by ``float('inf')`` (the Lens model converts 0 to inf via its property
-    setters); passing a literal 0 indicates an upstream unit/placeholder
-    mistake rather than intent, so it fails loudly instead of silently
-    becoming an infinite radius.
+    Note: zero is rejected by default on purpose. Flat surfaces are
+    represented by ``float('inf')`` (the Lens model converts 0 to inf via its
+    property setters); passing a literal 0 usually indicates an upstream
+    unit/placeholder mistake rather than intent, so it fails loudly instead
+    of silently becoming an infinite radius.
 
     Args:
         radius: Radius value to validate (mm)
         allow_negative: Whether negative values are allowed (for concave surfaces)
         param_name: Parameter name for error messages
+        allow_flat: Accept 0 and +inf as a flat surface and return
+            :data:`FLAT_RADIUS`. Callers that legitimately describe a plano
+            surface (the CLI and the Zemax importer) set this.
 
     Returns:
-        float: Validated radius value
+        float: Validated radius value (``inf`` for a flat surface when
+        *allow_flat* is set)
 
     Raises:
         ValidationError: If radius is invalid
     """
+    if allow_flat:
+        # Reject bool before the == 0 comparison: False == 0 in Python.
+        if isinstance(radius, bool):
+            raise ValidationError(f"{param_name} must be a number, got bool")
+        if isinstance(radius, numbers.Real):
+            try:
+                number = float(radius)
+            except (OverflowError, ValueError):
+                number = None
+            if number == 0.0 or number == FLAT_RADIUS:
+                return FLAT_RADIUS
+
     radius = _validate_number(radius, param_name)
 
     if abs(radius) < EPSILON:
@@ -677,8 +697,12 @@ def validate_lens_parameters(
     """
     validated_diameter = validate_diameter(diameter)
     validated_thickness = validate_thickness(thickness)
-    validated_radius1 = validate_radius(radius1, allow_negative=True, param_name="R1")
-    validated_radius2 = validate_radius(radius2, allow_negative=True, param_name="R2")
+    validated_radius1 = validate_radius(
+        radius1, allow_negative=True, param_name="R1", allow_flat=True
+    )
+    validated_radius2 = validate_radius(
+        radius2, allow_negative=True, param_name="R2", allow_flat=True
+    )
     # The clear apertures used to be accepted as arguments, documented in the
     # docstring, and then silently dropped: neither validated nor returned. So
     # a -5 mm front aperture or a 1e9 mm rear one passed through this function
