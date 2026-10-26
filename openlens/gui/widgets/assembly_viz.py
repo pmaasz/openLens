@@ -180,7 +180,6 @@ class AssemblyVisualizationWidget(QWidget):
         from ...constants import COLOR_LENS_R1, COLOR_LENS_R2, COLOR_LENS_RIM, COLOR_LENS_BAD
         from ...geometry import LensGeometry
 
-        half_d = lens.diameter / 2
         outline = LensGeometry.lens_outline(lens, num_points=50, max_points=2000)
         bad = not outline["feasible"]
         bad_color = QColor(COLOR_LENS_BAD)
@@ -188,8 +187,6 @@ class AssemblyVisualizationWidget(QWidget):
         def _to_screen(pt) -> tuple:
             """Map a vertex-frame (x, y) outline point to widget pixels."""
             return (cx + pt[0] * scale, cy + pt[1] * scale)
-
-        x2_edge = cx + outline["x2_edge"] * scale
 
         path = QPainterPath()
 
@@ -200,10 +197,16 @@ class AssemblyVisualizationWidget(QWidget):
             else:
                 path.lineTo(x, y)
 
-        path.lineTo(x2_edge, cy + half_d * scale)
+        # Rim chain, top side (front rim -> back rim), then the mirrored
+        # chain after the back surface.
+        for pt in outline["edge"][1:]:
+            path.lineTo(*_to_screen(pt))
 
         for pt in outline["back"]:
             path.lineTo(*_to_screen(pt))
+
+        for x, radius in reversed(outline["edge"][1:-1]):
+            path.lineTo(*_to_screen((x, -radius)))
 
         path.closeSubpath()
 

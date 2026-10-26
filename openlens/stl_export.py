@@ -10,6 +10,7 @@ from typing import List, Tuple, Optional, Any
 
 from .vector3 import Vector3
 from .atomic import atomic_write_bytes
+from .constants import EPSILON
 from .geometry import LensGeometry
 from .transform import Matrix4x4
 
@@ -264,6 +265,40 @@ class STLExporter:
 
         return triangles
 
+    def generate_profile_triangles(
+        self,
+        profile: List[Tuple[float, float]],
+        num_segments: int = 100,
+    ) -> List[Any]:
+        """Generate the revolved triangles of a meridional rim profile.
+
+        Args:
+            profile: ``(radius, z)`` points ordered from the front rim to the
+                back rim. The straight two-point profile is the old cylinder.
+            num_segments: Number of points around the full revolution.
+        """
+        triangles: List[Any] = []
+        if len(profile) < 2 or num_segments < 3:
+            return triangles
+        angles = [2 * math.pi * i / num_segments for i in range(num_segments)]
+
+        for (r1, z1), (r2, z2) in zip(profile, profile[1:]):
+            if abs(r1 - r2) <= EPSILON and abs(z1 - z2) <= EPSILON:
+                continue
+            for index, angle1 in enumerate(angles):
+                angle2 = angles[(index + 1) % num_segments]
+                cos1, sin1 = math.cos(angle1), math.sin(angle1)
+                cos2, sin2 = math.cos(angle2), math.sin(angle2)
+
+                p1 = (r1 * cos1, r1 * sin1, z1)
+                p2 = (r1 * cos2, r1 * sin2, z1)
+                p3 = (r2 * cos2, r2 * sin2, z2)
+                p4 = (r2 * cos1, r2 * sin1, z2)
+                triangles.append((p1, p2, p3))
+                triangles.append((p1, p3, p4))
+
+        return triangles
+
     def calculate_normal(
         self,
         p1: Tuple[float, float, float],
@@ -343,7 +378,6 @@ class STLExporter:
                     profile1, 0.0, num_segments=resolution * 2, is_front=True
                 )
             )
-            last_z_front = profile1[-1][1]  # Z at the edge
         else:
             # Flat
             self.triangles.extend(
@@ -351,7 +385,6 @@ class STLExporter:
                     diameter, 0.0, num_segments=resolution * 2, is_front=True
                 )
             )
-            last_z_front = 0.0
 
         # 2. Back Surface (R2)
         # Vertex at (0,0,thickness)
@@ -367,7 +400,6 @@ class STLExporter:
                     profile2, thickness, num_segments=resolution * 2, is_front=False
                 )
             )
-            last_z_back = profile2[-1][1] + thickness  # Add offset
         else:
             # Flat
             self.triangles.extend(
@@ -375,15 +407,27 @@ class STLExporter:
                     diameter, thickness, num_segments=resolution * 2, is_front=False
                 )
             )
-            last_z_back = thickness
 
         # 3. Edge
-        # Edge connects last_z_front ring to last_z_back ring at diameter/2
-        self.triangles.extend(
-            self.generate_edge_triangles(
-                diameter, last_z_front, last_z_back, num_segments=resolution * 2
+        # The rim chain runs from the front ring to the back ring. The default
+        # chain is the old straight cylinder; a custom profile may step or
+        # flange outward.
+        if lens is not None:
+            edge = LensGeometry.edge_profile_points(lens)
+            self.triangles.extend(
+                self.generate_profile_triangles(
+                    [(radius, z) for z, radius in edge], num_segments=resolution * 2
+                )
             )
-        )
+        else:
+            self.triangles.extend(
+                self.generate_edge_triangles(
+                    diameter,
+                    profile1[-1][1] if profile1 else 0.0,
+                    (profile2[-1][1] + thickness) if profile2 else thickness,
+                    num_segments=resolution * 2,
+                )
+            )
 
         # Write
         self.write_binary_stl(filename)
@@ -444,14 +488,12 @@ def export_lens_stl(item: Any, filename: str, resolution: int = 50) -> int:
                 local.extend(
                     exporter.generate_surface_triangles(profile1, 0.0, num_segments=resolution * 2)
                 )
-                last_z_front = profile1[-1][1]
             else:
                 local.extend(
                     exporter.generate_flat_surface(
                         lens.diameter, 0.0, num_segments=resolution * 2, is_front=True
                     )
                 )
-                last_z_front = 0.0
 
             # 2. Back Surface
             profile2 = exporter._model_surface_profile(lens, 2, resolution)
@@ -470,7 +512,6 @@ def export_lens_stl(item: Any, filename: str, resolution: int = 50) -> int:
                         is_front=False,
                     )
                 )
-                last_z_back = profile2[-1][1] + lens.thickness
             else:
                 local.extend(
                     exporter.generate_flat_surface(
@@ -480,14 +521,12 @@ def export_lens_stl(item: Any, filename: str, resolution: int = 50) -> int:
                         is_front=False,
                     )
                 )
-                last_z_back = lens.thickness
 
-            # 3. Edge
+            # 3. Edge: revolve the lens's rim chain (default or custom).
+            edge = LensGeometry.edge_profile_points(lens)
             local.extend(
-                exporter.generate_edge_triangles(
-                    lens.diameter,
-                    last_z_front,
-                    last_z_back,
+                exporter.generate_profile_triangles(
+                    [(radius, z) for z, radius in edge],
                     num_segments=resolution * 2,
                 )
             )
