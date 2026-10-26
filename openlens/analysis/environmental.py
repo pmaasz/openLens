@@ -1,6 +1,6 @@
 import copy
 import math
-from typing import TYPE_CHECKING, Union
+from typing import Optional, TYPE_CHECKING, Union
 
 from ..air_index import REFERENCE_PRESSURE_ATM, calculate_air_index
 from ..constants import ABSOLUTE_ZERO_C, EPSILON
@@ -68,7 +68,7 @@ class EnvironmentalAnalyzer:
         system: OpticalSystem,
         temperature_c: float,
         pressure_atm: float,
-        housing_cte: float = 23.6e-6,
+        housing_cte: Optional[float] = None,
     ) -> OpticalSystem:
         """
         Create a new OpticalSystem with environmental effects applied.
@@ -77,9 +77,9 @@ class EnvironmentalAnalyzer:
             system: The nominal optical system
             temperature_c: New temperature in °C
             pressure_atm: New pressure in atm
-            housing_cte: Housing expansion coefficient in 1/K for air gaps
-                (default aluminum 23.6e-6; steel ~12e-6, invar ~1e-6,
-                plastics ~50-200e-6)
+            housing_cte: Housing expansion coefficient in 1/K for air gaps.
+                None uses the casing material's CTE when the assembly has a
+                casing, otherwise aluminium.
 
         Returns:
             A new OpticalSystem instance with perturbed parameters
@@ -135,12 +135,24 @@ class EnvironmentalAnalyzer:
             lens.update_refractive_index(temperature=temperature_c)
 
         # 2. Update Air Gaps (Housing Expansion)
-        # Gaps scale with the housing CTE (parameter; defaults to aluminum).
+        # A user-specified CTE wins; otherwise the casing material defines the
+        # housing expansion, and an uncased system keeps the aluminium default.
+        casing = new_system.casing
         housing_alpha_k = housing_cte
+        if housing_alpha_k is None:
+            housing_alpha_k = cls.DEFAULT_HOUSING_CTE
+            if casing is not None:
+                from ..mechanical_materials import get_mechanical_material_catalog
+
+                material = get_mechanical_material_catalog().get_material(casing.material)
+                if material is not None:
+                    housing_alpha_k = float(material["cte"])
         system_state_c = float(getattr(new_system, "thermal_state_temperature", cls.REF_TEMP))
         gap_scaling = _thermal_scale(housing_alpha_k, system_state_c, temperature_c, cls.REF_TEMP)
         for gap in new_system.air_gaps:
             gap.thickness *= gap_scaling
+        if new_system.casing is not None:
+            new_system.casing = new_system.casing.expanded(temperature_c)
         new_system.thermal_state_temperature = temperature_c
 
         # 3. Update positions based on new thicknesses
@@ -154,7 +166,7 @@ class EnvironmentalAnalyzer:
         target: Union["Lens", OpticalSystem],
         temperature_c: float,
         pressure_atm: float = REF_PRESSURE,
-        housing_cte: float = DEFAULT_HOUSING_CTE,
+        housing_cte: Optional[float] = None,
     ) -> Union["Lens", OpticalSystem]:
         """Return a lens or system conditioned to *temperature_c*.
 
@@ -168,6 +180,8 @@ class EnvironmentalAnalyzer:
             temperature_c: Operating temperature in Celsius.
             pressure_atm: Ambient pressure in atmospheres.
             housing_cte: Housing expansion coefficient for air gaps (1/K).
+                None follows the assembly casing material, or aluminium when
+                there is no casing.
 
         Returns:
             The original target at reference conditions, otherwise a
@@ -197,9 +211,14 @@ class EnvironmentalAnalyzer:
 
         if isinstance(target, OpticalSystem):
             system_state = float(getattr(target, "thermal_state_temperature", cls.REF_TEMP))
+            casing = getattr(target, "casing", None)
+            casing_at_state = casing is None or (
+                abs(float(casing.thermal_state_temperature) - temperature_c) < EPSILON
+            )
             if (
                 at_reference_pressure
                 and abs(system_state - temperature_c) < EPSILON
+                and casing_at_state
                 and all(at_state(element.lens) for element in target.elements)
             ):
                 return target

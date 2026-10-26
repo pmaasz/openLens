@@ -199,6 +199,7 @@ class Ray:
         self.path: List[Tuple[float, float]] = [(self.x, self.y)]
         self.terminated = False
         self.hit: bool = False
+        self.absorbed: bool = False
         self.optical_path_length: float = 0.0
 
     @property
@@ -280,6 +281,7 @@ class Ray3D:
         self.n = n
         self.path: List[Vector3] = [origin]
         self.terminated = False
+        self.absorbed = False
         self.optical_path_length: float = 0.0
 
         self.polarization_vector = polarization_vector

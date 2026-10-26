@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QColor
 import logging
 import math
@@ -65,6 +65,8 @@ class SimulationVisualizationWidget(QWidget):
         self._focal_plane_auto = True
         self._show_focal_plane = True
         self._focal_plane_rms_um: Optional[float] = None
+        self._absorbed_count = 0
+        self._casing_warning: Optional[str] = None
 
         # Zoom and pan state
         self._zoom = 1.0
@@ -249,6 +251,8 @@ class SimulationVisualizationWidget(QWidget):
         self._ray_groups = []
         self._ghost_rays = []
         self._show_ghosts = show_ghosts
+        self._absorbed_count = 0
+        self._casing_warning = None
         self._wavelength = self._wavelengths[0]
         self._last_num_rays = num_rays
         self._last_angle = angle
@@ -315,6 +319,8 @@ class SimulationVisualizationWidget(QWidget):
                     self._run_ghost_analysis(temp_system, LensRayTracer(lens))
 
             self._resolve_focal_plane(image_plane_x_mm, show_focal_plane)
+            self._absorbed_count = sum(1 for ray in self._rays if getattr(ray, "absorbed", False))
+            self._casing_warning = system.casing_warning() if system is not None else None
         except Exception as e:
             logger.error("Simulation failed: %s", e)
 
@@ -411,6 +417,21 @@ class SimulationVisualizationWidget(QWidget):
         """Wavelength the focal-plane spot was measured at, in nm."""
         return self._wavelength
 
+    @property
+    def absorbed_count(self) -> int:
+        """Rays removed by the casing inner wall during the last trace."""
+        return self._absorbed_count
+
+    @property
+    def ray_count(self) -> int:
+        """Rays traced by the last run, across all wavelengths."""
+        return len(self._rays)
+
+    @property
+    def casing_warning(self) -> Optional[str]:
+        """Thermal-interference warning from the last conditioned trace."""
+        return self._casing_warning
+
     def _traced_target(self) -> Any:
         """The model to trace: the live one, conditioned for the environment.
 
@@ -469,6 +490,8 @@ class SimulationVisualizationWidget(QWidget):
         self._focal_plane_x_mm = None
         self._focal_plane_auto = True
         self._focal_plane_rms_um = None
+        self._absorbed_count = 0
+        self._casing_warning = None
         self.update()
 
     def refresh(self) -> None:
@@ -535,6 +558,10 @@ class SimulationVisualizationWidget(QWidget):
         if self._system:
             total_thickness = self._system.get_total_length()
             max_diameter = max((e.lens.diameter for e in self._system.elements), default=25.0)
+            casing = getattr(self._system, "casing", None)
+            if casing is not None:
+                total_thickness = max(total_thickness, casing.end_x)
+                max_diameter = max(max_diameter, casing.outer_diameter)
         else:
             total_thickness = self._lens.thickness
             max_diameter = self._lens.diameter
@@ -620,6 +647,28 @@ class SimulationVisualizationWidget(QWidget):
                 stroke = bad_color if bad else QColor(hex_color)
                 pnt.setPen(QPen(stroke, 2))
                 pnt.drawPath(surf)
+
+        # Draw the casing behind the glass so the rays visibly stop at its
+        # opaque inner wall.
+        if self._system is not None:
+            casing = getattr(self._system, "casing", None)
+            if casing is not None:
+                from ...constants import COLOR_CASING
+
+                casing_color = QColor(COLOR_CASING)
+                casing_fill = QColor(
+                    casing_color.red(), casing_color.green(), casing_color.blue(), 70
+                )
+                left = cx + casing.start_x * scale
+                width = casing.length * scale
+                inner = casing.inner_radius * scale
+                wall = casing.wall_thickness * scale
+                painter.save()
+                painter.setPen(QPen(casing_color, 1))
+                painter.setBrush(QBrush(casing_fill))
+                painter.drawRect(QRectF(left, cy - inner - wall, width, wall))
+                painter.drawRect(QRectF(left, cy + inner, width, wall))
+                painter.restore()
 
         # Draw lenses
         if self._system:

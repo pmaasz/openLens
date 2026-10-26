@@ -28,6 +28,7 @@ from ..widgets.simulation_viz import SimulationVisualizationWidget
 from ...analysis.environmental import EnvironmentalAnalyzer
 from ...constants import (
     ABSOLUTE_ZERO_C,
+    COLOR_WARNING,
     DEFAULT_TEMPERATURE,
     WAVELENGTH_GREEN,
     WAVELENGTH_PRESETS,
@@ -134,6 +135,15 @@ class SimulationTab(BaseTab):
         )
         environment_layout.addRow("Temperature:", self._sim_temperature)
         controls_layout.addWidget(environment_group)
+
+        # Casing absorption/thermal status for the traced assembly.
+        casing_group = QGroupBox("Casing")
+        casing_layout = QFormLayout(casing_group)
+        self._sim_casing_status = QLabel("No casing on this model")
+        self._sim_casing_status.setWordWrap(True)
+        self._sim_casing_status.setStyleSheet("color: #888; font-size: 10px;")
+        casing_layout.addRow(self._sim_casing_status)
+        controls_layout.addWidget(casing_group)
 
         # Focal plane: a fixed detector position, or auto for the paraxial
         # focus. The value lives on the active lens/system, so the optimizer
@@ -275,6 +285,35 @@ class SimulationTab(BaseTab):
                 show_focal_plane=self._sim_show_focal_plane.isChecked(),
             )
             self._update_focal_plane_status()
+            self._update_casing_status()
+
+    def _update_casing_status(self) -> None:
+        """Report casing absorption and thermal interference from the last run."""
+        target = self._active_target()
+        casing = getattr(target, "casing", None) if target is not None else None
+        if casing is None:
+            self._sim_casing_status.setText("No casing on this model")
+            self._sim_casing_status.setStyleSheet("color: #888; font-size: 10px;")
+            return
+
+        absorbed = self._sim_viz.absorbed_count
+        total = self._sim_viz.ray_count
+        if total:
+            fraction = 100.0 * absorbed / total
+            text = (
+                f"{casing.material} casing: {absorbed} of {total} rays absorbed "
+                f"({fraction:.1f}%)"
+            )
+        else:
+            text = f"{casing.material} casing: run to measure absorption"
+
+        warning = self._sim_viz.casing_warning
+        if warning:
+            text += f"\n⚠ {warning}"
+            self._sim_casing_status.setStyleSheet(f"color: {COLOR_WARNING}; font-size: 10px;")
+        else:
+            self._sim_casing_status.setStyleSheet("color: #888; font-size: 10px;")
+        self._sim_casing_status.setText(text)
 
     def _focal_plane_value(self) -> Optional[float]:
         """Return the manual plane in mm, or None in auto mode."""
