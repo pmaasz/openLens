@@ -84,10 +84,10 @@ class Casing:
         """Deserialize a casing, tolerating missing thermal state."""
         return cls(
             material=data.get("material", "Aluminium"),
-            bore_diameter=data.get("bore_diameter"),
-            wall_thickness=data.get("wall_thickness"),
-            start_x=data.get("start_x"),
-            end_x=data.get("end_x"),
+            bore_diameter=data.get("bore_diameter", 50.0),
+            wall_thickness=data.get("wall_thickness", 2.0),
+            start_x=data.get("start_x", 0.0),
+            end_x=data.get("end_x", 100.0),
             thermal_state_temperature=data.get("thermal_state_temperature", DEFAULT_TEMPERATURE),
         )
 
