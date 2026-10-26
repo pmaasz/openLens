@@ -113,5 +113,55 @@ class TestAssemblyExportIsNotInsideOut(unittest.TestCase):
         self.assertLess(volume, expected * 1.05)
 
 
+class TestAssemblyRespectsAlignment(unittest.TestCase):
+    """A moved or tilted element must move in the exported assembly."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self._next = 0
+
+    def _export(self, **alignment):
+        self._next += 1
+        system = OpticalSystem("aligned")
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=25.0,
+                refractive_index=1.5168,
+            )
+        )
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=40.0,
+                radius_of_curvature_2=-40.0,
+                thickness=4.0,
+                diameter=25.0,
+                refractive_index=1.5168,
+            ),
+            air_gap_before=2.0,
+        )
+        if alignment:
+            system.set_element_alignment(1, **alignment)
+
+        path = os.path.join(self._tmp.name, "assembly%d.stl" % self._next)
+        export_lens_stl(system, path, resolution=8)
+        return _read_triangles(path)
+
+    def test_decenter_moves_the_element_mesh(self):
+        aligned = self._export()
+        moved = self._export(decenter_y=3.0)
+
+        self.assertFalse(moved == aligned, "the decentered element was exported on-axis")
+
+    def test_tilt_rotates_the_element_mesh(self):
+        aligned = self._export()
+        tilted = self._export(tilt_y=5.0)
+
+        self.assertFalse(tilted == aligned, "the tilted element was exported unrotated")
+
+
 if __name__ == "__main__":
     unittest.main()

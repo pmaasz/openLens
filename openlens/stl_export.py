@@ -11,6 +11,7 @@ from typing import List, Tuple, Optional, Any
 from .vector3 import Vector3
 from .atomic import atomic_write_bytes
 from .geometry import LensGeometry
+from .transform import Matrix4x4
 
 
 class STLExporter:
@@ -294,6 +295,23 @@ class STLExporter:
             for z, radial in LensGeometry.surface_profile(lens, surface, num_points=resolution)
         ]
 
+    @staticmethod
+    def _transform_triangles(triangles: List[Any], transform: Matrix4x4) -> List[Any]:
+        """Map STL-local triangles through a system node transform.
+
+        STL uses Z as the optical axis while the optical system uses X. The
+        cyclic ``(x, y, z)_sys -> (y, z, x)_stl`` mapping preserves winding,
+        so an aligned element keeps its outward normals.
+        """
+        transformed = []
+        for triangle in triangles:
+            points = []
+            for x, y, z in triangle:
+                point = transform.multiply_point(Vector3(z, x, y))
+                points.append((point.y, point.z, point.x))
+            transformed.append(tuple(points))
+        return transformed
+
     def export_lens_to_stl(
         self,
         r1: float,
@@ -400,35 +418,48 @@ def export_lens_stl(item: Any, filename: str, resolution: int = 50) -> int:
 
     # Check if it's an OpticalSystem
     if hasattr(item, "elements") and hasattr(item, "air_gaps"):
-        # Export entire assembly
+        # Export entire assembly. Build each element at the local origin, then
+        # apply its full node transform; position alone drops decenter/tilt.
         exporter.triangles = []
-        for element in item.elements:
+        nodes = []
+        if hasattr(item, "root"):
+            nodes = [
+                node for node, _ in item.root.get_flat_list() if getattr(node, "is_element", False)
+            ]
+
+        for index, element in enumerate(item.elements):
             lens = element.lens
-            pos = element.position
+            transform = (
+                nodes[index].get_global_transform()
+                if index < len(nodes)
+                else Matrix4x4.from_translation(element.position, 0, 0)
+            )
+
+            local = []
 
             # Generate lens triangles
             # 1. Front Surface
             profile1 = exporter._model_surface_profile(lens, 1, resolution)
             if profile1:
-                exporter.triangles.extend(
-                    exporter.generate_surface_triangles(profile1, pos, num_segments=resolution * 2)
+                local.extend(
+                    exporter.generate_surface_triangles(profile1, 0.0, num_segments=resolution * 2)
                 )
-                last_z_front = profile1[-1][1] + pos
+                last_z_front = profile1[-1][1]
             else:
-                exporter.triangles.extend(
+                local.extend(
                     exporter.generate_flat_surface(
-                        lens.diameter, pos, num_segments=resolution * 2, is_front=True
+                        lens.diameter, 0.0, num_segments=resolution * 2, is_front=True
                     )
                 )
-                last_z_front = pos
+                last_z_front = 0.0
 
             # 2. Back Surface
             profile2 = exporter._model_surface_profile(lens, 2, resolution)
             if profile2:
-                exporter.triangles.extend(
+                local.extend(
                     exporter.generate_surface_triangles(
                         profile2,
-                        pos + lens.thickness,
+                        lens.thickness,
                         num_segments=resolution * 2,
                         # The back cap is wound like the front one unless it
                         # says otherwise: the half of the solid with the
@@ -439,20 +470,20 @@ def export_lens_stl(item: Any, filename: str, resolution: int = 50) -> int:
                         is_front=False,
                     )
                 )
-                last_z_back = profile2[-1][1] + pos + lens.thickness
+                last_z_back = profile2[-1][1] + lens.thickness
             else:
-                exporter.triangles.extend(
+                local.extend(
                     exporter.generate_flat_surface(
                         lens.diameter,
-                        pos + lens.thickness,
+                        lens.thickness,
                         num_segments=resolution * 2,
                         is_front=False,
                     )
                 )
-                last_z_back = pos + lens.thickness
+                last_z_back = lens.thickness
 
             # 3. Edge
-            exporter.triangles.extend(
+            local.extend(
                 exporter.generate_edge_triangles(
                     lens.diameter,
                     last_z_front,
@@ -460,6 +491,7 @@ def export_lens_stl(item: Any, filename: str, resolution: int = 50) -> int:
                     num_segments=resolution * 2,
                 )
             )
+            exporter.triangles.extend(exporter._transform_triangles(local, transform))
 
         exporter.write_binary_stl(filename)
         return len(exporter.triangles)
