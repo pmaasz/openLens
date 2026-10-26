@@ -143,6 +143,7 @@ COLOR_LENS_R1 = "#0096ff"  # front surface highlight
 COLOR_LENS_R2 = "#00c864"  # back surface highlight
 COLOR_LENS_RIM = "#969696"  # rim (edge-wall) segments
 COLOR_LENS_BAD = "#ff6e6e"  # unrealizable-geometry tint/warning
+COLOR_CASING = "#a0a0a0"  # mechanical casing wall
 
 # Borders and light-theme surfaces
 COLOR_BORDER_DARK = "#3f3f3f"
@@ -223,6 +224,9 @@ DEFAULT_DB_FILE = "openlens.db"
 
 #: User-editable JSON file holding custom lens-mount definitions.
 DEFAULT_MOUNTS_FILE = "mounts.json"
+
+#: User-defined mechanical (casing) material catalog.
+DEFAULT_MECHANICAL_MATERIALS_FILE = "mechanical_materials.json"
 #: The writable material catalog. Lives in the per-user data directory, never
 #: beside the package: site-packages is not writable on a system install.
 DEFAULT_MATERIALS_FILE = "materials.json"

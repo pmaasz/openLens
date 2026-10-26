@@ -20,6 +20,7 @@ from .constants import (
 )
 from .lens import _is_flat
 from .geometry import FresnelFacet, LensGeometry
+from .casing import wall_entry_2d
 
 if TYPE_CHECKING:
     from .lens import Lens
@@ -737,6 +738,8 @@ class SystemRayTracer:
     def trace_ray(self, ray: Ray) -> Ray:
         """Trace a single ray through all elements"""
         self._sync_tracers()
+        if self._absorb_before_first_element(ray):
+            return ray
         self._trace_ray_through_system(ray)
         return ray
 
@@ -788,6 +791,54 @@ class SystemRayTracer:
 
             if i == len(self._tracers) - 1:
                 ray.propagate(RAY_EXIT_PROPAGATION_2D_MM)
+
+        self._absorb_in_casing_path(ray)
+
+    def _absorb_before_first_element(self, ray: Ray) -> bool:
+        """Absorb a ray that meets the wall on its straight path to the optics.
+
+        Only the segment before the first optical surface is straight in the
+        world frame; later segments are checked on the finished path.
+        """
+        casing = getattr(self.system, "casing", None)
+        if casing is None:
+            return False
+        cos_a = math.cos(ray.angle)
+        if cos_a <= EPSILON:
+            return False
+        elements = self.system.elements
+        stop_x = float(elements[0].position) if elements else casing.end_x
+        if stop_x <= ray.x:
+            return False
+        end = (stop_x, ray.y + (stop_x - ray.x) * math.tan(ray.angle))
+        hit = wall_entry_2d(casing, (ray.x, ray.y), end)
+        if hit is None:
+            return False
+        return self._mark_absorbed(ray, hit, [(ray.x, ray.y)])
+
+    def _absorb_in_casing_path(self, ray: Ray) -> bool:
+        """Absorb a ray whose traced path crosses the opaque inner wall."""
+        casing = getattr(self.system, "casing", None)
+        if casing is None:
+            return False
+        for index, (first, second) in enumerate(zip(ray.path, ray.path[1:])):
+            hit = wall_entry_2d(casing, first, second)
+            if hit is not None:
+                return self._mark_absorbed(ray, hit, ray.path[: index + 1])
+        return False
+
+    @staticmethod
+    def _mark_absorbed(
+        ray: Ray, hit: Tuple[float, float], prefix: List[Tuple[float, float]]
+    ) -> bool:
+        """Truncate the path at the wall and flag the ray as absorbed."""
+        if not prefix or prefix[-1] != hit:
+            prefix = prefix + [hit]
+        ray.path = prefix
+        ray.x, ray.y = hit
+        ray.terminated = True
+        ray.absorbed = True
+        return True
 
     def _apply_stop(self, ray: Ray, stop: dict) -> bool:
         """Vignette a ray at the aperture stop plane.

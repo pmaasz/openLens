@@ -5,7 +5,7 @@ OpenLens PySide6 Assembly Visualization Widget
 
 from PySide6.QtWidgets import QWidget
 from PySide6.QtGui import QPainter, QPen, QPainterPath, QBrush, QColor
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QRectF
 from typing import Optional, TYPE_CHECKING
 
 from ..theme import DARK, get_palette
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
     from ...lens import Lens
     from ...optical_system import OpticalSystem
+    from ...casing import Casing
 
 
 class AssemblyVisualizationWidget(QWidget):
@@ -84,6 +85,13 @@ class AssemblyVisualizationWidget(QWidget):
                 total_thickness += self._system.air_gaps[i].thickness
 
         max_diameter = max(e.lens.diameter for e in self._system.elements)
+        casing = getattr(self._system, "casing", None)
+        if casing is not None:
+            max_diameter = max(max_diameter, casing.outer_diameter)
+        total_thickness = max(
+            total_thickness,
+            casing.end_x if casing is not None else total_thickness,
+        )
 
         # Floor the divisor like the other 2D views: Lens accepts a zero
         # thickness and diameter, so a degenerate model would otherwise
@@ -97,6 +105,11 @@ class AssemblyVisualizationWidget(QWidget):
         painter.setPen(QPen(self._axis_color, 1, Qt.DashLine))
         painter.drawLine(0, cy, w, cy)
 
+        if casing is not None:
+            self._draw_casing(
+                painter, casing, cx - self._system.elements[0].position * scale, cy, scale
+            )
+
         for i, element in enumerate(self._system.elements):
             lens = element.lens
             color = self._lens_colors[i % len(self._lens_colors)]
@@ -107,6 +120,39 @@ class AssemblyVisualizationWidget(QWidget):
                 cx += lens.thickness * scale + self._system.air_gaps[i].thickness * scale
             else:
                 cx += lens.thickness * scale
+
+    def _draw_casing(
+        self,
+        painter: QPainter,
+        casing: "Casing",
+        origin_x: float,
+        cy: float,
+        scale: float,
+    ) -> None:
+        """Draw the casing's two open-ended walls to scale.
+
+        Args:
+            painter: Painter used for drawing.
+            casing: Casing model in assembly-axis coordinates (mm).
+            origin_x: Screen x of model x = 0.
+            cy: Screen y of the optical axis.
+            scale: Pixels per millimeter.
+        """
+        from ...constants import COLOR_CASING
+
+        color = QColor(COLOR_CASING)
+        fill = QColor(color.red(), color.green(), color.blue(), 90)
+        left = origin_x + casing.start_x * scale
+        width = casing.length * scale
+        inner = casing.inner_radius * scale
+        wall = casing.wall_thickness * scale
+
+        painter.save()
+        painter.setPen(QPen(color, 1))
+        painter.setBrush(QBrush(fill))
+        painter.drawRect(QRectF(left, cy - inner - wall, width, wall))
+        painter.drawRect(QRectF(left, cy + inner, width, wall))
+        painter.restore()
 
     def _draw_lens(
         self,

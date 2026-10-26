@@ -20,6 +20,7 @@ from .constants import (
 )
 from .lens import _is_flat
 from .geometry import LensGeometry
+from .casing import wall_entry_3d
 
 if TYPE_CHECKING:
     from .lens import Lens
@@ -809,6 +810,8 @@ class SystemRayTracer3D:
 
     def trace_ray(self, ray: Ray3D) -> Ray3D:
         """Trace a single ray through the entire system."""
+        if self._absorb_before_first_element(ray):
+            return ray
         batch = self._batch
         if batch is None or not self._scene_is_current(batch):
             batch = self._prepare()
@@ -834,7 +837,48 @@ class SystemRayTracer3D:
         if not ray.terminated:
             ray.propagate(RAY_EXIT_PROPAGATION_3D_MM)
 
+        self._absorb_in_casing_path(ray)
         return ray
+
+    def _absorb_before_first_element(self, ray: Ray3D) -> bool:
+        """Absorb a ray that meets the wall on its straight path to the optics."""
+        casing = getattr(self.system, "casing", None)
+        if casing is None:
+            return False
+        direction = ray.direction
+        if direction.x <= EPSILON:
+            return False
+        elements = self.system.elements
+        stop_x = float(elements[0].position) if elements else casing.end_x
+        if stop_x <= ray.origin.x:
+            return False
+        end = ray.origin + direction * ((stop_x - ray.origin.x) / direction.x)
+        hit = wall_entry_3d(casing, ray.origin, end)
+        if hit is None:
+            return False
+        return self._mark_absorbed(ray, hit, [ray.origin])
+
+    def _absorb_in_casing_path(self, ray: Ray3D) -> bool:
+        """Absorb a ray whose traced path crosses the opaque inner wall."""
+        casing = getattr(self.system, "casing", None)
+        if casing is None:
+            return False
+        for index, (first, second) in enumerate(zip(ray.path, ray.path[1:])):
+            hit = wall_entry_3d(casing, first, second)
+            if hit is not None:
+                return self._mark_absorbed(ray, hit, ray.path[: index + 1])
+        return False
+
+    @staticmethod
+    def _mark_absorbed(ray: Ray3D, hit: Vector3, prefix: List[Vector3]) -> bool:
+        """Truncate the path at the wall and flag the ray as absorbed."""
+        if not prefix or (prefix[-1] - hit).magnitude() > EPSILON:
+            prefix = prefix + [hit]
+        ray.path = prefix
+        ray.origin = hit
+        ray.terminated = True
+        ray.absorbed = True
+        return True
 
     @staticmethod
     def _apply_stop(ray: Ray3D, stop_x: float, semi: float) -> bool:

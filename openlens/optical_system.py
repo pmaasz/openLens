@@ -14,6 +14,7 @@ import logging
 from datetime import datetime
 
 from .lens import Lens, json_safe_radii, validate_image_plane_x
+from .casing import Casing, casing_interference, validate_casing
 from .constants import (
     WAVELENGTH_D_LINE,
     WAVELENGTH_C_LINE,
@@ -118,6 +119,7 @@ _SYSTEM_SERIALIZED_KEYS = frozenset(
         "node_tree",
         "thermal_state_temperature",
         "image_plane_x_mm",
+        "casing",
     }
 )
 
@@ -125,13 +127,19 @@ _SYSTEM_SERIALIZED_KEYS = frozenset(
 class OpticalSystem:
     """Multi-element optical system"""
 
-    def __init__(self, name: str = "Optical System", metadata: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        name: str = "Optical System",
+        metadata: Optional[Dict[str, Any]] = None,
+        casing: Optional[Casing] = None,
+    ):
         self.id = uuid.uuid4().hex
         self.created_at = datetime.now().isoformat()
         self.modified_at = datetime.now().isoformat()
         self.name = name
         self.elements: List[LensElement] = []
         self.air_gaps: List[AirGap] = []
+        self.casing: Optional[Casing] = casing
         # Free-form settings with no dedicated column (a system's tolerance
         # set, for instance). A real attribute so it can be serialized; see
         # the matching note in Lens.
@@ -180,6 +188,26 @@ class OpticalSystem:
         self.aperture_stop_gap = None
         self.aperture_stop_diameter = None
         self.modified_at = datetime.now().isoformat()
+
+    def set_casing(self, casing: Optional[Casing]) -> None:
+        """Add, replace or remove the assembly casing.
+
+        Raises:
+            ValidationError: If the casing would intersect a lens or become
+                the aperture stop.
+        """
+        if casing is not None:
+            validate_casing(casing, self)
+        self.casing = casing
+        self.modified_at = datetime.now().isoformat()
+
+    def clear_casing(self) -> None:
+        """Remove the assembly casing."""
+        self.set_casing(None)
+
+    def casing_warning(self) -> Optional[str]:
+        """Return a mechanical-interference warning for the current state."""
+        return casing_interference(self.casing, self)
 
     def get_aperture_stop(self) -> Optional[Dict[str, Any]]:
         """Return the validated stop as a dict, or None if unset/stale.
@@ -619,6 +647,7 @@ class OpticalSystem:
                 for e in self.elements
             ],
             "air_gaps": [{"thickness": g.thickness, "position": g.position} for g in self.air_gaps],
+            "casing": self.casing.to_dict() if self.casing is not None else None,
             # The nesting itself.
             #
             # "elements" above is the *flattened* list, which is what every
@@ -659,6 +688,8 @@ class OpticalSystem:
             "thermal_state_temperature", DEFAULT_TEMPERATURE
         )
         system.image_plane_x_mm = validate_image_plane_x(data.get("image_plane_x_mm"))
+        casing_data = data.get("casing")
+        system.casing = Casing.from_dict(casing_data) if isinstance(casing_data, dict) else None
 
         # Clear default tree/flat state to avoid duplication.
         system.elements = []
