@@ -30,6 +30,29 @@ from .validation import (
 )
 
 
+def _image_distance(system: OpticalSystem) -> float:
+    """Return the last-vertex-to-image distance for a sequential table.
+
+    A configured detector plane wins over the paraxial fallback. The result
+    is clamped at zero because a virtual image cannot be represented as a
+    negative thickness in this human-readable table.
+    """
+    total_length = system.get_total_length()
+    plane = getattr(system, "image_plane_x_mm", None)
+    if plane is not None:
+        try:
+            plane = float(plane)
+        except (TypeError, ValueError):
+            plane = None
+        if plane is not None and math.isfinite(plane):
+            return max(0.0, plane - total_length)
+
+    bfl = system.calculate_back_focal_length()
+    if bfl is None or not math.isfinite(bfl):
+        return 0.0
+    return max(0.0, bfl)
+
+
 def _gap_before(system: OpticalSystem, index: int) -> float:
     """Return the air gap preceding element ``index``, in mm.
 
@@ -233,6 +256,7 @@ class OpticStudioExporter:
             # Object
             f.write(f"{'OBJ':<10} {'STANDARD':<12} {'Infinity':<14} {'Infinity':<12} {'':<10}\n")
 
+            image_distance = _image_distance(system)
             surf_num = 1
             for i, elem in enumerate(system.elements):
                 lens = elem.lens
@@ -258,13 +282,19 @@ class OpticStudioExporter:
                 )
                 surf_num += 1
 
-                # Back surface
+                # Back surface. An intermediate element ends at the next gap
+                # row, so its own thickness is zero; only the last surface
+                # carries the distance to the image.
+                back_thickness = 0.0 if i + 1 < len(system.elements) else image_distance
                 r2_str = (
                     f"{lens.radius_of_curvature_2:.4f}"
                     if abs(lens.radius_of_curvature_2) < 1e10
                     else "Infinity"
                 )
-                f.write(f"{surf_num:<10} {'STANDARD':<12} {r2_str:<14} {'100.0000':<12} {'':<10}\n")
+                f.write(
+                    f"{surf_num:<10} {'STANDARD':<12} {r2_str:<14} "
+                    f"{back_thickness:<12.4f} {'':<10}\n"
+                )
                 surf_num += 1
 
             # Image
