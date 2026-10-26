@@ -261,8 +261,7 @@ class SimulationTab(BaseTab):
                 )
 
             plane = self._focal_plane_value()
-            if hasattr(active_system, "image_plane_x_mm"):
-                active_system.image_plane_x_mm = plane
+            self._store_focal_plane(plane)
 
             self._sim_viz.run_simulation(
                 active_system,
@@ -284,10 +283,16 @@ class SimulationTab(BaseTab):
         return float(self._sim_focal_plane_x.value())
 
     def _store_focal_plane(self, value: Optional[float]) -> None:
-        """Write *value* onto the active model when it supports a plane."""
+        """Write *value* onto the active model and schedule its save."""
         target = self._active_target()
-        if target is not None and hasattr(target, "image_plane_x_mm"):
-            target.image_plane_x_mm = value
+        if target is None or not hasattr(target, "image_plane_x_mm"):
+            return
+        if target.image_plane_x_mm == value:
+            return
+        target.image_plane_x_mm = value
+        schedule = getattr(self._parent, "_schedule_edit_commit", None)
+        if callable(schedule):
+            schedule("Focal plane updated")
 
     def _on_auto_focal_plane_toggled(self, auto: bool) -> None:
         """Switch between the paraxial focus and a fixed detector plane."""
