@@ -10,6 +10,7 @@ from typing import List, Tuple, Optional, Any
 
 from .vector3 import Vector3
 from .atomic import atomic_write_bytes
+from .geometry import LensGeometry
 
 
 class STLExporter:
@@ -275,6 +276,24 @@ class STLExporter:
         normal = v1.cross(v2).normalize()
         return (normal.x, normal.y, normal.z)
 
+    @staticmethod
+    def _model_surface_profile(
+        lens: Any, surface: int, resolution: int = 50
+    ) -> Optional[List[Tuple[float, float]]]:
+        """Return a lens model's surface as STL ``(radius, z)`` samples.
+
+        ``calculate_surface_profile`` is spherical-only; conic, parabolic and
+        Fresnel models have to go through ``LensGeometry`` so the exported
+        solid matches the traced design.
+        """
+        radius = lens.get_effective_radius_1() if surface == 1 else lens.get_effective_radius_2()
+        if not math.isfinite(radius) or abs(radius) < 1e-10 or abs(radius) > 1e10:
+            return None
+        return [
+            (radial, z)
+            for z, radial in LensGeometry.surface_profile(lens, surface, num_points=resolution)
+        ]
+
     def export_lens_to_stl(
         self,
         r1: float,
@@ -283,15 +302,23 @@ class STLExporter:
         diameter: float,
         filename: str,
         resolution: int = 50,
+        lens: Optional[Any] = None,
     ) -> int:
-        """Export a lens to STL format"""
+        """Export a lens to STL format.
+
+        Pass ``lens`` to mesh the model's actual conic, parabolic or Fresnel
+        surfaces. Without it the legacy numeric spherical parameters are used.
+        """
         self.triangles = []
 
         # 1. Front Surface (R1)
         # Vertex at (0,0,0).
-        profile1 = self.calculate_surface_profile(
-            r1, diameter, is_front=True, resolution=resolution
-        )
+        if lens is not None:
+            profile1 = self._model_surface_profile(lens, 1, resolution)
+        else:
+            profile1 = self.calculate_surface_profile(
+                r1, diameter, is_front=True, resolution=resolution
+            )
         if profile1:
             self.triangles.extend(
                 self.generate_surface_triangles(
@@ -310,9 +337,12 @@ class STLExporter:
 
         # 2. Back Surface (R2)
         # Vertex at (0,0,thickness)
-        profile2 = self.calculate_surface_profile(
-            r2, diameter, is_front=False, resolution=resolution
-        )
+        if lens is not None:
+            profile2 = self._model_surface_profile(lens, 2, resolution)
+        else:
+            profile2 = self.calculate_surface_profile(
+                r2, diameter, is_front=False, resolution=resolution
+            )
         if profile2:
             self.triangles.extend(
                 self.generate_surface_triangles(
@@ -378,12 +408,7 @@ def export_lens_stl(item: Any, filename: str, resolution: int = 50) -> int:
 
             # Generate lens triangles
             # 1. Front Surface
-            profile1 = exporter.calculate_surface_profile(
-                lens.radius_of_curvature_1,
-                lens.diameter,
-                is_front=True,
-                resolution=resolution,
-            )
+            profile1 = exporter._model_surface_profile(lens, 1, resolution)
             if profile1:
                 exporter.triangles.extend(
                     exporter.generate_surface_triangles(profile1, pos, num_segments=resolution * 2)
@@ -398,12 +423,7 @@ def export_lens_stl(item: Any, filename: str, resolution: int = 50) -> int:
                 last_z_front = pos
 
             # 2. Back Surface
-            profile2 = exporter.calculate_surface_profile(
-                lens.radius_of_curvature_2,
-                lens.diameter,
-                is_front=False,
-                resolution=resolution,
-            )
+            profile2 = exporter._model_surface_profile(lens, 2, resolution)
             if profile2:
                 exporter.triangles.extend(
                     exporter.generate_surface_triangles(
@@ -452,4 +472,5 @@ def export_lens_stl(item: Any, filename: str, resolution: int = 50) -> int:
         item.diameter,
         filename,
         resolution,
+        lens=item,
     )

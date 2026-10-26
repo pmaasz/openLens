@@ -1,12 +1,29 @@
 import unittest
 import os
+import struct
 import sys
+import tempfile
 
 # Add the repo root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from openlens.lens import Lens
+from openlens.optical_system import OpticalSystem
 from openlens.stl_export import export_lens_stl, STLExporter
+
+
+def _read_vertices(path):
+    """Every vertex in a binary STL, in file order."""
+    with open(path, "rb") as handle:
+        data = handle.read()
+    count = struct.unpack("<I", data[80:84])[0]
+    vertices = []
+    offset = 84
+    for _ in range(count):
+        values = struct.unpack("<12fH", data[offset : offset + 50])
+        offset += 50
+        vertices.extend(zip(values[3:6], values[6:9], values[9:12]))
+    return vertices
 
 
 class TestSTLExport(unittest.TestCase):
@@ -115,3 +132,52 @@ class TestSTLHelperContracts(unittest.TestCase):
     def test_an_edge_list_of_the_wrong_length_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "must have 4 or 5 values"):
             self.exporter.generate_edge_triangles(10.0, [0.0, 1.0], [5.0, 6.0], num_segments=4)
+
+
+class TestSTLModelSurfaces(unittest.TestCase):
+    """Conic and parabolic surfaces must not silently export as spheres."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self._next = 0
+
+    def _export(self, item):
+        self._next += 1
+        path = os.path.join(self._tmp.name, "lens%d.stl" % self._next)
+        export_lens_stl(item, path, resolution=8)
+        return _read_vertices(path)
+
+    @staticmethod
+    def _lens(**extra):
+        return Lens(
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=-50.0,
+            thickness=5.0,
+            diameter=25.0,
+            refractive_index=1.5,
+            **extra,
+        )
+
+    def test_a_conic_front_surface_is_not_a_sphere(self):
+        sphere = self._export(self._lens())
+        conic = self._export(self._lens(conic_constant_1=5.0))
+
+        self.assertFalse(conic == sphere, "the conic surface was meshed as a sphere")
+
+    def test_a_parabolic_front_surface_is_not_a_sphere(self):
+        sphere = self._export(self._lens())
+        parabolic = self._export(self._lens(is_parabolic_1=True, parabolic_sag_1=3.0))
+
+        self.assertFalse(parabolic == sphere, "the parabolic surface was meshed as a sphere")
+
+    def test_an_assembly_uses_the_element_surface_model(self):
+        sphere_system = OpticalSystem(name="sphere")
+        sphere_system.add_lens(self._lens())
+        conic_system = OpticalSystem(name="conic")
+        conic_system.add_lens(self._lens(conic_constant_1=5.0))
+
+        self.assertFalse(
+            self._export(conic_system) == self._export(sphere_system),
+            "the assembly export replaced its conic element with a sphere",
+        )
