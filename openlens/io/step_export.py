@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import List, Any, Optional
 from ..atomic import atomic_write_text
 from ..constants import EPSILON
+from ..geometry import LensGeometry
 from ..transform import Matrix4x4
 from ..vector3 import vec3
 
@@ -761,9 +762,30 @@ class StepExporter:
             )
             surf2 = self.writer.add_entity("SPHERICAL_SURFACE", ["sphere2", axis_s2, abs(r2)])
 
-        # Surface 3 (Cylinder)
-        axis_cyl = self.writer.add_entity("AXIS2_PLACEMENT_3D", ["axis_cyl", p_c1, axis_z, axis_x])
-        surf3 = self.writer.add_entity("CYLINDRICAL_SURFACE", ["cyl", axis_cyl, h])
+        # Surface 3 (Rim): a custom profile is the revolved meridional chain,
+        # so the exported rim is the same polyline the STL and views use.
+        # Without one this stays the historical cylinder.
+        if getattr(lens, "edge_profile", None):
+            edge = LensGeometry.edge_profile_points(lens)
+            sweep_points = [
+                self.writer.add_entity(
+                    "CARTESIAN_POINT",
+                    [f"rim_p{index}", point(radius, 0.0, z_offset + x)],
+                )
+                for index, (x, radius) in enumerate(edge)
+            ]
+            sweep = self.writer.add_entity("POLYLINE", ["rim_profile", sweep_points])
+            axis_rev = self.writer.add_entity(
+                "AXIS2_PLACEMENT_3D", ["axis_rev", p_c1, axis_z, axis_x]
+            )
+            surf3 = self.writer.add_entity(
+                "SURFACE_OF_REVOLUTION", ["rim_revolution", sweep, axis_rev]
+            )
+        else:
+            axis_cyl = self.writer.add_entity(
+                "AXIS2_PLACEMENT_3D", ["axis_cyl", p_c1, axis_z, axis_x]
+            )
+            surf3 = self.writer.add_entity("CYLINDRICAL_SURFACE", ["cyl", axis_cyl, h])
 
         # --- Faces ---
         # Face 1 (Front)

@@ -596,7 +596,6 @@ class SimulationVisualizationWidget(QWidget):
             from ...constants import COLOR_LENS_R1, COLOR_LENS_R2, COLOR_LENS_RIM, COLOR_LENS_BAD
             from ...geometry import LensGeometry
 
-            half_d = lens.diameter / 2
             outline = LensGeometry.lens_outline(lens, num_points=50, max_points=2000)
             bad = not outline["feasible"]
             bad_color = QColor(COLOR_LENS_BAD)
@@ -604,8 +603,6 @@ class SimulationVisualizationWidget(QWidget):
             def _to_screen(pt) -> tuple:
                 """Map a vertex-frame (x, y) outline point to widget pixels."""
                 return (start_x + pt[0] * sc, center_y + pt[1] * sc)
-
-            x2_edge = start_x + outline["x2_edge"] * sc
 
             path = QPainterPath()
 
@@ -617,14 +614,18 @@ class SimulationVisualizationWidget(QWidget):
                 else:
                     path.lineTo(x, y)
 
-            # 2. Bottom Edge
-            path.lineTo(x2_edge, center_y + half_d * sc)
+            # 2. Rim chain, top side (front rim -> back rim)
+            for pt in outline["edge"][1:]:
+                path.lineTo(*_to_screen(pt))
 
             # 3. Back Surface (bottom to top)
             for pt in outline["back"]:
                 path.lineTo(*_to_screen(pt))
 
-            # 4. Top Edge
+            # 4. Rim chain, bottom side (back rim -> front rim)
+            for x, radius in reversed(outline["edge"][1:-1]):
+                path.lineTo(*_to_screen((x, -radius)))
+
             path.closeSubpath()
 
             body = (

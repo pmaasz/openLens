@@ -11,6 +11,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .constants import EPSILON
 from .lens import Lens
+from .validation import ValidationError
+
+#: How far a custom edge profile endpoint may sit from the optical rim (mm).
+EDGE_PROFILE_TOLERANCE = 1e-3
 
 
 @dataclass(frozen=True)
@@ -277,6 +281,122 @@ class LensGeometry:
             return None
 
     @staticmethod
+    def rim_points(lens: Lens) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        """Return the ``(x, radius)`` rims of the two optical surfaces."""
+        half_d = abs(float(lens.diameter)) / 2.0
+        front = LensGeometry.surface_profile(lens, 1, num_points=1)
+        back = LensGeometry.surface_profile(lens, 2, num_points=1)
+        return (
+            (float(front[-1][0]), half_d),
+            (float(lens.thickness) + float(back[-1][0]), half_d),
+        )
+
+    @staticmethod
+    def edge_profile_points(lens: Lens, snap_endpoints: bool = True) -> List[Tuple[float, float]]:
+        """Return the meridional rim chain from the front rim to the back rim.
+
+        A lens without a custom profile returns the straight rim it always
+        had. The stored endpoints are snapped to the current optical rims so a
+        radius or diameter edit cannot leave the solid open.
+        """
+        front_rim, back_rim = LensGeometry.rim_points(lens)
+        raw = getattr(lens, "edge_profile", None)
+        if not raw:
+            return [front_rim, back_rim]
+        points = [(float(x), float(radius)) for x, radius in raw]
+        if len(points) < 2:
+            return [front_rim, back_rim]
+        if snap_endpoints:
+            points[0] = front_rim
+            points[-1] = back_rim
+        return points
+
+    @staticmethod
+    def validate_edge_profile(lens: Lens, points: Any) -> List[Tuple[float, float]]:
+        """Validate and normalize a custom edge profile.
+
+        Args:
+            lens: Lens the profile belongs to; its optical rims are fixed
+                endpoints of the profile.
+            points: Iterable of ``(x, radius)`` pairs in the lens vertex
+                frame, ordered from the front rim to the back rim.
+
+        Returns:
+            The normalized list of points.
+
+        Raises:
+            ValidationError: If the profile is not a simple polyline joining
+                the two optical rims outside the clear aperture.
+        """
+        try:
+            raw = list(points)
+        except TypeError as exc:
+            raise ValidationError("Edge profile must be a list of (x, radius) points") from exc
+        if len(raw) < 3:
+            raise ValidationError("Edge profile needs at least 3 points")
+
+        normalized: List[Tuple[float, float]] = []
+        for point in raw:
+            try:
+                x, radius = float(point[0]), float(point[1])
+            except (TypeError, ValueError, IndexError) as exc:
+                raise ValidationError("Edge profile points must be (x, radius) pairs") from exc
+            if not math.isfinite(x) or not math.isfinite(radius):
+                raise ValidationError("Edge profile coordinates must be finite")
+            if radius < 0:
+                raise ValidationError("Edge profile radius must not be negative")
+            normalized.append((x, radius))
+
+        half_d = abs(float(lens.diameter)) / 2.0
+        rim1, rim2 = LensGeometry.rim_points(lens)
+        for point in normalized:
+            if point[1] < half_d - EDGE_PROFILE_TOLERANCE:
+                raise ValidationError(
+                    "Edge profile must stay outside the clear aperture "
+                    f"(radius {point[1]:g} mm is inside the {half_d:g} mm rim)"
+                )
+
+        for first, second in zip(normalized, normalized[1:]):
+            if math.hypot(first[0] - second[0], first[1] - second[1]) <= EPSILON:
+                raise ValidationError("Edge profile has duplicate consecutive points")
+
+        def close(a, b) -> bool:
+            return math.hypot(a[0] - b[0], a[1] - b[1]) <= EDGE_PROFILE_TOLERANCE
+
+        if not close(normalized[0], rim1):
+            raise ValidationError("Edge profile must start at the front surface rim")
+        if not close(normalized[-1], rim2):
+            raise ValidationError("Edge profile must end at the back surface rim")
+
+        def orientation(a, b, c) -> float:
+            return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+        def intersects(a, b, c, d) -> bool:
+            o1, o2 = orientation(a, b, c), orientation(a, b, d)
+            o3, o4 = orientation(c, d, a), orientation(c, d, b)
+            if abs(o1) <= EPSILON and abs(o2) <= EPSILON:
+                return (
+                    min(a[0], b[0]) - EDGE_PROFILE_TOLERANCE <= max(c[0], d[0])
+                    and min(c[0], d[0]) - EDGE_PROFILE_TOLERANCE <= max(a[0], b[0])
+                    and min(a[1], b[1]) - EDGE_PROFILE_TOLERANCE <= max(c[1], d[1])
+                    and min(c[1], d[1]) - EDGE_PROFILE_TOLERANCE <= max(a[1], b[1])
+                )
+            return (o1 > EPSILON) != (o2 > EPSILON) and (o3 > EPSILON) != (o4 > EPSILON)
+
+        segments = list(zip(normalized, normalized[1:]))
+        for index, (a, b) in enumerate(segments):
+            for other_index in range(index + 2, len(segments)):
+                c, d = segments[other_index]
+                if index == 0 and other_index == len(segments) - 1:
+                    continue  # the chain is closed by the optical surfaces
+                if any(close(first, second) for first in (a, b) for second in (c, d)):
+                    raise ValidationError("Edge profile must not intersect itself")
+                if intersects(a, b, c, d):
+                    raise ValidationError("Edge profile must not intersect itself")
+
+        return normalized
+
+    @staticmethod
     def lens_outline(
         lens: Lens, num_points: int = 50, max_points: Optional[int] = None
     ) -> Dict[str, Any]:
@@ -310,6 +430,7 @@ class LensGeometry:
         return {
             "front": front,
             "back": back,
+            "edge": LensGeometry.edge_profile_points(lens),
             "x1_vertex": 0.0,
             "x2_vertex": thickness,
             "x1_edge": front[-1][0],
@@ -325,4 +446,8 @@ class LensGeometry:
     ) -> List[Tuple[float, float]]:
         """Get a closed ``(z, r)`` polyline representing the lens section."""
         outline = LensGeometry.lens_outline(lens, num_points, max_points)
-        return outline["front"] + outline["back"]
+        edge = outline["edge"]
+        # The custom rim chain is mirrored below the axis: one revolved
+        # profile gives the same silhouette on both sides of the section.
+        bottom = [(x, -radius) for x, radius in reversed(edge[1:-1])]
+        return outline["front"] + edge[1:-1] + outline["back"] + bottom

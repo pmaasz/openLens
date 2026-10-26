@@ -186,6 +186,8 @@ class _3DVisualizationWidget(QWidget):
         self._ax.plot(x_back, y_back, z_back, color=_c2, linewidth=2)
 
         for index in range(0, len(theta), 2):
+            if getattr(lens, "edge_profile", None):
+                break
             self._ax.plot(
                 [x_front[index], x_back[index]],
                 [y_front[index], y_back[index]],
@@ -208,6 +210,23 @@ class _3DVisualizationWidget(QWidget):
             rstride = 1 if getattr(lens, "is_fresnel", False) else 2
             self._ax.plot_surface(X, Y, Z, alpha=0.5, color=color, rstride=rstride, cstride=2)
 
+        edge = outline["edge"]
+        if getattr(lens, "edge_profile", None):
+            edge_radial = np.asarray([radius for _x, radius in edge], dtype=float)
+            edge_axial = np.asarray([x for x, _radius in edge], dtype=float)
+            R, THETA = np.meshgrid(edge_radial, theta_vals)
+            Z = edge_axial[None, :] * np.ones((len(theta_vals), 1))
+            self._ax.plot_surface(
+                R * np.cos(THETA),
+                R * np.sin(THETA),
+                Z,
+                alpha=0.6,
+                color=COLOR_LENS_RIM,
+                rstride=1,
+                cstride=2,
+            )
+            max_r = max(max_r, float(edge_radial.max()))
+
         for surface, offset, color in (
             (1, x1_vertex, _c1),
             (2, x2_vertex, _c2),
@@ -229,10 +248,11 @@ class _3DVisualizationWidget(QWidget):
         z_values = [0.0, thickness]
         z_values.extend(point[0] for point in front_profile)
         z_values.extend(thickness + point[0] for point in back_profile)
+        z_values.extend(x for x, _radius in outline["edge"])
         z_min = min(z_values)
         z_max = max(z_values)
         padding = max(diameter, thickness) * 0.3
-        limit = max(diameter, thickness) / 2 + padding
+        limit = max(diameter, 2 * max_r, thickness) / 2 + padding
         self._ax.set_xlim([-limit, limit])
         self._ax.set_ylim([-limit, limit])
         self._ax.set_zlim([z_min - padding, z_max + padding])

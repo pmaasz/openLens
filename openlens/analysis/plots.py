@@ -55,7 +55,6 @@ def draw_system_outline(ax, system: OpticalSystem) -> None:
     current_z = 0.0
     for i, element in enumerate(system.elements):
         lens = element.lens
-        half_d = lens.diameter / 2
         thickness = lens.thickness
 
         # Shared outline (same helper as every 2D view), shifted so the
@@ -66,16 +65,16 @@ def draw_system_outline(ax, system: OpticalSystem) -> None:
         y_front = [y for _, y in outline["front"]]
         z2 = [current_z + x for x, _ in outline["back"]]
         y_back = [y for _, y in outline["back"]]
-        x1_edge = current_z + outline["x1_edge"]
-        x2_edge = current_z + outline["x2_edge"]
+        edge_z = [current_z + x for x, _ in outline["edge"]]
+        edge_y = [radius for _, radius in outline["edge"]]
 
         # Filled lens (matches editor's translucent fill) + colored outlines
-        # Build closed polygon: front (top->bottom) -> bottom edge -> back (bottom->top) -> top edge
+        # Build closed polygon: front -> rim chain -> back -> mirrored chain.
         try:
             from matplotlib.patches import Polygon
 
-            poly_z = z1 + [x2_edge] + z2 + [x1_edge]
-            poly_y = y_front + [half_d] + y_back + [-half_d]
+            poly_z = z1 + edge_z[1:] + z2 + list(reversed(edge_z[1:-1]))
+            poly_y = y_front + edge_y[1:] + y_back + [-r for r in reversed(edge_y[1:-1])]
             poly = Polygon(
                 list(zip(poly_z, poly_y)),
                 closed=True,
@@ -94,17 +93,17 @@ def draw_system_outline(ax, system: OpticalSystem) -> None:
         back_color = COLOR_LENS_BAD if bad else COLOR_LENS_R2
         ax.plot(z1, y_front, color=front_color, alpha=0.9, linewidth=2)
         ax.plot(z2, y_back, color=back_color, alpha=0.9, linewidth=2)
-        # Flat rims
+        # Rim chains (custom profile or the straight default edge)
         ax.plot(
-            [x1_edge, x2_edge],
-            [half_d, half_d],
+            edge_z,
+            edge_y,
             color=COLOR_LENS_RIM,
             alpha=0.7,
             linewidth=1,
         )
         ax.plot(
-            [x1_edge, x2_edge],
-            [-half_d, -half_d],
+            edge_z,
+            [-r for r in edge_y],
             color=COLOR_LENS_RIM,
             alpha=0.7,
             linewidth=1,

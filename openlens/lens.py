@@ -4,7 +4,7 @@ import math
 import sqlite3
 import uuid
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +266,7 @@ _LENS_SERIALIZED_KEYS = frozenset(
         "bevel_2",
         "coating_1",
         "coating_2",
+        "edge_profile",
         "created_at",
         "modified_at",
         "metadata",
@@ -314,6 +315,7 @@ class Lens:
         bevel_2: float = 0.0,
         coating_1: Optional[List[Dict[str, Any]]] = None,
         coating_2: Optional[List[Dict[str, Any]]] = None,
+        edge_profile: Optional[List[Tuple[float, float]]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         image_plane_x_mm: Optional[float] = None,
     ) -> None:
@@ -429,6 +431,12 @@ class Lens:
         # None/empty = uncoated (bare Fresnel).
         self.coating_1 = _normalize_coating(coating_1)
         self.coating_2 = _normalize_coating(coating_2)
+
+        # Optional meridional rim chain from the front rim to the back rim.
+        # None keeps the straight cylindrical edge every existing lens has.
+        self.edge_profile: Optional[Tuple[Tuple[float, float], ...]] = None
+        if edge_profile is not None:
+            self.set_edge_profile(edge_profile)
 
         self.created_at = datetime.now().isoformat()
         self.modified_at = datetime.now().isoformat()
@@ -562,6 +570,44 @@ class Lens:
         else:
             self.coating_2 = normalized
         self.modified_at = datetime.now().isoformat()
+
+    def set_edge_profile(self, points: List[Tuple[float, float]]) -> None:
+        """Attach a custom meridional rim profile to the lens.
+
+        Args:
+            points: ``(x, radius)`` pairs ordered from the front rim to the
+                back rim, in the lens vertex frame (mm).
+
+        Raises:
+            ValidationError: If the chain is not a simple polyline joining
+                the two optical rims outside the clear aperture.
+        """
+        from .geometry import LensGeometry
+
+        self.edge_profile = tuple(LensGeometry.validate_edge_profile(self, points))
+        self.modified_at = datetime.now().isoformat()
+
+    def clear_edge_profile(self) -> None:
+        """Return the lens to its revolved cylindrical edge."""
+        self.edge_profile = None
+        self.modified_at = datetime.now().isoformat()
+
+    def sync_edge_profile(self) -> None:
+        """Snap custom profile endpoints to the current optical rims.
+
+        Changing a radius, thickness or diameter moves the rims. The profile
+        data between them belongs to the user; the endpoints belong to the
+        optical surfaces.
+        """
+        if not self.edge_profile:
+            return
+        from .geometry import LensGeometry
+
+        front_rim, back_rim = LensGeometry.rim_points(self)
+        points = list(self.edge_profile)
+        points[0] = front_rim
+        points[-1] = back_rim
+        self.edge_profile = tuple(points)
 
     def _coating_substrate_index(self, wavelength_nm: float) -> float:
         """Substrate index for coating math at a wavelength.
@@ -823,6 +869,9 @@ class Lens:
             "bevel_2": self.bevel_2,
             "coating_1": copy.deepcopy(self.coating_1),
             "coating_2": copy.deepcopy(self.coating_2),
+            "edge_profile": (
+                [list(point) for point in self.edge_profile] if self.edge_profile else None
+            ),
             "created_at": self.created_at,
             "modified_at": self.modified_at,
             # A copy: to_dict must not hand out a live reference to the
@@ -894,6 +943,7 @@ class Lens:
             bevel_2=data.get("bevel_2", 0.0),
             coating_1=data.get("coating_1", None),
             coating_2=data.get("coating_2", None),
+            edge_profile=data.get("edge_profile", None),
             # Only the nested dict counts: load_all flattens the blob into the
             # row dict as well, and those keys are already mapped above.
             metadata=metadata,
