@@ -277,7 +277,7 @@ class STLExporter:
                 back rim. The straight two-point profile is the old cylinder.
             num_segments: Number of points around the full revolution.
         """
-        triangles = []
+        triangles: List[Any] = []
         if len(profile) < 2 or num_segments < 3:
             return triangles
         angles = [2 * math.pi * i / num_segments for i in range(num_segments)]
