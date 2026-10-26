@@ -208,5 +208,57 @@ class TestBeamSynthesisPropagation(unittest.TestCase):
             self.assertEqual(arr.size, 0)
 
 
+@unittest.skipIf(not NUMPY_AVAILABLE, "numpy not installed")
+class TestBeamSynthesisAlignment(unittest.TestCase):
+    """The beamlet tracer must use each element's full node transform."""
+
+    @staticmethod
+    def _system(**alignment):
+        system = OpticalSystem(name="aligned BSP")
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=20.0,
+                refractive_index=1.5,
+            )
+        )
+        if alignment:
+            system.set_element_alignment(0, **alignment)
+        return system
+
+    def _field(self, **alignment):
+        from openlens.analysis.beam_synthesis import BeamSynthesisPropagator
+
+        prop = BeamSynthesisPropagator(self._system(**alignment))
+        return prop.propagate_to_image(
+            grid_size=8,
+            detector_size=8.0,
+            detector_pixels=33,
+            image_plane_x=60.0,
+        )
+
+    @staticmethod
+    def _centroid(DY, intensity):
+        total = float(intensity.sum())
+        if total <= 0.0:
+            return float("nan")
+        return float((DY * intensity).sum() / total)
+
+    def test_decenter_moves_the_focal_spot(self):
+        DY, _, aligned = self._field()
+        DY_moved, _, moved = self._field(decenter_y=1.0)
+
+        shift = self._centroid(DY_moved, moved) - self._centroid(DY, aligned)
+        self.assertGreater(abs(shift), 0.5)
+
+    def test_tilt_changes_the_focal_field(self):
+        _, _, aligned = self._field()
+        _, _, tilted = self._field(tilt_y=2.0)
+
+        self.assertFalse(np.allclose(tilted, aligned))
+
+
 if __name__ == "__main__":
     unittest.main()
