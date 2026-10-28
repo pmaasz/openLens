@@ -119,6 +119,13 @@ class Casing:
         )
 
 
+def _element_overlaps_casing(element: Any, casing: Casing) -> bool:
+    """Whether the element's axial span overlaps the casing shell."""
+    lens_start = float(element.position)
+    lens_end = lens_start + float(element.lens.thickness)
+    return not (lens_end < casing.start_x - EPSILON or lens_start > casing.end_x + EPSILON)
+
+
 def validate_casing(casing: Casing, system: "OpticalSystem") -> None:
     """Validate a casing against the elements it encloses.
 
@@ -129,11 +136,9 @@ def validate_casing(casing: Casing, system: "OpticalSystem") -> None:
     """
     elements = list(getattr(system, "elements", []) or [])
     for element in elements:
-        lens = element.lens
-        lens_start = float(element.position)
-        lens_end = lens_start + float(lens.thickness)
-        if lens_end < casing.start_x - EPSILON or lens_start > casing.end_x + EPSILON:
+        if not _element_overlaps_casing(element, casing):
             continue
+        lens = element.lens
         aperture = max(
             float(lens.diameter),
             float(lens.get_clear_aperture_1() or 0.0),
@@ -160,6 +165,7 @@ def casing_interference(casing: Optional[Casing], system: "OpticalSystem") -> Op
     if casing is None:
         return None
     elements = list(getattr(system, "elements", []) or [])
+    elements = [element for element in elements if _element_overlaps_casing(element, casing)]
     if not elements:
         return None
     largest = max(elements, key=lambda element: float(element.lens.diameter))
