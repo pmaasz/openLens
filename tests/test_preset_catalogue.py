@@ -28,6 +28,7 @@ import unittest
 
 from openlens.constants import LARGE_NUMBER
 from openlens.lens import Lens, _is_flat
+from openlens.material_database import get_material_database
 from openlens.preset_library import FLAT_RADIUS
 from openlens.validation import ValidationError
 from openlens.preset_library import (
@@ -191,6 +192,30 @@ class TestPhysicalValidity(unittest.TestCase):
 
     def test_lens_copy_of_unknown_preset_is_none(self):
         self.assertIsNone(PresetLibrary().get_lens_copy("no such preset"))
+
+
+class TestPresetMaterialIndex(unittest.TestCase):
+    """A preset's stored index must be its material's index at its wavelength.
+
+    The static constructor table only knows display names at the d-line, so
+    "FUSEDSILICA" fell back to BK7 and the 355 nm preset was built at the
+    wrong focal length (#773).
+    """
+
+    def test_stored_index_matches_catalogue_at_the_design_wavelength(self):
+        database = get_material_database()
+        for preset in PresetLibrary().list_presets():
+            lens = preset.lens
+            with self.subTest(preset=preset.name):
+                self.assertTrue(
+                    database.has_material(lens.material),
+                    f"{preset.name}: {lens.material!r} is not in the catalogue",
+                )
+                self.assertAlmostEqual(
+                    lens.refractive_index,
+                    database.get_refractive_index(lens.material, lens.wavelength),
+                    places=5,
+                )
 
 
 class TestFlatSurfaceConvention(unittest.TestCase):
