@@ -12,7 +12,10 @@ from openlens.analysis.environmental import EnvironmentalAnalyzer
 from openlens.casing import Casing, validate_casing
 from openlens.database import DatabaseManager
 from openlens.lens import Lens
-from openlens.mechanical_materials import MechanicalMaterialCatalog
+from openlens.mechanical_materials import (
+    MechanicalMaterialCatalog,
+    get_mechanical_material_catalog,
+)
 from openlens.optical_system import OpticalSystem
 from openlens.ray import Ray, Ray3D
 from openlens.tracer_2d import SystemRayTracer
@@ -173,6 +176,67 @@ class TestCasingRayTracing(unittest.TestCase):
         absorbed = sum(1 for ray in cased if ray.absorbed)
         self.assertGreater(absorbed, 0)
         self.assertEqual(sum(1 for ray in uncased if ray.absorbed), 0)
+
+
+class TestOpaqueMaterialFlag(unittest.TestCase):
+    """The custom material's "opaque inner wall" flag decides absorption."""
+
+    def setUp(self):
+        self.catalog = get_mechanical_material_catalog()
+        self.material = "Clear Resin (test)"
+        self.catalog.add_custom_material(self.material, 60e-6, 1.2, opaque=False)
+        self.system = OpticalSystem(name="Transparent casing")
+        self.system.add_lens(
+            Lens(
+                name="Concave",
+                radius_of_curvature_1=-50.0,
+                radius_of_curvature_2=50.0,
+                thickness=5.0,
+                diameter=20.0,
+                refractive_index=1.5168,
+            )
+        )
+        casing = _casing(bore=20.0)
+        casing.material = self.material
+        self.system.set_casing(casing)
+
+    def tearDown(self):
+        self.catalog.remove_custom_material(self.material)
+
+    def _trace_2d(self):
+        ray = Ray(x=-10.0, y=5.0, angle_rad=0.0)
+        SystemRayTracer(self.system).trace_ray(ray)
+        return ray
+
+    def _trace_3d(self):
+        ray = Ray3D(origin=vec3(-10.0, 5.0, 0.0), direction=vec3(1.0, 0.0, 0.0))
+        SystemRayTracer3D(self.system).trace_ray(ray)
+        return ray
+
+    def test_transparent_wall_does_not_absorb_after_the_lens_2d(self):
+        """The concave lens sends the ray through the wall beyond the bore."""
+        ray = self._trace_2d()
+        self.assertFalse(ray.absorbed)
+        self.assertTrue(ray.hit)
+        self.assertGreater(ray.path[-1][0], 0.0)
+
+    def test_opaque_wall_absorbs_after_the_lens_2d(self):
+        self.system.casing.material = "Aluminium"
+        self.assertTrue(self._trace_2d().absorbed)
+
+    def test_transparent_wall_does_not_absorb_after_the_lens_3d(self):
+        ray = self._trace_3d()
+        self.assertFalse(ray.absorbed)
+
+    def test_transparent_wall_does_not_absorb_before_the_lens_2d(self):
+        ray = Ray(x=-10.0, y=15.0, angle_rad=0.0)
+        SystemRayTracer(self.system).trace_ray(ray)
+        self.assertFalse(ray.absorbed)
+
+    def test_transparent_wall_does_not_absorb_before_the_lens_3d(self):
+        ray = Ray3D(origin=vec3(-10.0, 15.0, 0.0), direction=vec3(1.0, 0.0, 0.0))
+        SystemRayTracer3D(self.system).trace_ray(ray)
+        self.assertFalse(ray.absorbed)
 
 
 class TestCasingThermal(unittest.TestCase):

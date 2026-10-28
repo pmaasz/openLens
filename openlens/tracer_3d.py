@@ -843,7 +843,7 @@ class SystemRayTracer3D:
     def _absorb_before_first_element(self, ray: Ray3D) -> bool:
         """Absorb a ray that meets the wall on its straight path to the optics."""
         casing = getattr(self.system, "casing", None)
-        if casing is None:
+        if casing is None or not casing.is_opaque:
             return False
         direction = ray.direction
         if direction.x <= EPSILON:
@@ -861,7 +861,7 @@ class SystemRayTracer3D:
     def _absorb_in_casing_path(self, ray: Ray3D) -> bool:
         """Absorb a ray whose traced path crosses the opaque inner wall."""
         casing = getattr(self.system, "casing", None)
-        if casing is None:
+        if casing is None or not casing.is_opaque:
             return False
         for index, (first, second) in enumerate(zip(ray.path, ray.path[1:])):
             hit = wall_entry_3d(casing, first, second)

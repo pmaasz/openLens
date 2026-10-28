@@ -801,7 +801,7 @@ class SystemRayTracer:
         world frame; later segments are checked on the finished path.
         """
         casing = getattr(self.system, "casing", None)
-        if casing is None:
+        if casing is None or not casing.is_opaque:
             return False
         cos_a = math.cos(ray.angle)
         if cos_a <= EPSILON:
@@ -819,7 +819,7 @@ class SystemRayTracer:
     def _absorb_in_casing_path(self, ray: Ray) -> bool:
         """Absorb a ray whose traced path crosses the opaque inner wall."""
         casing = getattr(self.system, "casing", None)
-        if casing is None:
+        if casing is None or not casing.is_opaque:
             return False
         for index, (first, second) in enumerate(zip(ray.path, ray.path[1:])):
             hit = wall_entry_2d(casing, first, second)
