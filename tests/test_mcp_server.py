@@ -6,6 +6,7 @@ import unittest
 from unittest import mock
 
 from openlens.database import DatabaseManager
+from openlens.lens import Lens
 from openlens.mcp_server import MCP_AVAILABLE, OpenLensTools, create_server
 from openlens.validation import ValidationError
 
@@ -65,6 +66,19 @@ class TestOpenLensTools(unittest.TestCase):
         self.assertIsNone(created["radius_of_curvature_1"])
         self.assertIsNone(self.tools.get_lens(created["id"])["radius_of_curvature_1"])
         self.assertIsNotNone(self.tools.calculate_metrics(created["id"]))
+
+    def test_create_lens_resolves_the_material_index(self):
+        created = self._create_singlet(material="SF11")
+
+        self.assertEqual(created["material"], "SF11")
+        self.assertAlmostEqual(
+            created["refractive_index"], Lens.for_material("SF11").refractive_index
+        )
+
+    def test_create_lens_keeps_an_explicit_index(self):
+        created = self._create_singlet(material="SF11", refractive_index=1.6)
+
+        self.assertAlmostEqual(created["refractive_index"], 1.6)
 
     def test_list_and_load_presets(self):
         presets = self.tools.list_presets()

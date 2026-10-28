@@ -79,23 +79,26 @@ class OpenLensTools:
         radius_of_curvature_2: float,
         thickness: float,
         diameter: float,
-        refractive_index: float = 1.5168,
+        refractive_index: Optional[float] = None,
         material: str = "BK7",
     ) -> Dict[str, Any]:
         """Validate, create and persist a lens.
 
         A radius of ``0`` or ``inf`` is a flat surface. Invalid values raise
         :class:`~openlens.validation.ValidationError` before anything is
-        written.
+        written. When ``refractive_index`` is omitted it is resolved from
+        ``material`` in the glass catalogue.
         """
-        lens = Lens(
+        lens = Lens.for_material(
+            material,
             name=validate_lens_name(name),
             radius_of_curvature_1=validate_radius(radius_of_curvature_1, allow_flat=True),
             radius_of_curvature_2=validate_radius(radius_of_curvature_2, allow_flat=True),
             thickness=validate_thickness(thickness),
             diameter=validate_diameter(diameter),
-            refractive_index=validate_refractive_index(refractive_index),
-            material=material,
+            refractive_index=(
+                None if refractive_index is None else validate_refractive_index(refractive_index)
+            ),
         )
         self._database.save_lens(lens.to_dict())
 
@@ -201,7 +204,7 @@ def create_server(tools: Optional[OpenLensTools] = None) -> Any:
         radius_of_curvature_2: float,
         thickness: float,
         diameter: float,
-        refractive_index: float = 1.5168,
+        refractive_index: Optional[float] = None,
         material: str = "BK7",
     ) -> Dict[str, Any]:
         """Create and persist a lens; 0 or inf is a flat surface."""
