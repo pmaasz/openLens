@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.1](https://github.com/pmaasz/openLens/compare/openlens-v0.8.0...openlens-v0.8.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **geometry:** scale edge profile with diameter changes ([#774](https://github.com/pmaasz/openLens/issues/774)) ([cc72001](https://github.com/pmaasz/openLens/commit/cc7200189b8849985f6a6277f9b3fa57781c933f)), closes [#769](https://github.com/pmaasz/openLens/issues/769)
+* **gui:** ignore lenses outside the casing when warning about interference ([#781](https://github.com/pmaasz/openLens/issues/781)) ([7580795](https://github.com/pmaasz/openLens/commit/7580795fa6d562511ae02c8e14bf0b488d1084a3)), closes [#767](https://github.com/pmaasz/openLens/issues/767)
+* **mcp:** resolve create_lens' index from the requested material ([#779](https://github.com/pmaasz/openLens/issues/779)) ([19ff994](https://github.com/pmaasz/openLens/commit/19ff99439f2f64a23b275409fa6126c170f997f1)), closes [#771](https://github.com/pmaasz/openLens/issues/771)
+* **optimizer:** restore lens state after each robust perturbation ([#780](https://github.com/pmaasz/openLens/issues/780)) ([98539d6](https://github.com/pmaasz/openLens/commit/98539d6883c2de7eafddd1f7ed31229b03e4cc07)), closes [#772](https://github.com/pmaasz/openLens/issues/772)
+* **physics:** honour the casing material's opaque flag ([#777](https://github.com/pmaasz/openLens/issues/777)) ([71b9301](https://github.com/pmaasz/openLens/commit/71b9301a3ca88835e5c1b7d83459c588383065a6)), closes [#768](https://github.com/pmaasz/openLens/issues/768)
+* **physics:** resolve preset indices from the material catalogue ([#776](https://github.com/pmaasz/openLens/issues/776)) ([153565a](https://github.com/pmaasz/openLens/commit/153565aa73d89e61d5013369807861695c6a0be9)), closes [#773](https://github.com/pmaasz/openLens/issues/773)
+* **physics:** scale all lens lengths when conditioning thermally ([#778](https://github.com/pmaasz/openLens/issues/778)) ([5a5f3c5](https://github.com/pmaasz/openLens/commit/5a5f3c5921b6bc2dfe8bab70c2d64cfe1171f419)), closes [#770](https://github.com/pmaasz/openLens/issues/770)
+
 ## [0.8.0](https://github.com/pmaasz/openLens/compare/openlens-v0.7.0...openlens-v0.8.0) (2026-10-26)
 
 
