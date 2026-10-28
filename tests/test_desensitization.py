@@ -68,6 +68,81 @@ class TestRobustMeritFunction(unittest.TestCase):
         self.assertGreaterEqual(weighted.evaluate(_make_system()), nominal.evaluate(_make_system()))
 
 
+class TestRobustMeritDoesNotMutateTheSystem(unittest.TestCase):
+    """Every perturbation is undone, including the model-glass switch (#772)."""
+
+    def _custom_system(self):
+        system = OpticalSystem(name="custom")
+        system.add_lens(
+            Lens(
+                name="Fixed index",
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=20.0,
+                refractive_index=1.6,
+                material="Custom",
+            )
+        )
+        return system
+
+    def test_evaluate_leaves_a_fixed_index_lens_unchanged(self):
+        system = self._custom_system()
+        lens = system.elements[0].lens
+        merit = RobustMeritFunction(
+            system,
+            [OptimizationTarget("focal_length", 50.0)],
+            [ToleranceOperand(0, ToleranceType.REFRACTIVE_INDEX, -0.001, 0.001)],
+        )
+
+        merit.evaluate(system)
+
+        self.assertFalse(lens.model_glass_mode)
+        self.assertEqual(lens.refractive_index, 1.6)
+        self.assertEqual(lens.model_vd, 64.17)
+
+    def test_merit_is_independent_of_the_tolerance_order(self):
+        def build():
+            system = OpticalSystem(name="Chromatic")
+            system.add_lens(
+                Lens(
+                    name="L1",
+                    radius_of_curvature_1=60.0,
+                    radius_of_curvature_2=-60.0,
+                    thickness=5.0,
+                    diameter=20.0,
+                    refractive_index=1.6,
+                    material="Custom",
+                )
+            )
+            system.add_lens(
+                Lens(
+                    name="L2",
+                    radius_of_curvature_1=80.0,
+                    radius_of_curvature_2=-80.0,
+                    thickness=4.0,
+                    diameter=20.0,
+                    refractive_index=1.55,
+                    material="Custom",
+                ),
+                air_gap_before=5.0,
+            )
+            return system
+
+        tolerances = [
+            ToleranceOperand(0, ToleranceType.REFRACTIVE_INDEX, -0.01, 0.01),
+            ToleranceOperand(0, ToleranceType.THICKNESS, -0.05, 0.05),
+        ]
+        target = [OptimizationTarget("chromatic_aberration", 0.0)]
+
+        system = build()
+        forward = RobustMeritFunction(system, target, tolerances).evaluate(system)
+        system = build()
+        reverse = RobustMeritFunction(system, target, list(reversed(tolerances))).evaluate(system)
+
+        self.assertAlmostEqual(forward, reverse, places=12)
+
+
 class TestDesensitizationOptimizer(unittest.TestCase):
     """optimize_robust end-to-end smoke"""
 

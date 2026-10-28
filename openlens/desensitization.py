@@ -14,7 +14,13 @@ from .optimizer import (
     MeritFunction,
 )
 from .optical_system import OpticalSystem
-from .tolerancing import ToleranceOperand, ToleranceType, _apply_value
+from .tolerancing import (
+    ToleranceOperand,
+    ToleranceType,
+    _apply_value,
+    _capture_state,
+    _restore_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,21 +71,23 @@ class RobustMeritFunction(MeritFunction):
                 continue
 
             delta = tol.max_val  # Check at the limit
-            applied = _apply_value(
-                system, tol.param_type, tol.element_index, delta, surface=tol.surface
-            )
-            if not applied:
-                # The operand addresses nothing here (an air gap after the
-                # last element, a decenter on the first one).
-                skipped.append(f"Element {tol.element_index + 1} {tol.param_type.value}")
-                continue
+            state = _capture_state(system)
             try:
+                applied = _apply_value(
+                    system, tol.param_type, tol.element_index, delta, surface=tol.surface
+                )
+                if not applied:
+                    # The operand addresses nothing here (an air gap after the
+                    # last element, a decenter on the first one).
+                    skipped.append(f"Element {tol.element_index + 1} {tol.param_type.value}")
+                    continue
                 merit_plus = super().evaluate(system)
             finally:
-                # Undo the draw. Every operand the Monte Carlo randomises is
-                # additive, so the inverse draw restores the nominal design
-                # exactly.
-                _apply_value(system, tol.param_type, tol.element_index, -delta, surface=tol.surface)
+                # Restore the whole state, not just the perturbed field. An
+                # index or Abbe draw switches the lens to model-glass mode
+                # and the inverse draw does not switch it back, which made
+                # every later operand depend on the tolerance order.
+                _restore_state(system, state)
 
             # Difference
             diff = merit_plus - nominal_merit
