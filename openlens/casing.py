@@ -68,6 +68,15 @@ class Casing:
         """Axial length (mm)."""
         return self.end_x - self.start_x
 
+    @property
+    def is_opaque(self) -> bool:
+        """Whether the casing material absorbs a ray that reaches its wall.
+
+        Unknown materials keep the historical behaviour (opaque).
+        """
+        material = get_mechanical_material_catalog().get_material(self.material)
+        return True if material is None else bool(material.get("opaque", True))
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize the casing."""
         return {
