@@ -107,6 +107,9 @@ class TestCasingModel(unittest.TestCase):
         system.elements[1].position = 200.0
         system.elements[1].lens.diameter = 60.0
         validate_casing(_casing(bore=20.0, end=50.0), system)
+        system.set_casing(_casing(bore=20.0, end=50.0))
+
+        self.assertIsNone(system.casing_warning())
 
 
 class TestCasingPersistence(unittest.TestCase):
