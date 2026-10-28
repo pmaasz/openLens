@@ -17,6 +17,7 @@ The geometry's thermal state is now tracked separately.
 import unittest
 
 from openlens.analysis.environmental import EnvironmentalAnalyzer
+from openlens.geometry import LensGeometry
 from openlens.lens import Lens
 from openlens.optical_system import OpticalSystem
 
@@ -119,6 +120,77 @@ class TestThermalConditioningState(unittest.TestCase):
         lens = Lens(material="BK7", **SHAPE)
 
         self.assertIs(EnvironmentalAnalyzer.condition_at_temperature(lens, 20.0), lens)
+
+
+class TestThermalConditioningScalesAllLengths(unittest.TestCase):
+    """Every millimetre-valued field expands with the part (#770).
+
+    Scaling only the radii, thickness and diameter left the clear aperture,
+    bevels, parabolic sag, Fresnel pitch and edge profile behind, so a
+    parabolic surface flattened and a profiled rim distorted.
+    """
+
+    def setUp(self):
+        self.lens = Lens(
+            name="Parabolic",
+            radius_of_curvature_1=100.0,
+            radius_of_curvature_2=-100.0,
+            thickness=6.0,
+            diameter=20.0,
+            refractive_index=1.5168,
+            is_parabolic_1=True,
+            parabolic_sag_1=2.0,
+            clear_aperture_1=18.0,
+            clear_aperture_2=17.0,
+            bevel_1=0.5,
+            bevel_2=0.25,
+        )
+        self.lens.groove_pitch = 0.5
+        self.lens.num_grooves = 40
+        front, back = LensGeometry.rim_points(self.lens)
+        self.lens.set_edge_profile([front, ((front[0] + back[0]) / 2.0, front[1] + 1.0), back])
+        self.scaled_fields = (
+            "clear_aperture_1",
+            "clear_aperture_2",
+            "bevel_1",
+            "bevel_2",
+            "parabolic_sag_1",
+            "parabolic_sag_2",
+            "groove_pitch",
+        )
+
+    def test_all_length_fields_scale_with_the_diameter(self):
+        hot = EnvironmentalAnalyzer.condition_at_temperature(self.lens, 120.0)
+        scale = hot.diameter / self.lens.diameter
+
+        self.assertGreater(scale, 1.0)
+        for name in self.scaled_fields:
+            with self.subTest(field=name):
+                self.assertAlmostEqual(
+                    getattr(hot, name), getattr(self.lens, name) * scale, places=12
+                )
+
+        self.assertEqual(len(hot.edge_profile), len(self.lens.edge_profile))
+        for hot_point, point in zip(hot.edge_profile, self.lens.edge_profile):
+            with self.subTest(point=point):
+                self.assertAlmostEqual(hot_point[0], point[0] * scale, places=12)
+                self.assertAlmostEqual(hot_point[1], point[1] * scale, places=12)
+
+        # Counts and conic constants are dimensionless.
+        self.assertEqual(hot.num_grooves, self.lens.num_grooves)
+        self.assertEqual(hot.conic_constant_1, self.lens.conic_constant_1)
+
+    def test_conditioning_back_restores_every_length(self):
+        hot = EnvironmentalAnalyzer.condition_at_temperature(self.lens, 120.0)
+        back = EnvironmentalAnalyzer.condition_at_temperature(hot, 20.0)
+
+        for name in self.scaled_fields:
+            with self.subTest(field=name):
+                self.assertAlmostEqual(getattr(back, name), getattr(self.lens, name), places=12)
+        for back_point, point in zip(back.edge_profile, self.lens.edge_profile):
+            with self.subTest(point=point):
+                self.assertAlmostEqual(back_point[0], point[0], places=12)
+                self.assertAlmostEqual(back_point[1], point[1], places=12)
 
 
 if __name__ == "__main__":

@@ -118,6 +118,24 @@ class EnvironmentalAnalyzer:
 
             # Diameter (mechanical only, but good to update)
             lens.diameter *= scaling_factor
+
+            # Every other length-valued field scales with the part, or a
+            # parabolic surface flattens, the clear aperture stops tracking
+            # the diameter, and a profiled rim distorts.
+            for name in ("clear_aperture_1", "clear_aperture_2"):
+                value = getattr(lens, name)
+                if value is not None:
+                    setattr(lens, name, value * scaling_factor)
+            lens.bevel_1 *= scaling_factor
+            lens.bevel_2 *= scaling_factor
+            lens.parabolic_sag_1 *= scaling_factor
+            lens.parabolic_sag_2 *= scaling_factor
+            lens.groove_pitch *= scaling_factor
+            if lens.edge_profile:
+                lens.edge_profile = tuple(
+                    (float(x) * scaling_factor, float(radius) * scaling_factor)
+                    for x, radius in lens.edge_profile
+                )
             lens.thermal_state_temperature = temperature_c
 
             # --- Apply Refractive Index Changes ---
