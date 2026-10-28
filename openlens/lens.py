@@ -593,11 +593,14 @@ class Lens:
         self.modified_at = datetime.now().isoformat()
 
     def sync_edge_profile(self) -> None:
-        """Snap custom profile endpoints to the current optical rims.
+        """Scale custom profile radii with a diameter change and snap the ends.
 
         Changing a radius, thickness or diameter moves the rims. The profile
         data between them belongs to the user; the endpoints belong to the
-        optical surfaces.
+        optical surfaces. A diameter change is different: it moves the rim
+        radially, so the interior radii scale with it. Leaving them fixed put
+        a flange inside the new clear aperture, which ``set_edge_profile()``
+        then rejected on reload.
         """
         if not self.edge_profile:
             return
@@ -605,6 +608,11 @@ class Lens:
 
         front_rim, back_rim = LensGeometry.rim_points(self)
         points = list(self.edge_profile)
+        old_half_d = float(points[0][1])
+        new_half_d = float(front_rim[1])
+        if old_half_d > EPSILON and abs(new_half_d - old_half_d) > EPSILON:
+            scale = new_half_d / old_half_d
+            points = [(float(x), float(radius) * scale) for x, radius in points]
         points[0] = front_rim
         points[-1] = back_rim
         self.edge_profile = tuple(points)

@@ -94,6 +94,24 @@ class TestEdgeProfileModel(unittest.TestCase):
         self.assertEqual(lens.edge_profile[0], front)
         self.assertEqual(lens.edge_profile[1], lobe)
 
+    def test_diameter_growth_scales_the_profile_and_stays_loadable(self):
+        lens = _lens()
+        lens.set_edge_profile(_flanged(lens))
+        old_flange = lens.edge_profile[1][1]
+
+        lens.diameter *= 2.0
+        lens.sync_edge_profile()
+
+        # The flange follows the rim outward instead of being left inside
+        # the new clear aperture.
+        points = LensGeometry.edge_profile_points(lens)
+        self.assertAlmostEqual(points[1][1], old_flange * 2.0)
+        LensGeometry.validate_edge_profile(lens, points)
+
+        # The profile saved after the edit must still pass validation on load.
+        restored = Lens.from_dict(lens.to_dict())
+        self.assertEqual(restored.edge_profile, lens.edge_profile)
+
 
 class TestEdgeProfileValidation(unittest.TestCase):
     def setUp(self):
