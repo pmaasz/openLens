@@ -106,7 +106,7 @@ _CATALOG_PRESETS = (
         "radius2": 40.0,
         "thickness": 4.0,
         "diameter": 25.4,
-        "material": "UVFS",
+        "material": "FUSEDSILICA",
         "applications": ["Laser beam expansion", "Collimation"],
     },
     {
@@ -173,13 +173,13 @@ class PresetLibrary:
                     name=entry["name"],
                     category=entry["category"],
                     description=entry["description"],
-                    lens=Lens(
+                    lens=Lens.for_material(
+                        entry["material"],
                         name=entry["name"],
                         radius_of_curvature_1=_radius_or_flat(entry["radius1"]),
                         radius_of_curvature_2=_radius_or_flat(entry["radius2"]),
                         thickness=entry["thickness"],
                         diameter=entry["diameter"],
-                        material=entry["material"],
                     ),
                     manufacturer=entry.get("vendor"),
                     part_number=entry.get("part_number"),
@@ -306,14 +306,14 @@ class PresetLibrary:
                 name="Laser Focusing Lens 532nm",
                 category="Laser Optics",
                 description="Optimized for green laser (532nm)",
-                lens=Lens(
+                lens=Lens.for_material(
+                    "BK7",
+                    wavelength_nm=532.0,
                     name="532nm Focus",
                     radius_of_curvature_1=75.0,
                     radius_of_curvature_2=-75.0,
                     thickness=4.0,
                     diameter=12.7,
-                    material="BK7",
-                    wavelength=532.0,
                 ),
                 typical_use="Laser beam focusing, 532nm wavelength",
             )
@@ -345,14 +345,14 @@ class PresetLibrary:
                 name="UV Fused Silica Lens",
                 category="Specialty Optics",
                 description="UV-grade fused silica, 100mm focal length",
-                lens=Lens(
+                lens=Lens.for_material(
+                    "FUSEDSILICA",
+                    wavelength_nm=355.0,
                     name="UV Lens",
                     radius_of_curvature_1=91.5,
                     radius_of_curvature_2=-91.5,
                     thickness=5.0,
                     diameter=25.4,
-                    material="FUSEDSILICA",
-                    wavelength=355.0,
                 ),
                 typical_use="UV applications, spectroscopy",
             )
