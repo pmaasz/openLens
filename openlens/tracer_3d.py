@@ -691,12 +691,13 @@ class SystemRayTracer3D:
     ray dominated a pupil-grid trace: a 64x64 wavefront on a doublet spent
     more time walking the node tree than refracting.
 
-    The prepared scene is revalidated on every trace: the lens state (an edit
-    or the wavefront sensor's per-wavelength refractive-index swap) through
-    each tracer's ``matches`` check, and the structure and transforms through
-    a cheap scene signature. Moving an element or adding one is therefore
-    picked up without the caller knowing the cache exists; :meth:`invalidate`
-    remains available to force a rebuild.
+    The prepared lens state is revalidated on every trace, so an edit or the
+    wavefront sensor's per-wavelength refractive-index swap is picked up
+    without the caller knowing the cache exists. Layout edits are picked up
+    through the system's geometry revision, which the model's edits and node
+    transform assignments bump; duck-typed systems without a revision fall
+    back to a cheap scene signature. Neither re-walks the node tree per ray
+    for a model system.
     """
 
     def __init__(self, optical_system: "OpticalSystem") -> None:
@@ -706,9 +707,9 @@ class SystemRayTracer3D:
     def invalidate(self) -> None:
         """Drop the prepared scene, forcing a rebuild on the next trace.
 
-        Position, structure and lens changes are detected automatically on the
-        next trace, so this is only needed to release the cached scene (for
-        example when the caller knows the model is about to be discarded).
+        Layout edits are detected automatically on the next trace through the
+        system's geometry revision (or, for duck-typed systems, the scene
+        signature), so this is only needed to force an immediate rebuild.
         """
         self._batch = None
 
@@ -768,8 +769,20 @@ class SystemRayTracer3D:
         return tuple(parts)
 
     def _scene_is_current(self, batch: Dict[str, Any]) -> bool:
-        """Whether the cached scene still matches the system and its lenses."""
-        if batch.get("signature") != self._scene_signature():
+        """Whether the prepared scene still describes the system.
+
+        The lens state of every cached tracer is compared attribute by
+        attribute (the wavefront sensor swaps the index per wavelength). The
+        geometry is compared through the system's revision counter - bumped by
+        every model edit and by assigning a node transform - which is constant
+        time. A duck-typed system without a revision falls back to the scene
+        signature; neither path rebuilds the scene unless something changed.
+        """
+        revision = getattr(self.system, "geometry_revision", None)
+        if revision is not None:
+            if revision != batch["revision"]:
+                return False
+        elif batch.get("signature") != self._scene_signature():
             return False
         return all(tracer.matches(lens) for lens, tracer in batch["entries"])
 
@@ -797,11 +810,13 @@ class SystemRayTracer3D:
         if stop_gap is not None and 0 <= stop_gap < len(flat_gaps):
             stop_x = flat_gaps[stop_gap].position
 
+        revision = getattr(self.system, "geometry_revision", None)
         self._batch = {
-            "signature": self._scene_signature(),
+            "signature": None if revision is not None else self._scene_signature(),
             "entries": [
                 (lens, LensRayTracer3D(lens, transform=transform)) for lens, transform in elements
             ],
+            "revision": revision,
             "stop_gap": stop_gap,
             "stop_semi": stop_semi,
             "stop_x": stop_x,
