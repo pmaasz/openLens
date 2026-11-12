@@ -4,7 +4,6 @@ Tab for lens and system optimization
 """
 
 import logging
-import copy
 from enum import Enum
 from typing import Any, Dict, List
 
@@ -122,15 +121,13 @@ class OptimizationWorker(QThread):
         it with a value that never converged.
         """
         try:
-            from ...optical_system import OpticalSystem
+            from ...optical_system import as_system
             from ...global_optimizer import GlobalOptimizer
 
-            # Setup system
-            if isinstance(self.active_target, OpticalSystem):
-                system = copy.deepcopy(self.active_target)
-            else:
-                system = OpticalSystem(name="Optimization")
-                system.add_lens(copy.deepcopy(self.active_target))
+            # Setup system. as_system keeps a lone lens's detector plane; a
+            # hand-built wrapper dropped it, so the RMS merit silently
+            # optimized at the paraxial focus instead of the chosen plane.
+            system = as_system(self.active_target, copy_system=True, name="Optimization")
 
             optimizer = GlobalOptimizer(
                 system, self.variables, self.targets, constraints=self.constraints
@@ -204,6 +201,9 @@ class OptimizationTab(BaseTab):
 
         self._opt_target_spot = QCheckBox("Minimize RMS Spot Size")
         self._opt_target_spot.setChecked(True)
+        self._opt_target_spot.setToolTip(
+            "Measured at the focal plane set in the Simulation tab; " "auto uses the paraxial focus"
+        )
         targets_layout.addRow("Spot Size:", self._opt_target_spot)
 
         self._opt_target_spherical = QCheckBox("Minimize Spherical Aberration")

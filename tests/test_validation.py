@@ -285,7 +285,7 @@ class TestLensValidation(unittest.TestCase):
         """Test validation rejects invalid parameters"""
         with self.assertRaises(ValidationError):
             validate_lens_parameters(
-                radius1=0.0,  # Invalid
+                radius1=0.5,  # Invalid: below the minimum radius
                 radius2=-100.0,
                 thickness=5.0,
                 diameter=50.0,

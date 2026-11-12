@@ -101,6 +101,47 @@ class ChromaticAnalyzer:
     def __init__(self, material_db: Optional[MaterialDatabase] = None):
         self.material_db = material_db or MaterialDatabase()
 
+    def _build_lens(
+        self,
+        R1: float,
+        R2: float,
+        d: float,
+        diameter: float,
+        material_name: str,
+        wavelength: float,
+        temperature_c: float,
+    ):
+        """Build one wavelength's lens with the full environmental model.
+
+        Applying dn/dT alone is not the thermal model the rest of the
+        application uses: at high temperature the CTE expansion dominates the
+        index change, so the two predicted defocus with opposite signs. Route
+        the geometry through ``EnvironmentalAnalyzer`` so there is a single
+        expansion implementation.
+        """
+        from .lens import Lens
+        from .analysis.environmental import EnvironmentalAnalyzer
+
+        n = self.material_db.get_refractive_index(material_name, wavelength, temperature_c)
+        lens = Lens(
+            name=f"chromatic@{wavelength:g}nm",
+            radius_of_curvature_1=R1,
+            radius_of_curvature_2=R2,
+            thickness=d,
+            diameter=diameter,
+            refractive_index=n,
+            material=material_name,
+            wavelength=wavelength,
+            temperature=temperature_c,
+        )
+        conditioned = EnvironmentalAnalyzer.condition_at_temperature(lens, temperature_c)
+        # The analyzer's catalog value is authoritative for this wavelength;
+        # conditioning refreshes the index from the lens's model glass, which
+        # need not carry the same custom material data.
+        conditioned.refractive_index = n
+        conditioned.wavelength = wavelength
+        return conditioned
+
     def analyze_lens(
         self,
         lens_params: dict,
@@ -132,7 +173,6 @@ class ChromaticAnalyzer:
         Raises:
             ValueError: If the geometry is afocal (no finite focal length).
         """
-        from .lens import Lens
         from .optical_system import OpticalSystem
         from .analysis.spot_diagram import SpotDiagram
 
@@ -157,20 +197,7 @@ class ChromaticAnalyzer:
         image_planes = []
 
         for wavelength in wavelengths:
-            # Wavelength-dependent refractive index (Sellmeier + TIE-19).
-            n = self.material_db.get_refractive_index(material_name, wavelength, temperature_c)
-
-            lens = Lens(
-                name=f"chromatic@{wavelength:g}nm",
-                radius_of_curvature_1=R1,
-                radius_of_curvature_2=R2,
-                thickness=d,
-                diameter=diameter,
-                refractive_index=n,
-                material=material_name,
-                wavelength=wavelength,
-                temperature=temperature_c,
-            )
+            lens = self._build_lens(R1, R2, d, diameter, material_name, wavelength, temperature_c)
             focal_length = lens.calculate_focal_length()
             if focal_length is None:
                 raise ValueError(
@@ -196,25 +223,28 @@ class ChromaticAnalyzer:
 
             focal_lengths.append(focal_length)
 
-        # Calculate chromatic aberration metrics
+        # Calculate chromatic aberration metrics. ``wavelengths`` is an
+        # arbitrary list, so pick the extremes by value: using the first and
+        # last entries made axial colour and lateral colour depend on the
+        # caller's ordering.
         focal_shift = max(focal_lengths) - min(focal_lengths)
-        axial_chromatic = abs(focal_lengths[0] - focal_lengths[-1])
+        axial_chromatic = focal_shift
 
         # Lateral color: chief-ray image-height difference between the
-        # extreme wavelengths at the reference field, evaluated at the
-        # middle wavelength's image plane.
+        # shortest and longest wavelengths at the reference field, evaluated
+        # at the middle wavelength's image plane.
+        order = sorted(range(len(wavelengths)), key=lambda i: wavelengths[i])
+        middle = order[len(order) // 2]
         lateral_color = self._lateral_color(
             R1,
             R2,
             d,
             diameter,
             material_name,
-            wavelengths[0],
-            wavelengths[-1],
-            wavelengths[len(wavelengths) // 2],
-            image_planes[len(wavelengths) // 2],
+            wavelengths[order[0]],
+            wavelengths[order[-1]],
+            image_planes[middle],
             temperature_c,
-            num_rings,
         )
 
         return ChromaticResult(
@@ -236,58 +266,69 @@ class ChromaticAnalyzer:
         material_name: str,
         wl_first: float,
         wl_last: float,
-        wl_ref: float,
         image_plane_x_mm: float,
         temperature_c: float,
-        num_rings: int,
     ) -> float:
         """Chief-ray image-height difference between two wavelengths.
 
-        Traces hexapolar bundles at REFERENCE_FIELD_DEG through lenses
-        whose indices are set at each extreme wavelength, and returns the
-        centroid separation at the reference image plane. Returns 0.0 for
-        a single wavelength and NaN if either trace fails.
+        Traces the single ray through the pupil centre at
+        REFERENCE_FIELD_DEG through lenses whose indices are set at each
+        extreme wavelength, and returns the distance between the two heights
+        at the reference image plane. The chief ray carries no coma or
+        spherical aberration, so the result does not depend on the aperture.
+        Returns 0.0 for a single wavelength and NaN if either trace fails.
         """
-        from .lens import Lens
         from .optical_system import OpticalSystem
         from .analysis.spot_diagram import SpotDiagram
 
         if wl_first == wl_last or not math.isfinite(image_plane_x_mm):
             return 0.0
 
-        centroids = []
+        heights = []
         for wavelength in (wl_first, wl_last):
-            n = self.material_db.get_refractive_index(material_name, wavelength, temperature_c)
-            lens = Lens(
-                name=f"lateral@{wavelength:g}nm",
-                radius_of_curvature_1=R1,
-                radius_of_curvature_2=R2,
-                thickness=d,
-                diameter=diameter,
-                refractive_index=n,
-                material=material_name,
-                wavelength=wavelength,
-                temperature=temperature_c,
-            )
+            lens = self._build_lens(R1, R2, d, diameter, material_name, wavelength, temperature_c)
             system = OpticalSystem(name=f"lateral@{wavelength:g}nm")
             system.add_lens(lens)
-            spot = SpotDiagram(system).trace_spot(
+            height = SpotDiagram(system).trace_chief_ray(
                 field_angle_y_deg=REFERENCE_FIELD_DEG,
                 wavelength_nm=wavelength,
                 image_plane_x_mm=image_plane_x_mm,
-                num_rings=num_rings,
             )
-            if spot.get("error") or not spot.get("valid_rays"):
+            if height is None:
                 logger.warning(
-                    "Lateral-color trace failed at %.1fnm; reporting NaN",
+                    "Lateral-color chief-ray trace failed at %.1fnm; reporting NaN",
                     wavelength,
                 )
                 return float("nan")
-            centroids.append(spot["centroid"])
+            heights.append(height)
 
-        dy = centroids[0][0] - centroids[1][0]
-        dz = centroids[0][1] - centroids[1][1]
+        dy = heights[0][0] - heights[1][0]
+        dz = heights[0][1] - heights[1][1]
         return math.sqrt(dy * dy + dz * dz)
+
+    def _f_to_c_dispersion(self, material_name: str, quantity: str) -> float:
+        """Return n_F - n_C, rejecting a material with no dispersion.
+
+        Args:
+            material_name: Catalog material name.
+            quantity: Human name of the value being divided by the
+                dispersion, used in the error message.
+
+        Raises:
+            ValueError: If the material has no dispersion over F..C, which
+                makes the requested quantity undefined (and infinite).
+        """
+        n_F = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["F"])
+        n_C = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["C"])
+
+        dispersion = n_F - n_C
+        if abs(dispersion) < 1e-12:
+            raise ValueError(
+                f"Material {material_name!r} has no dispersion between the F "
+                f"and C lines (n_F - n_C = {dispersion}); its {quantity} is "
+                "undefined."
+            )
+        return dispersion
 
     def calculate_abbe_number(self, material_name: str) -> float:
         """
@@ -299,17 +340,7 @@ class ChromaticAnalyzer:
                 makes V_d undefined (and infinite).
         """
         n_d = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["d"])
-        n_F = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["F"])
-        n_C = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["C"])
-
-        dispersion = n_F - n_C
-        if abs(dispersion) < 1e-12:
-            raise ValueError(
-                f"Material {material_name!r} has no dispersion between the F "
-                f"and C lines (n_F - n_C = {dispersion}); its Abbe number is "
-                "undefined."
-            )
-
+        dispersion = self._f_to_c_dispersion(material_name, "Abbe number")
         return (n_d - 1.0) / dispersion
 
     def calculate_partial_dispersion(
@@ -317,13 +348,15 @@ class ChromaticAnalyzer:
     ) -> float:
         """
         Calculate partial dispersion P_x,y = (n_x - n_y) / (n_F - n_C)
+
+        Raises:
+            ValueError: If the material has no dispersion over F..C, which
+                makes the partial dispersion undefined.
         """
         n_x = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS[line1])
         n_y = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS[line2])
-        n_F = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["F"])
-        n_C = self.material_db.get_refractive_index(material_name, self.WAVELENGTHS["C"])
-
-        return (n_x - n_y) / (n_F - n_C)
+        dispersion = self._f_to_c_dispersion(material_name, "partial dispersion")
+        return (n_x - n_y) / dispersion
 
     def design_achromatic_doublet(
         self,
@@ -410,6 +443,11 @@ class ChromaticAnalyzer:
             Dictionary with 'wavelengths' and 'focal_lengths' lists
             (focal length is None at any wavelength with afocal power)
         """
+        if num_points < 2:
+            raise ValueError(
+                "num_points must be at least 2 to sweep a wavelength range, " f"got {num_points}."
+            )
+
         wavelengths = []
         focal_lengths = []
 

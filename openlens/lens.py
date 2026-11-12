@@ -4,7 +4,7 @@ import math
 import sqlite3
 import uuid
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -13,12 +13,14 @@ logger = logging.getLogger(__name__)
 #: raise - they return defaults).
 _MATERIAL_DB_ERRORS = (ArithmeticError, ValueError, KeyError, sqlite3.Error)
 
+from .air_index import REFERENCE_PRESSURE_ATM, calculate_air_index
 from .constants import (
     DEFAULT_RADIUS_1,
     DEFAULT_RADIUS_2,
     DEFAULT_THICKNESS,
     DEFAULT_DIAMETER,
     DEFAULT_MOUNT_TYPE,
+    DEFAULT_TEMPERATURE,
     REFRACTIVE_INDEX_BK7,
     EPSILON,
     LARGE_NUMBER,
@@ -51,6 +53,29 @@ def _is_flat(r):
 
 #: The lens-dict keys that hold a radius of curvature.
 _RADIUS_KEYS = ("radius_of_curvature_1", "radius_of_curvature_2")
+
+
+def validate_image_plane_x(value: Optional[float]) -> Optional[float]:
+    """Validate a detector-plane X position.
+
+    Args:
+        value: Absolute X position in mm, or None for the paraxial focus.
+
+    Returns:
+        The position as a float, or None.
+
+    Raises:
+        ValueError: If *value* is not None and is not a finite number.
+    """
+    if value is None:
+        return None
+    try:
+        plane = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"image plane must be a finite X position in mm, got {value!r}") from None
+    if not math.isfinite(plane):
+        raise ValueError(f"image plane must be a finite X position in mm, got {value!r}")
+    return plane
 
 
 def decode_radius(value: Any) -> Any:
@@ -220,6 +245,9 @@ _LENS_SERIALIZED_KEYS = frozenset(
         "wavelength",
         "wavelength_nm",
         "temperature",
+        "pressure_atm",
+        "thermal_state_temperature",
+        "image_plane_x_mm",
         "is_fresnel",
         "groove_pitch",
         "num_grooves",
@@ -238,6 +266,7 @@ _LENS_SERIALIZED_KEYS = frozenset(
         "bevel_2",
         "coating_1",
         "coating_2",
+        "edge_profile",
         "created_at",
         "modified_at",
         "metadata",
@@ -265,6 +294,8 @@ class Lens:
         wavelength_nm: float = WAVELENGTH_D_LINE,
         wavelength: Optional[float] = None,
         temperature: float = 20.0,
+        pressure_atm: float = REFERENCE_PRESSURE_ATM,
+        thermal_state_temperature: float = DEFAULT_TEMPERATURE,
         is_fresnel: bool = False,
         groove_pitch: float = DEFAULT_THICKNESS,
         num_grooves: Optional[int] = None,
@@ -284,7 +315,9 @@ class Lens:
         bevel_2: float = 0.0,
         coating_1: Optional[List[Dict[str, Any]]] = None,
         coating_2: Optional[List[Dict[str, Any]]] = None,
+        edge_profile: Optional[List[Tuple[float, float]]] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        image_plane_x_mm: Optional[float] = None,
     ) -> None:
 
         self.id = uuid.uuid4().hex
@@ -295,6 +328,10 @@ class Lens:
         # reloaded lens has nowhere to keep it. Copied on the way in so a
         # caller mutating the dict it passed cannot reach back into the model.
         self.metadata: Dict[str, Any] = dict(metadata) if metadata else {}
+        # Detector/sensor plane on the optical axis (mm). None means "use the
+        # paraxial focus"; an explicit value pins spot-based analyses and the
+        # optimizer's RMS spot merit to that plane.
+        self.image_plane_x_mm = validate_image_plane_x(image_plane_x_mm)
         self.radius_of_curvature_1 = radius_of_curvature_1
         self.radius_of_curvature_2 = radius_of_curvature_2
         self.thickness = thickness
@@ -305,6 +342,17 @@ class Lens:
             wavelength if wavelength is not None else wavelength_nm
         )  # Design wavelength in nm
         self.temperature = temperature  # Operating temperature in °C
+        # Ambient pressure the lens is conditioned to. Catalog indices are
+        # relative to air at 1 atm; update_refractive_index() rescales them to
+        # this pressure so a refresh at an analysis wavelength cannot discard
+        # the correction. 1 atm is the unconditioned state.
+        self.pressure_atm = pressure_atm
+        # Temperature the *geometry* is valid at, not the temperature the
+        # index was resolved at. The two differ: Lens.for_material(...,
+        # temperature=120) has a 120 C index on 20 C geometry, and a custom
+        # glass has no index model at all. Thermal conditioning expands
+        # relative to this state, which makes it idempotent and reversible.
+        self.thermal_state_temperature = thermal_state_temperature
 
         # Model Glass Properties
         self.model_glass_mode = model_glass_mode
@@ -383,6 +431,12 @@ class Lens:
         # None/empty = uncoated (bare Fresnel).
         self.coating_1 = _normalize_coating(coating_1)
         self.coating_2 = _normalize_coating(coating_2)
+
+        # Optional meridional rim chain from the front rim to the back rim.
+        # None keeps the straight cylindrical edge every existing lens has.
+        self.edge_profile: Optional[Tuple[Tuple[float, float], ...]] = None
+        if edge_profile is not None:
+            self.set_edge_profile(edge_profile)
 
         self.created_at = datetime.now().isoformat()
         self.modified_at = datetime.now().isoformat()
@@ -517,6 +571,52 @@ class Lens:
             self.coating_2 = normalized
         self.modified_at = datetime.now().isoformat()
 
+    def set_edge_profile(self, points: List[Tuple[float, float]]) -> None:
+        """Attach a custom meridional rim profile to the lens.
+
+        Args:
+            points: ``(x, radius)`` pairs ordered from the front rim to the
+                back rim, in the lens vertex frame (mm).
+
+        Raises:
+            ValidationError: If the chain is not a simple polyline joining
+                the two optical rims outside the clear aperture.
+        """
+        from .geometry import LensGeometry
+
+        self.edge_profile = tuple(LensGeometry.validate_edge_profile(self, points))
+        self.modified_at = datetime.now().isoformat()
+
+    def clear_edge_profile(self) -> None:
+        """Return the lens to its revolved cylindrical edge."""
+        self.edge_profile = None
+        self.modified_at = datetime.now().isoformat()
+
+    def sync_edge_profile(self) -> None:
+        """Scale custom profile radii with a diameter change and snap the ends.
+
+        Changing a radius, thickness or diameter moves the rims. The profile
+        data between them belongs to the user; the endpoints belong to the
+        optical surfaces. A diameter change is different: it moves the rim
+        radially, so the interior radii scale with it. Leaving them fixed put
+        a flange inside the new clear aperture, which ``set_edge_profile()``
+        then rejected on reload.
+        """
+        if not self.edge_profile:
+            return
+        from .geometry import LensGeometry
+
+        front_rim, back_rim = LensGeometry.rim_points(self)
+        points = list(self.edge_profile)
+        old_half_d = float(points[0][1])
+        new_half_d = float(front_rim[1])
+        if old_half_d > EPSILON and abs(new_half_d - old_half_d) > EPSILON:
+            scale = new_half_d / old_half_d
+            points = [(float(x), float(radius) * scale) for x, radius in points]
+        points[0] = front_rim
+        points[-1] = back_rim
+        self.edge_profile = tuple(points)
+
     def _coating_substrate_index(self, wavelength_nm: float) -> float:
         """Substrate index for coating math at a wavelength.
 
@@ -569,17 +669,49 @@ class Lens:
 
         return coated_reflectance([], self._coating_substrate_index(wavelength_nm), wavelength_nm)
 
+    def _pressure_corrected_index(
+        self, relative_index: float, wavelength_nm: Optional[float] = None
+    ) -> float:
+        """Scale a 1-atm catalog index to the lens's ambient pressure.
+
+        Catalog and model indices are relative to air at 1 atm. A conditioned
+        lens keeps its absolute glass index while the surrounding air density
+        changes, so the relative index the tracer must use is
+        ``n_glass / n_air(T, P)``. The catalog value is
+        ``n_glass / n_air(T, 1 atm)``, hence this ratio.
+
+        Args:
+            relative_index: Index resolved at the reference pressure.
+            wavelength_nm: Wavelength the index belongs to; defaults to the
+                lens's design wavelength.
+        """
+        pressure = getattr(self, "pressure_atm", REFERENCE_PRESSURE_ATM)
+        if not math.isfinite(pressure) or abs(pressure - REFERENCE_PRESSURE_ATM) < EPSILON:
+            return relative_index
+        wavelength = self.wavelength if wavelength_nm is None else wavelength_nm
+        n_air_ref = calculate_air_index(wavelength, self.temperature, REFERENCE_PRESSURE_ATM)
+        n_air_now = calculate_air_index(wavelength, self.temperature, pressure)
+        if not math.isfinite(n_air_ref) or not math.isfinite(n_air_now) or n_air_now == 0:
+            return relative_index
+        return relative_index * (n_air_ref / n_air_now)
+
     def update_refractive_index(
         self, wavelength_nm: Optional[float] = None, temperature: Optional[float] = None
     ) -> None:
         """
         Update refractive index for new wavelength/temperature.
+
+        The value is resolved at the reference pressure and then scaled to
+        ``pressure_atm``. Analyses call this at their own wavelength; without
+        the rescale here they would overwrite a conditioned index and a
+        2 atm system would trace like 1 atm.
         """
         if wavelength_nm is not None:
             self.wavelength = wavelength_nm
         if temperature is not None:
             self.temperature = temperature
 
+        recomputed = False
         if self.model_glass_mode and MATERIAL_DB_AVAILABLE:
             try:
                 db = get_material_database()
@@ -593,6 +725,7 @@ class Lens:
                         self.model_nd,
                     )
                     self.refractive_index = self.model_nd
+                recomputed = True
             except _MATERIAL_DB_ERRORS as e:
                 logger.warning(
                     "Model-glass index update failed (wl=%snm): %s - " "keeping model index",
@@ -619,6 +752,7 @@ class Lens:
                 self.refractive_index = db.get_refractive_index(
                     self.material, self.wavelength, self.temperature
                 )
+                recomputed = True
             except _MATERIAL_DB_ERRORS as e:
                 logger.warning(
                     "Material index update failed for %s @ %snm/%sC: %s - "
@@ -629,6 +763,11 @@ class Lens:
                     e,
                     self.refractive_index,
                 )
+        # Only a freshly resolved reference-pressure value needs the air
+        # correction. The kept index on a failed lookup is already in the
+        # same state as the value it replaces.
+        if recomputed:
+            self.refractive_index = self._pressure_corrected_index(self.refractive_index)
 
     def refractive_index_at(self, wavelength_nm: float) -> float:
         """Return refractive index at *wavelength_nm* without mutating self."""
@@ -636,10 +775,13 @@ class Lens:
             try:
                 db = get_material_database()
                 if hasattr(db, "calculate_model_index"):
-                    return db.calculate_model_index(self.model_nd, self.model_vd, wavelength_nm)
+                    return self._pressure_corrected_index(
+                        db.calculate_model_index(self.model_nd, self.model_vd, wavelength_nm),
+                        wavelength_nm,
+                    )
             except _MATERIAL_DB_ERRORS as e:
                 logger.debug("Model index lookup failed: %s", e)
-            return self.model_nd
+            return self._pressure_corrected_index(self.model_nd, wavelength_nm)
         if MATERIAL_DB_AVAILABLE:
             try:
                 db = get_material_database()
@@ -649,7 +791,10 @@ class Lens:
                 # came back as 1.5168. The tracer uses the stored index, so the
                 # wavelength-dependent numbers and the geometry disagreed.
                 if db.has_material(self.material):
-                    return db.get_refractive_index(self.material, wavelength_nm, self.temperature)
+                    return self._pressure_corrected_index(
+                        db.get_refractive_index(self.material, wavelength_nm, self.temperature),
+                        wavelength_nm,
+                    )
             except _MATERIAL_DB_ERRORS as e:
                 logger.debug("Material index lookup failed: %s", e)
         return self.refractive_index
@@ -711,6 +856,9 @@ class Lens:
             "mount_type": self.mount_type,
             "wavelength": self.wavelength,
             "temperature": self.temperature,
+            "pressure_atm": self.pressure_atm,
+            "thermal_state_temperature": self.thermal_state_temperature,
+            "image_plane_x_mm": self.image_plane_x_mm,
             "is_fresnel": self.is_fresnel,
             "groove_pitch": self.groove_pitch,
             "num_grooves": self.num_grooves,
@@ -729,12 +877,21 @@ class Lens:
             "bevel_2": self.bevel_2,
             "coating_1": copy.deepcopy(self.coating_1),
             "coating_2": copy.deepcopy(self.coating_2),
+            "edge_profile": (
+                [list(point) for point in self.edge_profile] if self.edge_profile else None
+            ),
             "created_at": self.created_at,
             "modified_at": self.modified_at,
             # A copy: to_dict must not hand out a live reference to the
             # model's own state, or editing the exported dict edits the lens.
             "metadata": dict(self.metadata),
         }
+
+    @staticmethod
+    def _clamp_groove_pitch(value):
+        from .validation import validate_groove_pitch
+
+        return validate_groove_pitch(value)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Lens":
@@ -772,8 +929,11 @@ class Lens:
             mount_type=data.get("mount_type", DEFAULT_MOUNT_TYPE),
             wavelength_nm=data.get("wavelength_nm", data.get("wavelength", WAVELENGTH_D_LINE)),
             temperature=data.get("temperature", 20.0),
+            pressure_atm=data.get("pressure_atm", REFERENCE_PRESSURE_ATM),
+            thermal_state_temperature=data.get("thermal_state_temperature", DEFAULT_TEMPERATURE),
+            image_plane_x_mm=data.get("image_plane_x_mm"),
             is_fresnel=data.get("is_fresnel", False),
-            groove_pitch=data.get("groove_pitch", DEFAULT_THICKNESS),
+            groove_pitch=cls._clamp_groove_pitch(data.get("groove_pitch", DEFAULT_THICKNESS)),
             num_grooves=data.get("num_grooves", None),
             model_glass_mode=data.get("model_glass_mode", False),
             model_nd=data.get("model_nd", 1.5168),
@@ -791,6 +951,7 @@ class Lens:
             bevel_2=data.get("bevel_2", 0.0),
             coating_1=data.get("coating_1", None),
             coating_2=data.get("coating_2", None),
+            edge_profile=data.get("edge_profile", None),
             # Only the nested dict counts: load_all flattens the blob into the
             # row dict as well, and those keys are already mapped above.
             metadata=metadata,

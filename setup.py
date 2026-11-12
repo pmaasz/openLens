@@ -73,6 +73,8 @@ setup(
     # Optional dependencies for visualization / development
     extras_require={
         "visualization": ["matplotlib>=3.3.0", "numpy>=1.19.0"],
+        # Optional: expose the lens database and calculators over MCP.
+        "mcp": ["mcp>=1.0"],
         "dev": [
             "pytest>=7.0.0",
             "pytest-cov>=3.0.0",

@@ -13,12 +13,14 @@ import uuid
 import logging
 from datetime import datetime
 
-from .lens import Lens, json_safe_radii
+from .lens import Lens, json_safe_radii, validate_image_plane_x
+from .casing import Casing, casing_interference, validate_casing
 from .constants import (
     WAVELENGTH_D_LINE,
     WAVELENGTH_C_LINE,
     WAVELENGTH_F_LINE,
     DEFAULT_MATERIAL_INDICES,
+    DEFAULT_TEMPERATURE,
 )
 from .optical_node import (
     OpticalElement,
@@ -115,6 +117,9 @@ _SYSTEM_SERIALIZED_KEYS = frozenset(
         # Serialized by us, so it must not also be treated as a user setting
         # that happens to have no home on the model.
         "node_tree",
+        "thermal_state_temperature",
+        "image_plane_x_mm",
+        "casing",
     }
 )
 
@@ -122,13 +127,19 @@ _SYSTEM_SERIALIZED_KEYS = frozenset(
 class OpticalSystem:
     """Multi-element optical system"""
 
-    def __init__(self, name: str = "Optical System", metadata: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        name: str = "Optical System",
+        metadata: Optional[Dict[str, Any]] = None,
+        casing: Optional[Casing] = None,
+    ):
         self.id = uuid.uuid4().hex
         self.created_at = datetime.now().isoformat()
         self.modified_at = datetime.now().isoformat()
         self.name = name
         self.elements: List[LensElement] = []
         self.air_gaps: List[AirGap] = []
+        self.casing: Optional[Casing] = casing
         # Free-form settings with no dedicated column (a system's tolerance
         # set, for instance). A real attribute so it can be serialized; see
         # the matching note in Lens.
@@ -141,6 +152,14 @@ class OpticalSystem:
         # a prepared scene reads this number on every trace, which is cheap,
         # while re-walking the node tree per ray is what the cache avoids.
         self._geometry_revision = 0
+        # Temperature the housing/air-gap geometry is valid at. Like the
+        # per-lens field, this makes thermal conditioning reversible: the
+        # gaps expand relative to the reference length, not by compounding a
+        # percentage on the already-expanded value.
+        self.thermal_state_temperature = DEFAULT_TEMPERATURE
+        # Detector/sensor plane on the optical axis (mm). None means "use the
+        # paraxial focus"; see the matching note on Lens.
+        self.image_plane_x_mm: Optional[float] = None
         self.root = OpticalAssembly(name="Root")
         self.root._geometry_owner = self
         self._update_positions()
@@ -181,13 +200,35 @@ class OpticalSystem:
             validate_diameter(diameter, param_name="stop diameter")
         self.aperture_stop_gap = gap_index
         self.aperture_stop_diameter = diameter
+        self._bump_geometry_revision()
         self.modified_at = datetime.now().isoformat()
 
     def clear_aperture_stop(self) -> None:
         """Remove the aperture stop definition."""
         self.aperture_stop_gap = None
         self.aperture_stop_diameter = None
+        self._bump_geometry_revision()
         self.modified_at = datetime.now().isoformat()
+
+    def set_casing(self, casing: Optional[Casing]) -> None:
+        """Add, replace or remove the assembly casing.
+
+        Raises:
+            ValidationError: If the casing would intersect a lens or become
+                the aperture stop.
+        """
+        if casing is not None:
+            validate_casing(casing, self)
+        self.casing = casing
+        self.modified_at = datetime.now().isoformat()
+
+    def clear_casing(self) -> None:
+        """Remove the assembly casing."""
+        self.set_casing(None)
+
+    def casing_warning(self) -> Optional[str]:
+        """Return a mechanical-interference warning for the current state."""
+        return casing_interference(self.casing, self)
 
     def get_aperture_stop(self) -> Optional[Dict[str, Any]]:
         """Return the validated stop as a dict, or None if unset/stale.
@@ -613,6 +654,8 @@ class OpticalSystem:
             "modified_at": self.modified_at,
             "aperture_stop_gap": self.aperture_stop_gap,
             "aperture_stop_diameter": self.aperture_stop_diameter,
+            "thermal_state_temperature": self.thermal_state_temperature,
+            "image_plane_x_mm": self.image_plane_x_mm,
             "elements": [
                 {
                     "lens": e.lens.to_dict(),
@@ -627,6 +670,7 @@ class OpticalSystem:
                 for e in self.elements
             ],
             "air_gaps": [{"thickness": g.thickness, "position": g.position} for g in self.air_gaps],
+            "casing": self.casing.to_dict() if self.casing is not None else None,
             # The nesting itself.
             #
             # "elements" above is the *flattened* list, which is what every
@@ -663,6 +707,12 @@ class OpticalSystem:
         system.modified_at = data.get("modified_at", system.modified_at)
         system.aperture_stop_gap = data.get("aperture_stop_gap")
         system.aperture_stop_diameter = data.get("aperture_stop_diameter")
+        system.thermal_state_temperature = data.get(
+            "thermal_state_temperature", DEFAULT_TEMPERATURE
+        )
+        system.image_plane_x_mm = validate_image_plane_x(data.get("image_plane_x_mm"))
+        casing_data = data.get("casing")
+        system.casing = Casing.from_dict(casing_data) if isinstance(casing_data, dict) else None
 
         # Clear default tree/flat state to avoid duplication.
         system.elements = []
@@ -1172,4 +1222,8 @@ def as_system(
     lens = copy.deepcopy(target) if copy_system else target
     system = OpticalSystem(name=name or lens.name)
     system.add_lens(lens)
+    # The detector plane is part of the design; a wrapper that dropped it
+    # would measure the same lens at a different plane from the one the user
+    # chose.
+    system.image_plane_x_mm = getattr(lens, "image_plane_x_mm", None)
     return system

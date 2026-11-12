@@ -134,8 +134,9 @@ What Is Not Modeled
 - Thermal gradients inside an element or housing.
 - Cement creep or delamination.
 - Mount-induced lens deformation.
-- Absorption and scatter by a surrounding casing. The current mechanical
-  housing is a geometry model; it is not an optical absorber in the ray trace.
+- Absorption and scatter by a surrounding casing. An opaque casing material
+  absorbs a ray at the inner wall; a transparent material lets the ray pass
+  straight through, with no refraction at the wall.
 
 These are legitimate future extensions, but treating a nominal thermal scale
 as if it covered them would overstate the model.

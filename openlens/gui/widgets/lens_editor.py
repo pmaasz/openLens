@@ -28,6 +28,7 @@ from PySide6.QtGui import QUndoCommand, QUndoStack
 
 from .lens_viz_container import LensVisualizationWidget
 from ..theme import DARK, get_palette
+from ...geometry import LensGeometry
 from ...mounts import MountCatalog
 from ...validation import (
     ValidationError,
@@ -160,14 +161,48 @@ def _undoable_edit(method):
     return wrapper
 
 
+def _material_catalog():
+    """Return the glass database, or None when it cannot be loaded."""
+    try:
+        from ...material_database import get_material_database
+
+        return get_material_database()
+    except (ImportError, OSError, ValueError, KeyError, TypeError) as e:
+        logger.debug("Glass catalog unavailable: %s", e, exc_info=True)
+        return None
+
+
+def _canonical_material_name(material: str) -> str:
+    """Resolve a catalog alias ("Fused Silica") to its catalog name.
+
+    The static table uses display names while the catalog uses keys such as
+    "FUSEDSILICA". Loading an older lens with a display name must show the
+    catalog entry, not fall through to Custom, so the same alias resolution
+    the rest of the application uses is applied here. Unknown names are
+    returned unchanged for load_lens() to display as Custom.
+    """
+    if not material:
+        return material
+    database = _material_catalog()
+    if database is None:
+        return material
+    try:
+        match = database.get_material(material)
+    except (OSError, ValueError, KeyError, TypeError):
+        return material
+    return match.name if match is not None else material
+
+
 def _materials_with_indices():
     """Catalogued materials with their reference index, plus Custom.
 
-    Indices come from the glass database when it is available, falling back to
-    the static per-material defaults. The editor carried its own hard-coded dict
-    with different numbers for the same glasses - 1.4580 for Fused Silica here
-    against 1.4585 in constants - so the editor and the rest of the application
-    could disagree about what a material is.
+    The names and indices come from the glass database. The static
+    per-material defaults are only a fallback for when the catalog cannot be
+    read: the editor once carried its own hard-coded dict with different
+    numbers for the same glasses - 1.4580 for Fused Silica here against
+    1.4585 in constants - so the editor and the rest of the application could
+    disagree about what a material is. The catalog's own names are used, and
+    load_lens() resolves the static display aliases to them.
 
     Returns:
         List of ``(name, index)`` pairs. "Custom" carries ``None``: its index is
@@ -175,20 +210,23 @@ def _materials_with_indices():
     """
     from ...constants import DEFAULT_MATERIAL_INDICES, WAVELENGTH_D_LINE
 
-    indices = dict(DEFAULT_MATERIAL_INDICES)
-    try:
-        from ...material_database import MATERIAL_DB_AVAILABLE, get_material_database
+    pairs = None
+    database = _material_catalog()
+    if database is not None:
+        # list_materials() returns names, not records. Reading it as a list
+        # of dicts silently added nothing even once the import was fixed.
+        try:
+            pairs = [
+                (name, database.get_refractive_index(name, WAVELENGTH_D_LINE))
+                for name in database.list_materials()
+                if name
+            ]
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            logger.warning("Glass catalog could not be read (%s); using static indices", e)
 
-        if MATERIAL_DB_AVAILABLE:
-            db = get_material_database()
-            for entry in db.list_materials():
-                name = entry.get("name") if isinstance(entry, dict) else None
-                if name:
-                    indices[name] = db.get_refractive_index(name, WAVELENGTH_D_LINE)
-    except Exception:  # pragma: no cover - the catalog is optional
-        logger.debug("Glass catalog unavailable; using static indices", exc_info=True)
+    if pairs is None:
+        pairs = [(name, index) for name, index in DEFAULT_MATERIAL_INDICES.items()]
 
-    pairs = [(name, index) for name, index in indices.items()]
     pairs.append((CUSTOM_MATERIAL, None))
     return pairs
 
@@ -270,6 +308,7 @@ class LensEditorWidget(QWidget):
         self._viz_widget = LensVisualizationWidget()
         # Connect interactive signals from the 2D visualization widget
         self._viz_widget._2d_widget.property_changed.connect(self._on_interactive_property_changed)
+        self._viz_widget._2d_widget.edge_profile_changed.connect(self._on_edge_profile_changed)
 
         main_layout.addWidget(self._viz_widget, 2)
 
@@ -316,6 +355,7 @@ class LensEditorWidget(QWidget):
         layout.addWidget(self._create_mount_group())
         layout.addWidget(self._create_parabolic_group())
         layout.addWidget(self._create_conic_group())
+        layout.addWidget(self._create_edge_profile_group())
         layout.addWidget(self._create_material_group())
         layout.addWidget(self._create_coatings_group())
         layout.addWidget(self._create_fresnel_group())
@@ -582,6 +622,118 @@ class LensEditorWidget(QWidget):
 
         return conic_group
 
+    def _create_edge_profile_group(self) -> QGroupBox:
+        """Create the custom rim-profile controls.
+
+        The profile itself is drawn and edited in the 2D view: click adds a
+        vertex, drag moves one, right-click deletes one.
+        """
+        edge_group = QGroupBox("Custom Edge Profile")
+        edge_layout = QFormLayout(edge_group)
+
+        self._edge_check = QCheckBox("Use custom edge profile")
+        self._edge_check.setToolTip(
+            "Replace the straight cylindrical rim with a meridional polyline "
+            "that is revolved around the optical axis."
+        )
+        self._edge_check.stateChanged.connect(self._on_edge_profile_toggled)
+        edge_layout.addRow(self._edge_check)
+
+        self._edge_hint = QLabel("Click: add · Drag: move · Right-click: delete")
+        self._edge_hint.setStyleSheet("color: #888; font-size: 10px;")
+        self._edge_hint.setWordWrap(True)
+        edge_layout.addRow(self._edge_hint)
+
+        self._edge_points_input = QLineEdit()
+        self._edge_points_input.setPlaceholderText("x, r; x, r; ...")
+        self._edge_points_input.setToolTip(
+            "Profile vertices as comma-separated (x, r) pairs, ordered from "
+            "the front rim to the back rim."
+        )
+        self._edge_points_input.editingFinished.connect(self._on_edge_points_entered)
+        edge_layout.addRow("Points:", self._edge_points_input)
+
+        return edge_group
+
+    def _default_edge_profile(self):
+        """A visible starting profile when the user switches the mode on."""
+        front_rim, back_rim = LensGeometry.rim_points(self._lens)
+        bulge = max(1.0, abs(self._lens.diameter) * 0.15)
+        return [
+            front_rim,
+            ((front_rim[0] + back_rim[0]) / 2, front_rim[1] + bulge),
+            back_rim,
+        ]
+
+    @_undoable_edit
+    def _on_edge_profile_toggled(self, state: int) -> None:
+        """Enable or remove the custom rim profile."""
+        if self._lens is None:
+            return
+        enabled = state == 2
+        if enabled:
+            if not self._lens.edge_profile:
+                self._lens.set_edge_profile(self._default_edge_profile())
+        else:
+            self._lens.clear_edge_profile()
+        self._viz_widget._2d_widget.set_edge_editing(enabled)
+        self._touch_lens()
+        self._update_calculated()
+        self._viz_widget.update_lens(self._lens)
+        self._refresh_edge_profile_ui()
+        self.lens_modified.emit(self._lens)
+        self.lens_updated.emit()
+
+    @_undoable_edit
+    def _on_edge_profile_changed(self, points) -> None:
+        """Apply a profile edited in the 2D view."""
+        if self._lens is None:
+            return
+        try:
+            self._lens.set_edge_profile(points)
+        except ValidationError:
+            # The view keeps its last valid shape; the model is unchanged.
+            return
+        self._touch_lens()
+        self._update_calculated()
+        self._viz_widget.update_lens(self._lens)
+        self._refresh_edge_profile_ui()
+        self.lens_modified.emit(self._lens)
+        self.lens_updated.emit()
+
+    def _refresh_edge_profile_ui(self) -> None:
+        """Sync the profile checkbox, numeric entry and view mode."""
+        if self._lens is None:
+            return
+        enabled = bool(self._lens.edge_profile)
+        self._edge_check.blockSignals(True)
+        self._edge_check.setChecked(enabled)
+        self._edge_check.blockSignals(False)
+        points = LensGeometry.edge_profile_points(self._lens) if enabled else []
+        self._edge_points_input.setText("; ".join(f"{x:.3f}, {radius:.3f}" for x, radius in points))
+        self._viz_widget._2d_widget.set_edge_editing(enabled)
+
+    def _on_edge_points_entered(self) -> None:
+        """Apply a numerically entered profile (``x, r; x, r; ...``)."""
+        if self._lens is None or not self._lens.edge_profile:
+            return
+        try:
+            points = [
+                tuple(float(value) for value in pair.split(","))
+                for pair in self._edge_points_input.text().split(";")
+                if pair.strip()
+            ]
+            self._lens.set_edge_profile(points)
+        except (ValueError, ValidationError):
+            self._refresh_edge_profile_ui()
+            return
+        self._touch_lens()
+        self._update_calculated()
+        self._viz_widget.update_lens(self._lens)
+        self._refresh_edge_profile_ui()
+        self.lens_modified.emit(self._lens)
+        self.lens_updated.emit()
+
     def _create_material_group(self) -> QGroupBox:
         """Create the material group box.
 
@@ -770,6 +922,7 @@ class LensEditorWidget(QWidget):
                     spin.setValue(0.0)
                     spin.blockSignals(False)
             self._refresh_conic_ui()
+            self._lens.sync_edge_profile()
             self._touch_lens()
             self._update_calculated()
             self._viz_widget.update_lens(self._lens)
@@ -785,6 +938,7 @@ class LensEditorWidget(QWidget):
             self._lens.conic_constant_1 = self._conic1_input.value()
         if not bool(getattr(self._lens, "is_parabolic_2", False)):
             self._lens.conic_constant_2 = self._conic2_input.value()
+        self._lens.sync_edge_profile()
         self._touch_lens()
         self._update_calculated()
         self._viz_widget.update_lens(self._lens)
@@ -832,6 +986,7 @@ class LensEditorWidget(QWidget):
             self._lens.bevel_1 = max(0.0, self._bevel1_input.value())
             self._lens.bevel_2 = max(0.0, self._bevel2_input.value())
             self._lens.refractive_index = self._n_input.value()
+            self._lens.sync_edge_profile()
             if getattr(self._lens, "is_fresnel", False):
                 self._lens.calculate_num_grooves()
                 self._update_groove_count()
@@ -1303,7 +1458,7 @@ class LensEditorWidget(QWidget):
         # The combo's signals are blocked so the handler does not overwrite the
         # model with the combo's previous selection mid-load.
         loaded_index = lens.refractive_index
-        loaded_material = lens.material or CUSTOM_MATERIAL
+        loaded_material = _canonical_material_name(lens.material or CUSTOM_MATERIAL)
         known = [self._material_combo.itemText(i) for i in range(self._material_combo.count())]
         if loaded_material not in known:
             # setCurrentText on a non-editable combo is a no-op for a value
@@ -1344,6 +1499,7 @@ class LensEditorWidget(QWidget):
         self._update_sag_ranges(sync_model=False)
         self._refresh_parabolic_ui()
         self._refresh_conic_ui()
+        self._refresh_edge_profile_ui()
         self._refresh_fresnel_ui()
         self._refresh_coating_ui()
         self._update_calculated()

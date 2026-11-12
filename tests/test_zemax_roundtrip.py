@@ -164,13 +164,19 @@ class TestZemaxSystemImportValidation(unittest.TestCase):
             os.unlink(tmp.name)
 
     @staticmethod
-    def _zmx(front_curv="0.02", disz="5.0", front_diam="25.0", back_diam="25.0"):
+    def _zmx(
+        front_curv="0.02",
+        disz="5.0",
+        front_diam="25.0",
+        back_diam="25.0",
+        back_curv="-0.02",
+    ):
         return (
             "VERS 200000\nMODE SEQ\nUNIT MM\n\n"
             "SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\n"
             f"SURF 1\n  TYPE STANDARD\n  CURV {front_curv}\n  DISZ {disz}\n"
             f"  GLAS BK7\n  DIAM {front_diam}\n\n"
-            f"SURF 2\n  TYPE STANDARD\n  CURV -0.02\n  DIAM {back_diam}\n  DISZ 50.0\n\n"
+            f"SURF 2\n  TYPE STANDARD\n  CURV {back_curv}\n  DIAM {back_diam}\n  DISZ 50.0\n\n"
             "SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0.0\n"
         )
 
@@ -192,6 +198,48 @@ class TestZemaxSystemImportValidation(unittest.TestCase):
     def test_plano_surface_still_imports(self):
         """CURV 0.0 means a legitimate plano surface, not an invalid value."""
         rebuilt = self._import(self._zmx(front_curv="0.0"))
+        self.assertEqual(len(rebuilt.elements), 1)
+        self.assertEqual(rebuilt.elements[0].lens.radius_of_curvature_1, float("inf"))
+
+    def test_non_finite_front_curvature_is_rejected(self):
+        """NaN/inf CURV must be dropped, not injected as NaN geometry."""
+        for curv in ("nan", "inf", "-inf"):
+            with self.subTest(curv=curv):
+                with self.assertLogs("openlens.export_formats", level="WARNING") as captured:
+                    rebuilt = self._import(self._zmx(front_curv=curv))
+
+                self.assertEqual(len(rebuilt.elements), 0)
+                self.assertTrue(
+                    any("finite" in message for message in captured.output),
+                    f"no warning explained the dropped element: {captured.output}",
+                )
+
+    def test_non_finite_back_curvature_is_rejected(self):
+        """A bad CURV on the closing surface drops the element too."""
+        for curv in ("nan", "inf", "-inf"):
+            with self.subTest(curv=curv):
+                rebuilt = self._import(self._zmx(back_curv=curv))
+                self.assertEqual(len(rebuilt.elements), 0)
+
+    def test_a_non_finite_element_does_not_discard_the_next(self):
+        """The import continues with the remaining surfaces."""
+        text = (
+            "VERS 200000\nMODE SEQ\nUNIT MM\n\n"
+            "SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\n"
+            "SURF 1\n  TYPE STANDARD\n  CURV nan\n  DISZ 5.0\n"
+            "  GLAS BK7\n  DIAM 25.0\n\n"
+            "SURF 2\n  TYPE STANDARD\n  CURV -0.02\n  DIAM 25.0\n  DISZ 50.0\n\n"
+            "SURF 3\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 4.0\n"
+            "  GLAS BK7\n  DIAM 30.0\n\n"
+            "SURF 4\n  TYPE STANDARD\n  CURV -0.02\n  DIAM 30.0\n  DISZ 0.0\n"
+        )
+        rebuilt = self._import(text)
+        self.assertEqual(len(rebuilt.elements), 1)
+        self.assertAlmostEqual(rebuilt.elements[0].lens.thickness, 4.0)
+
+    def test_the_explicit_infinity_token_still_means_plano(self):
+        """``CURV INFINITY`` is the format's plano spelling, not corrupt input."""
+        rebuilt = self._import(self._zmx(front_curv="INFINITY"))
         self.assertEqual(len(rebuilt.elements), 1)
         self.assertEqual(rebuilt.elements[0].lens.radius_of_curvature_1, float("inf"))
 
@@ -548,3 +596,195 @@ class TestZemaxConicSurfaces(unittest.TestCase):
         rebuilt_lens = rebuilt.elements[0].lens
         self.assertAlmostEqual(rebuilt_lens.conic_constant_1, -0.5)
         self.assertAlmostEqual(rebuilt_lens.conic_constant_2, 1.0)
+
+
+class TestZemaxUnits(unittest.TestCase):
+    """The UNIT header decides the file's length unit; values import in mm."""
+
+    @staticmethod
+    def _inch_system():
+        return (
+            "VERS 200000\nMODE SEQ\nUNIT INCH\n\n"
+            "SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\n"
+            "SURF 1\n  TYPE STANDARD\n  CURV 0.5\n  DISZ 1.0\n"
+            "  GLAS BK7\n  DIAM 0.25\n\n"
+            "SURF 2\n  TYPE STANDARD\n  CURV -0.5\n  DIAM 0.25\n  DISZ 4.0\n\n"
+            "SURF 3\n  TYPE STANDARD\n  CURV 0.5\n  DISZ 0.5\n"
+            "  GLAS BK7\n  DIAM 0.5\n\n"
+            "SURF 4\n  TYPE STANDARD\n  CURV -0.5\n  DIAM 0.5\n  DISZ 0.0\n"
+        )
+
+    @staticmethod
+    def _millimetre_system(unit_line="UNIT MM\n"):
+        return (
+            "VERS 200000\nMODE SEQ\n" + unit_line + "\n"
+            "SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\n"
+            "SURF 1\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 5.0\n"
+            "  GLAS BK7\n  DIAM 25.0\n\n"
+            "SURF 2\n  TYPE STANDARD\n  CURV -0.02\n  DIAM 25.0\n  DISZ 0.0\n"
+        )
+
+    def test_inch_lengths_are_converted_to_millimetres(self):
+        rebuilt = _import_text(self._inch_system())
+
+        self.assertEqual(len(rebuilt.elements), 2)
+        first, second = [element.lens for element in rebuilt.elements]
+        # CURV 0.5 is a 2 inch radius; lengths scale by 25.4, curvature by
+        # the inverse factor.
+        self.assertAlmostEqual(first.radius_of_curvature_1, 50.8, places=6)
+        self.assertAlmostEqual(first.radius_of_curvature_2, -50.8, places=6)
+        self.assertAlmostEqual(first.thickness, 25.4, places=6)
+        # DIAM is a semi-diameter: 0.25 in radius -> 0.5 in = 12.7 mm.
+        self.assertAlmostEqual(first.diameter, 12.7, places=6)
+        self.assertAlmostEqual(second.thickness, 12.7, places=6)
+        self.assertAlmostEqual(second.diameter, 25.4, places=6)
+
+    def test_the_gap_between_elements_is_converted(self):
+        rebuilt = _import_text(self._inch_system())
+
+        self.assertEqual(len(rebuilt.air_gaps), 1)
+        self.assertAlmostEqual(rebuilt.air_gaps[0].thickness, 101.6, places=6)
+
+    def test_the_inch_spellings_are_recognised(self):
+        for unit in ("UNIT INCH", "UNIT IN", "unit inch"):
+            with self.subTest(unit=unit):
+                text = self._inch_system().replace("UNIT INCH", unit)
+                rebuilt = _import_text(text)
+                self.assertAlmostEqual(rebuilt.elements[0].lens.thickness, 25.4, places=6)
+
+    def test_a_millimetre_file_is_unchanged(self):
+        rebuilt = _import_text(self._millimetre_system())
+
+        lens = rebuilt.elements[0].lens
+        self.assertAlmostEqual(lens.radius_of_curvature_1, 50.0, places=6)
+        self.assertAlmostEqual(lens.thickness, 5.0, places=6)
+        self.assertAlmostEqual(lens.diameter, 50.0, places=6)
+
+    def test_a_missing_unit_line_keeps_millimetres(self):
+        rebuilt = _import_text(self._millimetre_system(unit_line=""))
+
+        self.assertAlmostEqual(rebuilt.elements[0].lens.thickness, 5.0, places=6)
+
+    def test_unknown_unit_warns_and_assumes_millimetres(self):
+        text = self._millimetre_system(unit_line="UNIT FURLONG\n")
+
+        with self.assertLogs("openlens.export_formats", level="WARNING") as captured:
+            rebuilt = _import_text(text)
+
+        self.assertTrue(
+            any("unit" in message.lower() for message in captured.output),
+            f"no warning named the unknown unit: {captured.output}",
+        )
+        self.assertAlmostEqual(rebuilt.elements[0].lens.thickness, 5.0, places=6)
+
+    def test_a_decentred_element_is_scaled_with_the_rest_of_the_file(self):
+        """DECE is a length in the file's unit; TILT is degrees and stays."""
+        front = "  CURV 0.5\n  DISZ 1.0\n"
+        text = self._inch_system().replace(front, front + "  DECE 0.5 0.25\n  TILT 3 -2 1\n")
+
+        rebuilt = _import_text(text)
+
+        element = rebuilt.elements[0]
+        self.assertAlmostEqual(element.decenter_y, 12.7, places=6)
+        self.assertAlmostEqual(element.decenter_z, 6.35, places=6)
+        self.assertAlmostEqual(element.tilt_x, 3.0, places=6)
+        self.assertAlmostEqual(element.tilt_y, -2.0, places=6)
+        self.assertAlmostEqual(element.tilt_z, 1.0, places=6)
+
+
+class TestZemaxAlignmentAndWavelength(unittest.TestCase):
+    """A round trip must keep the element transform and the design wavelength."""
+
+    def _round_trip(self, system):
+        tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+        tmp.close()
+        try:
+            ZemaxSystemExporter.export_system(system, tmp.name)
+            with open(tmp.name) as handle:
+                text = handle.read()
+            return text, ZemaxSystemImporter.import_system(tmp.name)
+        finally:
+            os.unlink(tmp.name)
+
+    @staticmethod
+    def _aligned_system():
+        system = OpticalSystem(name="Aligned")
+        system.add_lens(
+            Lens(
+                radius_of_curvature_1=50.0,
+                radius_of_curvature_2=-50.0,
+                thickness=5.0,
+                diameter=25.0,
+                wavelength=532.0,
+            )
+        )
+        system.set_element_alignment(
+            0, decenter_y=5.0, decenter_z=2.0, tilt_x=3.0, tilt_y=-2.0, tilt_z=1.5
+        )
+        return system
+
+    def test_the_file_declares_alignment_and_wavelength(self):
+        text, _ = self._round_trip(self._aligned_system())
+
+        self.assertIn("WAVE 532", text)
+        self.assertIn("DECE 5 2", text)
+        self.assertIn("TILT 3 -2 1.5", text)
+
+    def test_round_trip_preserves_the_element_transform(self):
+        _, rebuilt = self._round_trip(self._aligned_system())
+
+        element = rebuilt.elements[0]
+        self.assertAlmostEqual(element.decenter_y, 5.0, places=6)
+        self.assertAlmostEqual(element.decenter_z, 2.0, places=6)
+        self.assertAlmostEqual(element.tilt_x, 3.0, places=6)
+        self.assertAlmostEqual(element.tilt_y, -2.0, places=6)
+        self.assertAlmostEqual(element.tilt_z, 1.5, places=6)
+
+    def test_round_trip_preserves_the_design_wavelength(self):
+        _, rebuilt = self._round_trip(self._aligned_system())
+
+        self.assertAlmostEqual(rebuilt.elements[0].lens.wavelength, 532.0, places=6)
+
+    def test_round_trip_keeps_the_axial_positions_with_alignment(self):
+        system = OpticalSystem(name="Two elements")
+        system.add_lens(Lens(thickness=5.0, diameter=25.0))
+        system.add_lens(Lens(thickness=4.0, diameter=20.0), air_gap_before=10.0)
+        system.set_element_alignment(1, decenter_y=-3.0, tilt_z=2.0)
+
+        _, rebuilt = self._round_trip(system)
+
+        self.assertEqual(len(rebuilt.elements), 2)
+        self.assertAlmostEqual(rebuilt.elements[0].position, 0.0, places=6)
+        self.assertAlmostEqual(rebuilt.elements[1].position, 15.0, places=6)
+        self.assertAlmostEqual(rebuilt.elements[1].decenter_y, -3.0, places=6)
+        self.assertAlmostEqual(rebuilt.air_gaps[0].thickness, 10.0, places=6)
+
+    def test_a_single_lens_export_keeps_its_wavelength(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+        tmp.close()
+        try:
+            ZemaxExporter.export_lens(Lens(wavelength=532.0), tmp.name)
+            rebuilt = ZemaxSystemImporter.import_system(tmp.name)
+        finally:
+            os.unlink(tmp.name)
+
+        self.assertAlmostEqual(rebuilt.elements[0].lens.wavelength, 532.0, places=6)
+
+    def test_an_invalid_wavelength_falls_back_to_the_default(self):
+        system = OpticalSystem(name="Bad wavelength")
+        system.add_lens(Lens(wavelength=532.0))
+        text, _ = self._round_trip(system)
+        bad = text.replace("WAVE 532", "WAVE nan")
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".zmx", delete=False, mode="w")
+        tmp.close()
+        try:
+            with open(tmp.name, "w") as handle:
+                handle.write(bad)
+            with self.assertLogs("openlens.export_formats", level="WARNING") as captured:
+                rebuilt = ZemaxSystemImporter.import_system(tmp.name)
+        finally:
+            os.unlink(tmp.name)
+
+        self.assertTrue(any("wavelength" in message.lower() for message in captured.output))
+        self.assertAlmostEqual(rebuilt.elements[0].lens.wavelength, 587.6, places=6)

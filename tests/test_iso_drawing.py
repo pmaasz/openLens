@@ -95,3 +95,45 @@ class TestIsoTable(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestIsoXmlEscaping(unittest.TestCase):
+    """#628: every user-controlled string must keep the SVG well-formed."""
+
+    def _markup_system(self):
+        system = OpticalSystem(name='A&B <optics> "quoted"')
+        lens = Lens(
+            name="Markup",
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=-50.0,
+            thickness=5.0,
+            diameter=20.0,
+            material="A&B <glass>",
+            coating_1=[
+                {
+                    "material": 'A&B <AR> "quoted"',
+                    "refractive_index": 1.38,
+                    "thickness_nm": 100.0,
+                }
+            ],
+        )
+        system.add_lens(lens)
+        return system
+
+    def test_notes_with_markup_parse_as_well_formed_xml(self):
+        import xml.etree.ElementTree as ET
+
+        svg = ISO10110Generator(self._markup_system())._render_svg(1000, 700)
+
+        root = ET.fromstring(svg)  # raises ParseError before the fix
+        text = "".join(root.itertext())
+        self.assertIn("A&B <AR>", text)
+        self.assertIn("A&B <optics>", text)
+        self.assertIn("A&B <glass>", text)
+
+    def test_markup_is_escaped_not_dropped(self):
+        svg = ISO10110Generator(self._markup_system())._render_svg(1000, 700)
+
+        self.assertIn("A&amp;B &lt;AR&gt;", svg)
+        self.assertIn("A&amp;B &lt;optics&gt;", svg)
+        self.assertNotIn("A&B <AR>", svg)

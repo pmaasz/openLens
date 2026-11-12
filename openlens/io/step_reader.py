@@ -25,6 +25,13 @@ _LITERAL_BODY = r"(?:[^']|'')*"
 _SOLID_RE = re.compile(rf"#(\d+)=MANIFOLD_SOLID_BREP\('({_LITERAL_BODY})',#?[\d.]+\);")
 _POINT_RE = re.compile(rf"#(\d+)=CARTESIAN_POINT\('{_LITERAL_BODY}',\(([^)]*)\)\);")
 
+# A spherical surface references an AXIS2_PLACEMENT_3D, whose origin is the
+# sphere's centre. Those centres are emitted as CARTESIAN_POINTs in the same
+# block as the solid, but they do not bound it: excluding them keeps the
+# reported extent from becoming the distance between curvature centres.
+_SPHERE_RE = re.compile(r"#(\d+)=SPHERICAL_SURFACE\([^,]*,#(\d+)")
+_PLACEMENT_RE = re.compile(r"#(\d+)=AXIS2_PLACEMENT_3D\([^,]*,#(\d+)")
+
 # Encoding directives the writer emits for non-ASCII text: \X2\ is UTF-16
 # code units, \X4\ UTF-32 code points (only \X2\ is produced today).
 _X2_RE = re.compile(r"\\X2\\([0-9A-Fa-f]+)\\X0\\")
@@ -95,12 +102,33 @@ def read_step_solids(filename: str) -> List[Dict[str, Any]]:
     solids_raw = list(_SOLID_RE.finditer(content))
     points_raw = list(_POINT_RE.finditer(content))
 
+    # Points that are centres of spherical surfaces must not count towards a
+    # solid's extent: they sit at z = vertex +/- R, far outside the lens.
+    placement_origin: Dict[int, int] = {}
+    for placement in _PLACEMENT_RE.finditer(content):
+        try:
+            placement_origin[int(placement.group(1))] = int(placement.group(2))
+        except ValueError:
+            continue
+    sphere_centre_ids: set = set()
+    for sphere in _SPHERE_RE.finditer(content):
+        try:
+            placement_id = int(sphere.group(2))
+        except ValueError:
+            continue
+        origin_id = placement_origin.get(placement_id)
+        if origin_id is not None:
+            sphere_centre_ids.add(origin_id)
+
     solids = []
     prev_end = 0
     for match in solids_raw:
         block_points: List[Tuple[float, float, float]] = []
         for point in points_raw:
             if prev_end < point.start() <= match.end():
+                point_id = int(point.group(1))
+                if point_id in sphere_centre_ids:
+                    continue
                 try:
                     coords = tuple(float(v) for v in point.group(2).split(","))
                 except ValueError:

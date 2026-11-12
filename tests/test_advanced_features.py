@@ -72,7 +72,7 @@ class TestInteractiveRayTracer(unittest.TestCase):
 
     def test_add_ray(self):
         """Test adding interactive ray."""
-        ray = self.tracer.add_ray(origin=(0, 0, 0), direction=(1, 0, 0), wavelength=587.6)
+        ray = self.tracer.add_ray(origin=(0, 0, 0), direction=(1, 0, 0), wavelength_nm=587.6)
 
         assert ray is not None
         assert len(self.tracer.interactive_rays) == 1
@@ -127,7 +127,7 @@ class TestInteractiveRayTracer(unittest.TestCase):
 
     def test_get_ray_info(self):
         """Test getting ray information."""
-        ray = self.tracer.add_ray((0, 0, 0), (1, 0, 0), wavelength=650)
+        ray = self.tracer.add_ray((0, 0, 0), (1, 0, 0), wavelength_nm=650)
         info = self.tracer.get_ray_info(ray)
 
         assert "origin" in info

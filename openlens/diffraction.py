@@ -422,7 +422,7 @@ class DiffractionCalculator:
         # max_radius_um - it is a plotting extent, and it must not influence
         # the answer.
         r, _ = self.airy_pattern(
-            max_radius_um, focal_length_mm, aperture_diameter_mm, num_points=1000
+            max_radius_um, focal_length_mm, aperture_diameter_mm, num_points=num_points
         )
 
         # Encircled energy is available in closed form for the Airy pattern:

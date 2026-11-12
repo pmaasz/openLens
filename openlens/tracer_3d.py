@@ -20,6 +20,7 @@ from .constants import (
 )
 from .lens import _is_flat
 from .geometry import LensGeometry
+from .casing import wall_entry_3d
 
 if TYPE_CHECKING:
     from .lens import Lens
@@ -693,8 +694,10 @@ class SystemRayTracer3D:
     The prepared lens state is revalidated on every trace, so an edit or the
     wavefront sensor's per-wavelength refractive-index swap is picked up
     without the caller knowing the cache exists. Layout edits are picked up
-    the same way through the system's geometry revision, which the model's
-    edits and node transform assignments bump; no node walk happens per ray.
+    through the system's geometry revision, which the model's edits and node
+    transform assignments bump; duck-typed systems without a revision fall
+    back to a cheap scene signature. Neither re-walks the node tree per ray
+    for a model system.
     """
 
     def __init__(self, optical_system: "OpticalSystem") -> None:
@@ -702,20 +705,68 @@ class SystemRayTracer3D:
         self._batch: Optional[Dict[str, Any]] = None
 
     def invalidate(self) -> None:
-        """Drop the prepared scene now.
+        """Drop the prepared scene, forcing a rebuild on the next trace.
 
         Layout edits are detected automatically on the next trace through the
-        system's geometry revision (and, for duck-typed systems, the flat
-        element stations), so this is only needed to force an immediate
-        rebuild.
+        system's geometry revision (or, for duck-typed systems, the scene
+        signature), so this is only needed to force an immediate rebuild.
         """
         self._batch = None
 
-    def _flat_positions(self) -> tuple:
-        """Axial station of every flat element - the fallback scene key."""
-        return tuple(
-            getattr(element, "position", None) for element in getattr(self.system, "elements", ())
-        )
+    def _scene_signature(self) -> Tuple[Any, ...]:
+        """A cheap description of the scene's structure and transforms.
+
+        The lens state a tracer bakes in is validated separately by
+        ``matches``; this catches what that check cannot see - a moved or
+        added element, a replaced element model, a re-stationed gap, or a
+        changed aperture stop.
+
+        Only local position/rotation values and identities are read: no
+        matrix is built and no global transform is recomputed, so the check
+        stays cheap enough to run on every ray without defeating the cache.
+        """
+        parts: List[Any] = []
+
+        def walk(node: Any) -> None:
+            position = getattr(node, "position", None)
+            rotation = getattr(node, "rotation", None)
+            parts.append(
+                (
+                    id(node),
+                    getattr(position, "x", position),
+                    getattr(position, "y", None),
+                    getattr(position, "z", None),
+                    getattr(rotation, "x", None),
+                    getattr(rotation, "y", None),
+                    getattr(rotation, "z", None),
+                    id(getattr(node, "element_model", None)),
+                )
+            )
+            for child in getattr(node, "children", []) or []:
+                walk(child)
+
+        root = getattr(self.system, "root", None)
+        if root is not None:
+            walk(root)
+        else:
+            for elem in self.system.elements:
+                position = getattr(elem, "position", None)
+                if hasattr(position, "x"):
+                    parts.append((id(elem), position.x, position.y, position.z))
+                else:
+                    parts.append((id(elem), position))
+                parts.append(("lens", id(getattr(elem, "lens", None))))
+
+        for gap in getattr(self.system, "air_gaps", []) or []:
+            parts.append(("gap", id(gap), getattr(gap, "position", None)))
+
+        stop_getter = getattr(self.system, "get_aperture_stop", None)
+        stop = stop_getter() if callable(stop_getter) else None
+        if stop:
+            parts.append(("stop", stop.get("gap_index"), stop.get("diameter")))
+        else:
+            parts.append(("stop", None, None))
+        return tuple(parts)
 
     def _scene_is_current(self, batch: Dict[str, Any]) -> bool:
         """Whether the prepared scene still describes the system.
@@ -723,14 +774,15 @@ class SystemRayTracer3D:
         The lens state of every cached tracer is compared attribute by
         attribute (the wavefront sensor swaps the index per wavelength). The
         geometry is compared through the system's revision counter - bumped by
-        every model edit and by assigning a node transform - plus the flat
-        element stations for duck-typed systems. Neither needs the node walk
-        that the cache exists to avoid.
+        every model edit and by assigning a node transform - which is constant
+        time. A duck-typed system without a revision falls back to the scene
+        signature; neither path rebuilds the scene unless something changed.
         """
         revision = getattr(self.system, "geometry_revision", None)
-        if revision is not None and revision != batch["revision"]:
-            return False
-        if self._flat_positions() != batch["flat_positions"]:
+        if revision is not None:
+            if revision != batch["revision"]:
+                return False
+        elif batch.get("signature") != self._scene_signature():
             return False
         return all(tracer.matches(lens) for lens, tracer in batch["entries"])
 
@@ -758,12 +810,13 @@ class SystemRayTracer3D:
         if stop_gap is not None and 0 <= stop_gap < len(flat_gaps):
             stop_x = flat_gaps[stop_gap].position
 
+        revision = getattr(self.system, "geometry_revision", None)
         self._batch = {
+            "signature": None if revision is not None else self._scene_signature(),
             "entries": [
                 (lens, LensRayTracer3D(lens, transform=transform)) for lens, transform in elements
             ],
-            "revision": getattr(self.system, "geometry_revision", None),
-            "flat_positions": self._flat_positions(),
+            "revision": revision,
             "stop_gap": stop_gap,
             "stop_semi": stop_semi,
             "stop_x": stop_x,
@@ -772,6 +825,8 @@ class SystemRayTracer3D:
 
     def trace_ray(self, ray: Ray3D) -> Ray3D:
         """Trace a single ray through the entire system."""
+        if self._absorb_before_first_element(ray):
+            return ray
         batch = self._batch
         if batch is None or not self._scene_is_current(batch):
             batch = self._prepare()
@@ -797,7 +852,48 @@ class SystemRayTracer3D:
         if not ray.terminated:
             ray.propagate(RAY_EXIT_PROPAGATION_3D_MM)
 
+        self._absorb_in_casing_path(ray)
         return ray
+
+    def _absorb_before_first_element(self, ray: Ray3D) -> bool:
+        """Absorb a ray that meets the wall on its straight path to the optics."""
+        casing = getattr(self.system, "casing", None)
+        if casing is None or not casing.is_opaque:
+            return False
+        direction = ray.direction
+        if direction.x <= EPSILON:
+            return False
+        elements = self.system.elements
+        stop_x = float(elements[0].position) if elements else casing.end_x
+        if stop_x <= ray.origin.x:
+            return False
+        end = ray.origin + direction * ((stop_x - ray.origin.x) / direction.x)
+        hit = wall_entry_3d(casing, ray.origin, end)
+        if hit is None:
+            return False
+        return self._mark_absorbed(ray, hit, [ray.origin])
+
+    def _absorb_in_casing_path(self, ray: Ray3D) -> bool:
+        """Absorb a ray whose traced path crosses the opaque inner wall."""
+        casing = getattr(self.system, "casing", None)
+        if casing is None or not casing.is_opaque:
+            return False
+        for index, (first, second) in enumerate(zip(ray.path, ray.path[1:])):
+            hit = wall_entry_3d(casing, first, second)
+            if hit is not None:
+                return self._mark_absorbed(ray, hit, ray.path[: index + 1])
+        return False
+
+    @staticmethod
+    def _mark_absorbed(ray: Ray3D, hit: Vector3, prefix: List[Vector3]) -> bool:
+        """Truncate the path at the wall and flag the ray as absorbed."""
+        if not prefix or (prefix[-1] - hit).magnitude() > EPSILON:
+            prefix = prefix + [hit]
+        ray.path = prefix
+        ray.origin = hit
+        ray.terminated = True
+        ray.absorbed = True
+        return True
 
     @staticmethod
     def _apply_stop(ray: Ray3D, stop_x: float, semi: float) -> bool:

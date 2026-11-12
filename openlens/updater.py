@@ -10,6 +10,7 @@ this module owns the network request, version comparison, asset selection, and
 the small helper script that replaces a running executable once it exits.
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -44,9 +45,51 @@ STATUS_ERROR = "error"
 #: How much of an asset response is read at a time.
 _DOWNLOAD_CHUNK = 256 * 1024
 
+#: Prefix of the temporary directory :meth:`UpdateChecker.download` creates
+#: when the caller does not supply a destination. The helper scripts use it to
+#: decide whether they own (and may remove) the directory.
+_UPDATE_TEMP_PREFIX = "openlens-update-"
+
+#: Magic bytes that identify a downloadable executable or archive. A payload
+#: that does not start with one of these is not an installer (for example an
+#: HTML error page) and must never be executed.
+_EXECUTABLE_MAGICS = (
+    b"\x7fELF",  # ELF (Linux)
+    b"MZ",  # PE (Windows)
+    b"PK\x03\x04",  # ZIP (macOS bundle)
+    b"\xcf\xfa\xed\xfe",  # Mach-O 64-bit
+    b"\xca\xfe\xba\xbe",  # Mach-O universal / Java class
+    b"\xfe\xed\xfa\xce",  # Mach-O 32-bit (big endian)
+    b"\xfe\xed\xfa\xcf",  # Mach-O 64-bit (big endian)
+)
+
+#: A release digest is published as ``sha256:<hex>`` (GitHub's ``digest``
+#: field) or as a bare hex string.
+_DIGEST_RE = re.compile(r"^(?:sha256:)?([0-9a-fA-F]{64})$")
+
 #: Network operations get a bound so a dead connection cannot leave the
 #: startup check spinning forever. The work happens on a worker thread.
 _DEFAULT_TIMEOUT = 8.0
+
+
+def cleanup_download(downloaded: os.PathLike) -> None:
+    """Remove a downloaded update and the temporary directory that held it.
+
+    :meth:`UpdateChecker.download` creates an ``openlens-update-*`` directory
+    when no destination is supplied. The GUI failure path and the installer
+    helper call this to remove the payload, the helper script and the directory
+    together. A caller-supplied destination directory is left in place; only
+    the payload is removed.
+
+    Args:
+        downloaded: A path returned by :meth:`UpdateChecker.download`.
+    """
+    path = Path(downloaded)
+    if path.parent.name.startswith(_UPDATE_TEMP_PREFIX):
+        shutil.rmtree(path.parent, ignore_errors=True)
+    else:
+        path.unlink(missing_ok=True)
+
 
 _VERSION_RE = re.compile(
     r"^(?:openlens[-_ ]?)?v?"
@@ -63,6 +106,16 @@ class ReleaseAsset:
     name: str
     url: str
     size: int = 0
+    digest: str = ""
+    sha256: str = ""
+    checksum: str = ""
+
+    def __post_init__(self) -> None:
+        # Accept any of the common spellings so callers (and the GitHub API,
+        # which uses ``digest``) all populate the same field.
+        chosen = self.digest or self.sha256 or self.checksum
+        if chosen and chosen != self.digest:
+            object.__setattr__(self, "digest", chosen)
 
 
 @dataclass(frozen=True)
@@ -210,10 +263,14 @@ def asset_for_platform(
             continue
         if name.endswith(suffix):
             size = asset.get("size", 0)
+            digest = asset.get("digest") or asset.get("sha256") or asset.get("checksum") or ""
+            if not isinstance(digest, str):
+                digest = ""
             return ReleaseAsset(
                 name=name,
                 url=url,
                 size=size if isinstance(size, int) and size > 0 else 0,
+                digest=digest,
             )
     return None
 
@@ -355,7 +412,9 @@ class UpdateChecker:
         Args:
             result: A result with a non-``None`` asset.
             destination: Directory to download into; a new temporary directory
-                is used when omitted.
+                is used when omitted. The caller owns that directory and can
+                remove it with :func:`cleanup_download` once the update has
+                been installed or abandoned.
 
         Returns:
             The downloaded file.
@@ -367,47 +426,86 @@ class UpdateChecker:
         asset = result.asset
         if asset is None:
             raise ValueError("No release asset to download")
+        if not asset.size or asset.size <= 0:
+            raise ValueError(
+                f"Release asset {asset.name!r} has no known size; refusing to download"
+            )
 
+        created_temp_dir = destination is None
         target_dir = (
             Path(destination)
             if destination is not None
-            else Path(tempfile.mkdtemp(prefix="openlens-update-"))
+            else Path(tempfile.mkdtemp(prefix=_UPDATE_TEMP_PREFIX))
         )
         target_dir.mkdir(parents=True, exist_ok=True)
 
-        filename = Path(asset.name).name
-        if not filename or filename in {".", ".."}:
-            filename = Path(asset.url.split("?", 1)[0]).name
-        if not filename or filename in {".", ".."}:
-            raise ValueError(f"Release asset has no usable filename: {asset.name!r}")
-        target = target_dir / filename
-        partial = target.with_name(target.name + ".part")
-
-        response = self._open(asset.url, "application/octet-stream")
         try:
-            with partial.open("wb") as handle:
-                while True:
-                    chunk = response.read(_DOWNLOAD_CHUNK)
-                    if not chunk:
-                        break
-                    handle.write(chunk)
-        except Exception:
-            partial.unlink(missing_ok=True)
-            raise
-        finally:
-            response.close()
+            filename = Path(asset.name).name
+            if not filename or filename in {".", ".."}:
+                filename = Path(asset.url.split("?", 1)[0]).name
+            if not filename or filename in {".", ".."}:
+                raise ValueError(f"Release asset has no usable filename: {asset.name!r}")
+            target = target_dir / filename
+            partial = target.with_name(target.name + ".part")
 
-        received = partial.stat().st_size
-        if asset.size and received != asset.size:
-            partial.unlink(missing_ok=True)
-            raise ValueError(f"Downloaded {received} bytes for {asset.name}, expected {asset.size}")
+            response = self._open(asset.url, "application/octet-stream")
+            try:
+                with partial.open("wb") as handle:
+                    while True:
+                        chunk = response.read(_DOWNLOAD_CHUNK)
+                        if not chunk:
+                            break
+                        handle.write(chunk)
+            except Exception:
+                partial.unlink(missing_ok=True)
+                raise
+            finally:
+                response.close()
 
-        try:
-            partial.replace(target)
+            received = partial.stat().st_size
+            if received != asset.size:
+                partial.unlink(missing_ok=True)
+                raise ValueError(
+                    f"Downloaded {received} bytes for {asset.name}, expected {asset.size}"
+                )
+
+            body = partial.read_bytes()
+
+            # Verify the published digest when one is available.
+            digest_match = _DIGEST_RE.match(asset.digest.strip()) if asset.digest else None
+            if asset.digest and digest_match is None:
+                partial.unlink(missing_ok=True)
+                raise ValueError(
+                    f"Release asset {asset.name!r} has an invalid digest: {asset.digest!r}"
+                )
+            if digest_match is not None:
+                expected = digest_match.group(1).lower()
+                actual = hashlib.sha256(body).hexdigest()
+                if actual != expected:
+                    partial.unlink(missing_ok=True)
+                    raise ValueError(
+                        f"Digest mismatch for {asset.name}: expected {expected}, got {actual}"
+                    )
+
+            # Sanity-check that the payload is an executable/archive and not, for
+            # example, an HTML error page.
+            if not any(body.startswith(magic) for magic in _EXECUTABLE_MAGICS):
+                partial.unlink(missing_ok=True)
+                raise ValueError(
+                    f"Downloaded payload for {asset.name} is not a recognised executable "
+                    f"(first bytes: {body[:8]!r})"
+                )
+
+            try:
+                partial.replace(target)
+            except Exception:
+                partial.unlink(missing_ok=True)
+                raise
+            return target
         except Exception:
-            partial.unlink(missing_ok=True)
+            if created_temp_dir:
+                shutil.rmtree(target_dir, ignore_errors=True)
             raise
-        return target
 
 
 def is_frozen() -> bool:
@@ -415,9 +513,21 @@ def is_frozen() -> bool:
     return bool(getattr(sys, "frozen", False) or getattr(sys, "_MEIPASS", None))
 
 
-def _linux_update_script(downloaded: Path, target: Path, pid: int, log: Path) -> str:
+def _linux_update_script(
+    downloaded: Path,
+    target: Path,
+    pid: int,
+    log: Path,
+    cleanup_dir: Optional[Path] = None,
+) -> str:
     """Build the shell script that swaps a Linux executable after exit."""
     new_file = target.with_name(target.name + ".new")
+    backup_file = target.with_name(target.name + ".old")
+    cleanup = (
+        f"rmdir -- {shlex.quote(str(cleanup_dir))} 2>/dev/null || true\n"
+        if cleanup_dir is not None
+        else ""
+    )
     return """#!/bin/sh
 # OpenLens updater: wait for the running copy to exit, then replace it.
 set -u
@@ -425,26 +535,39 @@ pid={pid}
 while kill -0 "$pid" 2>/dev/null; do
     sleep 0.2
 done
+# Keep the previous binary so a failed update can be rolled back.
+cp -p -- {target} {backup_file} 2>/dev/null || true
 if cp -- {downloaded} {new_file} && chmod +x {new_file} && mv -f -- {new_file} {target}; then
-    rm -f -- {downloaded}
     nohup {target} >/dev/null 2>&1 &
 else
     rm -f -- {new_file}
     printf '%s\\n' "Could not replace {target}" > {log}
     nohup {target} >/dev/null 2>&1 &
 fi
+rm -f -- {downloaded}
 rm -f -- "$0"
-""".format(
+{cleanup}""".format(
         pid=pid,
         downloaded=shlex.quote(str(downloaded)),
         new_file=shlex.quote(str(new_file)),
         target=shlex.quote(str(target)),
+        backup_file=shlex.quote(str(backup_file)),
         log=shlex.quote(str(log)),
+        cleanup=cleanup,
     )
 
 
-def _windows_update_script(downloaded: Path, target: Path, pid: int, log: Path) -> str:
+def _windows_update_script(
+    downloaded: Path,
+    target: Path,
+    pid: int,
+    log: Path,
+    cleanup_dir: Optional[Path] = None,
+) -> str:
     """Build the batch script that swaps a Windows executable after exit."""
+    cleanup = (
+        f'rmdir /S /Q "{cleanup_dir}" >NUL 2>&1\n' if cleanup_dir is not None else 'del "%~f0"\n'
+    )
     return """@echo off
 setlocal
 :wait
@@ -453,6 +576,7 @@ if not errorlevel 1 (
     timeout /t 1 /nobreak >NUL
     goto wait
 )
+copy /Y "{target}" "{target}.old" >NUL
 copy /Y "{downloaded}" "{target}" >NUL
 if errorlevel 1 (
     echo Could not replace "{target}" > "{log}"
@@ -460,12 +584,14 @@ if errorlevel 1 (
 ) else (
     start "" "{target}"
 )
+del /Q "{downloaded}" >NUL 2>&1
 del "%~f0"
-""".format(
+{cleanup}""".format(
         pid=pid,
         downloaded=downloaded,
         target=target,
         log=log,
+        cleanup=cleanup,
     )
 
 
@@ -557,15 +683,32 @@ class UpdateInstaller:
 
         script_suffix = ".bat" if self.system == "windows" else ".sh"
         script = path.with_name(f"apply_openlens_update{script_suffix}")
+        cleanup_dir = None
         log = path.with_name("openlens-update-error.log")
+        if path.parent.name.startswith(_UPDATE_TEMP_PREFIX):
+            cleanup_dir = path.parent
+            # Keep the diagnostic outside the directory the helper removes.
+            log = cleanup_dir.parent / "openlens-update-error.log"
         if self.system == "windows":
             script.write_text(
-                _windows_update_script(path.resolve(), self.executable.resolve(), self.pid, log),
+                _windows_update_script(
+                    path.resolve(),
+                    self.executable.resolve(),
+                    self.pid,
+                    log,
+                    cleanup_dir,
+                ),
                 encoding="utf-8",
             )
         else:
             script.write_text(
-                _linux_update_script(path.resolve(), self.executable.resolve(), self.pid, log),
+                _linux_update_script(
+                    path.resolve(),
+                    self.executable.resolve(),
+                    self.pid,
+                    log,
+                    cleanup_dir,
+                ),
                 encoding="utf-8",
             )
             script.chmod(0o700)
@@ -590,6 +733,13 @@ class UpdateInstaller:
         )
         if not bundles:
             raise ValueError("The macOS update archive did not contain an app bundle")
+        if archive.parent.name.startswith(_UPDATE_TEMP_PREFIX):
+            try:
+                destination.resolve().relative_to(archive.parent.resolve())
+            except ValueError:
+                # The bundle was extracted outside the download directory, so
+                # the archive (and its temporary directory) is no longer needed.
+                shutil.rmtree(archive.parent, ignore_errors=True)
         return InstallPlan(kind="open_bundle", app_path=bundles[0])
 
     def launch(self, plan: InstallPlan) -> None:

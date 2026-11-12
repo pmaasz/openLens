@@ -129,11 +129,20 @@ class TestDegenerateSpacing(unittest.TestCase):
         result = self.analyzer.calculate_psf(pixels=8, wavelength_nm=0.0, use_diffraction=True)
         self.assertEqual(
             set(result),
-            {"image", "y_axis", "z_axis", "centroid", "step_size", "raw_count"},
+            {
+                "image",
+                "y_axis",
+                "z_axis",
+                "centroid",
+                "step_size",
+                "raw_count",
+                "captured_fraction",
+            },
         )
         self.assertEqual(np.real(result["image"]).shape, (8, 8))
         self.assertEqual(len(result["y_axis"]), 8)
         self.assertEqual(result["raw_count"], 0)
+        self.assertEqual(result["captured_fraction"], 0.0)
 
     def test_zero_wavelength_image_is_finite(self):
         result = self.analyzer.calculate_psf(pixels=16, wavelength_nm=0.0, use_diffraction=True)

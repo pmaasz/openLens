@@ -3,6 +3,7 @@
 Functional tests for Performance Metrics Dashboard
 """
 
+import math
 import sys
 
 import unittest
@@ -328,6 +329,56 @@ class TestDepthOfFieldBeyondHyperfocal(unittest.TestCase):
         self.assertEqual(
             self.calc.calculate_depth_of_field(object_distance=5.0 * H)["far"],
             float("inf"),
+        )
+
+
+class TestMetricOverridesAreConsistent(unittest.TestCase):
+    """One get_all_metrics() bundle must describe one pupil and one wavelength."""
+
+    def setUp(self):
+        self.lens = Lens(
+            radius_of_curvature_1=50.0,
+            radius_of_curvature_2=-50.0,
+            thickness=5.0,
+            diameter=25.0,
+            refractive_index=1.5168,
+            material="BK7",
+        )
+        self.metrics = PerformanceMetrics(self.lens)
+
+    def test_the_numerical_aperture_uses_the_overridden_pupil(self):
+        result = self.metrics.get_all_metrics(entrance_pupil_diameter=10.0)
+
+        expected = math.sin(math.atan(10.0 / (2.0 * abs(self.lens.calculate_focal_length()))))
+        self.assertAlmostEqual(result["numerical_aperture"], expected, places=9)
+
+    def test_the_airy_radius_uses_the_overridden_pupil(self):
+        result = self.metrics.get_all_metrics(entrance_pupil_diameter=10.0, wavelength=550.0)
+
+        expected = 1.22 * 550e-6 * abs(self.lens.calculate_focal_length()) / 10.0
+        self.assertAlmostEqual(result["airy_disk_radius_mm"], expected, places=12)
+
+    def test_the_angular_rayleigh_limit_scales_with_the_wavelength(self):
+        blue = self.metrics.get_all_metrics(wavelength=400.0)["rayleigh_limit_urad"]
+        red = self.metrics.get_all_metrics(wavelength=800.0)["rayleigh_limit_urad"]
+
+        self.assertAlmostEqual(red / blue, 2.0, places=9)
+
+    def test_the_bundle_describes_one_aperture(self):
+        result = self.metrics.get_all_metrics(entrance_pupil_diameter=10.0, wavelength=550.0)
+
+        # The NA and the f-number must describe the same cone.
+        self.assertAlmostEqual(
+            result["numerical_aperture"],
+            math.sin(math.atan(1.0 / (2.0 * result["f_number"]))),
+            places=9,
+        )
+        # The Rayleigh spot estimate and the Airy radius are the same
+        # quantity in different units.
+        self.assertAlmostEqual(
+            result["resolution_um"],
+            result["airy_disk_radius_mm"] * 1000.0,
+            places=9,
         )
 
 

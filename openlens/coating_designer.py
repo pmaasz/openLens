@@ -328,8 +328,18 @@ class CoatingDesigner:
         Returns:
             List of (wavelength_nm, reflectivity) tuples
         """
+        if num_points < 1:
+            raise ValueError("num_points must be at least 1")
+
         min_wl, max_wl = wavelength_range
-        wavelengths = [min_wl + (max_wl - min_wl) * i / (num_points - 1) for i in range(num_points)]
+        if num_points == 1:
+            # A single sample sits at the start of the requested range; the
+            # usual linspace would divide by num_points - 1.
+            wavelengths = [min_wl]
+        else:
+            wavelengths = [
+                min_wl + (max_wl - min_wl) * i / (num_points - 1) for i in range(num_points)
+            ]
 
         curve = []
         for wl in wavelengths:

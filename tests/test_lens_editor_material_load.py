@@ -75,7 +75,7 @@ class TestLoadingShowsTheRightMaterial(_EditorFixture):
 
     def test_an_uncatalogued_material_falls_back_to_custom(self):
         """setCurrentText is a no-op for a value not in the list."""
-        self._load("N-BK7", 1.5168)
+        self._load("Unobtainium", 2.1)
 
         self.assertEqual(
             self.editor._material_combo.currentText(),
@@ -84,9 +84,9 @@ class TestLoadingShowsTheRightMaterial(_EditorFixture):
         )
 
     def test_an_uncatalogued_material_keeps_its_index(self):
-        lens = self._load("N-BK7", 1.5168)
+        lens = self._load("Unobtainium", 2.1)
 
-        self.assertAlmostEqual(lens.refractive_index, 1.5168, places=6)
+        self.assertAlmostEqual(lens.refractive_index, 2.1, places=6)
 
     def test_an_empty_material_falls_back_to_custom(self):
         self._load("", 1.6)

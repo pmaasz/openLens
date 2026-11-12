@@ -33,6 +33,7 @@ from ...updater import (
     UpdateCheckResult,
     UpdateChecker,
     UpdateInstaller,
+    cleanup_download,
 )
 from ..workers import AnalysisWorker, stop_worker
 
@@ -400,9 +401,10 @@ class StartupDialog(QDialog):
             return plan
         except Exception:
             # launch() is the last risky step. If it failed, no helper is
-            # waiting for the file, so the partial download can be removed.
+            # waiting for the file, so remove the payload and the updater's
+            # temporary directory.
             if downloaded is not None:
-                downloaded.unlink(missing_ok=True)
+                cleanup_download(downloaded)
             raise
 
     def _on_download_worker_finished(self) -> None:

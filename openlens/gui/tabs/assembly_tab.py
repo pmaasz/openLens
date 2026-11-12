@@ -24,10 +24,16 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QFrame,
     QSizePolicy,
+    QCheckBox,
+    QLabel,
 )
 from .base_tab import BaseTab
 from ..widgets.assembly_viz import AssemblyVisualizationWidget
+from ...casing import Casing
+from ...mechanical_materials import get_mechanical_material_catalog
 from ...optical_system import OpticalSystem, AirGap
+from ...validation import ValidationError
+from ...constants import COLOR_ERROR, COLOR_WARNING
 
 logger = logging.getLogger(__name__)
 
@@ -271,6 +277,58 @@ class AssemblyTab(BaseTab):
         align_layout.addRow(align_apply_btn)
         left_layout.addWidget(self._align_group)
 
+        # Casing: one open-ended cylindrical shell around the element stack.
+        casing_group = QGroupBox("Casing")
+        casing_layout = QFormLayout(casing_group)
+        casing_layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
+        self._casing_check = QCheckBox("Enclose the element stack")
+        self._casing_check.toggled.connect(self._on_casing_toggled)
+        casing_layout.addRow(self._casing_check)
+
+        material_row = QHBoxLayout()
+        self._casing_material_combo = QComboBox()
+        self._casing_material_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        material_row.addWidget(self._casing_material_combo)
+        self._casing_materials_btn = QPushButton("New…")
+        self._casing_materials_btn.setToolTip("Add or remove custom casing materials")
+        self._casing_materials_btn.clicked.connect(self._on_manage_casing_materials)
+        material_row.addWidget(self._casing_materials_btn)
+        casing_layout.addRow("Material:", material_row)
+
+        self._casing_bore_input = QDoubleSpinBox()
+        self._casing_bore_input.setRange(0.001, 10000.0)
+        self._casing_bore_input.setDecimals(3)
+        self._casing_bore_input.setSuffix(" mm")
+        casing_layout.addRow("Bore Ø:", self._casing_bore_input)
+
+        self._casing_wall_input = QDoubleSpinBox()
+        self._casing_wall_input.setRange(0.001, 1000.0)
+        self._casing_wall_input.setDecimals(3)
+        self._casing_wall_input.setSuffix(" mm")
+        casing_layout.addRow("Wall:", self._casing_wall_input)
+
+        self._casing_start_input = QDoubleSpinBox()
+        self._casing_start_input.setRange(-10000.0, 10000.0)
+        self._casing_start_input.setDecimals(3)
+        self._casing_start_input.setSuffix(" mm")
+        casing_layout.addRow("Start X:", self._casing_start_input)
+
+        self._casing_end_input = QDoubleSpinBox()
+        self._casing_end_input.setRange(-10000.0, 10000.0)
+        self._casing_end_input.setDecimals(3)
+        self._casing_end_input.setSuffix(" mm")
+        casing_layout.addRow("End X:", self._casing_end_input)
+
+        self._casing_status = QLabel("No casing")
+        self._casing_status.setWordWrap(True)
+        self._casing_status.setStyleSheet("color: #888; font-size: 10px;")
+        casing_layout.addRow(self._casing_status)
+
+        self._casing_apply_btn = QPushButton("Apply casing")
+        self._casing_apply_btn.clicked.connect(self._on_casing_apply)
+        casing_layout.addRow(self._casing_apply_btn)
+        left_layout.addWidget(casing_group)
+
         layout.addWidget(left_scroll, 1)
 
         # Right: 2D visualization
@@ -399,6 +457,7 @@ class AssemblyTab(BaseTab):
             combo.blockSignals(False)
             self._stop_dia_input.setValue(0.0)
             self._assembly_viz.update_system(None)
+            self._refresh_casing_ui()
             return
 
         row = self._system_list.currentRow()
@@ -412,6 +471,7 @@ class AssemblyTab(BaseTab):
             self._air_gap_group.setEnabled(False)
             self._align_group.setEnabled(False)
         self._assembly_viz.update_system(self._optical_system)
+        self._refresh_casing_ui()
 
     def load_system(self, system: Optional[OpticalSystem]) -> None:
         """Bind the editor to *system* without recording an undo command.
@@ -436,6 +496,156 @@ class AssemblyTab(BaseTab):
             self._refresh_assembly_ui()
         finally:
             self._restoring = False
+
+    def _default_casing(self) -> Casing:
+        """A casing spanning the stack, with clearance around the largest lens."""
+        elements = self._optical_system.elements
+        material = self._casing_material_combo.currentText() or "Aluminium"
+        if not elements:
+            return Casing(
+                material=material, bore_diameter=50.0, wall_thickness=2.0, start_x=0.0, end_x=10.0
+            )
+        largest = max(element.lens.diameter for element in elements)
+        start = float(elements[0].position)
+        end = float(elements[-1].position) + float(elements[-1].lens.thickness)
+        if end <= start:
+            end = start + 1.0
+        return Casing(
+            material=material,
+            bore_diameter=largest + 2.0,
+            wall_thickness=2.0,
+            start_x=start,
+            end_x=end,
+        )
+
+    def _refresh_casing_materials(self, selected=None) -> None:
+        """Rebuild the material combo from the mechanical catalog."""
+        combo = self._casing_material_combo
+        combo.blockSignals(True)
+        combo.clear()
+        for name in get_mechanical_material_catalog().get_available_materials():
+            combo.addItem(name)
+        if selected:
+            combo.setCurrentText(selected)
+        combo.blockSignals(False)
+
+    def _refresh_casing_ui(self) -> None:
+        """Sync the casing controls with the current system and its warning."""
+        if self._optical_system is None:
+            self._casing_check.blockSignals(True)
+            self._casing_check.setChecked(False)
+            self._casing_check.setEnabled(False)
+            self._casing_check.blockSignals(False)
+            for widget in (
+                self._casing_material_combo,
+                self._casing_materials_btn,
+                self._casing_bore_input,
+                self._casing_wall_input,
+                self._casing_start_input,
+                self._casing_end_input,
+                self._casing_apply_btn,
+            ):
+                widget.setEnabled(False)
+            self._casing_status.setText("No casing")
+            self._casing_status.setStyleSheet("color: #888; font-size: 10px;")
+            return
+
+        casing = self._optical_system.casing
+        enabled = casing is not None
+        self._casing_check.blockSignals(True)
+        self._casing_check.setChecked(enabled)
+        self._casing_check.setEnabled(enabled or bool(self._optical_system.elements))
+        self._casing_check.blockSignals(False)
+
+        self._refresh_casing_materials(casing.material if casing is not None else None)
+        values = casing if casing is not None else self._default_casing()
+        for widget, value in (
+            (self._casing_bore_input, values.bore_diameter),
+            (self._casing_wall_input, values.wall_thickness),
+            (self._casing_start_input, values.start_x),
+            (self._casing_end_input, values.end_x),
+        ):
+            widget.blockSignals(True)
+            widget.setValue(float(value))
+            widget.blockSignals(False)
+
+        for widget in (
+            self._casing_material_combo,
+            self._casing_materials_btn,
+            self._casing_bore_input,
+            self._casing_wall_input,
+            self._casing_start_input,
+            self._casing_end_input,
+            self._casing_apply_btn,
+        ):
+            widget.setEnabled(enabled)
+
+        if casing is None:
+            self._casing_status.setText("No casing")
+            self._casing_status.setStyleSheet("color: #888; font-size: 10px;")
+            return
+        warning = self._optical_system.casing_warning()
+        if warning:
+            self._casing_status.setText(warning)
+            self._casing_status.setStyleSheet(f"color: {COLOR_WARNING}; font-size: 10px;")
+        else:
+            self._casing_status.setText(
+                f"{casing.material} · bore Ø{casing.bore_diameter:.2f} mm · "
+                f"wall {casing.wall_thickness:.2f} mm"
+            )
+            self._casing_status.setStyleSheet("color: #888; font-size: 10px;")
+
+    @_undoable_assembly_edit("Add or remove casing")
+    def _on_casing_toggled(self, enabled: bool) -> None:
+        """Add a default casing or delete the current one."""
+        if self._optical_system is None:
+            return
+        if enabled:
+            if self._optical_system.casing is None:
+                try:
+                    self._optical_system.set_casing(self._default_casing())
+                except ValidationError as exc:
+                    self._refresh_casing_ui()
+                    self._casing_status.setText(str(exc))
+                    self._casing_status.setStyleSheet(f"color: {COLOR_ERROR}; font-size: 10px;")
+                    return
+        else:
+            self._optical_system.clear_casing()
+        self._refresh_casing_ui()
+        self._assembly_viz.update_system(self._optical_system)
+        self._on_assembly_changed()
+
+    @_undoable_assembly_edit("Edit casing")
+    def _on_casing_apply(self) -> None:
+        """Validate and apply the numeric casing fields."""
+        if self._optical_system is None or self._optical_system.casing is None:
+            return
+        try:
+            casing = Casing(
+                material=self._casing_material_combo.currentText(),
+                bore_diameter=self._casing_bore_input.value(),
+                wall_thickness=self._casing_wall_input.value(),
+                start_x=self._casing_start_input.value(),
+                end_x=self._casing_end_input.value(),
+            )
+            self._optical_system.set_casing(casing)
+        except ValidationError as exc:
+            self._casing_status.setText(str(exc))
+            self._casing_status.setStyleSheet(f"color: {COLOR_ERROR}; font-size: 10px;")
+            return
+        self._refresh_casing_ui()
+        self._assembly_viz.update_system(self._optical_system)
+        self._on_assembly_changed()
+
+    def _on_manage_casing_materials(self) -> None:
+        """Open the custom-material dialog, then refresh the combo."""
+        from ..dialogs.mechanical_material import MechanicalMaterialDialog
+
+        current = self._casing_material_combo.currentText()
+        catalog = get_mechanical_material_catalog()
+        dialog = MechanicalMaterialDialog(self, catalog)
+        dialog.exec()
+        self._refresh_casing_materials(dialog.added_material or current)
 
     def _refresh_stop_ui(self) -> None:
         """Rebuild the stop gap combo and reflect the current stop."""

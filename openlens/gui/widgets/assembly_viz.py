@@ -5,7 +5,7 @@ OpenLens PySide6 Assembly Visualization Widget
 
 from PySide6.QtWidgets import QWidget
 from PySide6.QtGui import QPainter, QPen, QPainterPath, QBrush, QColor
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QRectF
 from typing import Optional, TYPE_CHECKING
 
 from ..theme import DARK, get_palette
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
     from ...lens import Lens
     from ...optical_system import OpticalSystem
+    from ...casing import Casing
 
 
 class AssemblyVisualizationWidget(QWidget):
@@ -84,8 +85,18 @@ class AssemblyVisualizationWidget(QWidget):
                 total_thickness += self._system.air_gaps[i].thickness
 
         max_diameter = max(e.lens.diameter for e in self._system.elements)
+        casing = getattr(self._system, "casing", None)
+        if casing is not None:
+            max_diameter = max(max_diameter, casing.outer_diameter)
+        total_thickness = max(
+            total_thickness,
+            casing.end_x if casing is not None else total_thickness,
+        )
 
-        max_dim = max(total_thickness * 1.5, max_diameter * 1.3)
+        # Floor the divisor like the other 2D views: Lens accepts a zero
+        # thickness and diameter, so a degenerate model would otherwise
+        # divide by zero inside the paint event on every repaint.
+        max_dim = max(total_thickness * 1.5, max_diameter * 1.3, 1.0)
         scale = min(w, h) / max_dim / 2
 
         cx = 30
@@ -93,6 +104,11 @@ class AssemblyVisualizationWidget(QWidget):
 
         painter.setPen(QPen(self._axis_color, 1, Qt.DashLine))
         painter.drawLine(0, cy, w, cy)
+
+        if casing is not None:
+            self._draw_casing(
+                painter, casing, cx - self._system.elements[0].position * scale, cy, scale
+            )
 
         for i, element in enumerate(self._system.elements):
             lens = element.lens
@@ -104,6 +120,39 @@ class AssemblyVisualizationWidget(QWidget):
                 cx += lens.thickness * scale + self._system.air_gaps[i].thickness * scale
             else:
                 cx += lens.thickness * scale
+
+    def _draw_casing(
+        self,
+        painter: QPainter,
+        casing: "Casing",
+        origin_x: float,
+        cy: float,
+        scale: float,
+    ) -> None:
+        """Draw the casing's two open-ended walls to scale.
+
+        Args:
+            painter: Painter used for drawing.
+            casing: Casing model in assembly-axis coordinates (mm).
+            origin_x: Screen x of model x = 0.
+            cy: Screen y of the optical axis.
+            scale: Pixels per millimeter.
+        """
+        from ...constants import COLOR_CASING
+
+        color = QColor(COLOR_CASING)
+        fill = QColor(color.red(), color.green(), color.blue(), 90)
+        left = origin_x + casing.start_x * scale
+        width = casing.length * scale
+        inner = casing.inner_radius * scale
+        wall = casing.wall_thickness * scale
+
+        painter.save()
+        painter.setPen(QPen(color, 1))
+        painter.setBrush(QBrush(fill))
+        painter.drawRect(QRectF(left, cy - inner - wall, width, wall))
+        painter.drawRect(QRectF(left, cy + inner, width, wall))
+        painter.restore()
 
     def _draw_lens(
         self,
@@ -131,7 +180,6 @@ class AssemblyVisualizationWidget(QWidget):
         from ...constants import COLOR_LENS_R1, COLOR_LENS_R2, COLOR_LENS_RIM, COLOR_LENS_BAD
         from ...geometry import LensGeometry
 
-        half_d = lens.diameter / 2
         outline = LensGeometry.lens_outline(lens, num_points=50, max_points=2000)
         bad = not outline["feasible"]
         bad_color = QColor(COLOR_LENS_BAD)
@@ -139,8 +187,6 @@ class AssemblyVisualizationWidget(QWidget):
         def _to_screen(pt) -> tuple:
             """Map a vertex-frame (x, y) outline point to widget pixels."""
             return (cx + pt[0] * scale, cy + pt[1] * scale)
-
-        x2_edge = cx + outline["x2_edge"] * scale
 
         path = QPainterPath()
 
@@ -151,10 +197,16 @@ class AssemblyVisualizationWidget(QWidget):
             else:
                 path.lineTo(x, y)
 
-        path.lineTo(x2_edge, cy + half_d * scale)
+        # Rim chain, top side (front rim -> back rim), then the mirrored
+        # chain after the back surface.
+        for pt in outline["edge"][1:]:
+            path.lineTo(*_to_screen(pt))
 
         for pt in outline["back"]:
             path.lineTo(*_to_screen(pt))
+
+        for x, radius in reversed(outline["edge"][1:-1]):
+            path.lineTo(*_to_screen((x, -radius)))
 
         path.closeSubpath()
 

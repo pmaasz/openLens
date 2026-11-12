@@ -19,7 +19,12 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from .constants import DEFAULT_DB_FILE, DEFAULT_MATERIALS_FILE, DEFAULT_MOUNTS_FILE
+from .constants import (
+    DEFAULT_DB_FILE,
+    DEFAULT_MATERIALS_FILE,
+    DEFAULT_MECHANICAL_MATERIALS_FILE,
+    DEFAULT_MOUNTS_FILE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +42,9 @@ MATERIALS_PATH_ENV_VAR = "OPENLENS_MATERIALS_PATH"
 
 #: Overrides the custom-mount configuration path.
 MOUNTS_PATH_ENV_VAR = "OPENLENS_MOUNTS_PATH"
+
+#: Overrides the mechanical-material catalog path.
+MECHANICAL_MATERIALS_PATH_ENV_VAR = "OPENLENS_MECHANICAL_MATERIALS_PATH"
 
 #: The directory name used under the platform's per-user data root.
 APP_DIR_NAME = "openlens"
@@ -120,6 +128,14 @@ def default_mounts_path() -> Path:
     if override:
         return Path(override).expanduser()
     return user_data_dir() / DEFAULT_MOUNTS_FILE
+
+
+def default_mechanical_materials_path() -> Path:
+    """The JSON file holding user-defined casing materials."""
+    override = os.environ.get(MECHANICAL_MATERIALS_PATH_ENV_VAR)
+    if override:
+        return Path(override).expanduser()
+    return user_data_dir() / DEFAULT_MECHANICAL_MATERIALS_FILE
 
 
 def legacy_materials_path() -> Path:

@@ -13,6 +13,7 @@ tracing, analyzing, and exporting optical systems.
    getting_started
    user_guide
    nikon_series_e_50mm
+   mcp
 
 .. toctree::
    :maxdepth: 2

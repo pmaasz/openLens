@@ -11,6 +11,7 @@ the busy progress bar (range 0..0) spun forever.
 These tests cover the slot contract against the real widgets.
 """
 
+import gc
 import os
 import sys
 import unittest
@@ -51,6 +52,14 @@ class TestTolerancingWorkerSlots(unittest.TestCase):
     def setUp(self):
         from openlens.gui.tabs.tolerancing_tab import TolerancingTab
 
+        # The worker tests below run a QThread. A cyclic GC pass that happens
+        # inside that thread (py3.11 hit one in _lens_state_key) can finalise
+        # a Qt wrapper created by an earlier test in the wrong thread and
+        # segfault the process. Collect the backlog here, on the main thread,
+        # before any worker starts, and flush deferred deletions.
+        gc.collect()
+        QApplication.processEvents()
+
         class _Parent:
             """Minimal stand-in for the main window the tab reads from."""
 
@@ -73,7 +82,16 @@ class TestTolerancingWorkerSlots(unittest.TestCase):
         self.tab._parent = _Parent(lens)
 
     def tearDown(self):
+        # Do not leave a live QThread or a deleteLater'd widget for the next
+        # test's event loop to find; both were crash surfaces.
+        for name in ("_mc_worker", "_inv_worker"):
+            worker = getattr(self.tab, name, None)
+            if worker is not None and worker.isRunning():
+                worker.wait(10000)
+        self.tab.close()
         self.tab.deleteLater()
+        QApplication.processEvents()
+        self.tab = None
 
     def test_slots_connected_by_both_run_handlers_exist(self):
         """The handlers must resolve to real slots, not missing attributes."""

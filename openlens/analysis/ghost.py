@@ -1,9 +1,12 @@
 from dataclasses import dataclass, field
+import logging
 from typing import List, Optional, Dict, Any
 
 from ..ray_tracer import Ray3D, LensRayTracer3D, RefractionResult, vec3
 from ..optical_system import OpticalSystem
 from ..constants import WAVELENGTH_GREEN, NM_TO_MM
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -42,13 +45,16 @@ class GhostAnalyzer:
 
     def _build_surface_list(self) -> List[Dict[str, Any]]:
         """Map linear list of surfaces."""
+        transforms = self._element_transforms()
         surfaces = []
         for i, elem in enumerate(self.system.elements):
+            transform = transforms[i]
             # Front
             surfaces.append(
                 {
                     "element": elem,
                     "lens": elem.lens,
+                    "transform": transform,
                     "type": "front",
                     "id": 2 * i,
                     "name": f"{elem.lens.name} (Front)",
@@ -59,12 +65,38 @@ class GhostAnalyzer:
                 {
                     "element": elem,
                     "lens": elem.lens,
+                    "transform": transform,
                     "type": "back",
                     "id": 2 * i + 1,
                     "name": f"{elem.lens.name} (Back)",
                 }
             )
         return surfaces
+
+    def _element_transforms(self) -> List[Any]:
+        """Global transform per flat element, from the node tree.
+
+        ``SystemRayTracer3D`` builds its tracers from
+        ``node.get_global_transform()``; this analyzer used to forward only the
+        axial position, so a decentered or tilted element was traced on-axis.
+        The node walk is the same one that produced ``system.elements``; if the
+        two ever disagree (a hand-edited flat list), fall back to the axial
+        position rather than pairing elements with the wrong nodes.
+        """
+        nodes = [
+            node
+            for node, _pos in self.system.root.get_flat_list()
+            if getattr(node, "is_element", False)
+        ]
+        if len(nodes) != len(self.system.elements):
+            logger.warning(
+                "Ghost analysis: %d element nodes for %d flat elements; falling back "
+                "to axial positions",
+                len(nodes),
+                len(self.system.elements),
+            )
+            return [None] * len(self.system.elements)
+        return [node.get_global_transform() for node in nodes]
 
     def trace_ghosts(
         self, num_rays: int = 3, wavelength: float = WAVELENGTH_GREEN * NM_TO_MM
@@ -192,7 +224,11 @@ class GhostAnalyzer:
         comparison must be explicit, otherwise misses never abort a path.)
         """
         surf = self.surfaces[surf_idx]
-        tracer = LensRayTracer3D(surf["lens"], x_offset=surf["element"].position)
+        transform = surf.get("transform")
+        if transform is not None:
+            tracer = LensRayTracer3D(surf["lens"], transform=transform)
+        else:
+            tracer = LensRayTracer3D(surf["lens"], x_offset=surf["element"].position)
         result = tracer.trace_surface(ray, surf["type"], interaction)
         if interaction == "reflect":
             return result is RefractionResult.REFLECTED

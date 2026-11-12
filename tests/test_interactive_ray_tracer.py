@@ -7,7 +7,7 @@ import unittest
 
 from openlens.lens import Lens
 from openlens.optical_system import OpticalSystem
-from openlens.interactive_ray_tracer import InteractiveRayTracer
+from openlens.interactive_ray_tracer import InteractiveRay, InteractiveRayTracer
 
 
 class TestInteractiveRayTracer(unittest.TestCase):
@@ -32,7 +32,7 @@ class TestInteractiveRayTracer(unittest.TestCase):
         self.assertIsNotNone(info["final_position"])
 
     def test_wavelength_in_nm_converted_to_mm(self):
-        ray = self.tracer.add_ray((-20.0, 0.0, 0.0), (1.0, 0.0, 0.0), wavelength=587.6)
+        ray = self.tracer.add_ray((-20.0, 0.0, 0.0), (1.0, 0.0, 0.0), wavelength_nm=587.6)
         self.assertAlmostEqual(ray.wavelength, 587.6e-6, places=12)
 
     def test_update_ray_angle_changes_direction(self):
@@ -49,6 +49,51 @@ class TestInteractiveRayTracer(unittest.TestCase):
             else tuple(ray.direction.tolist())
         )
         self.assertNotEqual(before, after)
+
+    def test_wavelength_is_explicit_nanometres(self):
+        """#665: 1.5 um (1500 nm) used to be stored as 1.5 nm."""
+        ray = self.tracer.add_ray((-20.0, 0.0, 0.0), (1.0, 0.0, 0.0), wavelength_nm=1500.0)
+
+        self.assertAlmostEqual(ray.wavelength, 0.0015, places=12)
+
+    def test_a_sub_millimetre_wavelength_is_not_rescaled(self):
+        """0.55 used to mean 0.55 mm; the unit is now unambiguous."""
+        ray = self.tracer.add_ray((-20.0, 0.0, 0.0), (1.0, 0.0, 0.0), wavelength_nm=0.55)
+
+        self.assertAlmostEqual(ray.wavelength, 0.55e-6, places=18)
+
+    def test_zero_direction_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "direction"):
+            self.tracer.add_ray((-20.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+
+    def test_update_direction_rejects_zero_and_keeps_the_previous_direction(self):
+        ray = self.tracer.add_ray((-20.0, 0.0, 0.0), (1.0, 0.0, 0.0))
+        before = tuple(ray.direction)
+
+        with self.assertRaisesRegex(ValueError, "direction"):
+            self.tracer.update_ray_direction(ray, (0.0, 0.0, 0.0))
+
+        self.assertEqual(tuple(ray.direction), before)
+
+    def test_direct_ray_with_zero_direction_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "direction"):
+            InteractiveRay(
+                origin=(-20.0, 0.0, 0.0),
+                direction=(0.0, 0.0, 0.0),
+                wavelength=0.0005876,
+                color="red",
+                path_segments=[],
+            )
+
+    def test_non_positive_wavelength_is_rejected(self):
+        for value in (0.0, -587.6, float("nan"), float("inf")):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "wavelength_nm"):
+                    self.tracer.add_ray(
+                        (-20.0, 0.0, 0.0),
+                        (1.0, 0.0, 0.0),
+                        wavelength_nm=value,
+                    )
 
     def test_remove_ray_and_clear(self):
         r1 = self.tracer.add_ray((-20.0, 1.0, 0.0), (1.0, 0.0, 0.0))

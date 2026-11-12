@@ -195,11 +195,12 @@ class BeamSynthesisPropagator:
     def _default_image_plane(self, wavelength_mm: float) -> float:
         """Detector x for a caller that did not name one.
 
-        The paraxial focus, found with the same search the diffraction PSF
-        uses, so the two analyses of one system are measured at the same
-        plane. A fixed 50 mm past the last vertex put a 100 mm singlet's
-        detector at 55 mm - about 46 mm short of focus - and made its PSF
-        incomparable with ``DiffractionPSF``.
+        The system's configured plane when set; otherwise the paraxial focus,
+        found with the same search the diffraction PSF uses, so the two
+        analyses of one system are measured at the same plane. A fixed 50 mm
+        past the last vertex put a 100 mm singlet's detector at 55 mm - about
+        46 mm short of focus - and made its PSF incomparable with
+        ``DiffractionPSF``.
 
         Args:
             wavelength_mm: Vacuum wavelength the beamlets are traced at.
@@ -208,6 +209,19 @@ class BeamSynthesisPropagator:
             The focus x in mm, or the documented fallback distance past the
             last surface when the exit ray is collimated or cannot be traced.
         """
+        configured = getattr(self.system, "image_plane_x_mm", None)
+        if configured is not None:
+            try:
+                configured = float(configured)
+            except (TypeError, ValueError):
+                configured = None
+            if configured is not None and math.isfinite(configured):
+                return configured
+            logger.warning(
+                "Beam synthesis: ignoring non-finite image plane %r",
+                getattr(self.system, "image_plane_x_mm", None),
+            )
+
         focus = find_paraxial_focus(self.system, wavelength_mm / NM_TO_MM, tracer=self.tracer)
         if focus is not None and math.isfinite(focus):
             return focus
@@ -273,6 +287,7 @@ class BeamSynthesisPropagator:
 
         pupil_x = self.system.elements[0].position
         dist = pupil_x - start_x
+        element_tracers = self._element_tracers()
 
         for py in y_vals:
             for pz in z_vals:
@@ -287,7 +302,7 @@ class BeamSynthesisPropagator:
                 beam = GaussianBeam(wavelength_mm, q0, q0, ray)
 
                 # Manual trace loop:
-                self._trace_beamlet(beam)
+                self._trace_beamlet(beam, element_tracers)
 
                 if not beam.ray.terminated:
                     beamlets.append(beam)
@@ -341,13 +356,35 @@ class BeamSynthesisPropagator:
         Intensity = np.abs(E_field) ** 2
         return DY, DZ, Intensity
 
-    def _trace_beamlet(self, beam: GaussianBeam) -> None:
+    def _element_tracers(self) -> list:
+        """One tracer per element, carrying its full global node transform.
+
+        Building from only ``element.position`` ignored decenter and tilt, so
+        every beamlet traced the same on-axis system.
+        """
+        if hasattr(self.system, "root"):
+            nodes = [
+                node
+                for node, _ in self.system.root.get_flat_list()
+                if getattr(node, "is_element", False)
+            ]
+            if len(nodes) == len(self.system.elements):
+                return [
+                    LensRayTracer3D(node.element_model, transform=node.get_global_transform())
+                    for node in nodes
+                ]
+        return [
+            LensRayTracer3D(element.lens, x_offset=element.position)
+            for element in self.system.elements
+        ]
+
+    def _trace_beamlet(self, beam: GaussianBeam, tracers: Optional[list] = None) -> None:
         """Helper to trace beamlet through system elements."""
-        for i, element in enumerate(self.system.elements):
+        if tracers is None:
+            tracers = self._element_tracers()
+        for element, tracer in zip(self.system.elements, tracers):
             if beam.ray.terminated:
                 break
-
-            tracer = LensRayTracer3D(element.lens, x_offset=element.position)
 
             # Front
             if tracer.trace_surface(beam.ray, "front", "refract") is not RefractionResult.REFRACTED:

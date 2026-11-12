@@ -1,4 +1,5 @@
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +12,10 @@ Supports AP203/AP214 geometry (Manifold Solid B-Rep).
 from datetime import datetime
 from typing import List, Any, Optional
 from ..atomic import atomic_write_text
+from ..constants import EPSILON
+from ..geometry import LensGeometry
+from ..transform import Matrix4x4
+from ..vector3 import vec3
 
 
 class StepRef(int):
@@ -213,6 +218,114 @@ END-ISO-10303-21;"""
         return header + "\n" + "\n".join(self.lines) + "\n" + footer
 
 
+def _is_flat_radius(radius: float) -> bool:
+    """Whether the writer treats a vertex radius as planar.
+
+    This is the writer's own threshold, kept so a near-flat sphere keeps
+    exporting exactly as before.
+    """
+    return abs(radius) < 1e-10 or abs(radius) > 1e10 or abs(radius) > 10000
+
+
+def _sphere_sag(radius: float, height: float) -> float:
+    """Sag of a spherical surface of ``radius`` at ``height``."""
+    if _is_flat_radius(radius) or not math.isfinite(radius):
+        return 0.0
+    radius_abs = abs(radius)
+    y = min(abs(height), radius_abs)
+    sag = radius_abs - math.sqrt(max(0.0, radius_abs * radius_abs - y * y))
+    return sag if radius > 0 else -sag
+
+
+def _conic_profile(lens: Any, side: int) -> Optional[str]:
+    """Name the non-spherical profile of one lens surface, or ``None``.
+
+    Parabolic surfaces store their sag at the rim instead of a conic
+    constant, so their effective vertex radius is not the stored radius.
+    A parabolic surface whose stored sag is zero is a plane.
+    """
+    if getattr(lens, f"is_parabolic_{side}", False):
+        sag = getattr(lens, f"parabolic_sag_{side}", 0.0)
+        diameter = getattr(lens, "diameter", 0.0)
+        if abs(sag) < EPSILON or abs(diameter) < EPSILON:
+            return None
+        return "parabolic"
+
+    radius = getattr(lens, f"radius_of_curvature_{side}", 0.0)
+    conic_constant = getattr(lens, f"conic_constant_{side}", 0.0)
+    if abs(conic_constant) > EPSILON and not _is_flat_radius(radius):
+        return f"conic (K={conic_constant:g})"
+    return None
+
+
+def _surface_is_flat(lens: Any, side: int) -> bool:
+    """Whether a surface is exactly planar for the exported B-rep.
+
+    A zero-sag parabolic surface is a plane even though its radius attribute
+    is finite, so the radius alone is not enough to decide.
+    """
+    if _conic_profile(lens, side) is not None:
+        return False
+    if getattr(lens, f"is_parabolic_{side}", False):
+        return True
+    return _is_flat_radius(getattr(lens, f"radius_of_curvature_{side}", 0.0))
+
+
+#: The optical model runs along +X with lateral offsets in Y/Z; STEP writes
+#: the optical axis along +Z with the cross-section in X/Y. These permutations
+#: convert a point or direction between the two frames.
+_MODEL_TO_STEP = Matrix4x4(
+    [
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+)
+_STEP_TO_MODEL = Matrix4x4(
+    [
+        [0.0, 0.0, 1.0, 0.0],
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+)
+
+
+def _flat_element_transform(element: Any) -> Matrix4x4:
+    """The model transform stored on a flat element record.
+
+    Mirrors ``OpticalNode.get_local_transform`` (T * R) for systems whose
+    records are not backed by a tree.
+    """
+    translation = Matrix4x4.from_translation(
+        float(getattr(element, "position", 0.0)),
+        float(getattr(element, "decenter_y", 0.0)),
+        float(getattr(element, "decenter_z", 0.0)),
+    )
+    rotation = Matrix4x4.from_euler(
+        float(getattr(element, "tilt_x", 0.0)),
+        float(getattr(element, "tilt_y", 0.0)),
+        float(getattr(element, "tilt_z", 0.0)),
+    )
+    return translation * rotation
+
+
+def _rotates(matrix: Matrix4x4) -> bool:
+    """Whether an affine transform rotates rather than only translates."""
+    return any(
+        abs(matrix.m[row][col] - (1.0 if row == col else 0.0)) > 1e-12
+        for row in range(3)
+        for col in range(3)
+    )
+
+
+def _direction_tuple(matrix: Matrix4x4, direction: tuple) -> tuple:
+    """Transform a direction (translation ignored) into a STEP tuple."""
+    vector = matrix.multiply_vector(vec3(*direction))
+    return (vector.x, vector.y, vector.z)
+
+
 class StepExporter:
     """Exports optical systems to STEP format."""
 
@@ -246,6 +359,12 @@ class StepExporter:
             result are unaffected. A malformed part used to be logged at
             DEBUG, which is invisible at default verbosity - the drawing came
             out with silently missing solids and nothing said so.
+
+        Raises:
+            ValueError: If a lens has a parabolic or general conic surface.
+                A ``SPHERICAL_SURFACE`` cannot pass through the modelled rim,
+                so the solid would not close. Refusing leaves no file: the
+                buffer is only written once every part has been built.
         """
         # Start from a clean buffer and a clean id sequence.
         self.writer = StepWriter()
@@ -261,6 +380,7 @@ class StepExporter:
         self.geom_context = 0
         self.length_unit = 0
         self.application_context = 0
+        self._solid_index = 0
 
         # Standard setup entities
         self._create_context()
@@ -270,8 +390,8 @@ class StepExporter:
 
         # Export each lens
         if hasattr(self.system, "elements") and hasattr(self.system, "air_gaps"):
-            for elem in self.system.elements:
-                solid_id = self._export_lens_solid(elem.lens, elem.position)
+            for elem, placement in zip(self.system.elements, self._element_placements()):
+                solid_id = self._export_lens_solid(elem.lens, 0.0, placement)
                 if solid_id:
                     shape_ids.append(solid_id)
         elif hasattr(self.system, "radius_of_curvature_1"):
@@ -411,47 +531,136 @@ class StepExporter:
             ]
         )
 
-    def _export_lens_solid(self, lens, z_offset):
-        """Create B-Rep solid for a lens."""
+    def _element_placements(self) -> List[Matrix4x4]:
+        """Global STEP placement of each flat element record, in export order.
+
+        The optical tree owns the transform (a group can move its children);
+        the flat records are what the export iterates. They are paired by
+        identity, so a stale or reordered list cannot apply one element's
+        alignment to another - the fallback uses the record's own fields.
+
+        Returns:
+            One 4x4 matrix per element, mapping the exporter's local
+            coordinates to the assembly's STEP coordinates.
+        """
+        elements = list(getattr(self.system, "elements", []))
+        nodes = []
+        root = getattr(self.system, "root", None)
+        if root is not None and hasattr(root, "get_flat_list"):
+            try:
+                nodes = [
+                    node
+                    for node, _position in root.get_flat_list()
+                    if getattr(node, "is_element", False)
+                ]
+            except (AttributeError, TypeError, ValueError):
+                nodes = []
+
+        placements = []
+        for index, element in enumerate(elements):
+            node = nodes[index] if index < len(nodes) else None
+            if node is not None and getattr(node, "element_model", None) is element.lens:
+                model_transform = node.get_global_transform()
+            else:
+                model_transform = _flat_element_transform(element)
+            placements.append(_MODEL_TO_STEP * model_transform * _STEP_TO_MODEL)
+        return placements
+
+    def _export_lens_solid(self, lens, z_offset, placement: Optional[Matrix4x4] = None):
+        """Create B-Rep solid for a lens.
+
+        Args:
+            lens: Lens model to write.
+            z_offset: Local axial position of the first vertex (mm).
+            placement: Optional transform from the solid's local coordinates
+                to the assembly's STEP coordinates (element decenter/tilt).
+                ``None`` leaves the solid in its local frame.
+        """
         r1 = lens.radius_of_curvature_1
         r2 = lens.radius_of_curvature_2
         thick = lens.thickness
         diam = lens.diameter
         h = diam / 2.0
 
+        # A sphere cannot follow a parabola or a general conic: at the rim it
+        # would not pass through the point the model puts there, so the B-rep
+        # would not close. This writer has no analytic non-spherical surface
+        # entity, and a STEP file is CAD/manufacturing input, so refuse the
+        # lens rather than emit a plausible-looking wrong shape.
+        for side, label in ((1, "front"), (2, "back")):
+            profile = _conic_profile(lens, side)
+            if profile is None:
+                continue
+            stored_radius = getattr(lens, f"radius_of_curvature_{side}")
+            modelled_sag = lens.get_sag_1(h) if side == 1 else lens.get_sag_2(h)
+            sphere_sag = _sphere_sag(stored_radius, h)
+            raise ValueError(
+                f"STEP export writes spherical and flat surfaces only; lens "
+                f"{getattr(lens, 'name', '?')!r} has a {profile} {label} "
+                f"surface. At the rim (h={h:g} mm) the model sags "
+                f"{modelled_sag:.6f} mm but a sphere of radius "
+                f"{stored_radius:g} mm sags {sphere_sag:.6f} mm, so the "
+                f"exported rim would not lie on the exported surface."
+            )
+
+        def point(x: float, y: float, z: float) -> tuple:
+            """Place one local point in the assembly."""
+            if placement is None:
+                return (x, y, z)
+            placed = placement.multiply_point(vec3(x, y, z))
+            return (placed.x, placed.y, placed.z)
+
+        # Directions rotate with the element; the global axis entities can be
+        # reused when the element is only translated.
+        if placement is not None and _rotates(placement):
+            self._solid_index += 1
+            axis_z = self.writer.add_entity(
+                "DIRECTION",
+                [
+                    f"element_axis_z_{self._solid_index}",
+                    _direction_tuple(placement, (0.0, 0.0, 1.0)),
+                ],
+            )
+            axis_x = self.writer.add_entity(
+                "DIRECTION",
+                [
+                    f"element_axis_x_{self._solid_index}",
+                    _direction_tuple(placement, (1.0, 0.0, 0.0)),
+                ],
+            )
+        else:
+            axis_z, axis_x = self.dir_z, self.dir_x
+
         # Rim sag from the single source of truth (Lens.get_sag_1/2).
-        # Near-flat surfaces stay exactly planar for CAD topology.
-        is_flat1 = abs(r1) < 1e-10 or abs(r1) > 1e10 or abs(r1) > 10000
-        is_flat2 = abs(r2) < 1e-10 or abs(r2) > 1e10 or abs(r2) > 10000
+        # Near-flat surfaces stay exactly planar for CAD topology; a
+        # zero-sag parabola is flat even though its radius is finite.
+        is_flat1 = _surface_is_flat(lens, 1)
+        is_flat2 = _surface_is_flat(lens, 2)
 
         z_edge1 = z_offset + (0.0 if is_flat1 else lens.get_sag_1(h))  # z of top rim
         z_edge2 = z_offset + thick + (0.0 if is_flat2 else lens.get_sag_2(h))
 
         # --- Points ---
         # Vertex 1 (on axis)
-        self.writer.add_entity("CARTESIAN_POINT", ["v1", (0.0, 0.0, z_offset)])
+        self.writer.add_entity("CARTESIAN_POINT", ["v1", point(0.0, 0.0, z_offset)])
         # Vertex 2 (on axis)
-        self.writer.add_entity("CARTESIAN_POINT", ["v2", (0.0, 0.0, z_offset + thick)])
+        self.writer.add_entity("CARTESIAN_POINT", ["v2", point(0.0, 0.0, z_offset + thick)])
 
         # Edge Point 1 (Start of edge loop 1) at (h, 0, z_edge1)
-        p_e1 = self.writer.add_entity("CARTESIAN_POINT", ["e1", (h, 0.0, z_edge1)])
+        p_e1 = self.writer.add_entity("CARTESIAN_POINT", ["e1", point(h, 0.0, z_edge1)])
         # Edge Point 2 (Start of edge loop 2) at (h, 0, z_edge2)
-        p_e2 = self.writer.add_entity("CARTESIAN_POINT", ["e2", (h, 0.0, z_edge2)])
+        p_e2 = self.writer.add_entity("CARTESIAN_POINT", ["e2", point(h, 0.0, z_edge2)])
 
         # --- Edge Curves (Circles) ---
         # Edge 1 Circle
         # Center at (0, 0, z_edge1)
-        p_c1 = self.writer.add_entity("CARTESIAN_POINT", ["c1", (0.0, 0.0, z_edge1)])
-        axis_c1 = self.writer.add_entity(
-            "AXIS2_PLACEMENT_3D", ["axis_c1", p_c1, self.dir_z, self.dir_x]
-        )
+        p_c1 = self.writer.add_entity("CARTESIAN_POINT", ["c1", point(0.0, 0.0, z_edge1)])
+        axis_c1 = self.writer.add_entity("AXIS2_PLACEMENT_3D", ["axis_c1", p_c1, axis_z, axis_x])
         circle1 = self.writer.add_entity("CIRCLE", ["circle1", axis_c1, h])
 
         # Edge 2 Circle
-        p_c2 = self.writer.add_entity("CARTESIAN_POINT", ["c2", (0.0, 0.0, z_edge2)])
-        axis_c2 = self.writer.add_entity(
-            "AXIS2_PLACEMENT_3D", ["axis_c2", p_c2, self.dir_z, self.dir_x]
-        )
+        p_c2 = self.writer.add_entity("CARTESIAN_POINT", ["c2", point(0.0, 0.0, z_edge2)])
+        axis_c2 = self.writer.add_entity("AXIS2_PLACEMENT_3D", ["axis_c2", p_c2, axis_z, axis_x])
         circle2 = self.writer.add_entity("CIRCLE", ["circle2", axis_c2, h])
 
         # --- Edges ---
@@ -476,7 +685,7 @@ class StepExporter:
             [
                 "seam_line",
                 p_e1,
-                self.writer.add_entity("VECTOR", ["dir_z", self.dir_z, 1.0]),
+                self.writer.add_entity("VECTOR", ["dir_z", axis_z, 1.0]),
             ],
         )
         self.writer.add_entity("EDGE_CURVE", ["edge_seam", v_e1, v_e2, line_seam, STEP_TRUE])
@@ -530,9 +739,9 @@ class StepExporter:
             else:
                 c_z = z_offset + r1  # r1 is negative
 
-            p_center1 = self.writer.add_entity("CARTESIAN_POINT", ["center1", (0.0, 0.0, c_z)])
+            p_center1 = self.writer.add_entity("CARTESIAN_POINT", ["center1", point(0.0, 0.0, c_z)])
             axis_s1 = self.writer.add_entity(
-                "AXIS2_PLACEMENT_3D", ["axis_s1", p_center1, self.dir_z, self.dir_x]
+                "AXIS2_PLACEMENT_3D", ["axis_s1", p_center1, axis_z, axis_x]
             )
             surf1 = self.writer.add_entity("SPHERICAL_SURFACE", ["sphere1", axis_s1, abs(r1)])
 
@@ -547,17 +756,36 @@ class StepExporter:
             else:  # Concave back
                 c_z = z_offset + thick + r2
 
-            p_center2 = self.writer.add_entity("CARTESIAN_POINT", ["center2", (0.0, 0.0, c_z)])
+            p_center2 = self.writer.add_entity("CARTESIAN_POINT", ["center2", point(0.0, 0.0, c_z)])
             axis_s2 = self.writer.add_entity(
-                "AXIS2_PLACEMENT_3D", ["axis_s2", p_center2, self.dir_z, self.dir_x]
+                "AXIS2_PLACEMENT_3D", ["axis_s2", p_center2, axis_z, axis_x]
             )
             surf2 = self.writer.add_entity("SPHERICAL_SURFACE", ["sphere2", axis_s2, abs(r2)])
 
-        # Surface 3 (Cylinder)
-        axis_cyl = self.writer.add_entity(
-            "AXIS2_PLACEMENT_3D", ["axis_cyl", p_c1, self.dir_z, self.dir_x]
-        )
-        surf3 = self.writer.add_entity("CYLINDRICAL_SURFACE", ["cyl", axis_cyl, h])
+        # Surface 3 (Rim): a custom profile is the revolved meridional chain,
+        # so the exported rim is the same polyline the STL and views use.
+        # Without one this stays the historical cylinder.
+        if getattr(lens, "edge_profile", None):
+            edge = LensGeometry.edge_profile_points(lens)
+            sweep_points = [
+                self.writer.add_entity(
+                    "CARTESIAN_POINT",
+                    [f"rim_p{index}", point(radius, 0.0, z_offset + x)],
+                )
+                for index, (x, radius) in enumerate(edge)
+            ]
+            sweep = self.writer.add_entity("POLYLINE", ["rim_profile", sweep_points])
+            axis_rev = self.writer.add_entity(
+                "AXIS2_PLACEMENT_3D", ["axis_rev", p_c1, axis_z, axis_x]
+            )
+            surf3 = self.writer.add_entity(
+                "SURFACE_OF_REVOLUTION", ["rim_revolution", sweep, axis_rev]
+            )
+        else:
+            axis_cyl = self.writer.add_entity(
+                "AXIS2_PLACEMENT_3D", ["axis_cyl", p_c1, axis_z, axis_x]
+            )
+            surf3 = self.writer.add_entity("CYLINDRICAL_SURFACE", ["cyl", axis_cyl, h])
 
         # --- Faces ---
         # Face 1 (Front)

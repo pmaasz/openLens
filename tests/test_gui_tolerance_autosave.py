@@ -114,6 +114,7 @@ class TestToleranceSetIsSaved(unittest.TestCase):
         )
         count = len(self.window._tol_operands)
 
+        tab._tol_table.selectRow(0)
         tab._on_remove_tolerance()
         self.assertEqual(len(self.window._tol_operands), count - 1)
 

@@ -24,6 +24,7 @@ class LensViz2DWidget(QWidget):
 
     # Signals for interactive manipulation
     property_changed = Signal(str, float)
+    edge_profile_changed = Signal(object)
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """Initialize the widget with default colors and interaction state.
@@ -49,9 +50,10 @@ class LensViz2DWidget(QWidget):
         self._handle_color = QColor(255, 255, 255, 200)  # White for interactive handles
 
         # Interaction state
-        self._active_handle = None  # 'r1', 'r2', 'thickness', 'diameter'
+        self._active_handle = None  # 'r1', 'r2', 'thickness', 'diameter', 'edge:N'
         self._last_mouse_pos = None
         self._handles = {}  # name -> (x, y)
+        self._edge_editing = False
         self._scale = 1.0
         self._cx = 0
         self._cy = 0
@@ -74,24 +76,64 @@ class LensViz2DWidget(QWidget):
         self.update()
 
     def mousePressEvent(self, event: "QMouseEvent") -> None:
-        """Select the handle under the mouse cursor, if any."""
+        """Select a handle, or add/remove a rim-profile vertex while editing."""
         if not self._lens:
             return
 
         pos = event.position().toPoint()
+        hit = None
         for name, h_pos in self._handles.items():
             dx = pos.x() - h_pos.x()
             dy = pos.y() - h_pos.y()
             if (dx * dx + dy * dy) < 100:  # 10px radius hit area
-                self._active_handle = name
-                self._last_mouse_pos = pos
-                self.setCursor(Qt.ClosedHandCursor)
+                hit = name
                 break
+
+        if self._edge_editing:
+            if event.button() == Qt.RightButton:
+                if hit and hit.startswith("edge:"):
+                    index = int(hit.split(":", 1)[1])
+                    points = LensGeometry.edge_profile_points(self._lens)
+                    if 0 < index < len(points) - 1:
+                        del points[index]
+                        self.edge_profile_changed.emit(points)
+                return
+            if event.button() == Qt.LeftButton and hit is None:
+                self._add_edge_point(pos)
+                return
+
+        if hit is not None:
+            self._active_handle = hit
+            self._last_mouse_pos = pos
+            self.setCursor(Qt.ClosedHandCursor)
+
+    def _add_edge_point(self, pos: QPoint) -> None:
+        """Insert a rim vertex at the clicked position on the nearest segment."""
+        half_d = abs(float(self._lens.diameter)) / 2.0
+        x = (pos.x() - self._cx) / self._scale
+        radius = max(half_d, abs(pos.y() - self._cy) / self._scale)
+        points = LensGeometry.edge_profile_points(self._lens)
+
+        best_index, best_distance, best_point = 0, float("inf"), (x, radius)
+        for index, (first, second) in enumerate(zip(points, points[1:])):
+            dx, dr = second[0] - first[0], second[1] - first[1]
+            length_sq = dx * dx + dr * dr
+            if length_sq <= 1e-12:
+                continue
+            t = ((x - first[0]) * dx + (radius - first[1]) * dr) / length_sq
+            t = max(0.0, min(1.0, t))
+            candidate = (first[0] + t * dx, first[1] + t * dr)
+            distance = (candidate[0] - x) ** 2 + (candidate[1] - radius) ** 2
+            if distance < best_distance:
+                best_index, best_distance, best_point = index, distance, candidate
+
+        points.insert(best_index + 1, best_point)
+        self.edge_profile_changed.emit(points)
 
     def mouseReleaseEvent(self, event: "QMouseEvent") -> None:
         """Deselect the active handle and restore the cursor."""
         self._active_handle = None
-        self.setCursor(Qt.ArrowCursor)
+        self.setCursor(Qt.CrossCursor if self._edge_editing else Qt.ArrowCursor)
 
     def mouseMoveEvent(self, event: "QMouseEvent") -> None:
         """Drag the active handle or update the cursor on hover."""
@@ -100,6 +142,18 @@ class LensViz2DWidget(QWidget):
 
         pos = event.position().toPoint()
         if self._active_handle:
+            if self._active_handle.startswith("edge:"):
+                index = int(self._active_handle.split(":", 1)[1])
+                points = LensGeometry.edge_profile_points(self._lens)
+                if 0 < index < len(points) - 1:
+                    half_d = abs(float(self._lens.diameter)) / 2.0
+                    x = (pos.x() - self._cx) / self._scale
+                    radius = max(half_d, abs(pos.y() - self._cy) / self._scale)
+                    points[index] = (x, radius)
+                    self.edge_profile_changed.emit(points)
+                self._last_mouse_pos = pos
+                return
+
             dx = (pos.x() - self._last_mouse_pos.x()) / self._scale
             dy = (pos.y() - self._last_mouse_pos.y()) / self._scale
 
@@ -144,8 +198,8 @@ class LensViz2DWidget(QWidget):
                 if (dx * dx + dy * dy) < 100:
                     hovering = True
                     break
-            if hovering:
-                self.setCursor(Qt.PointingHandCursor)
+            if hovering or self._edge_editing:
+                self.setCursor(Qt.PointingHandCursor if hovering else Qt.CrossCursor)
             else:
                 self.setCursor(Qt.ArrowCursor)
 
@@ -156,6 +210,12 @@ class LensViz2DWidget(QWidget):
             mode: View mode name (e.g. '2D').
         """
         self._view_mode = mode
+        self.update()
+
+    def set_edge_editing(self, enabled: bool) -> None:
+        """Enable direct editing of the custom rim profile."""
+        self._edge_editing = bool(enabled)
+        self.setCursor(Qt.CrossCursor if self._edge_editing else Qt.ArrowCursor)
         self.update()
 
     def update_lens(self, lens: "Lens") -> None:
@@ -235,14 +295,18 @@ class LensViz2DWidget(QWidget):
             else:
                 path_lens.lineTo(x, y)
 
-        # 2. Bottom Edge
-        path_lens.lineTo(x2_edge, cy + half_d * scale)
+        # 2. Rim chain, top side (front rim -> back rim)
+        for pt in outline["edge"][1:]:
+            path_lens.lineTo(*_to_screen(pt))
 
         # 3. Back Surface (bottom to top)
         for pt in outline["back"]:
             path_lens.lineTo(*_to_screen(pt))
 
-        # 4. Top Edge
+        # 4. Rim chain, bottom side (back rim -> front rim)
+        for pt in reversed(outline["edge"][1:-1]):
+            path_lens.lineTo(*_to_screen((pt[0], -pt[1])))
+
         path_lens.closeSubpath()
 
         # Flag unrealizable geometry (edge <= 0: bowtie outline). Tint red.
@@ -308,6 +372,27 @@ class LensViz2DWidget(QWidget):
                         painter.setPen(QPen(color if not _infeasible else _bad, 2))
                         painter.drawLine(before_x, y, after_x, y)
 
+        # Rim: custom profile (and its mirror) uses the rim colour.
+        if getattr(self._lens, "edge_profile", None) or self._edge_editing:
+            path_rim_top = QPainterPath()
+            for index, pt in enumerate(outline["edge"]):
+                x, y = _to_screen(pt)
+                if index == 0:
+                    path_rim_top.moveTo(x, y)
+                else:
+                    path_rim_top.lineTo(x, y)
+            painter.setPen(QPen(self._edge_color, 2))
+            painter.drawPath(path_rim_top)
+
+            path_rim_bottom = QPainterPath()
+            for index, (x, radius) in enumerate(reversed(outline["edge"])):
+                screen = _to_screen((x, -radius))
+                if index == 0:
+                    path_rim_bottom.moveTo(*screen)
+                else:
+                    path_rim_bottom.lineTo(*screen)
+            painter.drawPath(path_rim_bottom)
+
         # Draw handles (spaced out to avoid crowding)
         def draw_handle(p: QPainter, name: str, pos: QPoint, label: str = "") -> None:
             """Draw an interactive handle and register it for hit testing."""
@@ -339,3 +424,23 @@ class LensViz2DWidget(QWidget):
             "diameter",
             QPoint(int((x1_edge + x2_edge) / 2), int(cy - half_d * scale - 15)),
         )
+
+        # Rim-profile vertices: endpoints are fixed to the optical rims,
+        # interior vertices can be dragged or right-click deleted while the
+        # editor's profile mode is active.
+        if self._edge_editing:
+            for index, pt in enumerate(outline["edge"]):
+                screen = QPoint(int(cx + pt[0] * scale), int(cy + pt[1] * scale))
+                if 0 < index < len(outline["edge"]) - 1:
+                    draw_handle(painter, f"edge:{index}", screen)
+                else:
+                    painter.setPen(QPen(Qt.white, 1))
+                    painter.setBrush(QBrush(QColor(255, 255, 255, 50)))
+                    painter.drawEllipse(screen, 4, 4)
+        elif getattr(self._lens, "edge_profile", None):
+            for index, pt in enumerate(outline["edge"]):
+                if 0 < index < len(outline["edge"]) - 1:
+                    screen = QPoint(int(cx + pt[0] * scale), int(cy + pt[1] * scale))
+                    painter.setPen(QPen(Qt.white, 1))
+                    painter.setBrush(QBrush(QColor(255, 255, 255, 50)))
+                    painter.drawEllipse(screen, 3, 3)

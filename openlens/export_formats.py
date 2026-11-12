@@ -17,7 +17,6 @@ from .atomic import atomic_write_text
 from .constants import (
     DEFAULT_MATERIAL_INDICES,
     EPSILON,
-    MAX_RADIUS_OF_CURVATURE,
     REFRACTIVE_INDEX_BK7,
     WAVELENGTH_D_LINE,
 )
@@ -27,7 +26,31 @@ from .validation import (
     reject_oversized_file,
     validate_clear_aperture,
     validate_lens_parameters,
+    validate_wavelength,
 )
+
+
+def _image_distance(system: OpticalSystem) -> float:
+    """Return the last-vertex-to-image distance for a sequential table.
+
+    A configured detector plane wins over the paraxial fallback. The result
+    is clamped at zero because a virtual image cannot be represented as a
+    negative thickness in this human-readable table.
+    """
+    total_length = system.get_total_length()
+    plane = getattr(system, "image_plane_x_mm", None)
+    if plane is not None:
+        try:
+            plane = float(plane)
+        except (TypeError, ValueError):
+            plane = None
+        if plane is not None and math.isfinite(plane):
+            return max(0.0, plane - total_length)
+
+    bfl = system.calculate_back_focal_length()
+    if bfl is None or not math.isfinite(bfl):
+        return 0.0
+    return max(0.0, bfl)
 
 
 def _gap_before(system: OpticalSystem, index: int) -> float:
@@ -81,6 +104,7 @@ class ZemaxExporter:
             f.write(f"  DISZ {lens.thickness}\n")
             f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_1())}\n")
             f.write(f"  GLAS {_zemax_material(lens.material)}\n")
+            f.write(f"  WAVE {lens.wavelength:g}\n")
             coat1 = lens.coating_label(1)
             if coat1 != "Uncoated":
                 f.write(f"  COAT {coat1}\n")
@@ -232,6 +256,7 @@ class OpticStudioExporter:
             # Object
             f.write(f"{'OBJ':<10} {'STANDARD':<12} {'Infinity':<14} {'Infinity':<12} {'':<10}\n")
 
+            image_distance = _image_distance(system)
             surf_num = 1
             for i, elem in enumerate(system.elements):
                 lens = elem.lens
@@ -257,13 +282,19 @@ class OpticStudioExporter:
                 )
                 surf_num += 1
 
-                # Back surface
+                # Back surface. An intermediate element ends at the next gap
+                # row, so its own thickness is zero; only the last surface
+                # carries the distance to the image.
+                back_thickness = 0.0 if i + 1 < len(system.elements) else image_distance
                 r2_str = (
                     f"{lens.radius_of_curvature_2:.4f}"
                     if abs(lens.radius_of_curvature_2) < 1e10
                     else "Infinity"
                 )
-                f.write(f"{surf_num:<10} {'STANDARD':<12} {r2_str:<14} {'100.0000':<12} {'':<10}\n")
+                f.write(
+                    f"{surf_num:<10} {'STANDARD':<12} {r2_str:<14} "
+                    f"{back_thickness:<12.4f} {'':<10}\n"
+                )
                 surf_num += 1
 
             # Image
@@ -699,8 +730,8 @@ def _zemax_material(material: str) -> str:
     return name
 
 
-def _material_design_index(material: str) -> float:
-    """The d-line refractive index the catalog gives *material*, in air.
+def _material_design_index(material: str, wavelength: float = WAVELENGTH_D_LINE) -> float:
+    """The catalog refractive index of *material* at *wavelength*, in air.
 
     A .zmx GLAS line names its glass and says nothing about its index, so the
     catalog is the only source that knows what F2 is. Resolving through
@@ -711,11 +742,15 @@ def _material_design_index(material: str) -> float:
 
     The fallback keeps imports working for names the catalog does not hold,
     including the display names the table exists for.
+
+    Args:
+        material: Glass name as written in the file.
+        wavelength: Design wavelength in nm.
     """
     try:
         database = get_material_database()
         if database.has_material(material):
-            return database.get_refractive_index(material, WAVELENGTH_D_LINE)
+            return database.get_refractive_index(material, wavelength)
     except (ArithmeticError, KeyError, OSError, ValueError) as e:
         # An unreadable catalog must not fail the import; the static table
         # below still gives a usable design index.
@@ -785,6 +820,14 @@ class ZemaxSystemExporter:
                 f.write(f"  DISZ {lens.thickness}\n")
                 f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_1())}\n")
                 f.write(f"  GLAS {_zemax_material(lens.material)}\n")
+                f.write(f"  WAVE {lens.wavelength:g}\n")
+                if any(abs(value) > EPSILON for value in (element.decenter_y, element.decenter_z)):
+                    f.write(f"  DECE {element.decenter_y:g} {element.decenter_z:g}\n")
+                if any(
+                    abs(value) > EPSILON
+                    for value in (element.tilt_x, element.tilt_y, element.tilt_z)
+                ):
+                    f.write(f"  TILT {element.tilt_x:g} {element.tilt_y:g} {element.tilt_z:g}\n")
                 coat = lens.coating_label(1)
                 if coat != "Uncoated":
                     f.write(f"  COAT {coat}\n")
@@ -865,12 +908,32 @@ class ZemaxSystemImporter:
             elif key in ("CURV", "DISZ", "DIAM", "CONI"):
                 token = rest.split()[0] if rest.split() else ""
                 if token.upper() == "INFINITY":
-                    current[key.lower()] = float("inf")
+                    # Curvature INFINITY is the format's spelling of a plano
+                    # surface (radius infinity), not a curvature. Store zero
+                    # so it takes the same path as CURV 0; for the linear
+                    # keywords INFINITY really is an unbounded value.
+                    current[key.lower()] = 0.0 if key == "CURV" else float("inf")
                 else:
                     try:
                         current[key.lower()] = float(token)
                     except ValueError:
                         logger.debug("Zemax import: bad %s value %r", key, token)
+            elif key == "WAVE":
+                token = rest.split()[0] if rest.split() else ""
+                try:
+                    current["wave"] = float(token)
+                except ValueError:
+                    logger.debug("Zemax import: bad WAVE value %r", token)
+            elif key in ("DECE", "TILT"):
+                try:
+                    numbers = [float(value) for value in rest.split()]
+                except ValueError:
+                    logger.debug("Zemax import: bad %s values %r", key, rest)
+                    continue
+                if key == "DECE" and len(numbers) >= 2:
+                    current["dece"] = (numbers[0], numbers[1])
+                elif key == "TILT" and len(numbers) >= 3:
+                    current["tilt"] = (numbers[0], numbers[1], numbers[2])
             elif key == "GLAS":
                 # A glass name may contain spaces - real files use names like
                 # "Fused Silica" - so take the whole argument, and accept the
@@ -888,8 +951,8 @@ class ZemaxSystemImporter:
     @staticmethod
     def _build_validated_lens(
         index: int,
-        r1: float,
-        r2: float,
+        r1: Optional[float],
+        r2: Optional[float],
         thickness: float,
         diameter: float,
         material: str,
@@ -897,6 +960,7 @@ class ZemaxSystemImporter:
         ca2: Optional[float],
         conic1: float = 0.0,
         conic2: float = 0.0,
+        wavelength: float = WAVELENGTH_D_LINE,
     ) -> Optional[Lens]:
         """Validate one imported element and build a Lens, or return None.
 
@@ -907,8 +971,10 @@ class ZemaxSystemImporter:
 
         Args:
             index: 1-based element number, used for the element name.
-            r1: Front radius of curvature (mm); ``inf`` for a plano surface.
-            r2: Back radius of curvature (mm); ``inf`` for a plano surface.
+            r1: Front radius of curvature (mm); ``inf`` for a plano surface,
+                or None when the front CURV was not a real number.
+            r2: Back radius of curvature (mm); ``inf`` for a plano surface,
+                or None when the back CURV was not a real number.
             thickness: Center thickness (mm).
             diameter: Mechanical diameter (mm).
             material: Glass name from the GLAS keyword.
@@ -916,10 +982,20 @@ class ZemaxSystemImporter:
             ca2: Back clear aperture (mm), or None for full diameter.
             conic1: Front conic constant from CONI (0.0 when absent).
             conic2: Back conic constant from CONI.
+            wavelength: Design wavelength in nm from the WAVE keyword.
 
         Returns:
             The validated Lens, or None if validation failed.
         """
+        if r1 is None or r2 is None:
+            side = "front" if r1 is None else "back"
+            logger.warning(
+                "Zemax import: element %d dropped, %s curvature (CURV) is not finite",
+                index,
+                side,
+            )
+            return None
+
         if ca1 is not None and ca1 > diameter:
             logger.warning(
                 "Zemax import: element %d dropped, front clear aperture "
@@ -930,24 +1006,19 @@ class ZemaxSystemImporter:
             )
             return None
 
-        # validate_lens_parameters rejects inf radii because a literal 0 is an
-        # upstream mistake. A .zmx CURV of 0.0 legitimately means a plano
-        # surface, so probe with the largest allowed finite radius.
-        probe = min(
-            abs(r) if math.isfinite(r) and r != 0.0 else MAX_RADIUS_OF_CURVATURE for r in (r1, r2)
-        )
-        if probe == 0.0:
-            logger.warning("Zemax import: element %d dropped, zero radius", index)
-            return None
-
         # Preserve the glass name as written: it is shown in the UI, and the
         # catalog lookup accepts it in any case or punctuation.
         material_name = (material or "BK7").strip() or "BK7"
-        n = _material_design_index(material_name)
+        try:
+            wavelength = validate_wavelength(wavelength)
+        except ValidationError as exc:
+            logger.warning("Zemax import: element %d uses the default wavelength: %s", index, exc)
+            wavelength = WAVELENGTH_D_LINE
+        n = _material_design_index(material_name, wavelength)
         try:
             validate_lens_parameters(
-                radius1=probe if not math.isfinite(r1) else r1,
-                radius2=probe if not math.isfinite(r2) else r2,
+                radius1=r1,
+                radius2=r2,
                 thickness=thickness,
                 diameter=diameter,
                 refractive_index=n,
@@ -987,11 +1058,45 @@ class ZemaxSystemImporter:
             parabolic_sag_2=sag_2,
             conic_constant_1=conic1,
             conic_constant_2=conic2,
+            wavelength=wavelength,
         )
+
+    @staticmethod
+    def _parse_unit_scale(text: str) -> float:
+        """Millimetres per length unit declared by the file's UNIT header.
+
+        Zemax writes ``UNIT MM`` or ``UNIT INCH``; older files also use
+        ``UNIT IN``. A file with no UNIT line is read as millimetres, which is
+        what Zemax assumes. An explicit unknown unit is reported and also read
+        as millimetres: refusing the whole file would lose the surfaces that
+        are otherwise usable, but silently guessing a factor would be worse.
+
+        Args:
+            text: The whole .zmx file.
+
+        Returns:
+            Factor that converts a length in the file to millimetres.
+        """
+        for raw in text.splitlines():
+            tokens = raw.strip().split()
+            if len(tokens) < 2 or tokens[0].upper() != "UNIT":
+                continue
+            unit = tokens[1].upper()
+            if unit in ("MM", "MILLIMETER", "MILLIMETRE", "MILLIMETERS", "MILLIMETRES"):
+                return 1.0
+            if unit in ("IN", "INCH", "INCHES"):
+                return 25.4
+            logger.warning("Zemax import: unknown length unit %r, assuming millimetres", tokens[1])
+            return 1.0
+        return 1.0
 
     @staticmethod
     def import_system(filename: str, name: str = "Imported System") -> OpticalSystem:
         """Read a .zmx file into an OpticalSystem.
+
+        All lengths and curvatures are normalised to millimetres once, right
+        after parsing, according to the file's UNIT header. Every consumer
+        below then works in the application's single unit.
 
         Args:
             filename: Path to the .zmx file.
@@ -1005,7 +1110,22 @@ class ZemaxSystemImporter:
         """
         reject_oversized_file(filename)
         with open(filename) as f:
-            surfaces = ZemaxSystemImporter._parse_surfaces(f.read())
+            text = f.read()
+        surfaces = ZemaxSystemImporter._parse_surfaces(text)
+        scale = ZemaxSystemImporter._parse_unit_scale(text)
+        if scale != 1.0:
+            # Curvature is the inverse of a length, so it scales the other
+            # way; DISZ and DIAM are lengths. Non-finite values are marker
+            # values (DISZ INFINITY) and stay as they are.
+            for surf in surfaces:
+                for key, factor in (("curv", 1.0 / scale), ("disz", scale), ("diam", scale)):
+                    value = surf.get(key)
+                    if isinstance(value, (int, float)) and math.isfinite(value):
+                        surf[key] = value * factor
+                # DECE is a length; TILT is degrees and WAVE is nanometres,
+                # so neither of those follows the file's length unit.
+                if "dece" in surf:
+                    surf["dece"] = tuple(value * scale for value in surf["dece"])
 
         system = OpticalSystem(name=name)
         pending_front: Optional[Dict[str, Any]] = None
@@ -1013,9 +1133,19 @@ class ZemaxSystemImporter:
         cursor_x = 0.0
         last_back_x: Optional[float] = None
 
-        def _curv_to_radius(curv: float) -> float:
+        def _curv_to_radius(curv: Optional[float]) -> Optional[float]:
+            """Radius for a CURV value, ``None`` when the value is not real.
+
+            A non-finite curvature has no radius: 1/nan is nan, and 1/inf or
+            1/-inf is zero, which the Lens model would turn into a flat
+            surface. Both would be invented geometry, so the caller drops the
+            element instead. ``CURV 0`` (and the INFINITY token, normalised by
+            the parser) means a plano surface.
+            """
             if curv is None or abs(curv) < 1e-12:
                 return float("inf")
+            if not math.isfinite(curv):
+                return None
             return 1.0 / curv
 
         for surf in surfaces:
@@ -1047,6 +1177,9 @@ class ZemaxSystemImporter:
                     "conic1": surf.get("coni", 0.0),
                     "material": surf.get("glas", "BK7"),
                     "gap_before": gap_before,
+                    "wave": surf.get("wave", WAVELENGTH_D_LINE),
+                    "dece": surf.get("dece", (0.0, 0.0)),
+                    "tilt": surf.get("tilt", (0.0, 0.0, 0.0)),
                 }
                 cursor_x += disz
                 continue
@@ -1076,9 +1209,27 @@ class ZemaxSystemImporter:
                     ca2=ca2,
                     conic1=pending_front.get("conic1", 0.0),
                     conic2=surf.get("coni", 0.0),
+                    wavelength=pending_front.get("wave", WAVELENGTH_D_LINE),
                 )
                 if lens is not None:
                     system.add_lens(lens, air_gap_before=pending_front["gap_before"])
+                    # The transform belongs to the element, and the front
+                    # vertex is the element's origin, so it is written on the
+                    # front surface.
+                    decenter_y, decenter_z = pending_front.get("dece", (0.0, 0.0))
+                    tilt_x, tilt_y, tilt_z = pending_front.get("tilt", (0.0, 0.0, 0.0))
+                    if any(
+                        abs(value) > EPSILON
+                        for value in (decenter_y, decenter_z, tilt_x, tilt_y, tilt_z)
+                    ):
+                        system.set_element_alignment(
+                            len(system.elements) - 1,
+                            decenter_y=decenter_y,
+                            decenter_z=decenter_z,
+                            tilt_x=tilt_x,
+                            tilt_y=tilt_y,
+                            tilt_z=tilt_z,
+                        )
                     last_back_x = cursor_x
                 pending_front = None
                 cursor_x += disz

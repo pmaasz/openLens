@@ -58,6 +58,17 @@ def _system(count=1, gap=2.0):
     return system
 
 
+def _converging_system():
+    """A two-element system with a real (positive) back focal length."""
+    system = OpticalSystem(name="Converging")
+    system.add_lens(_lens("A"))
+    system.add_lens(
+        _lens("B", r1=60.0, r2=-60.0, thickness=3.0, index=1.6),
+        air_gap_before=2.0,
+    )
+    return system
+
+
 class TestGapBefore(unittest.TestCase):
     def test_first_element_has_no_gap(self):
         self.assertEqual(_gap_before(_system(2), 0), 0.0)
@@ -147,6 +158,38 @@ class TestOpticStudioSystemExport(unittest.TestCase):
         rows = self._surface_rows(self._export(system))
         self.assertEqual(len(rows), 4)
         self.assertFalse([r for r in rows if "Infinity" in r])
+
+    def test_an_intermediate_back_surface_carries_no_thickness(self):
+        """The gap row owns the spacing, so the preceding surface is zero."""
+        rows = self._surface_rows(self._export(_system(2)))
+
+        self.assertAlmostEqual(float(rows[1].split()[3]), 0.0)
+
+    def test_the_final_back_surface_uses_the_back_focal_length(self):
+        """The last surface must put the image at the system focus."""
+        system = _converging_system()
+        rows = self._surface_rows(self._export(system))
+
+        expected = system.calculate_back_focal_length()
+        self.assertIsNotNone(expected)
+        self.assertAlmostEqual(float(rows[-1].split()[3]), expected, places=4)
+
+    def test_a_configured_image_plane_sets_the_final_distance(self):
+        """A pinned detector plane wins over the paraxial fallback."""
+        system = _converging_system()
+        system.image_plane_x_mm = system.get_total_length() + 37.0
+        rows = self._surface_rows(self._export(system))
+
+        self.assertAlmostEqual(float(rows[-1].split()[3]), 37.0, places=4)
+
+    def test_exported_thicknesses_add_up_to_the_total_track(self):
+        """The table must not invent 100 mm of glass between elements."""
+        system = _converging_system()
+        rows = self._surface_rows(self._export(system))
+
+        expected = system.get_total_length() + system.calculate_back_focal_length()
+        exported = sum(float(row.split()[3]) for row in rows)
+        self.assertAlmostEqual(exported, expected, places=4)
 
 
 class TestSVGSystemExport(unittest.TestCase):

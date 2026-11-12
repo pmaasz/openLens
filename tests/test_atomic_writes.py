@@ -12,8 +12,11 @@ the target with ``os.replace``, which is atomic.
 
 import json
 import os
+import shutil
 import tempfile
+import threading
 import unittest
+from pathlib import Path
 
 from openlens.atomic import atomic_write_bytes, atomic_write_json, atomic_write_text
 
@@ -24,8 +27,11 @@ class TestAtomicWriteText(unittest.TestCase):
         os.close(handle)
         os.unlink(self.path)
         self.addCleanup(lambda: os.path.exists(self.path) and os.unlink(self.path))
-        self.tmp_path = self.path + ".tmp"
-        self.addCleanup(lambda: os.path.exists(self.tmp_path) and os.unlink(self.tmp_path))
+
+    def _temp_files(self):
+        """Temporary files left beside the target, if any."""
+        directory = Path(self.path).parent
+        return list(directory.glob(Path(self.path).name + ".*.tmp"))
 
     def test_writes_the_file(self):
         with atomic_write_text(self.path) as handle:
@@ -64,7 +70,7 @@ class TestAtomicWriteText(unittest.TestCase):
             with atomic_write_text(self.path) as handle:
                 handle.write("x")
                 raise RuntimeError("boom")
-        self.assertFalse(os.path.exists(self.tmp_path))
+        self.assertEqual(self._temp_files(), [])
 
     def test_base_exception_also_rolls_back(self):
         """KeyboardInterrupt / SystemExit must not truncate the target."""
@@ -87,10 +93,14 @@ class TestAtomicWriteText(unittest.TestCase):
 
     def test_temporary_file_is_in_the_same_directory(self):
         """os.replace is only atomic within one filesystem."""
+        during_write = []
         with atomic_write_text(self.path) as handle:
+            during_write = self._temp_files()
             handle.write("x")
+        self.assertEqual(len(during_write), 1)
+        self.assertEqual(during_write[0].parent, Path(self.path).parent)
         # A successful write leaves no temp file behind.
-        self.assertFalse(os.path.exists(self.tmp_path))
+        self.assertEqual(self._temp_files(), [])
 
 
 class TestAtomicWriteJson(unittest.TestCase):
@@ -135,6 +145,40 @@ class TestAtomicWriteBytes(unittest.TestCase):
                 raise RuntimeError("boom")
         with open(self.path, "rb") as handle:
             self.assertEqual(handle.read(), b"ORIGINAL")
+
+
+class TestConcurrentWriters(unittest.TestCase):
+    """#654: writers of the same target must each get their own temp file."""
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.directory, True)
+        self.path = os.path.join(self.directory, "mounts.json")
+
+    def test_concurrent_writers_do_not_destroy_each_other(self):
+        errors = []
+
+        def writer(tag):
+            try:
+                for _ in range(100):
+                    with atomic_write_text(self.path) as handle:
+                        handle.write(tag * 500)
+            except Exception as exc:  # noqa: BLE001 - collected for the assertion
+                errors.append((tag, exc))
+
+        threads = [threading.Thread(target=writer, args=(chr(65 + i),)) for i in range(4)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(errors, [])
+        with open(self.path) as handle:
+            content = handle.read()
+        self.assertEqual(len(content), 500)
+        self.assertIn(content[0], "ABCD")
+        self.assertEqual(content, content[0] * 500)
+        self.assertEqual(list(Path(self.directory).glob("mounts.json.*.tmp")), [])
 
 
 class TestExportsUseAtomicWrites(unittest.TestCase):

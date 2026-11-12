@@ -108,6 +108,18 @@ class TestEnsureSeedData(unittest.TestCase):
         gaps = [g["thickness"] for g in seed[0]["air_gaps"]]
         self.assertEqual(gaps, [0.095, 1.55, 8.82, 0.0, 0.095])
 
+    def test_seeded_gap_positions_match_the_reference_assembly(self):
+        """#658: seeded gaps carry their real axial station, not 0.0."""
+        ensure_nikon_series_e_example(self.db)
+        rows = {r["id"]: r for r in self.db.load_all()}
+        seeded = rows[NIKON_SERIES_E_ASSEMBLY_ID]
+        reference = build_nikon_series_e_system()
+
+        self.assertEqual(len(seeded["air_gaps"]), len(reference.air_gaps))
+        for stored, expected in zip(seeded["air_gaps"], reference.air_gaps):
+            self.assertAlmostEqual(stored["thickness"], expected.thickness, places=9)
+            self.assertAlmostEqual(stored["position"], expected.position, places=9)
+
 
 if __name__ == "__main__":
     unittest.main()
