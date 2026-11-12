@@ -281,6 +281,16 @@ class TestLensSerialization(unittest.TestCase):
         self.assertTrue(math.isinf(lens.radius_of_curvature_1))
         self.assertEqual(lens.radius_of_curvature_2, -50.0)
 
+    def test_setting_a_radius_to_none_is_a_flat_surface(self):
+        """The setter accepts the JSON spelling, not just from_dict."""
+        lens = Lens(radius_of_curvature_1=50.0, radius_of_curvature_2=-50.0)
+
+        lens.radius_of_curvature_1 = None
+        lens.radius_of_curvature_2 = None
+
+        self.assertTrue(math.isinf(lens.radius_of_curvature_1))
+        self.assertTrue(math.isinf(lens.radius_of_curvature_2))
+
     def test_to_dict_keeps_the_numeric_radius_for_the_database(self):
         """to_dict stays numeric: the database columns are NOT NULL REALs"""
         lens = Lens(radius_of_curvature_1=float("inf"), radius_of_curvature_2=-50.0)

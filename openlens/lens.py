@@ -451,7 +451,7 @@ class Lens:
 
     @radius_of_curvature_1.setter
     def radius_of_curvature_1(self, value: float) -> None:
-        if value == 0:
+        if value == 0 or value is None:
             self._radius_of_curvature_1 = float("inf")
         else:
             self._radius_of_curvature_1 = value
@@ -462,7 +462,7 @@ class Lens:
 
     @radius_of_curvature_2.setter
     def radius_of_curvature_2(self, value: float) -> None:
-        if value == 0:
+        if value == 0 or value is None:
             self._radius_of_curvature_2 = float("inf")
         else:
             self._radius_of_curvature_2 = value
