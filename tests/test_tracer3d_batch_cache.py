@@ -13,8 +13,9 @@ These tests pin the new contract:
 - a change to the lens state they snapshotted (the wavefront sensor swaps the
   refractive index for every wavelength) is picked up without the caller
   knowing the cache exists;
-- a change to the structure - positions - is picked up automatically, and
-  ``invalidate()`` still forces a rebuild;
+- a change to the structure or the positions is picked up the same way,
+  through the system's geometry revision (and ``invalidate()`` still forces
+  an immediate rebuild);
 - and none of this changes a single traced path.
 """
 
@@ -178,10 +179,10 @@ class TestCachingChangesNothingOptical(unittest.TestCase):
 
 class TestExplicitInvalidation(unittest.TestCase):
     def test_invalidate_rebuilds_after_a_position_change(self):
-        """``invalidate()`` still forces a rebuild after a layout edit.
+        """``invalidate()`` still forces an immediate rebuild.
 
-        The next trace would also notice the move through the scene signature;
-        this pins the explicit path callers used before detection existed.
+        Layout edits are detected automatically now; the explicit call remains
+        for callers that want the scene dropped before the next trace.
         """
         system = _flat_system(position=0.0)
         tracer = SystemRayTracer3D(system)
@@ -239,6 +240,19 @@ class TestPositionChangesAreDetected(unittest.TestCase):
         after = _paths(tracer.trace_off_axis_rays(0.0, num_rays=2))
         fresh = _paths(SystemRayTracer3D(system).trace_off_axis_rays(0.0, num_rays=2))
 
+        self.assertEqual(after, fresh)
+
+    def test_a_changed_aperture_stop_is_picked_up_without_invalidate(self):
+        """The stop geometry is part of the prepared scene."""
+        system = create_doublet()
+        tracer = SystemRayTracer3D(system)
+        before = _paths(tracer.trace_off_axis_rays(6.0, num_rays=3))
+
+        system.set_aperture_stop(0, 1.0)
+        after = _paths(tracer.trace_off_axis_rays(6.0, num_rays=3))
+
+        fresh = _paths(SystemRayTracer3D(system).trace_off_axis_rays(6.0, num_rays=3))
+        self.assertNotEqual(before, after, "the cached scene kept the old aperture stop")
         self.assertEqual(after, fresh)
 
     def test_a_moved_element_changes_a_spot_diagram(self):
