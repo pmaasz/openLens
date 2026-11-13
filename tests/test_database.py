@@ -2,6 +2,7 @@
 Tests for openlens/database.py — DatabaseManager CRUD and transaction handling.
 """
 
+import math
 import os
 import sqlite3
 import tempfile
@@ -149,6 +150,14 @@ class TestLensCRUD(unittest.TestCase):
         self.assertAlmostEqual(loaded["radius_of_curvature_2"], -100.0)
         self.assertAlmostEqual(loaded["thickness"], 5.0)
         self.assertEqual(loaded["material"], "BK7")
+
+    def test_save_stores_null_and_zero_radii_as_flat_surfaces(self):
+        """The columns are NOT NULL REALs; flat surfaces must not reach them as null."""
+        self.db.save_lens(_make_lens_dict(radius_of_curvature_1=None, radius_of_curvature_2=0.0))
+
+        loaded = _load_lenses(self.db)[0]
+        self.assertTrue(math.isinf(loaded["radius_of_curvature_1"]))
+        self.assertTrue(math.isinf(loaded["radius_of_curvature_2"]))
 
     def test_save_multiple_lenses(self):
         for i in range(3):

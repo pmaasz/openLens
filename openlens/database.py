@@ -530,6 +530,12 @@ class DatabaseManager:
             ).fetchone()
             is_library = int(existing["is_library"]) if existing is not None else library_default
 
+        r1 = lens_dict.get("radius_of_curvature_1", lens_dict.get("radius1"))
+        r2 = lens_dict.get("radius_of_curvature_2", lens_dict.get("radius2"))
+        if r1 == 0 or r1 is None:
+            r1 = float("inf")
+        if r2 == 0 or r2 is None:
+            r2 = float("inf")
         cursor.execute(
             """
             INSERT OR REPLACE INTO lenses
@@ -545,8 +551,8 @@ class DatabaseManager:
             (
                 lens_id,
                 lens_dict.get("name"),
-                lens_dict.get("radius_of_curvature_1", lens_dict.get("radius1")),
-                lens_dict.get("radius_of_curvature_2", lens_dict.get("radius2")),
+                r1,
+                r2,
                 lens_dict.get("thickness"),
                 lens_dict.get("material"),
                 lens_dict.get("refractive_index"),

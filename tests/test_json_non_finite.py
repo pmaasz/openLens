@@ -62,6 +62,14 @@ class TestSchemaRejectsNonFinite(unittest.TestCase):
         with self.assertRaises(ValidationError):
             validate_lens_data_schema(_with("radius_of_curvature_2", NAN))
 
+    def test_infinite_radius_is_accepted_as_a_flat_surface(self):
+        data = _with("radius_of_curvature_1", INF)
+        self.assertEqual(validate_lens_data_schema(data), data)
+
+    def test_negative_infinite_radius_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            validate_lens_data_schema(_with("radius_of_curvature_1", -INF))
+
     def test_infinite_thickness_is_rejected(self):
         with self.assertRaises(ValidationError):
             validate_lens_data_schema(_with("thickness", INF))

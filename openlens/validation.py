@@ -1126,6 +1126,9 @@ def validate_lens_data_schema(data: dict, lens_index: Optional[int] = None) -> d
             # A flat surface is an infinite radius in the model and null in
             # JSON, so null is a valid radius here.
             continue
+        if field in FLAT_RADIUS_FIELDS and data[field] == FLAT_RADIUS:
+            # Infinite radius is the model's spelling of the same flat surface.
+            continue
 
         if _is_numeric_field(expected_type) and isinstance(data[field], bool):
             # isinstance(True, int) is True, so a JSON `true` used to satisfy a
