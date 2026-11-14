@@ -19,6 +19,7 @@ from .constants import (
     RAY_EXIT_PROPAGATION_2D_MM,
 )
 from .lens import _is_flat
+from .asphere import asphere_sag, asphere_slope, is_asphere
 from .geometry import FresnelFacet, LensGeometry
 from .casing import wall_entry_2d
 
@@ -77,6 +78,8 @@ class LensRayTracer:
         self.parabolic_sag_2 = float(lens.parabolic_sag_2)
         self.conic_constant_1 = float(getattr(lens, "conic_constant_1", 0.0))
         self.conic_constant_2 = float(getattr(lens, "conic_constant_2", 0.0))
+        self.asphere_coefficients_1 = list(getattr(lens, "asphere_coefficients_1", []) or [])
+        self.asphere_coefficients_2 = list(getattr(lens, "asphere_coefficients_2", []) or [])
         self.is_fresnel = bool(getattr(lens, "is_fresnel", False))
         self.fresnel_facets_1 = LensGeometry.fresnel_facets(lens, 1)
         self.fresnel_facets_2 = LensGeometry.fresnel_facets(lens, 2)
@@ -94,43 +97,63 @@ class LensRayTracer:
             self.front_is_flat = False
             self.front_is_parabolic = True
             self.front_is_conic = False
+            self.front_is_asphere = False
             self.front_center_x = self.front_vertex_x  # not used
+        elif is_asphere(self.asphere_coefficients_1):
+            self.front_center_x = self.front_vertex_x
+            self.front_is_flat = False
+            self.front_is_parabolic = False
+            self.front_is_conic = False
+            self.front_is_asphere = True
         elif _is_flat(self.R1):
             self.front_center_x = self.front_vertex_x
             self.front_is_flat = True
             self.front_is_parabolic = False
             self.front_is_conic = False
+            self.front_is_asphere = False
         elif abs(self.conic_constant_1) > EPSILON:
             self.front_center_x = self.front_vertex_x
             self.front_is_flat = False
             self.front_is_parabolic = False
             self.front_is_conic = True
+            self.front_is_asphere = False
         else:
             self.front_center_x = self.front_vertex_x + self.R1
             self.front_is_flat = False
             self.front_is_parabolic = False
             self.front_is_conic = False
+            self.front_is_asphere = False
 
         if self.is_parabolic_2 and abs(self.parabolic_sag_2) > EPSILON:
             self.back_is_flat = False
             self.back_is_parabolic = True
             self.back_is_conic = False
+            self.back_is_asphere = False
             self.back_center_x = self.back_vertex_x
+        elif is_asphere(self.asphere_coefficients_2):
+            self.back_center_x = self.back_vertex_x
+            self.back_is_flat = False
+            self.back_is_parabolic = False
+            self.back_is_conic = False
+            self.back_is_asphere = True
         elif _is_flat(self.R2):
             self.back_center_x = self.back_vertex_x
             self.back_is_flat = True
             self.back_is_parabolic = False
             self.back_is_conic = False
+            self.back_is_asphere = False
         elif abs(self.conic_constant_2) > EPSILON:
             self.back_center_x = self.back_vertex_x
             self.back_is_flat = False
             self.back_is_parabolic = False
             self.back_is_conic = True
+            self.back_is_asphere = False
         else:
             self.back_center_x = self.back_vertex_x + self.R2
             self.back_is_flat = False
             self.back_is_parabolic = False
             self.back_is_conic = False
+            self.back_is_asphere = False
 
     @staticmethod
     def _conic_normal_angle(y: float, radius: float, conic_constant: float) -> float:
@@ -147,6 +170,17 @@ class LensRayTracer:
         slope = c * y / math.sqrt(max(radicand, EPSILON))
         return math.atan2(-slope, 1.0)
 
+    @staticmethod
+    def _asphere_normal_angle(
+        y: float,
+        radius: float,
+        conic_constant: float,
+        coefficients: List[float],
+    ) -> float:
+        """Normal angle of a conic base with even polynomial terms."""
+        slope = asphere_slope(radius, conic_constant, coefficients, y)
+        return math.atan2(-slope, 1.0)
+
     def _get_surface_normal_angle(self, x: float, y: float, surface_type: str) -> float:
         """Calculate surface normal angle at a point."""
         if self.is_fresnel:
@@ -154,6 +188,10 @@ class LensRayTracer:
             if facets:
                 return self._fresnel_normal_angle(y, surface_type)
         if surface_type == "front":
+            if self.front_is_asphere:
+                return self._asphere_normal_angle(
+                    y, self.R1, self.conic_constant_1, self.asphere_coefficients_1
+                )
             if self.front_is_flat:
                 return 0
             if self.front_is_parabolic:
@@ -170,6 +208,10 @@ class LensRayTracer:
             dy = y
             return math.atan2(dy, dx)
         else:
+            if self.back_is_asphere:
+                return self._asphere_normal_angle(
+                    y, self.R2, self.conic_constant_2, self.asphere_coefficients_2
+                )
             if self.back_is_flat:
                 return 0
             if self.back_is_parabolic:
@@ -387,6 +429,68 @@ class LensRayTracer:
         _, _, z, y = best
         return (vertex_x + z, y)
 
+    def _intersect_asphere_surface(
+        self,
+        ray: Ray,
+        vertex_x: float,
+        radius: float,
+        conic_constant: float,
+        coefficients: List[float],
+        semi_aperture: Optional[float] = None,
+    ) -> Optional[Tuple[float, float]]:
+        """Intersect a ray with a conic base plus even polynomial terms.
+
+        The conic (or plane) hit seeds a Newton iteration on the aspheric
+        profile. The polynomial shifts the surface axially by at most a few
+        millimetres for a manufactureable part, so the seed is close enough
+        for the iteration to converge in a handful of steps.
+        """
+        if _is_flat(radius):
+            seed = self._intersect_flat_surface(ray, vertex_x, semi_aperture)
+        else:
+            seed = self._intersect_conic_surface(
+                ray, vertex_x, radius, conic_constant, semi_aperture
+            )
+        if seed is None:
+            return None
+
+        dx = math.cos(ray.angle)
+        dy = math.sin(ray.angle)
+        t = (seed[0] - ray.x) * dx + (seed[1] - ray.y) * dy
+        if t <= EPSILON:
+            return None
+
+        def residual(distance: float) -> float:
+            hit_y = ray.y + distance * dy
+            return (
+                ray.x
+                + distance * dx
+                - vertex_x
+                - asphere_sag(radius, conic_constant, coefficients, hit_y)
+            )
+
+        for _ in range(64):
+            hit_y = ray.y + t * dy
+            value = residual(t)
+            slope = asphere_slope(radius, conic_constant, coefficients, hit_y)
+            derivative = dx - slope * dy
+            if abs(derivative) < EPSILON:
+                return None
+            step = value / derivative
+            t -= step
+            if not math.isfinite(t) or t < -1e6 or t > 1e6:
+                return None
+            if abs(step) < 1e-12:
+                break
+
+        if abs(residual(t)) > 1e-6:
+            return None
+        hit_y = ray.y + t * dy
+        limit = self.D / 2 if semi_aperture is None else semi_aperture
+        if abs(hit_y) > limit + 1e-6:
+            return None
+        return (ray.x + t * dx, hit_y)
+
     def _intersect_fresnel_surface(
         self,
         ray: Ray,
@@ -461,6 +565,15 @@ class LensRayTracer:
             return self._intersect_parabolic_surface(
                 ray, self.front_vertex_x, self.parabolic_sag_1, semi
             )
+        if self.front_is_asphere:
+            return self._intersect_asphere_surface(
+                ray,
+                self.front_vertex_x,
+                self.R1,
+                self.conic_constant_1,
+                self.asphere_coefficients_1,
+                semi,
+            )
         if self.front_is_conic:
             return self._intersect_conic_surface(
                 ray, self.front_vertex_x, self.R1, self.conic_constant_1, semi
@@ -481,6 +594,15 @@ class LensRayTracer:
         if self.back_is_parabolic:
             return self._intersect_parabolic_surface(
                 ray, self.back_vertex_x, self.parabolic_sag_2, semi
+            )
+        if self.back_is_asphere:
+            return self._intersect_asphere_surface(
+                ray,
+                self.back_vertex_x,
+                self.R2,
+                self.conic_constant_2,
+                self.asphere_coefficients_2,
+                semi,
             )
         if self.back_is_conic:
             return self._intersect_conic_surface(

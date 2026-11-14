@@ -45,6 +45,7 @@ BUILDERS = (
     ("_create_mount_group", "Mount"),
     ("_create_parabolic_group", "Parabolic Surfaces (sag at D/2)"),
     ("_create_conic_group", "Conic Surfaces (K)"),
+    ("_create_asphere_group", "Even Asphere (A4..A16)"),
     ("_create_edge_profile_group", "Custom Edge Profile"),
     ("_create_material_group", "Material"),
     ("_create_coatings_group", "Coatings"),
@@ -73,6 +74,8 @@ NAMED_INPUTS = (
     "_para2_sag_input",
     "_conic1_input",
     "_conic2_input",
+    "_asphere1_input",
+    "_asphere2_input",
     "_edge_check",
     "_edge_points_input",
     "_material_combo",
@@ -158,6 +161,18 @@ class TestPropertiesPanelStructure(unittest.TestCase):
         self.editor._name_input.setText("After")
 
         self.assertEqual(lens.name, "After")
+
+    def test_asphere_input_enters_and_clears_coefficients(self):
+        lens = Lens()
+        self.editor.load_lens(lens)
+
+        self.editor._asphere1_input.setText("-1e-5, 2e-8")
+        self.editor._asphere1_input.editingFinished.emit()
+        self.assertEqual(lens.asphere_coefficients_1, [-1e-5, 2e-8])
+
+        self.editor._asphere1_input.setText("")
+        self.editor._asphere1_input.editingFinished.emit()
+        self.assertEqual(lens.asphere_coefficients_1, [])
 
 
 if __name__ == "__main__":

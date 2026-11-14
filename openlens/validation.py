@@ -30,6 +30,7 @@ from .constants import (
     EPSILON,
 )
 from .lens import Lens
+from .asphere import normalize_asphere_coefficients
 
 logger = logging.getLogger(__name__)
 
@@ -639,6 +640,29 @@ def validate_conic_constant(conic_constant: float, param_name: str = "conic cons
     return value
 
 
+def validate_asphere_coefficients(
+    coefficients: Optional[list], param_name: str = "asphere coefficients"
+) -> list:
+    """Validate an even-order polynomial asphere coefficient list.
+
+    Args:
+        coefficients: Ordered A4..A16 values, or None/empty for no
+            polynomial terms.
+        param_name: Parameter name for error messages.
+
+    Returns:
+        A list of finite coefficients (trailing zeros removed).
+
+    Raises:
+        ValidationError: If the value is not a sequence of finite numbers or
+            has more than seven entries (A4..A16).
+    """
+    try:
+        return normalize_asphere_coefficients(coefficients, param_name)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from None
+
+
 def _validate_conic_aperture(
     radius: float, conic_constant: float, semi_aperture: float, param_name: str
 ) -> None:
@@ -670,6 +694,8 @@ def validate_lens_parameters(
     clear_aperture_2: Optional[float] = None,
     conic_constant_1: float = 0.0,
     conic_constant_2: float = 0.0,
+    asphere_coefficients_1: Optional[list] = None,
+    asphere_coefficients_2: Optional[list] = None,
 ) -> dict:
     """
     Validate all lens parameters at once.
@@ -688,6 +714,8 @@ def validate_lens_parameters(
         clear_aperture_2: Back clear aperture diameter (mm), or None
         conic_constant_1: Front conic constant K (0 = sphere, -1 = parabola)
         conic_constant_2: Back conic constant K
+        asphere_coefficients_1: Front even-asphere coefficients A4..A16
+        asphere_coefficients_2: Back even-asphere coefficients A4..A16
 
     Returns:
         dict: Dictionary of validated parameters
@@ -728,6 +756,8 @@ def validate_lens_parameters(
 
     conic_1 = validate_conic_constant(conic_constant_1, "conic constant 1")
     conic_2 = validate_conic_constant(conic_constant_2, "conic constant 2")
+    asphere_1 = validate_asphere_coefficients(asphere_coefficients_1, "asphere coefficients 1")
+    asphere_2 = validate_asphere_coefficients(asphere_coefficients_2, "asphere coefficients 2")
     semi_aperture = validated_diameter / 2.0
     for clear_aperture in (clear_aperture_1, clear_aperture_2):
         if clear_aperture is not None:
@@ -751,6 +781,8 @@ def validate_lens_parameters(
         "clear_aperture_2": clear_aperture_2,
         "conic_constant_1": conic_1,
         "conic_constant_2": conic_2,
+        "asphere_coefficients_1": asphere_1,
+        "asphere_coefficients_2": asphere_2,
     }
 
 
@@ -767,6 +799,8 @@ def check_physical_feasibility(
     clear_aperture_2: Optional[float] = None,
     conic_constant_1: float = 0.0,
     conic_constant_2: float = 0.0,
+    asphere_coefficients_1: Optional[list] = None,
+    asphere_coefficients_2: Optional[list] = None,
 ) -> Tuple[bool, Optional[str]]:
     """
     Check if lens parameters are physically feasible.
@@ -786,6 +820,8 @@ def check_physical_feasibility(
         clear_aperture_2: Back clear aperture diameter (mm), or None
         conic_constant_1: Front conic constant K
         conic_constant_2: Back conic constant K
+        asphere_coefficients_1: Front even-asphere coefficients A4..A16
+        asphere_coefficients_2: Back even-asphere coefficients A4..A16
 
     Returns:
         Tuple[bool, Optional[str]]: (is_feasible, warning_message)
@@ -813,6 +849,8 @@ def check_physical_feasibility(
             parabolic_sag_2=parabolic_sag_2,
             conic_constant_1=conic_constant_1,
             conic_constant_2=conic_constant_2,
+            asphere_coefficients_1=asphere_coefficients_1,
+            asphere_coefficients_2=asphere_coefficients_2,
             clear_aperture_1=clear_aperture_1,
             clear_aperture_2=clear_aperture_2,
         )

@@ -36,6 +36,7 @@ from .constants import (
     DEFAULT_MATERIAL_INDICES,
 )
 from .mounts import MountCatalog
+from .asphere import asphere_sag, is_asphere, normalize_asphere_coefficients
 
 # Material database is an optional dependency
 try:
@@ -260,6 +261,8 @@ _LENS_SERIALIZED_KEYS = frozenset(
         "parabolic_sag_2",
         "conic_constant_1",
         "conic_constant_2",
+        "asphere_coefficients_1",
+        "asphere_coefficients_2",
         "clear_aperture_1",
         "clear_aperture_2",
         "bevel_1",
@@ -309,6 +312,8 @@ class Lens:
         parabolic_sag_2: float = 0.0,
         conic_constant_1: float = 0.0,
         conic_constant_2: float = 0.0,
+        asphere_coefficients_1: Optional[List[float]] = None,
+        asphere_coefficients_2: Optional[List[float]] = None,
         clear_aperture_1: Optional[float] = None,
         clear_aperture_2: Optional[float] = None,
         bevel_1: float = 0.0,
@@ -403,6 +408,15 @@ class Lens:
         # (they are mathematically the K=-1 case).
         self.conic_constant_1 = float(conic_constant_1)
         self.conic_constant_2 = float(conic_constant_2)
+
+        # Even-order polynomial aspheres (A4..A16) added to the conic base.
+        # An empty list keeps the surface exactly spherical/conic.
+        self.asphere_coefficients_1 = normalize_asphere_coefficients(
+            asphere_coefficients_1, "asphere coefficients 1"
+        )
+        self.asphere_coefficients_2 = normalize_asphere_coefficients(
+            asphere_coefficients_2, "asphere coefficients 2"
+        )
 
         # Only overwrite radii when the caller explicitly opts in.
         # This prevents silently clobbering r1=100, r2=-100 passed for
@@ -502,6 +516,13 @@ class Lens:
             # Clamp y to aperture
             y_c = max(-r, min(y, r))
             return self.parabolic_sag_1 * (y_c * y_c) / (r * r)
+        if is_asphere(self.asphere_coefficients_1):
+            return asphere_sag(
+                self.radius_of_curvature_1,
+                self.conic_constant_1,
+                self.asphere_coefficients_1,
+                y,
+            )
         if abs(self.conic_constant_1) > EPSILON:
             return _conic_sag(self.radius_of_curvature_1, self.conic_constant_1, y)
         # spherical
@@ -521,6 +542,13 @@ class Lens:
                 return 0.0
             y_c = max(-r, min(y, r))
             return self.parabolic_sag_2 * (y_c * y_c) / (r * r)
+        if is_asphere(self.asphere_coefficients_2):
+            return asphere_sag(
+                self.radius_of_curvature_2,
+                self.conic_constant_2,
+                self.asphere_coefficients_2,
+                y,
+            )
         if abs(self.conic_constant_2) > EPSILON:
             return _conic_sag(self.radius_of_curvature_2, self.conic_constant_2, y)
         r = self.radius_of_curvature_2
@@ -871,6 +899,8 @@ class Lens:
             "parabolic_sag_2": self.parabolic_sag_2,
             "conic_constant_1": self.conic_constant_1,
             "conic_constant_2": self.conic_constant_2,
+            "asphere_coefficients_1": list(self.asphere_coefficients_1),
+            "asphere_coefficients_2": list(self.asphere_coefficients_2),
             "clear_aperture_1": self.clear_aperture_1,
             "clear_aperture_2": self.clear_aperture_2,
             "bevel_1": self.bevel_1,
@@ -945,6 +975,8 @@ class Lens:
             parabolic_sag_2=data.get("parabolic_sag_2", 0.0),
             conic_constant_1=data.get("conic_constant_1", 0.0),
             conic_constant_2=data.get("conic_constant_2", 0.0),
+            asphere_coefficients_1=data.get("asphere_coefficients_1"),
+            asphere_coefficients_2=data.get("asphere_coefficients_2"),
             clear_aperture_1=data.get("clear_aperture_1", None),
             clear_aperture_2=data.get("clear_aperture_2", None),
             bevel_1=data.get("bevel_1", 0.0),
@@ -1066,6 +1098,8 @@ class Lens:
         self.parabolic_sag_2 = 0.0
         self.conic_constant_1 = 0.0
         self.conic_constant_2 = 0.0
+        self.asphere_coefficients_1 = []
+        self.asphere_coefficients_2 = []
 
     def set_lens_type(self, lens_type: str) -> None:
         """Set lens type and update radii accordingly."""

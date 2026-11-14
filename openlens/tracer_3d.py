@@ -19,6 +19,7 @@ from .constants import (
     RAY_EXIT_PROPAGATION_3D_MM,
 )
 from .lens import _is_flat
+from .asphere import asphere_sag, asphere_slope, is_asphere
 from .geometry import LensGeometry
 from .casing import wall_entry_3d
 
@@ -65,6 +66,8 @@ def _lens_state_key(lens: "Lens") -> Tuple[object, ...]:
         float(getattr(lens, "parabolic_sag_2", 0.0)),
         float(getattr(lens, "conic_constant_1", 0.0)),
         float(getattr(lens, "conic_constant_2", 0.0)),
+        tuple(getattr(lens, "asphere_coefficients_1", ()) or ()),
+        tuple(getattr(lens, "asphere_coefficients_2", ()) or ()),
         bool(getattr(lens, "is_fresnel", False)),
         getattr(lens, "fresnel_surface", None),
         float(getattr(lens, "groove_pitch", 0.0)),
@@ -103,6 +106,8 @@ class LensRayTracer3D:
         self.parabolic_sag_2 = float(getattr(lens, "parabolic_sag_2", 0.0))
         self.conic_constant_1 = float(getattr(lens, "conic_constant_1", 0.0))
         self.conic_constant_2 = float(getattr(lens, "conic_constant_2", 0.0))
+        self.asphere_coefficients_1 = list(getattr(lens, "asphere_coefficients_1", []) or [])
+        self.asphere_coefficients_2 = list(getattr(lens, "asphere_coefficients_2", []) or [])
         self.is_fresnel = bool(getattr(lens, "is_fresnel", False))
         self.fresnel_facets_1 = LensGeometry.fresnel_facets(lens, 1)
         self.fresnel_facets_2 = LensGeometry.fresnel_facets(lens, 2)
@@ -142,42 +147,62 @@ class LensRayTracer3D:
             self.front_is_flat = False
             self.front_is_parabolic = True
             self.front_is_conic = False
+            self.front_is_asphere = False
+        elif is_asphere(self.asphere_coefficients_1):
+            self.front_center = self.front_vertex
+            self.front_is_flat = False
+            self.front_is_parabolic = False
+            self.front_is_conic = False
+            self.front_is_asphere = True
         elif _is_flat(self.R1):
             self.front_center = self.front_vertex
             self.front_is_flat = True
             self.front_is_parabolic = False
             self.front_is_conic = False
+            self.front_is_asphere = False
         elif abs(self.conic_constant_1) > EPSILON:
             self.front_center = self.front_vertex
             self.front_is_flat = False
             self.front_is_parabolic = False
             self.front_is_conic = True
+            self.front_is_asphere = False
         else:
             self.front_center = self.transform.multiply_point(vec3(self.R1, 0, 0))
             self.front_is_flat = False
             self.front_is_parabolic = False
             self.front_is_conic = False
+            self.front_is_asphere = False
 
         if self.is_parabolic_2 and abs(self.parabolic_sag_2) > EPSILON:
             self.back_center = self.back_vertex
             self.back_is_flat = False
             self.back_is_parabolic = True
             self.back_is_conic = False
+            self.back_is_asphere = False
+        elif is_asphere(self.asphere_coefficients_2):
+            self.back_center = self.back_vertex
+            self.back_is_flat = False
+            self.back_is_parabolic = False
+            self.back_is_conic = False
+            self.back_is_asphere = True
         elif _is_flat(self.R2):
             self.back_center = self.back_vertex
             self.back_is_flat = True
             self.back_is_parabolic = False
             self.back_is_conic = False
+            self.back_is_asphere = False
         elif abs(self.conic_constant_2) > EPSILON:
             self.back_center = self.back_vertex
             self.back_is_flat = False
             self.back_is_parabolic = False
             self.back_is_conic = True
+            self.back_is_asphere = False
         else:
             self.back_center = self.transform.multiply_point(vec3(self.d + self.R2, 0, 0))
             self.back_is_flat = False
             self.back_is_parabolic = False
             self.back_is_conic = False
+            self.back_is_asphere = False
 
         self.optical_axis = self.transform.multiply_vector(vec3(1, 0, 0)).normalize()
 
@@ -509,6 +534,80 @@ class LensRayTracer3D:
         _, _, local_x, local_y, local_z = best
         return self.transform.multiply_point(vec3(local_x, local_y, local_z) + vertex_offset)
 
+    def _intersect_asphere(
+        self,
+        ray: Ray3D,
+        vertex: Vector3,
+        radius: float,
+        conic_constant: float,
+        coefficients: List[float],
+        surface_type: str = "front",
+    ) -> Optional[Vector3]:
+        """Intersect a ray with a conic base plus even polynomial terms.
+
+        The conic/plane hit seeds a Newton iteration on the aspheric profile
+        in the surface-local frame.
+        """
+        if abs(radius) < EPSILON or abs(radius) > 1e10:
+            seed = self._intersect_plane(ray, vertex, self.optical_axis)
+        else:
+            seed = self._intersect_conic(ray, vertex, radius, conic_constant, surface_type)
+        if seed is None:
+            return None
+
+        local_origin = self._to_local_point(ray.origin, vertex)
+        vertex_offset = self._to_local_point(vertex, vertex)
+        local_origin = local_origin - vertex_offset
+        local_dir = self._to_local_vector(ray.direction)
+        local_seed = self._to_local_point(seed, vertex) - vertex_offset
+
+        ox, oy, oz = local_origin.x, local_origin.y, local_origin.z
+        dx, dy, dz = local_dir.x, local_dir.y, local_dir.z
+        t = (local_seed.x - ox) * dx + (local_seed.y - oy) * dy + (local_seed.z - oz) * dz
+        if t <= EPSILON:
+            return None
+
+        def radial(distance: float) -> float:
+            y = oy + distance * dy
+            z = oz + distance * dz
+            return math.sqrt(y * y + z * z)
+
+        def residual(distance: float) -> float:
+            return (
+                ox
+                + distance * dx
+                - asphere_sag(radius, conic_constant, coefficients, radial(distance))
+            )
+
+        for _ in range(64):
+            r = radial(t)
+            value = residual(t)
+            slope = asphere_slope(radius, conic_constant, coefficients, r)
+            if r > EPSILON:
+                drdt = (oy + t * dy) * dy + (oz + t * dz) * dz
+                drdt /= r
+            else:
+                drdt = 0.0
+            derivative = dx - slope * drdt
+            if abs(derivative) < EPSILON:
+                return None
+            step = value / derivative
+            t -= step
+            if not math.isfinite(t) or t < -1e6 or t > 1e6:
+                return None
+            if abs(step) < 1e-12:
+                break
+
+        if abs(residual(t)) > 1e-6:
+            return None
+        local_y = oy + t * dy
+        local_z = oz + t * dz
+        aperture_sq = self._aperture_sq_front if surface_type == "front" else self._aperture_sq_back
+        if local_y * local_y + local_z * local_z > aperture_sq:
+            return None
+        local_x = ox + t * dx
+        return self.transform.multiply_point(vec3(local_x, local_y, local_z) + vertex_offset)
+
     def trace_surface(
         self, ray: Ray3D, surface_type: str, interaction: str = "refract"
     ) -> RefractionResult:
@@ -518,7 +617,9 @@ class LensRayTracer3D:
             is_flat = self.front_is_flat
             is_parabolic = self.front_is_parabolic
             is_conic = self.front_is_conic
+            is_asphere_surface = self.front_is_asphere
             conic_constant = self.conic_constant_1
+            asphere_coefficients = self.asphere_coefficients_1
             vertex = self.front_vertex
             R = self.R1
             default_n1 = REFRACTIVE_INDEX_AIR
@@ -528,7 +629,9 @@ class LensRayTracer3D:
             is_flat = self.back_is_flat
             is_parabolic = self.back_is_parabolic
             is_conic = self.back_is_conic
+            is_asphere_surface = self.back_is_asphere
             conic_constant = self.conic_constant_2
+            asphere_coefficients = self.asphere_coefficients_2
             vertex = self.back_vertex
             R = self.R2
             default_n1 = self.n
@@ -546,6 +649,7 @@ class LensRayTracer3D:
             is_flat = False
             is_parabolic = False
             is_conic = False
+            is_asphere_surface = False
         elif is_parabolic:
             # R is the effective vertex radius (may be negative).
             if abs(R) < EPSILON or abs(R) > 1e10:
@@ -554,6 +658,11 @@ class LensRayTracer3D:
             else:
                 normal = None  # gradient-based: oriented outward below
                 intersection = self._intersect_paraboloid(ray, vertex, R, surface_type)
+        elif is_asphere_surface:
+            normal = None  # gradient-based: oriented outward below
+            intersection = self._intersect_asphere(
+                ray, vertex, R, conic_constant, asphere_coefficients, surface_type
+            )
         elif is_conic:
             normal = None  # gradient-based: oriented outward below
             intersection = self._intersect_conic(ray, vertex, R, conic_constant, surface_type)
@@ -616,6 +725,29 @@ class LensRayTracer3D:
                     normal_local = vec3(1, 0, 0)
                 else:
                     normal_local = vec3(1, -ly / R, -lz / R).normalize()
+                geometric = self.transform.multiply_vector(normal_local)
+            except Exception:
+                geometric = None
+            if geometric is None:
+                normal = -self.optical_axis if surface_type == "front" else self.optical_axis
+            else:
+                normal = self._outward_normal(geometric, surface_type)
+        elif fresnel_hit is None and is_asphere_surface and normal is None:
+            # Asphere gradient in the vertex-local frame:
+            # (1, -dz/dr * y/r, -dz/dr * z/r).
+            try:
+                local_hit = self._to_local_point(intersection, vertex)
+                local_hit = local_hit - self._to_local_point(vertex, vertex)
+                radial = math.hypot(local_hit.y, local_hit.z)
+                slope = asphere_slope(R, conic_constant, asphere_coefficients, radial)
+                if radial > EPSILON:
+                    normal_local = vec3(
+                        1.0,
+                        -slope * local_hit.y / radial,
+                        -slope * local_hit.z / radial,
+                    ).normalize()
+                else:
+                    normal_local = vec3(1.0, 0.0, 0.0)
                 geometric = self.transform.multiply_vector(normal_local)
             except Exception:
                 geometric = None

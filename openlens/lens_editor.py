@@ -313,6 +313,8 @@ class LensManager:
                 clear_aperture_2=getattr(lens, "clear_aperture_2", None),
                 conic_constant_1=float(getattr(lens, "conic_constant_1", 0.0)),
                 conic_constant_2=float(getattr(lens, "conic_constant_2", 0.0)),
+                asphere_coefficients_1=list(getattr(lens, "asphere_coefficients_1", []) or []),
+                asphere_coefficients_2=list(getattr(lens, "asphere_coefficients_2", []) or []),
             )
             if not feasible:
                 print(f"\n  cannot update lens: {reason}")
