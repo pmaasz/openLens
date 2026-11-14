@@ -251,6 +251,13 @@ A biconvex lens in air therefore has ``R1 > 0`` and ``R2 < 0``.
 A flat surface is represented by an infinite radius; the model treats a zero
 radius as flat in the property setters. Use ``conic_constant_1`` or
 ``conic_constant_2`` for an aspheric surface when a sphere is not sufficient.
+For a general even-order polynomial asphere, set ``asphere_coefficients_1`` or
+``asphere_coefficients_2`` to an ordered ``A4..A16`` list; the sag is the conic
+sag plus ``A4*r^4 + A6*r^6 + ...``.
+
+.. code-block:: python
+
+   lens.asphere_coefficients_1 = [-1e-6, 2e-9]  # A4, A6
 
 Material Database
 -----------------

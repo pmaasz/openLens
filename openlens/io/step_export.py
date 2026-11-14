@@ -14,6 +14,7 @@ from typing import List, Any, Optional
 from ..atomic import atomic_write_text
 from ..constants import EPSILON
 from ..geometry import LensGeometry
+from ..asphere import is_asphere
 from ..transform import Matrix4x4
 from ..vector3 import vec3
 
@@ -253,6 +254,8 @@ def _conic_profile(lens: Any, side: int) -> Optional[str]:
 
     radius = getattr(lens, f"radius_of_curvature_{side}", 0.0)
     conic_constant = getattr(lens, f"conic_constant_{side}", 0.0)
+    if is_asphere(getattr(lens, f"asphere_coefficients_{side}", None)):
+        return "even asphere"
     if abs(conic_constant) > EPSILON and not _is_flat_radius(radius):
         return f"conic (K={conic_constant:g})"
     return None

@@ -15,6 +15,7 @@ import logging
 
 from .constants import EPSILON, MIN_EDGE_THICKNESS, WAVELENGTH_GREEN
 from .lens import ensure_model_glass
+from .asphere import ASPHERE_ORDERS, normalize_asphere_coefficients
 from .optical_system import OpticalSystem
 from .aberrations import AberrationsCalculator
 from .analysis import SpotDiagram
@@ -1099,6 +1100,26 @@ class LensOptimizer:
             ensure_model_glass(lens)
             lens.model_vd = value
             lens.update_refractive_index()
+        else:
+            # Even-asphere variables are named asphere_coefficient_<order>_<side>,
+            # for example asphere_coefficient_6_2.
+            parts = parameter.split("_")
+            if len(parts) == 4 and parts[0] == "asphere" and parts[1] == "coefficient":
+                try:
+                    order = int(parts[2])
+                    side = int(parts[3])
+                except ValueError:
+                    return
+                if order not in ASPHERE_ORDERS or side not in (1, 2):
+                    return
+                lens = system.elements[element_index].lens
+                attr = f"asphere_coefficients_{side}"
+                coefficients = list(getattr(lens, attr, []) or [])
+                index = ASPHERE_ORDERS.index(order)
+                while len(coefficients) <= index:
+                    coefficients.append(0.0)
+                coefficients[index] = value
+                setattr(lens, attr, normalize_asphere_coefficients(coefficients))
 
 
 def create_doublet_optimizer(

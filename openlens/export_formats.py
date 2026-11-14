@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from xml.sax.saxutils import escape
 
 from .lens import Lens
+from .asphere import is_asphere
 from .optical_system import OpticalSystem
 from .atomic import atomic_write_text
 from .constants import (
@@ -94,13 +95,14 @@ class ZemaxExporter:
 
             # Surface 1 (front)
             f.write("SURF 1\n")
-            f.write("  TYPE STANDARD\n")
+            f.write(f"  TYPE {_zemax_surface_type(lens, 1)}\n")
             # A parabolic surface is CONI -1 at its vertex radius, not a
             # standard sphere at the nominal radius.
             f.write(f"  CURV {_zemax_curv(lens.get_effective_radius_1())}\n")
             conic = _zemax_conic(lens.is_parabolic_1, lens.conic_constant_1)
             if conic is not None:
                 f.write(f"  CONI {conic:g}\n")
+            _write_zemax_asphere(f, lens, 1)
             f.write(f"  DISZ {lens.thickness}\n")
             f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_1())}\n")
             f.write(f"  GLAS {_zemax_material(lens.material)}\n")
@@ -112,11 +114,12 @@ class ZemaxExporter:
 
             # Surface 2 (back)
             f.write("SURF 2\n")
-            f.write("  TYPE STANDARD\n")
+            f.write(f"  TYPE {_zemax_surface_type(lens, 2)}\n")
             f.write(f"  CURV {_zemax_curv(lens.get_effective_radius_2())}\n")
             conic = _zemax_conic(lens.is_parabolic_2, lens.conic_constant_2)
             if conic is not None:
                 f.write(f"  CONI {conic:g}\n")
+            _write_zemax_asphere(f, lens, 2)
             f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_2())}\n")
             coat2 = lens.coating_label(2)
             if coat2 != "Uncoated":
@@ -716,6 +719,33 @@ def _zemax_conic(is_parabolic: bool, conic_constant: float) -> Optional[float]:
     return None
 
 
+def _zemax_surface_type(lens: Lens, side: int) -> str:
+    """Zemax surface TYPE for one lens surface."""
+    if getattr(lens, f"is_parabolic_{side}", False):
+        return "STANDARD"
+    if is_asphere(getattr(lens, f"asphere_coefficients_{side}", None)):
+        return "EVENASPH"
+    return "STANDARD"
+
+
+def _write_zemax_asphere(f, lens: Lens, side: int) -> None:
+    """Write even-asphere coefficients as PARM 2..8 (A4..A16)."""
+    if getattr(lens, f"is_parabolic_{side}", False):
+        return
+    coefficients = list(getattr(lens, f"asphere_coefficients_{side}", []) or [])
+    for index, coefficient in enumerate(coefficients):
+        f.write(f"  PARM {index + 2} {coefficient:g}\n")
+
+
+def _zemax_asphere_coefficients(surf: Dict[str, Any]) -> List[float]:
+    """Read A4..A16 from a parsed surface's PARM map (PARM 2..8)."""
+    parm = surf.get("parm") or {}
+    values = [float(parm.get(index, 0.0)) for index in range(2, 2 + 7)]
+    while values and values[-1] == 0.0:
+        values.pop()
+    return values
+
+
 def _zemax_material(material: str) -> str:
     """Render a material name as a single .zmx GLAS argument.
 
@@ -812,11 +842,12 @@ class ZemaxSystemExporter:
                 lens = element.lens
                 # Front surface carries the center thickness.
                 f.write(f"SURF {surf}\n")
-                f.write("  TYPE STANDARD\n")
+                f.write(f"  TYPE {_zemax_surface_type(lens, 1)}\n")
                 f.write(f"  CURV {_zemax_curv(lens.get_effective_radius_1())}\n")
                 conic = _zemax_conic(lens.is_parabolic_1, lens.conic_constant_1)
                 if conic is not None:
                     f.write(f"  CONI {conic:g}\n")
+                _write_zemax_asphere(f, lens, 1)
                 f.write(f"  DISZ {lens.thickness}\n")
                 f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_1())}\n")
                 f.write(f"  GLAS {_zemax_material(lens.material)}\n")
@@ -846,11 +877,12 @@ class ZemaxSystemExporter:
                     back_disz = 100.0
                     stop_remainder = None
                 f.write(f"SURF {surf}\n")
-                f.write("  TYPE STANDARD\n")
+                f.write(f"  TYPE {_zemax_surface_type(lens, 2)}\n")
                 f.write(f"  CURV {_zemax_curv(lens.get_effective_radius_2())}\n")
                 conic = _zemax_conic(lens.is_parabolic_2, lens.conic_constant_2)
                 if conic is not None:
                     f.write(f"  CONI {conic:g}\n")
+                _write_zemax_asphere(f, lens, 2)
                 f.write(f"  DIAM {_zemax_diam(lens.get_clear_aperture_2())}\n")
                 coat = lens.coating_label(2)
                 if coat != "Uncoated":
@@ -934,6 +966,17 @@ class ZemaxSystemImporter:
                     current["dece"] = (numbers[0], numbers[1])
                 elif key == "TILT" and len(numbers) >= 3:
                     current["tilt"] = (numbers[0], numbers[1], numbers[2])
+            elif key == "PARM":
+                tokens = rest.split()
+                if len(tokens) < 2:
+                    continue
+                try:
+                    parameter = int(tokens[0])
+                    value = float(tokens[1])
+                except ValueError:
+                    logger.debug("Zemax import: bad PARM values %r", rest)
+                    continue
+                current.setdefault("parm", {})[parameter] = value
             elif key == "GLAS":
                 # A glass name may contain spaces - real files use names like
                 # "Fused Silica" - so take the whole argument, and accept the
@@ -960,6 +1003,8 @@ class ZemaxSystemImporter:
         ca2: Optional[float],
         conic1: float = 0.0,
         conic2: float = 0.0,
+        asphere1: Optional[List[float]] = None,
+        asphere2: Optional[List[float]] = None,
         wavelength: float = WAVELENGTH_D_LINE,
     ) -> Optional[Lens]:
         """Validate one imported element and build a Lens, or return None.
@@ -982,6 +1027,8 @@ class ZemaxSystemImporter:
             ca2: Back clear aperture (mm), or None for full diameter.
             conic1: Front conic constant from CONI (0.0 when absent).
             conic2: Back conic constant from CONI.
+            asphere1: Front even-asphere coefficients A4..A16 (PARM 2..8).
+            asphere2: Back even-asphere coefficients A4..A16.
             wavelength: Design wavelength in nm from the WAVE keyword.
 
         Returns:
@@ -1024,6 +1071,8 @@ class ZemaxSystemImporter:
                 refractive_index=n,
                 conic_constant_1=conic1,
                 conic_constant_2=conic2,
+                asphere_coefficients_1=asphere1,
+                asphere_coefficients_2=asphere2,
             )
             # Clear apertures are relative to the diameter, so they can only be
             # checked once the diameter itself has been accepted.
@@ -1058,6 +1107,8 @@ class ZemaxSystemImporter:
             parabolic_sag_2=sag_2,
             conic_constant_1=conic1,
             conic_constant_2=conic2,
+            asphere_coefficients_1=asphere1,
+            asphere_coefficients_2=asphere2,
             wavelength=wavelength,
         )
 
@@ -1122,6 +1173,12 @@ class ZemaxSystemImporter:
                     value = surf.get(key)
                     if isinstance(value, (int, float)) and math.isfinite(value):
                         surf[key] = value * factor
+                # PARM n is the coefficient of r^(2n), so a length unit
+                # scales it by (1/scale)^(2n).
+                if "parm" in surf:
+                    surf["parm"] = {
+                        index: value / scale ** (2 * index) for index, value in surf["parm"].items()
+                    }
                 # DECE is a length; TILT is degrees and WAVE is nanometres,
                 # so neither of those follows the file's length unit.
                 if "dece" in surf:
@@ -1149,7 +1206,7 @@ class ZemaxSystemImporter:
             return 1.0 / curv
 
         for surf in surfaces:
-            if surf.get("type", "STANDARD").upper() not in ("STANDARD", ""):
+            if surf.get("type", "STANDARD").upper() not in ("STANDARD", "EVENASPH", ""):
                 continue
             disz = surf.get("disz", 0.0) or 0.0
             if disz >= float("inf"):
@@ -1175,6 +1232,7 @@ class ZemaxSystemImporter:
                     # DIAM is a semi-diameter; the app stores full apertures.
                     "ca1": None if diam is None else diam * 2.0,
                     "conic1": surf.get("coni", 0.0),
+                    "asphere1": _zemax_asphere_coefficients(surf),
                     "material": surf.get("glas", "BK7"),
                     "gap_before": gap_before,
                     "wave": surf.get("wave", WAVELENGTH_D_LINE),
@@ -1209,6 +1267,8 @@ class ZemaxSystemImporter:
                     ca2=ca2,
                     conic1=pending_front.get("conic1", 0.0),
                     conic2=surf.get("coni", 0.0),
+                    asphere1=pending_front.get("asphere1"),
+                    asphere2=_zemax_asphere_coefficients(surf),
                     wavelength=pending_front.get("wave", WAVELENGTH_D_LINE),
                 )
                 if lens is not None:

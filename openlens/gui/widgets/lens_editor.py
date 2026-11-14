@@ -34,6 +34,7 @@ from ...validation import (
     ValidationError,
     check_physical_feasibility,
     parabolic_sag_limit,
+    validate_asphere_coefficients,
 )
 
 if TYPE_CHECKING:
@@ -355,6 +356,7 @@ class LensEditorWidget(QWidget):
         layout.addWidget(self._create_mount_group())
         layout.addWidget(self._create_parabolic_group())
         layout.addWidget(self._create_conic_group())
+        layout.addWidget(self._create_asphere_group())
         layout.addWidget(self._create_edge_profile_group())
         layout.addWidget(self._create_material_group())
         layout.addWidget(self._create_coatings_group())
@@ -621,6 +623,37 @@ class LensEditorWidget(QWidget):
         conic_layout.addRow("Back K:", self._conic2_input)
 
         return conic_group
+
+    def _create_asphere_group(self) -> QGroupBox:
+        """Create the even-order polynomial asphere controls.
+
+        Coefficients are entered as an ordered A4..A16 list; an empty field
+        clears the polynomial terms and leaves the conic/spherical base.
+
+        Returns:
+            The group box holding the two coefficient inputs.
+        """
+        asphere_group = QGroupBox("Even Asphere (A4..A16)")
+        asphere_layout = QFormLayout(asphere_group)
+
+        self._asphere1_input = QLineEdit()
+        self._asphere1_input.setPlaceholderText("A4, A6, A8, ... (empty = none)")
+        self._asphere1_input.setToolTip(
+            "Front even-polynomial coefficients, ordered from A4 to A16. "
+            "Sag = conic sag + A4*r^4 + A6*r^6 + ..."
+        )
+        self._asphere1_input.editingFinished.connect(lambda: self._on_asphere_changed(1))
+        asphere_layout.addRow("Front:", self._asphere1_input)
+
+        self._asphere2_input = QLineEdit()
+        self._asphere2_input.setPlaceholderText("A4, A6, A8, ... (empty = none)")
+        self._asphere2_input.setToolTip(
+            "Back even-polynomial coefficients, ordered from A4 to A16."
+        )
+        self._asphere2_input.editingFinished.connect(lambda: self._on_asphere_changed(2))
+        asphere_layout.addRow("Back:", self._asphere2_input)
+
+        return asphere_group
 
     def _create_edge_profile_group(self) -> QGroupBox:
         """Create the custom rim-profile controls.
@@ -922,6 +955,7 @@ class LensEditorWidget(QWidget):
                     spin.setValue(0.0)
                     spin.blockSignals(False)
             self._refresh_conic_ui()
+            self._refresh_asphere_ui()
             self._lens.sync_edge_profile()
             self._touch_lens()
             self._update_calculated()
@@ -938,6 +972,28 @@ class LensEditorWidget(QWidget):
             self._lens.conic_constant_1 = self._conic1_input.value()
         if not bool(getattr(self._lens, "is_parabolic_2", False)):
             self._lens.conic_constant_2 = self._conic2_input.value()
+        self._lens.sync_edge_profile()
+        self._touch_lens()
+        self._update_calculated()
+        self._viz_widget.update_lens(self._lens)
+        self.lens_modified.emit(self._lens)
+        self.lens_updated.emit()
+
+    @_undoable_edit
+    def _on_asphere_changed(self, surface: int) -> None:
+        """Apply an even-asphere coefficient list edited on one surface."""
+        if not self._lens:
+            return
+        field = self._asphere1_input if surface == 1 else self._asphere2_input
+        tokens = field.text().replace(",", " ").replace(";", " ").split()
+        try:
+            coefficients = validate_asphere_coefficients(
+                [float(token) for token in tokens], f"asphere coefficients {surface}"
+            )
+        except (ValueError, ValidationError):
+            self._refresh_asphere_ui()
+            return
+        setattr(self._lens, f"asphere_coefficients_{surface}", coefficients)
         self._lens.sync_edge_profile()
         self._touch_lens()
         self._update_calculated()
@@ -993,6 +1049,7 @@ class LensEditorWidget(QWidget):
             self._touch_lens()
             self._refresh_parabolic_ui()
             self._refresh_conic_ui()
+            self._refresh_asphere_ui()
             self._update_sag_ranges()
             # Sync parabolic sag diameters if needed (sag stays as absolute distance)
             self._update_calculated()
@@ -1088,6 +1145,20 @@ class LensEditorWidget(QWidget):
             spin.setValue(float(getattr(self._lens, conic_attr, 0.0)))
             spin.setEnabled(not flag)
             spin.blockSignals(False)
+
+    def _refresh_asphere_ui(self) -> None:
+        """Snap asphere coefficient fields to the model (display only)."""
+        if self._lens is None:
+            return
+        for surface, field in (
+            (1, self._asphere1_input),
+            (2, self._asphere2_input),
+        ):
+            coefficients = list(getattr(self._lens, f"asphere_coefficients_{surface}", []) or [])
+            field.blockSignals(True)
+            field.setText(", ".join(f"{value:g}" for value in coefficients))
+            field.setEnabled(not bool(getattr(self._lens, f"is_parabolic_{surface}", False)))
+            field.blockSignals(False)
 
     def _update_sag_ranges(self, sync_model: bool = True) -> None:
         """Clamp parabolic sag spinboxes to the diameter-scaled limit.
@@ -1401,6 +1472,12 @@ class LensEditorWidget(QWidget):
                 float(getattr(self._lens, "parabolic_sag_2", 0.0)),
                 conic_constant_1=float(getattr(self._lens, "conic_constant_1", 0.0)),
                 conic_constant_2=float(getattr(self._lens, "conic_constant_2", 0.0)),
+                asphere_coefficients_1=list(
+                    getattr(self._lens, "asphere_coefficients_1", []) or []
+                ),
+                asphere_coefficients_2=list(
+                    getattr(self._lens, "asphere_coefficients_2", []) or []
+                ),
             )
             if not feasible:
                 message = soft_msg
@@ -1499,6 +1576,7 @@ class LensEditorWidget(QWidget):
         self._update_sag_ranges(sync_model=False)
         self._refresh_parabolic_ui()
         self._refresh_conic_ui()
+        self._refresh_asphere_ui()
         self._refresh_edge_profile_ui()
         self._refresh_fresnel_ui()
         self._refresh_coating_ui()
