@@ -63,7 +63,9 @@ def normalize_asphere_coefficients(
 
 def is_asphere(coefficients: Sequence[float] | None) -> bool:
     """Whether a coefficient list describes a non-spherical polynomial."""
-    return bool(coefficients) and any(abs(value) > EPSILON for value in coefficients)
+    if not coefficients:
+        return False
+    return any(abs(value) > EPSILON for value in coefficients)
 
 
 def _domain_radius(radius: float, conic_constant: float) -> float:
