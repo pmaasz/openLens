@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QMessageBox,
     QFileDialog,
+    QCheckBox,
 )
 from .base_tab import BaseTab
 from ..theme import DARK, get_monospace_qss
@@ -160,6 +161,14 @@ class PerformanceTab(BaseTab):
         )
         params_layout.addRow("Entrance Pupil:", self._perf_entrance_pupil)
 
+        self._perf_aim_at_stop = QCheckBox()
+        self._perf_aim_at_stop.setChecked(False)
+        self._perf_aim_at_stop.setToolTip(
+            "Aim each ray at the aperture stop instead of the paraxial "
+            "entrance pupil. Off preserves the historical bundle."
+        )
+        params_layout.addRow("Ray Aiming:", self._perf_aim_at_stop)
+
         self._perf_wavelength = QComboBox()
         self._perf_wavelength.addItems(
             [f"{nanometres:g} nm ({name})" for nanometres, name in WAVELENGTH_PRESETS]
@@ -287,6 +296,11 @@ class PerformanceTab(BaseTab):
             An OpticalSystem; the input itself when it already is one.
         """
         return as_system(active_system)
+
+    @property
+    def aim_at_stop(self) -> bool:
+        """Whether analyses aim rays at the aperture stop."""
+        return self._perf_aim_at_stop.isChecked()
 
     def _selected_wavelength(self) -> float:
         """Wavelength selected in the calculation parameters, in nanometres."""
@@ -630,6 +644,7 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
             wavelength = self._selected_wavelength()
             fields = self._analysis_fields(system)
             colors = ["#ffffff", "#00ff00", "#ff0000"]
+            aim_at_stop = self.aim_at_stop
 
             def _compute():
                 analyzer = ImageQualityAnalyzer(system)
@@ -637,7 +652,10 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
                     (
                         field,
                         analyzer.calculate_spot_diagram(
-                            field_angle_deg=field, wavelength_nm=wavelength, num_rings=6
+                            field_angle_deg=field,
+                            wavelength_nm=wavelength,
+                            num_rings=6,
+                            aim_at_stop=aim_at_stop,
                         ),
                     )
                     for field in fields

@@ -80,6 +80,12 @@ from ..vector3 import vec3
 from ..ray_tracer import SystemRayTracer3D
 from ..optical_system import OpticalSystem
 from ..fields import launch_field_ray
+from ..ray_aiming import (
+    DEFAULT_AIM_MAX_ITERATIONS,
+    DEFAULT_AIM_TOLERANCE_MM,
+    RayAimer,
+    get_stop_geometry,
+)
 from .paraxial import find_paraxial_focus
 
 logger = logging.getLogger(__name__)
@@ -104,6 +110,8 @@ class WavefrontSensor:
     def __init__(self, system: OpticalSystem):
         self.system = system
         self.tracer = SystemRayTracer3D(system)
+        #: Rays whose aiming fell back to the paraxial launch in the last map.
+        self.aim_failures = 0
 
     def get_pupil_wavefront(
         self,
@@ -111,6 +119,9 @@ class WavefrontSensor:
         wavelength_nm: float = WAVELENGTH_GREEN,
         grid_size: int = 64,
         object_distance_mm: Optional[float] = None,
+        aim_at_stop: bool = False,
+        aim_tolerance_mm: float = DEFAULT_AIM_TOLERANCE_MM,
+        aim_max_iterations: int = DEFAULT_AIM_MAX_ITERATIONS,
     ) -> WavefrontError:
         """Calculate the pupil wavefront at *wavelength_nm*.
 
@@ -131,6 +142,9 @@ class WavefrontSensor:
             grid_size: Number of pupil samples per axis.
             object_distance_mm: Finite object distance in mm. None uses the
                 system's setting; an unset system is collimated.
+            aim_at_stop: Aim pupil rays at their stop coordinates.
+            aim_tolerance_mm: Stop-hit error that counts as converged.
+            aim_max_iterations: Newton iterations before using the paraxial ray.
 
         Returns:
             WavefrontError with the Y, Z pupil grids and W in waves.
@@ -160,6 +174,9 @@ class WavefrontSensor:
                 wavelength_nm=wavelength_nm,
                 grid_size=grid_size,
                 object_distance_mm=object_distance_mm,
+                aim_at_stop=aim_at_stop,
+                aim_tolerance_mm=aim_tolerance_mm,
+                aim_max_iterations=aim_max_iterations,
             )
         finally:
             for lens, index, wavelength in saved:
@@ -172,6 +189,9 @@ class WavefrontSensor:
         wavelength_nm: float = WAVELENGTH_GREEN,
         grid_size: int = 64,
         object_distance_mm: Optional[float] = None,
+        aim_at_stop: bool = False,
+        aim_tolerance_mm: float = DEFAULT_AIM_TOLERANCE_MM,
+        aim_max_iterations: int = DEFAULT_AIM_MAX_ITERATIONS,
     ) -> WavefrontError:
         """
         Calculate wavefront error map at the exit pupil.
@@ -201,8 +221,12 @@ class WavefrontSensor:
             (wavefront error in waves)
         """
         if not NUMPY_AVAILABLE:
+            self.aim_failures = 0
             empty = []
             return WavefrontError(empty, empty, empty)
+
+        #: Rays in this map whose aiming fell back to the paraxial launch.
+        self.aim_failures = 0
 
         # Convert wavelength from nm to mm for OPD scaling
         wavelength_mm = wavelength_nm * 1e-6
@@ -246,14 +270,37 @@ class WavefrontSensor:
         # 3. Chief ray through the pupil centre; its image-plane intercept
         # is the reference-sphere centre Q. At a finite object distance all
         # rays start at the object point instead of arriving collimated.
-        chief = launch_field_ray(
-            self.system,
-            angle_y_deg=field_angle_deg,
-            object_distance_mm=object_distance_mm,
-            wavelength_mm=wavelength_mm,
-            start_x=start_x,
-        )
-        self.tracer.trace_ray(chief)
+        # The chief ray is the one through the stop centre, so aiming moves
+        # it when the stop is not where the paraxial pupil puts it.
+        stop = get_stop_geometry(self.system) if aim_at_stop else None
+        aimer = None
+        stop_scale = 1.0
+        if stop is not None and max_r > 0:
+            aimer = RayAimer(
+                self.system,
+                angle_y_deg=field_angle_deg,
+                object_distance_mm=object_distance_mm,
+                wavelength_mm=wavelength_mm,
+                tracer=self.tracer,
+                tolerance_mm=aim_tolerance_mm,
+                max_iterations=aim_max_iterations,
+            )
+            stop_scale = stop.radius_mm / max_r
+
+        if aimer is not None:
+            chief_result = aimer.aim(0.0, 0.0)
+            chief = chief_result.ray
+            if not chief_result.converged:
+                self.aim_failures += 1
+        else:
+            chief = launch_field_ray(
+                self.system,
+                angle_y_deg=field_angle_deg,
+                object_distance_mm=object_distance_mm,
+                wavelength_mm=wavelength_mm,
+                start_x=start_x,
+            )
+            self.tracer.trace_ray(chief)
         # An untraced chief ray must invalidate the whole map. Without the
         # path check, a ray that was blocked but never flagged terminated (or
         # one whose path was cleared) still contributes its origin as the
@@ -300,16 +347,27 @@ class WavefrontSensor:
                     W[i, j] = float("nan")
                     continue
 
-                ray = launch_field_ray(
-                    self.system,
-                    angle_y_deg=field_angle_deg,
-                    pupil_y=py,
-                    pupil_z=pz,
-                    object_distance_mm=object_distance_mm,
-                    wavelength_mm=wavelength_mm,
-                    start_x=start_x,
-                )
-                self.tracer.trace_ray(ray)
+                if aimer is not None:
+                    aimed = aimer.aim(
+                        py * stop_scale,
+                        pz * stop_scale,
+                        pupil_y_mm=py,
+                        pupil_z_mm=pz,
+                    )
+                    if not aimed.converged:
+                        self.aim_failures += 1
+                    ray = aimed.ray
+                else:
+                    ray = launch_field_ray(
+                        self.system,
+                        angle_y_deg=field_angle_deg,
+                        pupil_y=py,
+                        pupil_z=pz,
+                        object_distance_mm=object_distance_mm,
+                        wavelength_mm=wavelength_mm,
+                        start_x=start_x,
+                    )
+                    self.tracer.trace_ray(ray)
 
                 if ray.terminated:
                     # Vignetted / blocked / TIR: exclude from the OPD map.

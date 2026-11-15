@@ -608,5 +608,35 @@ class TestThroughFocusIsOffTheGuiThread(_AsyncTabFixture):
             self.assertIn("defocus_mm", exported.readline())
 
 
+@unittest.skipUnless(PYSIDE_AVAILABLE, "PySide6 not available")
+class TestRayAimingControl(_AsyncTabFixture):
+    def test_aiming_is_off_by_default(self):
+        self.assertFalse(self.tab.aim_at_stop)
+        self.assertFalse(self.tab._perf_aim_at_stop.isChecked())
+
+    def test_spot_diagram_passes_the_aiming_choice(self):
+        from openlens.analysis.psf_mtf import ImageQualityAnalyzer
+        from openlens.gui.dialogs import analysis_plots
+
+        self.tab._perf_aim_at_stop.setChecked(True)
+        seen = []
+
+        def _spot(analyzer, **kwargs):
+            seen.append(kwargs.get("aim_at_stop"))
+            return []
+
+        with mock.patch.object(
+            ImageQualityAnalyzer, "calculate_spot_diagram", new=_spot
+        ), mock.patch.object(analysis_plots.AnalysisPlotDialog, "exec", lambda self: 0):
+            self.tab._on_show_spot_diagram()
+            self.assertTrue(
+                _run_until(lambda: bool(seen)),
+                "the spot analysis never ran",
+            )
+
+        self.assertTrue(seen)
+        self.assertTrue(all(value is True for value in seen))
+
+
 if __name__ == "__main__":
     unittest.main()

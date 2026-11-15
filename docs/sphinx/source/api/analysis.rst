@@ -40,6 +40,11 @@ PSF, MTF, and Diffraction
    :undoc-members:
    :show-inheritance:
 
+.. automodule:: openlens.ray_aiming
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Ghosts and Stray Light
 ----------------------
 
