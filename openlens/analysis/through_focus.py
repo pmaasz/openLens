@@ -244,7 +244,7 @@ def _best_focus(defocus_values: List[float], item: FieldThroughFocus) -> Optiona
     best_value = -math.inf
     curve = []
     for index in range(len(defocus_values)):
-        values = []
+        values: List[float] = []
         for frequency in item.frequencies_lp_per_mm:
             values.extend(
                 (
