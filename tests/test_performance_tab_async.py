@@ -538,5 +538,75 @@ class TestImageSimulationIsOffTheGuiThread(unittest.TestCase):
         self.assertTrue(_run_until(worker.isFinished))
 
 
+@unittest.skipUnless(PYSIDE_AVAILABLE, "PySide6 not available")
+class TestThroughFocusIsOffTheGuiThread(_AsyncTabFixture):
+    def setUp(self):
+        super().setUp()
+        # Keep the sweep small: these tests are about threading and export,
+        # not about the number of planes the analysis can handle.
+        self.tab._perf_focus_range.setValue(0.05)
+        self.tab._perf_focus_step.setValue(0.05)
+        self.tab._perf_mtf_frequency.setValue(10.0)
+
+    def test_the_handler_returns_and_the_sweep_is_painted(self):
+        from openlens.analysis.through_focus import ThroughFocusAnalyzer
+        from openlens.gui.dialogs import analysis_plots
+
+        gate = self._event()
+        started = threading.Event()
+        calls = []
+        real_sweep = ThroughFocusAnalyzer.sweep
+
+        def _sweep(analyzer, *args, **kwargs):
+            calls.append(kwargs)
+            started.set()
+            gate.wait(1.0)
+            return real_sweep(analyzer, *args, **kwargs)
+
+        with mock.patch.object(ThroughFocusAnalyzer, "sweep", new=_sweep), mock.patch.object(
+            analysis_plots.AnalysisPlotDialog, "exec", lambda self: 0
+        ):
+            self.assert_returns_before_compute(self.tab._on_show_through_focus, started, gate)
+            dialog = self._dialog()
+            self.assertTrue(
+                _run_until(lambda: self.tab._through_focus_result is not None),
+                "the through-focus result was never published",
+            )
+
+        self.assertEqual(len(calls), 1)
+        self.assertIn("Through-Focus", dialog.windowTitle())
+        self.assertTrue(self.tab._perf_export_focus_btn.isEnabled())
+        self.assertEqual(len(dialog.figure.axes), 2)
+
+    def test_export_writes_the_last_sweep(self):
+        import tempfile
+
+        from openlens.analysis.through_focus import ThroughFocusResult
+        from openlens.gui.dialogs import analysis_plots
+        from openlens.gui.tabs import performance_tab
+
+        with mock.patch.object(analysis_plots.AnalysisPlotDialog, "exec", lambda self: 0):
+            self.tab._on_show_through_focus()
+            self.assertTrue(
+                _run_until(lambda: self.tab._through_focus_result is not None),
+                "the through-focus result was never published",
+            )
+
+        self.assertIsInstance(self.tab._through_focus_result, ThroughFocusResult)
+        handle, path = tempfile.mkstemp(suffix=".csv")
+        os.close(handle)
+        os.unlink(path)
+        self.addCleanup(lambda: os.path.exists(path) and os.unlink(path))
+
+        with mock.patch.object(
+            performance_tab.QFileDialog, "getSaveFileName", return_value=(path, "CSV")
+        ):
+            self.tab._on_export_through_focus_csv()
+
+        self.assertTrue(os.path.exists(path))
+        with open(path, encoding="utf-8") as exported:
+            self.assertIn("defocus_mm", exported.readline())
+
+
 if __name__ == "__main__":
     unittest.main()
