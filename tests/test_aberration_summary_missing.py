@@ -16,11 +16,11 @@ from a different field than the rest of the block.
    astigmatism used the requested negative angle. One block, two fields.
 4. ``object_distance_mm`` was accepted and forwarded, then ignored - a
    finite-conjugate request silently returned infinity-conjugate results.
+   It is now traced from the object point, and a nonsense distance is
+   refused by validation.
 """
 
 import unittest
-
-import numpy as np
 
 from openlens.aberrations import AberrationsCalculator
 from openlens.lens import Lens
@@ -128,7 +128,7 @@ class TestSpotRmsIsNotFaked(unittest.TestCase):
         self.calculator = AberrationsCalculator(self.system)
 
     def test_a_failed_spot_trace_yields_none_not_zero(self):
-        self.calculator._calculate_spot_rms = lambda: None
+        self.calculator._calculate_spot_rms = lambda *args, **kwargs: None
 
         results = self.calculator.calculate_all_aberrations()
 
@@ -138,7 +138,7 @@ class TestSpotRmsIsNotFaked(unittest.TestCase):
         )
 
     def test_a_missing_spot_rms_makes_the_result_invalid(self):
-        self.calculator._calculate_spot_rms = lambda: None
+        self.calculator._calculate_spot_rms = lambda *args, **kwargs: None
 
         results = self.calculator.calculate_all_aberrations()
 
@@ -229,23 +229,24 @@ class TestFieldAngleIsConsistentAcrossTheBlock(unittest.TestCase):
                 self.assertIn(key, block)
 
 
-class TestFiniteObjectDistanceIsRejected(unittest.TestCase):
-    """An unsupported request must say so, not answer with the wrong physics."""
+class TestFiniteObjectDistanceIsTraced(unittest.TestCase):
+    """A finite-conjugate request must use the object point, not infinity."""
 
     def setUp(self):
         self.calculator = AberrationsCalculator(_lens())
 
-    def test_a_finite_object_distance_is_refused(self):
-        with self.assertRaises(ValueError) as caught:
-            self.calculator.calculate_all_aberrations(object_distance_mm=500.0)
+    def test_a_finite_object_distance_changes_the_result(self):
+        at_infinity = self.calculator.calculate_all_aberrations(object_distance_mm=None)
+        finite = self.calculator.calculate_all_aberrations(object_distance_mm=500.0)
 
-        self.assertIn(
-            "object distance",
-            str(caught.exception).lower(),
-            msg="the error should say what is unsupported",
+        self.assertTrue(finite.get("valid"))
+        self.assertNotEqual(
+            finite["spherical"],
+            at_infinity["spherical"],
+            "the finite conjugate returned the infinity-conjugate numbers",
         )
 
-    def test_an_infinite_object_distance_is_accepted(self):
+    def test_an_infinite_object_distance_is_still_accepted(self):
         """None still means infinity, which is what the code computes."""
         results = self.calculator.calculate_all_aberrations(object_distance_mm=None)
 
@@ -253,19 +254,19 @@ class TestFiniteObjectDistanceIsRejected(unittest.TestCase):
         self.assertTrue(results.get("valid"))
 
     def test_the_summary_agrees_with_the_calculator(self):
-        with self.assertRaises(ValueError):
-            self.calculator.get_aberration_summary(object_distance=500.0)
+        summary = self.calculator.get_aberration_summary(object_distance=500.0)
 
-    def test_zero_is_still_refused(self):
+        self.assertNotIn("error:", summary.lower())
+        self.assertIn("Focal Length", summary)
+
+    def test_zero_is_refused(self):
         """Zero is a finite distance too - and a nonsense one."""
         with self.assertRaises(ValueError):
             self.calculator.calculate_all_aberrations(object_distance_mm=0.0)
 
-    def test_numpy_is_not_required_for_this_check(self):
-        """The guard runs before any tracing, so it cannot depend on numpy."""
-        self.assertTrue(np.__name__ == "numpy")
+    def test_a_negative_object_distance_is_refused(self):
         with self.assertRaises(ValueError):
-            self.calculator.calculate_all_aberrations(object_distance_mm=100.0)
+            self.calculator.calculate_all_aberrations(object_distance_mm=-100.0)
 
 
 if __name__ == "__main__":

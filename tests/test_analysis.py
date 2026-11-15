@@ -98,10 +98,10 @@ class TestSpotDiagramFailureModes(unittest.TestCase):
         )
         self.system.add_lens(self.lens)
 
-    def test_empty_system_raises_index_error_not_unbound_local(self):
-        """Regression: the real IndexError was masked as UnboundLocalError."""
+    def test_empty_system_raises_a_clear_error_not_unbound_local(self):
+        """Regression: the real error was masked as UnboundLocalError."""
         empty = SpotDiagram(OpticalSystem(name="empty"))
-        with self.assertRaises(IndexError):
+        with self.assertRaisesRegex(ValueError, "empty system"):
             empty.trace_spot()
 
     def test_tracer_failure_propagates_instead_of_returning_zero_radius(self):

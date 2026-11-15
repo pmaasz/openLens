@@ -1,10 +1,10 @@
 from typing import List, Dict, Any, Optional
 import math
 
-from ..vector3 import vec3
 from ..ray_tracer import Ray3D, SystemRayTracer3D
 from ..optical_system import OpticalSystem
 from ..constants import NM_TO_MM, WAVELENGTH_GREEN
+from ..fields import launch_field_ray
 from .paraxial import resolve_image_plane_x
 
 
@@ -45,7 +45,11 @@ class GeometricTraceAnalysis:
         step = (stop - start) / (num - 1)
         return [start + i * step for i in range(num)]
 
-    def _get_image_plane_x(self, wavelength_nm: float = WAVELENGTH_GREEN) -> float:
+    def _get_image_plane_x(
+        self,
+        wavelength_nm: float = WAVELENGTH_GREEN,
+        object_distance_mm: Optional[float] = None,
+    ) -> float:
         """
         Determine the image plane position for the system.
 
@@ -53,7 +57,12 @@ class GeometricTraceAnalysis:
         search (#460) supplies the focus, and also sets and restores the lens
         indices for ``wavelength_nm``.
         """
-        focus = resolve_image_plane_x(self.system, wavelength_nm, tracer=self.tracer)
+        focus = resolve_image_plane_x(
+            self.system,
+            wavelength_nm,
+            tracer=self.tracer,
+            object_distance_mm=object_distance_mm,
+        )
         if focus is None:
             return self.system.get_total_length() + 10.0
         return focus
@@ -64,6 +73,7 @@ class GeometricTraceAnalysis:
         wavelength_nm: float = WAVELENGTH_GREEN,
         num_points: int = 21,
         pupil_axis: str = "y",
+        object_distance_mm: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Calculate Ray Fan (Transverse Ray Aberration).
@@ -73,16 +83,20 @@ class GeometricTraceAnalysis:
             wavelength_nm: Wavelength in nm.
             num_points: Number of points across the pupil diameter.
             pupil_axis: 'y' for Tangential (Meridional) fan, 'z' for Sagittal fan.
+            object_distance_mm: Finite object distance in mm. None uses the
+                system's setting; an unset system is collimated.
 
         Returns:
             Dictionary with 'pupil_coords' (normalized -1 to 1) and 'ray_errors_mm' (mm).
         """
+        if object_distance_mm is None:
+            object_distance_mm = getattr(self.system, "object_distance_mm", None)
         # Trace at the requested wavelength (indices restored on exit), so
         # the wavelength argument controls the physics, not just labels.
         saved_state = self._apply_wavelength(wavelength_nm)
         try:
             return self._calculate_ray_fan_traced(
-                field_angle_deg, wavelength_nm, num_points, pupil_axis
+                field_angle_deg, wavelength_nm, num_points, pupil_axis, object_distance_mm
             )
         finally:
             self._restore_lens_state(saved_state)
@@ -114,29 +128,24 @@ class GeometricTraceAnalysis:
         wavelength_nm: float,
         num_points: int,
         pupil_axis: str,
+        object_distance_mm: Optional[float],
     ) -> Dict[str, Any]:
         """Ray-fan body: traces with the currently set lens indices."""
         wl_mm = wavelength_nm * NM_TO_MM
-        image_plane_x = self._get_image_plane_x(wavelength_nm)
+        image_plane_x = self._get_image_plane_x(wavelength_nm, object_distance_mm)
 
         # Entrance Pupil Diameter (approximate as first lens diameter)
         ep_diam = self.system.elements[0].lens.diameter if self.system.elements else 1.0
         max_r = ep_diam / 2.0
 
-        # Ray direction based on field angle (Tangential plane tilt)
-        tan_theta = math.tan(math.radians(field_angle_deg))
-        direction = vec3(1.0, tan_theta, 0.0).normalize()
-
-        # Determine Chief Ray intersection (reference point)
-        start_x = self.system.elements[0].position - 50.0
-        # Chief ray passes through center of pupil (approx first surface center)
-        first_surface_x = self.system.elements[0].position
-
-        # Back propagate to start
-        t_chief = (first_surface_x - start_x) / direction.x
-        chief_ray_origin = vec3(first_surface_x, 0, 0) - direction * t_chief
-
-        chief_ray = Ray3D(chief_ray_origin, direction, wavelength=wl_mm)
+        # Chief ray passes through the centre of the pupil (approx first
+        # surface centre); at a finite distance it starts at the object point.
+        chief_ray = launch_field_ray(
+            self.system,
+            angle_y_deg=field_angle_deg,
+            object_distance_mm=object_distance_mm,
+            wavelength_mm=wl_mm,
+        )
         self.tracer.trace_ray(chief_ray)
 
         ref_y = 0.0
@@ -153,21 +162,17 @@ class GeometricTraceAnalysis:
 
         for p in pupil_coords:
             r_offset = p * max_r
+            pupil_y = r_offset if pupil_axis == "y" else 0.0
+            pupil_z = r_offset if pupil_axis != "y" else 0.0
 
-            if pupil_axis == "y":
-                offset_vec = vec3(0, r_offset, 0)
-            else:
-                offset_vec = vec3(0, 0, r_offset)
-
-            # Launch point at first lens plane
-            launch_point = vec3(first_surface_x, 0, 0) + offset_vec
-
-            # Back propagate to start_x
-            dist = first_surface_x - start_x
-            t = dist / direction.x
-            origin = launch_point - direction * t
-
-            ray = Ray3D(origin, direction, wavelength=wl_mm)
+            ray = launch_field_ray(
+                self.system,
+                angle_y_deg=field_angle_deg,
+                pupil_y=pupil_y,
+                pupil_z=pupil_z,
+                object_distance_mm=object_distance_mm,
+                wavelength_mm=wl_mm,
+            )
             self.tracer.trace_ray(ray)
 
             error = float("nan")
@@ -206,6 +211,7 @@ class GeometricTraceAnalysis:
         max_field_angle_deg: float = 20.0,
         num_points: int = 11,
         wavelength_nm: float = WAVELENGTH_GREEN,
+        object_distance_mm: Optional[float] = None,
         **kwargs,
     ) -> Dict[str, Any]:
         """
@@ -215,16 +221,20 @@ class GeometricTraceAnalysis:
             max_field_angle_deg: Maximum semi-field angle in degrees.
             num_points: Number of field points to sample.
             wavelength_nm: Wavelength in nm.
+            object_distance_mm: Finite object distance in mm. None uses the
+                system's setting; an unset system is collimated.
 
         Returns:
             Dictionary with arrays for field angles, tangential/sagittal focus
             shift, and distortion %.
         """
+        if object_distance_mm is None:
+            object_distance_mm = getattr(self.system, "object_distance_mm", None)
         # Trace at the requested wavelength (indices restored on exit).
         saved_state = self._apply_wavelength(wavelength_nm)
         try:
             return self._calculate_curvature_traced(
-                max_field_angle_deg, num_points, wavelength_nm, kwargs
+                max_field_angle_deg, num_points, wavelength_nm, object_distance_mm, kwargs
             )
         finally:
             self._restore_lens_state(saved_state)
@@ -234,6 +244,7 @@ class GeometricTraceAnalysis:
         max_field_angle_deg: float,
         num_points: int,
         wavelength_nm: float,
+        object_distance_mm: Optional[float],
         kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Field-curvature body: traces with the currently set lens indices."""
@@ -243,7 +254,7 @@ class GeometricTraceAnalysis:
         if kwargs:
             raise TypeError(f"Unexpected kwargs: {list(kwargs.keys())}")
         wl_mm = wavelength_nm * NM_TO_MM
-        image_plane_x = self._get_image_plane_x(wavelength_nm)
+        image_plane_x = self._get_image_plane_x(wavelength_nm, object_distance_mm)
 
         angles = self._linspace(0, max_field_angle_deg, num_points)
 
@@ -253,19 +264,18 @@ class GeometricTraceAnalysis:
 
         ep_diam = self.system.elements[0].lens.diameter if self.system.elements else 1.0
         delta = ep_diam * 0.01
-
-        start_x = self.system.elements[0].position - 50.0
+        first_lens_x = self.system.elements[0].position if self.system.elements else 0.0
 
         for angle in angles:
             tan_theta = math.tan(math.radians(angle))
-            direction_principal = vec3(1.0, tan_theta, 0.0).normalize()
 
             # 1. Trace Chief Ray
-            first_lens_x = self.system.elements[0].position
-            t_principal = (first_lens_x - start_x) / direction_principal.x
-            origin_principal = vec3(first_lens_x, 0, 0) - direction_principal * t_principal
-
-            chief_ray = Ray3D(origin_principal, direction_principal, wavelength=wl_mm)
+            chief_ray = launch_field_ray(
+                self.system,
+                angle_y_deg=angle,
+                object_distance_mm=object_distance_mm,
+                wavelength_mm=wl_mm,
+            )
             self.tracer.trace_ray(chief_ray)
 
             if chief_ray.terminated:
@@ -278,9 +288,15 @@ class GeometricTraceAnalysis:
             t_img = (image_plane_x - chief_ray.origin.x) / chief_ray.direction.x
             real_image_height = chief_ray.origin.y + t_img * chief_ray.direction.y
 
-            # Paraxial image height (h = f * tan(theta))
-            efl = self.system.get_system_focal_length() or 100.0
-            paraxial_height = efl * tan_theta
+            if object_distance_mm is None:
+                # Paraxial image height (h = f * tan(theta))
+                efl = self.system.get_system_focal_length() or 100.0
+                paraxial_height = efl * tan_theta
+            else:
+                # The chief ray from the object point crosses the first
+                # surface at the axis, so this is the Gaussian image height
+                # for the finite conjugate.
+                paraxial_height = (image_plane_x - first_lens_x) * tan_theta
 
             distortion = 0.0
             if abs(paraxial_height) > 1e-6:
@@ -293,12 +309,13 @@ class GeometricTraceAnalysis:
             distortion_pcts.append(distortion)
 
             # 2. Tangential Focus
-            offset_y = delta
-            launch_pt_tan = vec3(first_lens_x, offset_y, 0)
-            t_tan = (first_lens_x - start_x) / direction_principal.x
-            origin_tan = launch_pt_tan - direction_principal * t_tan
-
-            ray_tan = Ray3D(origin_tan, direction_principal, wavelength=wl_mm)
+            ray_tan = launch_field_ray(
+                self.system,
+                angle_y_deg=angle,
+                pupil_y=delta,
+                object_distance_mm=object_distance_mm,
+                wavelength_mm=wl_mm,
+            )
             self.tracer.trace_ray(ray_tan)
 
             if not ray_tan.terminated:
@@ -319,12 +336,13 @@ class GeometricTraceAnalysis:
                 tan_focus_shifts_mm.append(float("nan"))
 
             # 3. Sagittal Focus
-            offset_z = delta
-            launch_pt_sag = vec3(first_lens_x, 0, offset_z)
-            t_sag = (first_lens_x - start_x) / direction_principal.x
-            origin_sag = launch_pt_sag - direction_principal * t_sag
-
-            ray_sag = Ray3D(origin_sag, direction_principal, wavelength=wl_mm)
+            ray_sag = launch_field_ray(
+                self.system,
+                angle_y_deg=angle,
+                pupil_z=delta,
+                object_distance_mm=object_distance_mm,
+                wavelength_mm=wl_mm,
+            )
             self.tracer.trace_ray(ray_sag)
 
             if not ray_sag.terminated:

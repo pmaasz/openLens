@@ -37,6 +37,7 @@ from .constants import (
 )
 from .mounts import MountCatalog
 from .asphere import asphere_sag, is_asphere, normalize_asphere_coefficients
+from .fields import FieldPoint, normalize_fields, validate_object_distance
 
 # Material database is an optional dependency
 try:
@@ -249,6 +250,8 @@ _LENS_SERIALIZED_KEYS = frozenset(
         "pressure_atm",
         "thermal_state_temperature",
         "image_plane_x_mm",
+        "fields",
+        "object_distance_mm",
         "is_fresnel",
         "groove_pitch",
         "num_grooves",
@@ -323,6 +326,8 @@ class Lens:
         edge_profile: Optional[List[Tuple[float, float]]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         image_plane_x_mm: Optional[float] = None,
+        fields: Optional[List[FieldPoint]] = None,
+        object_distance_mm: Optional[float] = None,
     ) -> None:
 
         self.id = uuid.uuid4().hex
@@ -337,6 +342,11 @@ class Lens:
         # paraxial focus"; an explicit value pins spot-based analyses and the
         # optimizer's RMS spot merit to that plane.
         self.image_plane_x_mm = validate_image_plane_x(image_plane_x_mm)
+        # Analysis fields and their conjugate. Empty fields means the
+        # analysis default (on-axis, or the GUI's sensor-derived fields);
+        # None object distance means collimated input.
+        self.fields: List[FieldPoint] = normalize_fields(fields)
+        self.object_distance_mm = validate_object_distance(object_distance_mm)
         self.radius_of_curvature_1 = radius_of_curvature_1
         self.radius_of_curvature_2 = radius_of_curvature_2
         self.thickness = thickness
@@ -887,6 +897,8 @@ class Lens:
             "pressure_atm": self.pressure_atm,
             "thermal_state_temperature": self.thermal_state_temperature,
             "image_plane_x_mm": self.image_plane_x_mm,
+            "fields": [field.to_dict() for field in self.fields],
+            "object_distance_mm": self.object_distance_mm,
             "is_fresnel": self.is_fresnel,
             "groove_pitch": self.groove_pitch,
             "num_grooves": self.num_grooves,
@@ -962,6 +974,8 @@ class Lens:
             pressure_atm=data.get("pressure_atm", REFERENCE_PRESSURE_ATM),
             thermal_state_temperature=data.get("thermal_state_temperature", DEFAULT_TEMPERATURE),
             image_plane_x_mm=data.get("image_plane_x_mm"),
+            fields=normalize_fields(data.get("fields")),
+            object_distance_mm=data.get("object_distance_mm"),
             is_fresnel=data.get("is_fresnel", False),
             groove_pitch=cls._clamp_groove_pitch(data.get("groove_pitch", DEFAULT_THICKNESS)),
             num_grooves=data.get("num_grooves", None),

@@ -256,11 +256,12 @@ class PerformanceTab(BaseTab):
         return _PRESET_WAVELENGTHS[self._perf_wavelength.currentIndex()]
 
     def _max_field_angle(self, system) -> float:
-        """Half-sensor field angle for the configured sensor size.
+        """Largest field angle used by the analyses.
 
-        Field curves used to be computed over a hardcoded 20 degrees, which
-        has nothing to do with the system or the sensor the spot diagram and
-        ray fan use. Deriving it here makes all three describe the same field.
+        An explicit model field list wins. Without one, the half-sensor angle
+        for the configured sensor size is used: field curves used to be
+        computed over a hardcoded 20 degrees, which has nothing to do with
+        the system or the sensor the spot diagram and ray fan use.
 
         Args:
             system: OpticalSystem whose focal length sets the angle.
@@ -269,6 +270,10 @@ class PerformanceTab(BaseTab):
             The field angle in degrees, or 0.0 when the focal length is
             unknown (an afocal or invalid system).
         """
+        fields = getattr(system, "fields", None)
+        if fields:
+            distance = getattr(system, "object_distance_mm", None)
+            return max(abs(field.resolve_angle_deg(distance)) for field in fields)
         fl = system.get_system_focal_length()
         sensor_size = self._perf_sensor_size.value()
         if fl and fl > 0:
@@ -276,7 +281,11 @@ class PerformanceTab(BaseTab):
         return 0.0
 
     def _analysis_fields(self, system) -> list:
-        """The three field angles shared by the spot diagram and ray fan."""
+        """Field angles shared by the spot diagram and ray fan."""
+        fields = getattr(system, "fields", None)
+        if fields:
+            distance = getattr(system, "object_distance_mm", None)
+            return [field.resolve_angle_deg(distance) for field in fields]
         max_field = self._max_field_angle(system)
         return [0, max_field * 0.7, max_field]
 
@@ -343,7 +352,6 @@ class PerformanceTab(BaseTab):
         # Read the UI on the GUI thread; the worker must not touch widgets.
         wavelength = self._selected_wavelength()
         entrance_pupil = self._perf_entrance_pupil.value()
-        sensor_size = self._perf_sensor_size.value()
         system = self._wrap_in_system(active_system)
 
         def _compute():
@@ -375,10 +383,8 @@ class PerformanceTab(BaseTab):
                 else active_system.calculate_back_focal_length()
             )
 
-            # Calculate field angle derived from sensor size
-            field_angle = 0.0
-            if fl and fl > 0:
-                field_angle = math.degrees(math.atan((sensor_size / 2.0) / fl))
+            # Largest field angle: the model's field list, else the sensor.
+            field_angle = self._max_field_angle(system)
 
             # A single lens carries a camera mount. Assemblies pick theirs in
             # the mechanical design, so only show this for a lens.
@@ -450,6 +456,19 @@ class PerformanceTab(BaseTab):
                 except (TypeError, ValueError):
                     plane_text = "auto (paraxial focus)"
 
+            object_distance = getattr(system, "object_distance_mm", None)
+            object_text = (
+                "infinity (collimated)"
+                if object_distance is None
+                else f"{object_distance:.2f} mm (finite conjugate)"
+            )
+            model_fields = getattr(system, "fields", None)
+            fields_text = (
+                ", ".join(f"{field.angle_deg:g} deg" for field in model_fields)
+                if model_fields
+                else "auto (sensor-derived)"
+            )
+
             text = f"""=== OPTICAL PERFORMANCE METRICS ===
 System: {system.name}
 Type: {"Assembly" if isinstance(active_system, OpticalSystem) else "Single Lens"}
@@ -463,9 +482,10 @@ f-number (f/#): {results.get('f_number', 0):.2f}
 {chromatic_text}
 --- Calculation Parameters ---
 Wavelength: {wavelength} nm
-Object Distance: infinity (collimated; finite conjugates are not modelled)
+Object Distance: {object_text}
 Image Plane: {plane_text}
-Max Field Angle: {field_angle:.2f} deg (derived from {sensor_size}mm sensor)
+Fields: {fields_text}
+Max Field Angle: {field_angle:.2f} deg
 
 --- Primary Aberrations ---
 Spherical Aberration: {_fmt(results.get('spherical'))} mm (longitudinal)
@@ -595,7 +615,7 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
                         z_pts,
                         y_pts,
                         ".",
-                        color=colors[index],
+                        color=colors[index % len(colors)],
                         label=f"Field {field:.1f}°",
                         markersize=3,
                         alpha=0.6,
@@ -649,8 +669,8 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
                     ax.plot(
                         fan_data["pupil_coords"],
                         fan_data["transverse_aberration"],
-                        color=colors[index],
-                        linestyle=styles[index],
+                        color=colors[index % len(colors)],
+                        linestyle=styles[index % len(styles)],
                         label=f"Field {field:.1f}°",
                     )
 

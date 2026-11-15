@@ -37,6 +37,7 @@ except ImportError:
     get_material_database = None
     HAS_MATERIAL_DATABASE = False
 from .vector3 import vec3
+from .fields import FieldPoint, normalize_fields, validate_object_distance
 from .atomic import atomic_write_text
 from .validation import reject_non_finite_numbers, reject_oversized_file
 
@@ -119,6 +120,8 @@ _SYSTEM_SERIALIZED_KEYS = frozenset(
         "node_tree",
         "thermal_state_temperature",
         "image_plane_x_mm",
+        "fields",
+        "object_distance_mm",
         "casing",
     }
 )
@@ -160,6 +163,11 @@ class OpticalSystem:
         # Detector/sensor plane on the optical axis (mm). None means "use the
         # paraxial focus"; see the matching note on Lens.
         self.image_plane_x_mm: Optional[float] = None
+        # Analysis fields and their conjugate. Empty fields means the
+        # analysis default (on-axis, or the GUI's sensor-derived fields);
+        # None object distance means collimated input.
+        self.fields: List[FieldPoint] = []
+        self.object_distance_mm: Optional[float] = None
         self.root = OpticalAssembly(name="Root")
         self.root._geometry_owner = self
         self._update_positions()
@@ -656,6 +664,8 @@ class OpticalSystem:
             "aperture_stop_diameter": self.aperture_stop_diameter,
             "thermal_state_temperature": self.thermal_state_temperature,
             "image_plane_x_mm": self.image_plane_x_mm,
+            "fields": [field.to_dict() for field in self.fields],
+            "object_distance_mm": self.object_distance_mm,
             "elements": [
                 {
                     "lens": e.lens.to_dict(),
@@ -711,6 +721,8 @@ class OpticalSystem:
             "thermal_state_temperature", DEFAULT_TEMPERATURE
         )
         system.image_plane_x_mm = validate_image_plane_x(data.get("image_plane_x_mm"))
+        system.fields = normalize_fields(data.get("fields"))
+        system.object_distance_mm = validate_object_distance(data.get("object_distance_mm"))
         casing_data = data.get("casing")
         system.casing = Casing.from_dict(casing_data) if isinstance(casing_data, dict) else None
 
@@ -1226,4 +1238,6 @@ def as_system(
     # would measure the same lens at a different plane from the one the user
     # chose.
     system.image_plane_x_mm = getattr(lens, "image_plane_x_mm", None)
+    system.fields = normalize_fields(getattr(lens, "fields", None))
+    system.object_distance_mm = getattr(lens, "object_distance_mm", None)
     return system

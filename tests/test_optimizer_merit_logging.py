@@ -282,7 +282,12 @@ class TestMtfMeritGrid(unittest.TestCase):
         self.assertEqual(len(created), 1)
         self.assertEqual(
             created[0].calls,
-            [{"grid_size": optimizer_module.MTF_MERIT_GRID_SIZE}],
+            [
+                {
+                    "field_angle_deg": 0.0,
+                    "grid_size": optimizer_module.MTF_MERIT_GRID_SIZE,
+                }
+            ],
             "the MTF merit traced the interactive pupil grid",
         )
 
