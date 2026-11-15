@@ -8,6 +8,12 @@ from ..ray_tracer import SystemRayTracer3D
 from ..optical_system import OpticalSystem
 from ..constants import NM_TO_MM, WAVELENGTH_GREEN
 from ..fields import launch_field_ray
+from ..ray_aiming import (
+    DEFAULT_AIM_MAX_ITERATIONS,
+    DEFAULT_AIM_TOLERANCE_MM,
+    RayAimer,
+    get_stop_geometry,
+)
 from .paraxial import resolve_image_plane_x
 
 
@@ -63,6 +69,9 @@ class SpotDiagram:
         num_rings: int = 6,
         focus_shift_mm: float = 0.0,
         object_distance_mm: Optional[float] = None,
+        aim_at_stop: bool = False,
+        aim_tolerance_mm: float = DEFAULT_AIM_TOLERANCE_MM,
+        aim_max_iterations: int = DEFAULT_AIM_MAX_ITERATIONS,
     ) -> Dict[str, Any]:
         """
         Trace rays to generate a spot diagram.
@@ -77,6 +86,11 @@ class SpotDiagram:
             focus_shift_mm: Offset from the nominal image plane (defocus).
             object_distance_mm: Finite object distance in mm. None uses the
                 system's setting; an unset system is collimated.
+            aim_at_stop: Aim each pupil ray at its stop coordinate instead of
+                the paraxial entrance-pupil point. Off preserves the historical
+                bundle exactly.
+            aim_tolerance_mm: Stop-hit error that counts as converged.
+            aim_max_iterations: Newton iterations before using the paraxial ray.
 
         Returns:
             Dictionary containing spot data and statistics.
@@ -119,17 +133,48 @@ class SpotDiagram:
             # Generate pupil points
             pupil_points = self.generate_hexapolar_grid(rings=num_rings)
 
-            for py, pz in pupil_points:
-                ray = launch_field_ray(
+            aimer = None
+            aim_radius = 0.0
+            entrance_radius = 0.0
+            stop = get_stop_geometry(self.system) if aim_at_stop else None
+            if stop is not None and self.system.elements:
+                entrance_radius = self.system.elements[0].lens.diameter / 2.0
+                aim_radius = stop.radius_mm
+                aimer = RayAimer(
                     self.system,
                     angle_y_deg=field_angle_y_deg,
                     angle_z_deg=field_angle_x_deg,
-                    pupil_y=py,
-                    pupil_z=pz,
                     object_distance_mm=object_distance_mm,
                     wavelength_mm=wl_mm,
+                    tracer=self.tracer,
+                    tolerance_mm=aim_tolerance_mm,
+                    max_iterations=aim_max_iterations,
                 )
-                self.tracer.trace_ray(ray)
+            aim_failures = 0
+
+            for py, pz in pupil_points:
+                if aimer is not None and entrance_radius > 0:
+                    scale = aim_radius / entrance_radius
+                    aimed = aimer.aim(
+                        py * scale,
+                        pz * scale,
+                        pupil_y_mm=py,
+                        pupil_z_mm=pz,
+                    )
+                    ray = aimed.ray
+                    if not aimed.converged:
+                        aim_failures += 1
+                else:
+                    ray = launch_field_ray(
+                        self.system,
+                        angle_y_deg=field_angle_y_deg,
+                        angle_z_deg=field_angle_x_deg,
+                        pupil_y=py,
+                        pupil_z=pz,
+                        object_distance_mm=object_distance_mm,
+                        wavelength_mm=wl_mm,
+                    )
+                    self.tracer.trace_ray(ray)
 
                 if not ray.terminated:
                     # Find intersection with image plane X = target_x
@@ -172,6 +217,7 @@ class SpotDiagram:
                 "points": spot_points,
                 "valid_rays": valid_rays,
                 "image_plane_x": target_x,
+                "aim_failures": aim_failures,
                 "error": "Fewer than 2 rays reached the image plane",
             }
 
@@ -203,6 +249,7 @@ class SpotDiagram:
             "points": spot_points,
             "valid_rays": valid_rays,
             "image_plane_x": target_x,
+            "aim_failures": aim_failures,
         }
 
     def trace_chief_ray(
@@ -213,6 +260,9 @@ class SpotDiagram:
         image_plane_x_mm: Optional[float] = None,
         focus_shift_mm: float = 0.0,
         object_distance_mm: Optional[float] = None,
+        aim_at_stop: bool = False,
+        aim_tolerance_mm: float = DEFAULT_AIM_TOLERANCE_MM,
+        aim_max_iterations: int = DEFAULT_AIM_MAX_ITERATIONS,
     ) -> Optional[Tuple[float, float]]:
         """Trace the single ray through the centre of the entrance pupil.
 
@@ -229,6 +279,9 @@ class SpotDiagram:
             focus_shift_mm: Offset from the nominal image plane (defocus).
             object_distance_mm: Finite object distance in mm. None uses the
                 system's setting; an unset system is collimated.
+            aim_at_stop: Aim the chief ray through the stop centre.
+            aim_tolerance_mm: Stop-hit error that counts as converged.
+            aim_max_iterations: Newton iterations before using the paraxial ray.
 
         Returns:
             The ``(y, z)`` intersection with the image plane, or None if the
@@ -258,14 +311,29 @@ class SpotDiagram:
                     image_plane_x_mm = self.system.get_total_length() + 100
             target_x = image_plane_x_mm + focus_shift_mm
 
-            ray = launch_field_ray(
-                self.system,
-                angle_y_deg=field_angle_y_deg,
-                angle_z_deg=field_angle_x_deg,
-                object_distance_mm=object_distance_mm,
-                wavelength_mm=wl_mm,
-            )
-            self.tracer.trace_ray(ray)
+            ray = None
+            stop = get_stop_geometry(self.system) if aim_at_stop else None
+            if stop is not None:
+                aimed = RayAimer(
+                    self.system,
+                    angle_y_deg=field_angle_y_deg,
+                    angle_z_deg=field_angle_x_deg,
+                    object_distance_mm=object_distance_mm,
+                    wavelength_mm=wl_mm,
+                    tracer=self.tracer,
+                    tolerance_mm=aim_tolerance_mm,
+                    max_iterations=aim_max_iterations,
+                ).aim(0.0, 0.0)
+                ray = aimed.ray
+            if ray is None:
+                ray = launch_field_ray(
+                    self.system,
+                    angle_y_deg=field_angle_y_deg,
+                    angle_z_deg=field_angle_x_deg,
+                    object_distance_mm=object_distance_mm,
+                    wavelength_mm=wl_mm,
+                )
+                self.tracer.trace_ray(ray)
             if ray.terminated or abs(ray.direction.x) <= 1e-6:
                 return None
             t = (target_x - ray.origin.x) / ray.direction.x

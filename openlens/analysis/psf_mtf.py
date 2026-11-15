@@ -11,6 +11,7 @@ from ..constants import (
     WAVELENGTH_D_LINE,
     WAVELENGTH_F_LINE,
 )
+from ..ray_aiming import DEFAULT_AIM_MAX_ITERATIONS, DEFAULT_AIM_TOLERANCE_MM
 from typing import List, Tuple, Dict, Any
 import logging
 import math
@@ -82,6 +83,8 @@ class ImageQualityAnalyzer:
         self.system = system
         self.spot_analyzer = SpotDiagram(system)
         self.wavefront_sensor = WavefrontSensor(system)
+        #: Rays whose aiming fell back to the paraxial launch in the last call.
+        self.aim_failures = 0
 
     #: Keys every calculate_psf branch must return. The three branches had
     #: drifted apart (the empty one returned x_axis and no z_axis), so
@@ -128,6 +131,9 @@ class ImageQualityAnalyzer:
         wavelength_nm: float = WAVELENGTH_GREEN,
         num_rings: int = 6,
         focus_shift_mm: float = 0.0,
+        aim_at_stop: bool = False,
+        aim_tolerance_mm: float = DEFAULT_AIM_TOLERANCE_MM,
+        aim_max_iterations: int = DEFAULT_AIM_MAX_ITERATIONS,
     ) -> List[Tuple[float, float]]:
         """
         Wrapper for calculate_spot in SpotDiagram for backward compatibility/consistency.
@@ -138,7 +144,11 @@ class ImageQualityAnalyzer:
             wavelength_nm=wavelength_nm,
             focus_shift_mm=focus_shift_mm,
             num_rings=num_rings,
+            aim_at_stop=aim_at_stop,
+            aim_tolerance_mm=aim_tolerance_mm,
+            aim_max_iterations=aim_max_iterations,
         )
+        self.aim_failures = res.get("aim_failures", 0)
         return res["points"]
 
     def calculate_psf(
@@ -149,6 +159,9 @@ class ImageQualityAnalyzer:
         sensor_size_mm: float = 0.1,  # mm (size of the window to compute PSF)
         pixels: int = 64,
         use_diffraction: bool = False,
+        aim_at_stop: bool = False,
+        aim_tolerance_mm: float = DEFAULT_AIM_TOLERANCE_MM,
+        aim_max_iterations: int = DEFAULT_AIM_MAX_ITERATIONS,
     ) -> Dict[str, Any]:
         """
         Calculate the Point Spread Function (PSF).
@@ -161,6 +174,9 @@ class ImageQualityAnalyzer:
             pixels: Number of pixels along one side of the sensor area
             use_diffraction: If True, uses FFT of Pupil Function (Wavefront).
                              If False, uses Geometric Ray Spot Diagram.
+            aim_at_stop: Aim rays at their stop coordinates.
+            aim_tolerance_mm: Stop-hit error that counts as converged.
+            aim_max_iterations: Newton iterations before using the paraxial ray.
 
         Returns:
             Dictionary containing:
@@ -170,6 +186,7 @@ class ImageQualityAnalyzer:
                 - centroid: (y, z) of the centroid in mm
                 - step_size: pixel size in mm
         """
+        self.aim_failures = 0
         if not self.system.elements:
             # An empty system is what a new document shows before the user
             # adds a lens. There is no pupil and no ray, so return the
@@ -189,7 +206,14 @@ class ImageQualityAnalyzer:
 
         if use_diffraction:
             return self._calculate_diffraction_psf(
-                field_angle_deg, wavelength_nm, focus_shift_mm, sensor_size_mm, pixels
+                field_angle_deg,
+                wavelength_nm,
+                focus_shift_mm,
+                sensor_size_mm,
+                pixels,
+                aim_at_stop=aim_at_stop,
+                aim_tolerance_mm=aim_tolerance_mm,
+                aim_max_iterations=aim_max_iterations,
             )
 
         # 1. Trace Rays (High density for good PSF)
@@ -199,9 +223,13 @@ class ImageQualityAnalyzer:
             wavelength_nm=wavelength_nm,
             focus_shift_mm=focus_shift_mm,
             num_rings=25,  # ~1000 rays
+            aim_at_stop=aim_at_stop,
+            aim_tolerance_mm=aim_tolerance_mm,
+            aim_max_iterations=aim_max_iterations,
         )
 
         points = res["points"]  # List of (y, z) tuples
+        self.aim_failures = res.get("aim_failures", 0)
         if not points:
             # Same key set as the normal and diffraction branches below.
             # This one returned x_axis and no z_axis, so plot_psf - which
@@ -317,6 +345,9 @@ class ImageQualityAnalyzer:
         focus_shift_mm: float = 0.0,
         max_freq: float = 100.0,
         use_diffraction: bool = False,
+        aim_at_stop: bool = False,
+        aim_tolerance_mm: float = DEFAULT_AIM_TOLERANCE_MM,
+        aim_max_iterations: int = DEFAULT_AIM_MAX_ITERATIONS,
         **kwargs,
     ) -> Dict[str, Any]:
         """
@@ -328,6 +359,9 @@ class ImageQualityAnalyzer:
             focus_shift_mm: Defocus in mm
             max_freq: Maximum spatial frequency to return (lp/mm)
             use_diffraction: If True, uses FFT of Pupil Function.
+            aim_at_stop: Aim rays at their stop coordinates.
+            aim_tolerance_mm: Stop-hit error that counts as converged.
+            aim_max_iterations: Newton iterations before using the paraxial ray.
 
         Returns:
             Dictionary containing:
@@ -335,6 +369,7 @@ class ImageQualityAnalyzer:
                 - mtf_tan: Tangential MTF values
                 - mtf_sag: Sagittal MTF values
         """
+        self.aim_failures = 0
         # Handle legacy aliases
         if "field_angle" in kwargs:
             field_angle_deg = kwargs.pop("field_angle")
@@ -361,7 +396,11 @@ class ImageQualityAnalyzer:
                 field_angle_deg=field_angle_deg,
                 wavelength_nm=wavelength_nm,
                 grid_size=pupil_grid_size,
+                aim_at_stop=aim_at_stop,
+                aim_tolerance_mm=aim_tolerance_mm,
+                aim_max_iterations=aim_max_iterations,
             )
+            self.aim_failures = self.wavefront_sensor.aim_failures
             if self._wavefront_is_degenerate(wf):
                 logger.warning(
                     "MTF: empty pupil wavefront for %s; returning an empty MTF",
@@ -489,6 +528,9 @@ class ImageQualityAnalyzer:
             wavelength_nm=wavelength_nm,
             focus_shift_mm=focus_shift_mm,
             num_rings=25,
+            aim_at_stop=aim_at_stop,
+            aim_tolerance_mm=aim_tolerance_mm,
+            aim_max_iterations=aim_max_iterations,
         )
         spot_rms = spot_res.get("rms_radius")
         if spot_rms is not None and math.isfinite(spot_rms) and spot_rms > 0:
@@ -508,6 +550,9 @@ class ImageQualityAnalyzer:
             focus_shift_mm=focus_shift_mm,
             sensor_size_mm=window_size_mm,
             pixels=num_pixels,
+            aim_at_stop=aim_at_stop,
+            aim_tolerance_mm=aim_tolerance_mm,
+            aim_max_iterations=aim_max_iterations,
         )
 
         psf = psf_data["image"]  # shape (128, 128)
@@ -626,6 +671,9 @@ class ImageQualityAnalyzer:
         focus_shift_mm: float,
         sensor_size_mm: float,
         pixels: int,
+        aim_at_stop: bool = False,
+        aim_tolerance_mm: float = DEFAULT_AIM_TOLERANCE_MM,
+        aim_max_iterations: int = DEFAULT_AIM_MAX_ITERATIONS,
     ) -> Dict[str, Any]:
         """Helper to calculate Diffraction PSF."""
         # 1. Get Wavefront
@@ -634,7 +682,11 @@ class ImageQualityAnalyzer:
             field_angle_deg=field_angle_deg,
             wavelength_nm=wavelength_nm,
             grid_size=pupil_grid_size,
+            aim_at_stop=aim_at_stop,
+            aim_tolerance_mm=aim_tolerance_mm,
+            aim_max_iterations=aim_max_iterations,
         )
+        self.aim_failures = self.wavefront_sensor.aim_failures
         if self._wavefront_is_degenerate(wf):
             logger.warning(
                 "PSF: empty pupil wavefront for %s; returning a zero PSF",

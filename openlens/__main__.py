@@ -1504,9 +1504,12 @@ Ctrl+6         Tolerancing
 
         try:
             system = self._ensure_system(target)
+            aim_at_stop = bool(getattr(getattr(self, "_perf_tab", None), "aim_at_stop", False))
 
             def _compute_psf():
-                return ImageQualityAnalyzer(system).calculate_psf(pixels=64)
+                return ImageQualityAnalyzer(system).calculate_psf(
+                    pixels=64, aim_at_stop=aim_at_stop
+                )
 
             def _draw_psf(ax, psf_data):
                 # Apply dark theme to axes if needed
@@ -1529,9 +1532,12 @@ Ctrl+6         Tolerancing
 
         try:
             system = self._ensure_system(target)
+            aim_at_stop = bool(getattr(getattr(self, "_perf_tab", None), "aim_at_stop", False))
 
             def _compute_mtf():
-                return ImageQualityAnalyzer(system).calculate_mtf(max_freq=100)
+                return ImageQualityAnalyzer(system).calculate_mtf(
+                    max_freq=100, aim_at_stop=aim_at_stop
+                )
 
             self._open_analysis_dialog("MTF Analysis", _compute_mtf, plot_mtf)
         except ImportError as e:
@@ -1548,9 +1554,12 @@ Ctrl+6         Tolerancing
 
         try:
             system = self._ensure_system(target)
+            aim_at_stop = bool(getattr(getattr(self, "_perf_tab", None), "aim_at_stop", False))
 
             def _compute_wavefront():
-                return WavefrontSensor(system).get_pupil_wavefront(grid_size=64)
+                return WavefrontSensor(system).get_pupil_wavefront(
+                    grid_size=64, aim_at_stop=aim_at_stop
+                )
 
             def _draw_wavefront(ax, wf):
                 plot_wavefront(ax, wf.W)

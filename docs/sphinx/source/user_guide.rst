@@ -140,6 +140,12 @@ The **Performance** tab calculates the image-quality dashboard:
 - MTF cutoff;
 - spot diagram, ray fan, field curves, PSF, MTF, wavefront, and ghost views.
 
+Enable **Ray Aiming** in the calculation parameters to launch each ray at the
+aperture stop instead of the paraxial entrance pupil. This preserves wide-angle
+bundles that the paraxial grid would otherwise clip at the stop, and the spot
+and wavefront results report how many rays fell back to the paraxial launch.
+Aiming is off by default, so existing results are unchanged.
+
 Expensive calculations run in background workers. If a trace or wavefront
 sample fails, the affected field is reported as unavailable or invalid instead
 of zero. See :doc:`scientific/image_quality` for the definitions and limits of
