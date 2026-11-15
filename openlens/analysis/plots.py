@@ -8,6 +8,7 @@ openlens/analysis/ instead of inline in window code.
 """
 
 import logging
+import math
 
 from ..constants import (
     COLOR_BG_DARK,
@@ -113,6 +114,73 @@ def draw_system_outline(ax, system: OpticalSystem) -> None:
             current_z += thickness + system.air_gaps[i].thickness
         else:
             current_z += thickness
+
+
+def plot_glass_map(ax, system: OpticalSystem, database=None) -> tuple:
+    """Draw catalog glasses and the system's current elements on an nd/Vd map.
+
+    Args:
+        ax: Matplotlib Axes to draw on.
+        system: Optical system whose elements are marked.
+        database: Material catalog to plot. None uses the shared catalog.
+
+    Returns:
+        ``(catalog_count, design_count)``.
+    """
+    from ..glass_substitution import lens_glass_pair
+    from ..material_database import get_material_database
+
+    db = database or get_material_database()
+    catalog_nd = []
+    catalog_vd = []
+    for material in db.materials.values():
+        if not (math.isfinite(material.nd) and math.isfinite(material.vd)):
+            continue
+        if material.nd <= 0 or material.vd <= 0:
+            continue
+        catalog_nd.append(material.nd)
+        catalog_vd.append(material.vd)
+    ax.scatter(
+        catalog_vd,
+        catalog_nd,
+        s=18,
+        alpha=0.55,
+        color=COLOR_LENS_R1,
+        label=f"Catalog ({len(catalog_nd)})",
+    )
+
+    design_nd = []
+    design_vd = []
+    for index, element in enumerate(system.elements):
+        nd, vd = lens_glass_pair(element.lens, db)
+        design_nd.append(nd)
+        design_vd.append(vd)
+        ax.annotate(
+            str(index + 1),
+            (vd, nd),
+            xytext=(4, 4),
+            textcoords="offset points",
+            fontsize=8,
+        )
+    ax.scatter(
+        design_vd,
+        design_nd,
+        marker="*",
+        s=160,
+        color=COLOR_LENS_BAD,
+        edgecolors="black",
+        linewidths=0.6,
+        label="Current design",
+        zorder=3,
+    )
+
+    ax.set_xlabel("Abbe number Vd")
+    ax.set_ylabel("Refractive index nd")
+    ax.set_title("nd - Vd glass map")
+    ax.invert_xaxis()
+    ax.grid(True, alpha=0.25)
+    ax.legend(loc="best", fontsize=8)
+    return len(catalog_nd), len(design_nd)
 
 
 def plot_ghost_analysis(ax, system: OpticalSystem, ghosts) -> int:

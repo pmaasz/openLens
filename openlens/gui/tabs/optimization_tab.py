@@ -38,6 +38,7 @@ class OptVarKey(Enum):
     R2 = "r2"
     THICKNESS = "th"
     INDEX = "n"
+    ABBE = "vd"
     SAG1 = "ps1"
     SAG2 = "ps2"
     GAP = "gap"
@@ -291,10 +292,19 @@ class OptimizationTab(BaseTab):
         self._opt_apply_btn.clicked.connect(self._on_apply_optimization)
         reset_btn = QPushButton("Reset to Original")
         reset_btn.clicked.connect(self._on_reset_optimization)
+        substitute_btn = QPushButton("Substitute Glasses")
+        substitute_btn.setToolTip(
+            "Snap the selected elements (or all elements) to the nearest catalog glasses"
+        )
+        substitute_btn.clicked.connect(self._on_substitute_glasses)
+        glass_map_btn = QPushButton("Glass Map")
+        glass_map_btn.clicked.connect(self._on_show_glass_map)
         btn_layout.addWidget(run_opt_btn)
         btn_layout.addWidget(stop_btn)
         btn_layout.addWidget(self._opt_apply_btn)
         btn_layout.addWidget(reset_btn)
+        btn_layout.addWidget(substitute_btn)
+        btn_layout.addWidget(glass_map_btn)
         layout.addLayout(btn_layout)
 
         # Visualization (Dual Support)
@@ -317,6 +327,7 @@ class OptimizationTab(BaseTab):
         self._opt_run_start_stamp = None
         self._opt_pending_target = None
         self._opt_worker = None
+        self._glass_map_dialog = None
 
         # Variables map for dynamic checkboxes
         self._opt_check_vars = {}  # key -> QCheckBox
@@ -406,6 +417,7 @@ class OptimizationTab(BaseTab):
                     ("Radius 2", "radius_of_curvature_2", OptVarKey.R2),
                     ("Thickness", "thickness", OptVarKey.THICKNESS),
                     ("Refractive Index", "refractive_index", OptVarKey.INDEX),
+                    ("Abbe Number", "model_vd", OptVarKey.ABBE),
                 ]:
                     # For parabolic surfaces show sag variable instead of radius
                     if param == "radius_of_curvature_1" and is_p1:
@@ -455,6 +467,7 @@ class OptimizationTab(BaseTab):
                 [
                     ("Thickness", "thickness", OptVarKey.THICKNESS.at(0)),
                     ("Refractive Index", "refractive_index", OptVarKey.INDEX.at(0)),
+                    ("Abbe Number", "model_vd", OptVarKey.ABBE.at(0)),
                     ("Diameter", "diameter", OptVarKey.DIAMETER.at(0)),
                 ]
             )
@@ -590,6 +603,17 @@ class OptimizationTab(BaseTab):
                             2.4,
                         )
                     )
+                if self._is_checked(OptVarKey.ABBE.at(i)):
+                    variables.append(
+                        OptimizationVariable(
+                            f"Vd_L{i+1}",
+                            i,
+                            "abbe_number",
+                            lens.model_vd,
+                            20,
+                            100,
+                        )
+                    )
                 if self._is_checked(OptVarKey.GAP.at(i)):
                     variables.append(
                         OptimizationVariable(
@@ -668,6 +692,17 @@ class OptimizationTab(BaseTab):
                         2.4,
                     )
                 )
+            if self._is_checked(OptVarKey.ABBE.at(0)):
+                variables.append(
+                    OptimizationVariable(
+                        "Abbe Number",
+                        0,
+                        "abbe_number",
+                        active_target.model_vd,
+                        20,
+                        100,
+                    )
+                )
             if self._is_checked(OptVarKey.DIAMETER.at(0)):
                 variables.append(
                     OptimizationVariable("Diameter", 0, "diameter", active_target.diameter, 1, 500)
@@ -707,6 +742,92 @@ class OptimizationTab(BaseTab):
         if self._opt_target_astig.isChecked():
             targets.append(OptimizationTarget("astigmatism", 0, weight=1.0, target_type="minimize"))
         return targets
+
+    def _collect_constraints(self) -> Dict[str, float]:
+        """The geometric limits shown in the Constraints panel."""
+        return {
+            "min_center_thickness": self._opt_min_thickness.value(),
+            "max_center_thickness": self._opt_max_thickness.value(),
+            "min_edge_thickness": self._opt_min_edge.value(),
+            "min_air_gap": self._opt_min_gap.value(),
+        }
+
+    def _selected_element_indices(self, active_target) -> List[int]:
+        """Element indices with at least one ticked variable.
+
+        No ticked variables means "all elements" for the substitution action;
+        the caller passes None to the substituter in that case.
+        """
+        from ...optical_system import OpticalSystem
+
+        if not isinstance(active_target, OpticalSystem):
+            return [0]
+        indices = set()
+        for key, checkbox in self._opt_check_vars.items():
+            if not checkbox.isChecked():
+                continue
+            try:
+                indices.add(int(key.rsplit("_", 1)[1]))
+            except (IndexError, ValueError):
+                continue
+        return sorted(indices)
+
+    def _on_substitute_glasses(self) -> None:
+        """Snap selected elements to catalog glasses and report the merit."""
+        if not self._parent:
+            return
+        active_target = self._active_target()
+        if not active_target:
+            self._opt_results_text.setPlainText("No system selected.")
+            return
+
+        from ...glass_substitution import GlassSubstituter
+        from ...optical_system import as_system
+
+        indices = self._selected_element_indices(active_target)
+        try:
+            report = GlassSubstituter().substitute_system(
+                as_system(active_target),
+                element_indices=indices or None,
+                targets=self._collect_targets(),
+                constraints=self._collect_constraints(),
+            )
+        except Exception as e:
+            logger.warning("Glass substitution failed: %s", e)
+            self._opt_results_text.setPlainText(f"Glass substitution failed: {e}")
+            return
+
+        self._opt_results_text.setPlainText(report.format())
+        if report.changed:
+            self._parent._update_all_tabs()
+            self._parent._save_to_database()
+            self._parent._update_status("Glasses substituted from the catalog.")
+        else:
+            self._parent._update_status("All selected elements already use catalog glasses.")
+
+    def _on_show_glass_map(self) -> None:
+        """Open the nd/Vd glass map for the active design."""
+        active_target = self._active_target()
+        if not active_target:
+            self._opt_results_text.setPlainText("No system selected.")
+            return
+        try:
+            from ...analysis.plots import plot_glass_map
+            from ...optical_system import as_system
+            from ..dialogs.analysis_plots import AnalysisPlotDialog
+        except ImportError as e:
+            self._opt_results_text.setPlainText(f"Glass map needs matplotlib: {e}")
+            return
+
+        try:
+            dialog = AnalysisPlotDialog("Glass Map", self._parent or self)
+            plot_glass_map(dialog.get_axes(111), as_system(active_target))
+        except Exception as e:
+            logger.warning("Glass map failed: %s", e)
+            self._opt_results_text.setPlainText(f"Glass map failed: {e}")
+            return
+        dialog.show()
+        self._glass_map_dialog = dialog
 
     def _on_run_optimization(self) -> None:
         """Run system optimization.
@@ -754,11 +875,7 @@ class OptimizationTab(BaseTab):
             return
 
         # Build constraints
-        constraints = {}
-        constraints["min_center_thickness"] = self._opt_min_thickness.value()
-        constraints["max_center_thickness"] = self._opt_max_thickness.value()
-        constraints["min_edge_thickness"] = self._opt_min_edge.value()
-        constraints["min_air_gap"] = self._opt_min_gap.value()
+        constraints = self._collect_constraints()
 
         self._opt_results_text.setPlainText("Optimizing...")
 
