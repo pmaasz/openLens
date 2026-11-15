@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QScrollArea,
     QMessageBox,
+    QFileDialog,
 )
 from .base_tab import BaseTab
 from ..theme import DARK, get_monospace_qss
@@ -180,6 +181,35 @@ class PerformanceTab(BaseTab):
         self._perf_sensor_size.setFixedWidth(100)
         params_layout.addRow("Sensor Size:", self._perf_sensor_size)
 
+        self._perf_focus_range = QDoubleSpinBox()
+        self._perf_focus_range.setRange(0.001, 100.0)
+        self._perf_focus_range.setDecimals(3)
+        self._perf_focus_range.setSingleStep(0.01)
+        self._perf_focus_range.setValue(0.2)
+        self._perf_focus_range.setSuffix(" mm")
+        self._perf_focus_range.setFixedWidth(100)
+        self._perf_focus_range.setToolTip("Through-focus sweep from -range to +range")
+        params_layout.addRow("Focus Range (±):", self._perf_focus_range)
+
+        self._perf_focus_step = QDoubleSpinBox()
+        self._perf_focus_step.setRange(0.0001, 10.0)
+        self._perf_focus_step.setDecimals(4)
+        self._perf_focus_step.setSingleStep(0.005)
+        self._perf_focus_step.setValue(0.02)
+        self._perf_focus_step.setSuffix(" mm")
+        self._perf_focus_step.setFixedWidth(100)
+        params_layout.addRow("Focus Step:", self._perf_focus_step)
+
+        self._perf_mtf_frequency = QDoubleSpinBox()
+        self._perf_mtf_frequency.setRange(0.1, 1000.0)
+        self._perf_mtf_frequency.setDecimals(1)
+        self._perf_mtf_frequency.setValue(30.0)
+        self._perf_mtf_frequency.setSuffix(" lp/mm")
+        self._perf_mtf_frequency.setFixedWidth(100)
+        params_layout.addRow("MTF Frequency:", self._perf_mtf_frequency)
+
+        self._through_focus_result = None
+
         layout.addWidget(params_group)
 
         # Buttons - Row 1: Geometric Analysis
@@ -212,11 +242,18 @@ class PerformanceTab(BaseTab):
         wavefront_btn.clicked.connect(self._on_show_wavefront)
         image_sim_btn = QPushButton("Image Simulation")
         image_sim_btn.clicked.connect(self._on_show_image_simulation)
+        through_focus_btn = QPushButton("Through-Focus")
+        through_focus_btn.clicked.connect(self._on_show_through_focus)
+        self._perf_export_focus_btn = QPushButton("Export Focus CSV")
+        self._perf_export_focus_btn.setEnabled(False)
+        self._perf_export_focus_btn.clicked.connect(self._on_export_through_focus_csv)
 
         btn_layout2.addWidget(psf_btn)
         btn_layout2.addWidget(mtf_btn)
         btn_layout2.addWidget(wavefront_btn)
         btn_layout2.addWidget(image_sim_btn)
+        btn_layout2.addWidget(through_focus_btn)
+        btn_layout2.addWidget(self._perf_export_focus_btn)
         btn_layout2.addStretch()
         layout.addLayout(btn_layout2)
 
@@ -743,6 +780,73 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
         except Exception as e:
             logger.error("Field curves error: %s", e)
             QMessageBox.critical(self, "Analysis Error", f"Failed to generate field curves: {e}")
+
+    def _on_show_through_focus(self) -> None:
+        """Sweep MTF and RMS spot through focus in a non-blocking dialog."""
+        active_system = self._current_system()
+        if not active_system:
+            QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
+            return
+
+        try:
+            from ...analysis.plots import plot_through_focus
+            from ...analysis.through_focus import ThroughFocusAnalyzer
+
+            system = self._wrap_in_system(active_system)
+            wavelength = self._selected_wavelength()
+            fields = self._analysis_fields(system)
+            span = self._perf_focus_range.value()
+            step = self._perf_focus_step.value()
+            frequency = self._perf_mtf_frequency.value()
+
+            def _compute():
+                return ThroughFocusAnalyzer(system).sweep(
+                    defocus_start_mm=-span,
+                    defocus_stop_mm=span,
+                    defocus_step_mm=step,
+                    field_angles_deg=fields,
+                    frequencies_lp_per_mm=(frequency,),
+                    wavelength_nm=wavelength,
+                )
+
+            def _plot(axes, result):
+                plot_through_focus(axes, result)
+                self._through_focus_result = result
+                self._perf_export_focus_btn.setEnabled(True)
+                best = result.best_focus_mm
+                if best is not None and self._parent:
+                    self._parent._update_status(f"Through-focus best focus: {best:+.4f} mm")
+
+            self._parent._open_analysis_dialog(
+                f"Through-Focus - {system.name}", _compute, _plot, columns=2
+            )
+
+        except ImportError as e:
+            self._report_missing_matplotlib(e)
+        except Exception as e:
+            logger.error("Through-focus error: %s", e)
+            QMessageBox.critical(self, "Analysis Error", f"Failed to sweep focus: {e}")
+
+    def _on_export_through_focus_csv(self) -> None:
+        """Write the last through-focus sweep to a user-chosen CSV file."""
+        result = self._through_focus_result
+        if result is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Through-Focus CSV", "through_focus.csv", "CSV files (*.csv)"
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".csv"):
+            path += ".csv"
+        try:
+            result.to_csv(path)
+        except OSError as e:
+            logger.error("Through-focus CSV export failed: %s", e)
+            QMessageBox.critical(self, "Export Error", f"Could not write {path}: {e}")
+            return
+        if self._parent:
+            self._parent._update_status(f"Through-focus exported to {path}")
 
     def _on_show_psf(self) -> None:
         """Show PSF Analysis through parent."""

@@ -289,6 +289,72 @@ def plot_mtf(ax, mtf_data: dict) -> None:
     ax.grid(True, alpha=0.3)
 
 
+def plot_through_focus(axes, result) -> None:
+    """Draw MTF and RMS spot versus defocus for a through-focus sweep.
+
+    Args:
+        axes: Pair of Axes, MTF on the left and RMS spot on the right.
+        result: ``ThroughFocusResult`` returned by ``ThroughFocusAnalyzer``.
+    """
+    ax_mtf, ax_spot = axes
+    colors = ["#e0e0e0", "#00c864", "#ff6e6e", "#0096ff", "#ffc800"]
+    styles = ["-", "--", ":", "-."]
+
+    for field_index, item in enumerate(result.fields):
+        color = colors[field_index % len(colors)]
+        for frequency_index, frequency in enumerate(item.frequencies_lp_per_mm):
+            style = styles[frequency_index % len(styles)]
+            label = f"{item.field_angle_deg:.1f}°, {frequency:g} lp/mm"
+            ax_mtf.plot(
+                result.defocus_mm,
+                item.mtf_tangential[frequency],
+                color=color,
+                linestyle=style,
+                label=f"{label} tan",
+            )
+            ax_mtf.plot(
+                result.defocus_mm,
+                item.mtf_sagittal[frequency],
+                color=color,
+                linestyle=style,
+                alpha=0.55,
+                label=f"{label} sag",
+            )
+        ax_spot.plot(
+            result.defocus_mm,
+            item.spot_rms_um,
+            color=color,
+            marker=".",
+            label=f"{item.field_angle_deg:.1f}°",
+        )
+
+    best = result.best_focus_mm
+    if best is not None:
+        for panel in (ax_mtf, ax_spot):
+            panel.axvline(best, color="#ff6e6e", linestyle="--", linewidth=0.8, alpha=0.7)
+        ax_mtf.annotate(
+            f"best {best:+.4g} mm",
+            xy=(best, 0.02),
+            xycoords=("data", "axes fraction"),
+            xytext=(4, 4),
+            textcoords="offset points",
+            fontsize=8,
+        )
+
+    ax_mtf.set_ylim(0, 1.05)
+    ax_mtf.set_title("MTF vs defocus")
+    ax_mtf.set_xlabel("Focus shift (mm)")
+    ax_mtf.set_ylabel("Modulation")
+    ax_mtf.legend(fontsize="x-small")
+    ax_mtf.grid(True, alpha=0.3)
+
+    ax_spot.set_title("RMS spot vs defocus")
+    ax_spot.set_xlabel("Focus shift (mm)")
+    ax_spot.set_ylabel("RMS spot (µm)")
+    ax_spot.legend(fontsize="x-small")
+    ax_spot.grid(True, alpha=0.3)
+
+
 def plot_wavefront(ax, wf_data) -> None:
     """Render exit-pupil wavefront error map (waves)."""
     data = np.real(wf_data) if np.iscomplexobj(wf_data) else wf_data
