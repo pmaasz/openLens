@@ -18,9 +18,9 @@ from ..constants import (
     PARAXIAL_LAUNCH_OFFSET_MM,
     WAVELENGTH_GREEN,
 )
+from ..fields import launch_field_ray
 from ..optical_system import OpticalSystem
-from ..ray_tracer import Ray3D, SystemRayTracer3D
-from ..vector3 import vec3
+from ..ray_tracer import SystemRayTracer3D
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,7 @@ def resolve_image_plane_x(
     system: OpticalSystem,
     wavelength_nm: float = WAVELENGTH_GREEN,
     tracer: Optional[SystemRayTracer3D] = None,
+    object_distance_mm: Optional[float] = None,
 ) -> Optional[float]:
     """Return the configured detector plane, else the paraxial focus.
 
@@ -41,6 +42,8 @@ def resolve_image_plane_x(
         system: System whose plane is resolved.
         wavelength_nm: Wavelength used for the paraxial fallback, in nm.
         tracer: Optional tracer to reuse for the paraxial fallback.
+        object_distance_mm: Finite object distance in mm. None means an
+            object at infinity, whose focus is the usual back focal plane.
 
     Returns:
         The configured plane or paraxial focus in mm, or None when neither
@@ -58,13 +61,19 @@ def resolve_image_plane_x(
             "Ignoring non-finite image plane %r; using the paraxial focus",
             getattr(system, "image_plane_x_mm", None),
         )
-    return find_paraxial_focus(system, wavelength_nm, tracer=tracer)
+    return find_paraxial_focus(
+        system,
+        wavelength_nm,
+        tracer=tracer,
+        object_distance_mm=object_distance_mm,
+    )
 
 
 def find_paraxial_focus(
     system: OpticalSystem,
     wavelength_nm: float = WAVELENGTH_GREEN,
     tracer: Optional[SystemRayTracer3D] = None,
+    object_distance_mm: Optional[float] = None,
 ) -> Optional[float]:
     """Return the x position where a near-axis ray crosses the optical axis.
 
@@ -79,6 +88,9 @@ def find_paraxial_focus(
         system: System to trace through.
         wavelength_nm: Wavelength to focus, in nanometres.
         tracer: Optional tracer to reuse; one is built when omitted.
+        object_distance_mm: Finite object distance in mm. When set, the
+            near-axis ray starts at that object point instead of arriving
+            collimated, so the focus is the real conjugate image plane.
 
     Returns:
         Focus x in mm, or None when the exit ray is collimated, blocked or
@@ -100,11 +112,13 @@ def find_paraxial_focus(
         for element in system.elements:
             element.lens.update_refractive_index(wavelength_nm=wavelength_nm)
 
-        start_x = system.elements[0].position - PARAXIAL_LAUNCH_OFFSET_MM
-        ray = Ray3D(
-            vec3(start_x, 0.001, 0),
-            vec3(1, 0, 0),
-            wavelength=wavelength_nm * NM_TO_MM,
+        first_x = system.elements[0].position
+        ray = launch_field_ray(
+            system,
+            pupil_y=0.001,
+            object_distance_mm=object_distance_mm,
+            wavelength_mm=wavelength_nm * NM_TO_MM,
+            start_x=first_x - PARAXIAL_LAUNCH_OFFSET_MM,
         )
         tracer.trace_ray(ray)
 

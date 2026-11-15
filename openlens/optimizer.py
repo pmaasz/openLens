@@ -174,10 +174,63 @@ class MeritFunction:
             cache[key] = results
         return results
 
+    @staticmethod
+    def _object_distance(system: OpticalSystem) -> Optional[float]:
+        """The system's conjugate distance, or None for collimated input."""
+        return getattr(system, "object_distance_mm", None)
+
+    @staticmethod
+    def _model_fields(system: OpticalSystem) -> list:
+        """The system's field list; empty means the legacy single field."""
+        return list(getattr(system, "fields", None) or [])
+
+    def _field_metric(
+        self, system: OpticalSystem, key: str, legacy_field_deg: float
+    ) -> Optional[float]:
+        """Weighted magnitude of a field-dependent aberration metric.
+
+        With no model fields this is the historical single field (5 degrees
+        for coma/astigmatism). With a field list every field is traced and
+        weighted, so optimization scores the same fields the analysis does.
+        """
+        distance = self._object_distance(system)
+        fields = self._model_fields(system)
+        if not fields:
+            results = self._all_aberrations(
+                system,
+                object_distance_mm=distance,
+                field_angle_deg=legacy_field_deg,
+            )
+            value = results.get(key)
+            return None if value is None else abs(value)
+
+        total = 0.0
+        total_weight = 0.0
+        for field_point in fields:
+            try:
+                angle = field_point.resolve_angle_deg(distance)
+            except ValueError:
+                logger.warning("Skipping field %r: no object distance for its height", field_point)
+                continue
+            results = self._all_aberrations(
+                system,
+                object_distance_mm=distance,
+                field_angle_deg=angle,
+            )
+            value = results.get(key)
+            if value is None:
+                continue
+            total += field_point.weight * abs(value)
+            total_weight += field_point.weight
+        return total / total_weight if total_weight > 0 else None
+
     def _eval_spherical(self, system: OpticalSystem, target: OptimizationTarget) -> float:
         if not system.elements:
             return INFEASIBLE_MERIT
-        results = self._all_aberrations(system)
+        results = self._all_aberrations(
+            system,
+            object_distance_mm=self._object_distance(system),
+        )
         value = results.get("spherical_aberration")
         if value is None:
             return INFEASIBLE_MERIT
@@ -186,20 +239,18 @@ class MeritFunction:
     def _eval_coma(self, system: OpticalSystem, target: OptimizationTarget) -> float:
         if not system.elements:
             return INFEASIBLE_MERIT
-        results = self._all_aberrations(system, field_angle_deg=5.0)
-        value = results.get("coma")
+        value = self._field_metric(system, "coma", legacy_field_deg=5.0)
         if value is None:
             return INFEASIBLE_MERIT
-        return self._apply_target(target, abs(value))
+        return self._apply_target(target, value)
 
     def _eval_astigmatism(self, system: OpticalSystem, target: OptimizationTarget) -> float:
         if not system.elements:
             return INFEASIBLE_MERIT
-        results = self._all_aberrations(system, field_angle_deg=5.0)
-        value = results.get("astigmatism")
+        value = self._field_metric(system, "astigmatism", legacy_field_deg=5.0)
         if value is None:
             return INFEASIBLE_MERIT
-        return self._apply_target(target, abs(value))
+        return self._apply_target(target, value)
 
     @staticmethod
     def _eval_chromatic(system: OpticalSystem, target: OptimizationTarget) -> float:
@@ -222,21 +273,44 @@ class MeritFunction:
     @staticmethod
     def _eval_rms_spot(system: OpticalSystem, target: OptimizationTarget) -> float:
         try:
+            distance = MeritFunction._object_distance(system)
+            fields = MeritFunction._model_fields(system)
+            if not fields:
+                fields = [None]
+
             spot = SpotDiagram(system)
-            results = spot.trace_spot(field_angle_x_deg=0, field_angle_y_deg=0)
-            value = results.get("rms_radius")
-            # Never default a missing spot to 0.0: a vignetted system
-            # would then score as a perfect design and win every
-            # comparison. Fewer than two rays means undefined, not zero.
-            if value is None or results.get("valid_rays", 0) < 2:
-                logger.debug(
-                    "RMS spot merit: no usable spot for the perturbed system "
-                    "(rms_radius=%r, valid_rays=%r)",
-                    value,
-                    results.get("valid_rays"),
+            total = 0.0
+            total_weight = 0.0
+            for field_point in fields:
+                if field_point is None:
+                    angle, weight = 0.0, 1.0
+                else:
+                    angle, weight = (
+                        field_point.resolve_angle_deg(distance),
+                        field_point.weight,
+                    )
+                results = spot.trace_spot(
+                    field_angle_y_deg=angle,
+                    object_distance_mm=distance,
                 )
+                value = results.get("rms_radius")
+                # Never default a missing spot to 0.0: a vignetted system
+                # would then score as a perfect design and win every
+                # comparison. Fewer than two rays means undefined, not zero.
+                if value is None or results.get("valid_rays", 0) < 2:
+                    logger.debug(
+                        "RMS spot merit: no usable spot for the perturbed "
+                        "system at %r deg (rms_radius=%r, valid_rays=%r)",
+                        angle,
+                        value,
+                        results.get("valid_rays"),
+                    )
+                    return INFEASIBLE_MERIT
+                total += weight * float(value) ** 2
+                total_weight += weight
+            if total_weight <= 0:
                 return INFEASIBLE_MERIT
-            return MeritFunction._apply_target(target, value)
+            return MeritFunction._apply_target(target, math.sqrt(total / total_weight))
         except Exception as e:
             # Logged rather than discarded. A KeyError from a malformed spot
             # result and a genuine geometry failure used to be indistinguishable,
@@ -266,18 +340,39 @@ class MeritFunction:
             # aberration.
             import numpy as np
 
-            sensor = WavefrontSensor(system)
-            wavefront = sensor.get_pupil_wavefront(grid_size=MTF_MERIT_GRID_SIZE)
+            distance = MeritFunction._object_distance(system)
+            fields = MeritFunction._model_fields(system)
+            if not fields:
+                fields = [None]
 
-            W = wavefront.W
-            if getattr(W, "size", 0) == 0 or np.all(np.isnan(W)):
-                logger.debug("MTF merit: empty or all-NaN pupil wavefront.")
+            total = 0.0
+            total_weight = 0.0
+            for field_point in fields:
+                if field_point is None:
+                    angle, weight = 0.0, 1.0
+                else:
+                    angle, weight = (
+                        field_point.resolve_angle_deg(distance),
+                        field_point.weight,
+                    )
+                sensor = WavefrontSensor(system)
+                wavefront = sensor.get_pupil_wavefront(
+                    field_angle_deg=angle,
+                    grid_size=MTF_MERIT_GRID_SIZE,
+                )
+
+                W = wavefront.W
+                if getattr(W, "size", 0) == 0 or np.all(np.isnan(W)):
+                    logger.debug("MTF merit: empty or all-NaN pupil wavefront at %r deg.", angle)
+                    return INFEASIBLE_MERIT
+
+                psf = DiffractionPSFCalculator.calculate_psf(wavefront)
+                mtf = DiffractionPSFCalculator.calculate_mtf(psf)
+                total += weight * float(np.sum(mtf))
+                total_weight += weight
+            if total_weight <= 0:
                 return INFEASIBLE_MERIT
-
-            psf = DiffractionPSFCalculator.calculate_psf(wavefront)
-            mtf = DiffractionPSFCalculator.calculate_mtf(psf)
-            value = float(np.sum(mtf))
-            return MeritFunction._apply_target(target, value)
+            return MeritFunction._apply_target(target, total / total_weight)
         except Exception as e:
             logger.warning("MTF merit evaluation failed: %s", e)
             return INFEASIBLE_MERIT

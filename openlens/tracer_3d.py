@@ -22,6 +22,7 @@ from .lens import _is_flat
 from .asphere import asphere_sag, asphere_slope, is_asphere
 from .geometry import LensGeometry
 from .casing import wall_entry_3d
+from .fields import launch_field_ray
 
 if TYPE_CHECKING:
     from .lens import Lens
@@ -1058,33 +1059,35 @@ class SystemRayTracer3D:
         field_angle_deg: float,
         num_rays: int = DEFAULT_NUM_RAYS,
         wavelength_mm: float = WAVELENGTH_GREEN * NM_TO_MM,
+        object_distance_mm: Optional[float] = None,
     ) -> List[Ray3D]:
         """
         Trace a bundle of rays at a given field angle.
         Rays are distributed across the entrance pupil.
+
+        Args:
+            object_distance_mm: Finite object distance in mm. None uses the
+                system's setting; an unset system is collimated.
         """
         if not self.system.elements:
             return []
+        if object_distance_mm is None:
+            object_distance_mm = getattr(self.system, "object_distance_mm", None)
 
         first_lens = self.system.elements[0].lens
         max_r = first_lens.diameter / 2.0
-
-        ep_x = self.system.elements[0].position
-        start_x = ep_x - RAY_START_OFFSET_3D_MM
-
-        angle_rad = math.radians(field_angle_deg)
-        direction = vec3(math.cos(angle_rad), math.sin(angle_rad), 0.0)
 
         rays = []
         for i in range(num_rays):
             r = -max_r + 2.0 * max_r * i / (num_rays - 1) if num_rays > 1 else 0
 
-            p_ep = vec3(ep_x, r, 0)
-
-            t = (ep_x - start_x) / direction.x
-            origin = p_ep - direction * t
-
-            ray = Ray3D(origin, direction, wavelength=wavelength_mm)
+            ray = launch_field_ray(
+                self.system,
+                angle_y_deg=field_angle_deg,
+                pupil_y=r,
+                object_distance_mm=object_distance_mm,
+                wavelength_mm=wavelength_mm,
+            )
             self.trace_ray(ray)
             rays.append(ray)
 

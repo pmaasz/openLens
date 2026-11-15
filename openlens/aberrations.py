@@ -45,6 +45,7 @@ from .constants import (
     EPSILON,
     AIRY_DISK_FACTOR,
 )
+from .fields import FieldPoint, normalize_fields, validate_object_distance, weighted_aggregate
 
 # Airy disk DIAMETER = 2 * (Airy radius) = 2.44 * λ * f/#
 # (constants.AIRY_DISK_FACTOR is the 1.22 radius factor)
@@ -156,7 +157,8 @@ class AberrationsCalculator:
         Calculate all primary aberrations.
 
         Args:
-            object_distance_mm: Distance to object in mm. None for infinity (collimated light)
+            object_distance_mm: Distance to object in mm. None uses the
+                target's setting; an unset target is at infinity (collimated).
             field_angle_deg: Off-axis angle in degrees (for coma, astigmatism, distortion)
             wavelength_nm: Wavelength in nm (for chromatic aberrations)
 
@@ -166,6 +168,9 @@ class AberrationsCalculator:
         # Handle backward compatibility for argument names
         field_angle = kwargs.get("field_angle", field_angle_deg)
         field_angle_deg = field_angle  # Update for use in the function
+        if object_distance_mm is None:
+            object_distance_mm = getattr(self.target, "object_distance_mm", None)
+        object_distance_mm = validate_object_distance(object_distance_mm)
 
         # Every quantity below is evaluated at wavelength_nm: lens indices
         # are temporarily updated (restored on exit), so analytic scalings
@@ -187,24 +192,11 @@ class AberrationsCalculator:
     ) -> Dict[str, Any]:
         """Body of calculate_all_aberrations at one consistent wavelength.
 
-        Raises:
-            ValueError: If a finite ``object_distance_mm`` is requested. Every
-                Seidel estimator here assumes the object at infinity
-                (conjugate factor C = -1), so a finite conjugate was accepted,
-                forwarded and then ignored - the caller got
-                infinity-conjugate numbers labelled with their own distance.
-                Refusing is better than that: the answer would be wrong, and
-                wrong in a way nothing downstream could detect. Supporting it
-                needs a conjugate factor threaded through each estimator,
-                which is a physics change rather than a guard.
+        A finite ``object_distance_mm`` is traced from the object point in
+        every ray-based metric (spot, field metrics, spherical aberration).
+        The analytic Seidel fallback carries the conjugate factor as well, so
+        a failed trace cannot quietly report infinity-conjugate numbers.
         """
-        if object_distance_mm is not None:
-            raise ValueError(
-                f"object distance is not supported: got {object_distance_mm!r} mm. "
-                f"Every aberration here is computed for an object at infinity; "
-                f"pass object_distance_mm=None for that case."
-            )
-
         if self.is_system:
             focal_length = self.target.get_system_focal_length()
         else:
@@ -239,23 +231,30 @@ class AberrationsCalculator:
         # Compute each quantity once; the dict exposes two documented
         # alias keys per value ('spherical'/'spherical_aberration',
         # 'chromatic'/'chromatic_aberration') for API compatibility.
-        spherical = self._calculate_spherical_aberration(focal_length)
+        spherical = self._calculate_spherical_aberration(focal_length, object_distance_mm)
         chromatic = self._calculate_chromatic_aberration(focal_length)
         f_number = self._calculate_f_number(focal_length)
         airy = self._calculate_airy_disk(focal_length, wavelength_nm * 1e-6)
         strehl, wfe_rms_waves = self._calculate_strehl_ratio(
-            focal_length, wavelength_nm=wavelength_nm
+            focal_length,
+            wavelength_nm=wavelength_nm,
+            object_distance_mm=object_distance_mm,
         )
         mtf_cutoff = self._calculate_mtf_cutoff(focal_length, wavelength_nm=wavelength_nm)
 
         # None means the trace failed, which is not the same as a zero spot.
         # Published as 0.0 it read as a perfect design - better than
         # diffraction limited - for a lens that could not be traced.
-        spot_rms = self._calculate_spot_rms()
+        spot_rms = self._calculate_spot_rms(
+            wavelength_nm=wavelength_nm,
+            object_distance_mm=object_distance_mm,
+        )
 
         if self.is_system:
             field_data = self._calculate_field_metrics_system(
-                field_angle_deg, wavelength_nm=wavelength_nm
+                field_angle_deg,
+                wavelength_nm=wavelength_nm,
+                object_distance_mm=object_distance_mm,
             )
             if field_data is None:
                 # Leave the values None rather than substituting zeros: the
@@ -296,7 +295,9 @@ class AberrationsCalculator:
         # hundred-fold different value, and a GUI label that only fitted the
         # analytic one.
         field_data = self._calculate_field_metrics_system(
-            field_angle_deg, wavelength_nm=wavelength_nm
+            field_angle_deg,
+            wavelength_nm=wavelength_nm,
+            object_distance_mm=object_distance_mm,
         )
         if field_data is None:
             field_curvature, distortion = None, None
@@ -304,7 +305,9 @@ class AberrationsCalculator:
             field_curvature = field_data["field_curvature"]
             distortion = field_data["distortion"]
 
-        singlet_field = self._calculate_singlet_field_estimators(field_angle_deg, wavelength_nm)
+        singlet_field = self._calculate_singlet_field_estimators(
+            field_angle_deg, wavelength_nm, object_distance_mm
+        )
         if singlet_field is None:
             coma_val, astig_val = None, None
         else:
@@ -338,8 +341,69 @@ class AberrationsCalculator:
             ),
         }
 
+    def calculate_fields(
+        self,
+        fields: Optional[List[FieldPoint]] = None,
+        object_distance_mm: Optional[float] = None,
+        wavelength_nm: float = WAVELENGTH_GREEN,
+    ) -> Dict[str, Any]:
+        """Evaluate every field and aggregate the metrics by field weight.
+
+        Args:
+            fields: Fields to evaluate. None uses the target's model list;
+                an empty list falls back to a single on-axis field, which is
+                the historical single-field behaviour.
+            object_distance_mm: Finite object distance in mm. None uses the
+                target's setting.
+            wavelength_nm: Wavelength in nm.
+
+        Returns:
+            ``{"fields": [...], "aggregate": {...}, "valid": bool}``. Each
+            field entry carries its own metrics; the aggregate is the
+            weight-averaged metric across fields. A metric no field could
+            measure is None, never 0.0.
+        """
+        resolved = normalize_fields(fields)
+        if not resolved:
+            resolved = normalize_fields(getattr(self.target, "fields", None))
+        if not resolved:
+            resolved = [FieldPoint()]
+        if object_distance_mm is None:
+            object_distance_mm = getattr(self.target, "object_distance_mm", None)
+
+        entries = []
+        for field in resolved:
+            angle = field.resolve_angle_deg(object_distance_mm)
+            metrics = self.calculate_all_aberrations(
+                object_distance_mm=object_distance_mm,
+                field_angle_deg=angle,
+                wavelength_nm=wavelength_nm,
+            )
+            entries.append(
+                {
+                    "angle_deg": angle,
+                    "height_mm": field.height_mm,
+                    "weight": field.weight,
+                    "metrics": metrics,
+                }
+            )
+
+        aggregate = weighted_aggregate(
+            [entry["metrics"] for entry in entries],
+            [entry["weight"] for entry in entries],
+        )
+        return {
+            "fields": entries,
+            "aggregate": aggregate,
+            "object_distance_mm": object_distance_mm,
+            "valid": all(entry["metrics"].get("valid", False) for entry in entries),
+        }
+
     def _calculate_singlet_field_estimators(
-        self, field_angle_deg: float, wavelength_nm: float
+        self,
+        field_angle_deg: float,
+        wavelength_nm: float,
+        object_distance_mm: Optional[float] = None,
     ) -> Optional[Tuple[float, float]]:
         """Single off-axis evaluation feeding both coma and astigmatism.
 
@@ -349,7 +413,7 @@ class AberrationsCalculator:
         """
         if abs(field_angle_deg) < EPSILON:
             return 0.0, 0.0
-        return self._calculate_field_estimators(field_angle_deg, wavelength_nm)
+        return self._calculate_field_estimators(field_angle_deg, wavelength_nm, object_distance_mm)
 
     def _calculate_f_number(self, focal_length: float) -> float:
         """F-number |f|/D (photographic convention; sign of EFL dropped)."""
@@ -404,17 +468,20 @@ class AberrationsCalculator:
         self,
         field_angle: float,
         wavelength_nm: float = WAVELENGTH_GREEN,
+        object_distance_mm: Optional[float] = None,
     ) -> Dict[str, float]:
         """Calculate field-dependent aberrations for an optical system using real ray tracing
 
         Args:
             field_angle: Field angle in degrees.
             wavelength_nm: Traced wavelength in nm.
+            object_distance_mm: Finite object distance in mm, or None for
+                collimated input.
 
         Returns:
             The traced field metrics, or None when the trace failed.
         """
-        cached = self._field_cache_get("metrics", field_angle, wavelength_nm)
+        cached = self._field_cache_get("metrics", field_angle, wavelength_nm, object_distance_mm)
         if cached is not None:
             # A copy, so a caller editing the dict cannot poison the cache.
             return dict(cached)
@@ -437,6 +504,7 @@ class AberrationsCalculator:
                 max_field_angle_deg=max(requested_field, 0.1),
                 num_points=10,
                 wavelength_nm=wavelength_nm,
+                object_distance_mm=object_distance_mm,
             )
 
             # Extract metrics at the requested field_angle
@@ -447,7 +515,9 @@ class AberrationsCalculator:
 
             # 2. Coma and astigmatism share one cheap sampling with the
             # singlet path (exact agreement by construction).
-            coma_val, astig = self._calculate_field_estimators(field_angle, wavelength_nm)
+            coma_val, astig = self._calculate_field_estimators(
+                field_angle, wavelength_nm, object_distance_mm
+            )
 
             metrics = {
                 "field_curvature": field_curv,
@@ -461,11 +531,16 @@ class AberrationsCalculator:
         # A failed trace is not cached: it is an error worth retrying, and
         # None is also _field_cache_get()'s "miss" marker.
         if coma_val is not None and astig is not None:
-            self._field_cache_put("metrics", field_angle, wavelength_nm, metrics)
+            self._field_cache_put(
+                "metrics", field_angle, wavelength_nm, metrics, object_distance_mm
+            )
         return dict(metrics)
 
     def _calculate_field_estimators(
-        self, field_angle_deg: float, wavelength_nm: float = WAVELENGTH_GREEN
+        self,
+        field_angle_deg: float,
+        wavelength_nm: float = WAVELENGTH_GREEN,
+        object_distance_mm: Optional[float] = None,
     ) -> Optional[Tuple[float, float]]:
         """Ray-traced off-axis estimators: (coma, astigmatism).
 
@@ -475,11 +550,14 @@ class AberrationsCalculator:
         sagittal best foci, ``|tan - sag|``. Both use exact 3D tracing
         (single lenses via a one-element system wrapper), so no shape-factor
         heuristics, sign conventions, or stop-shift approximations enter.
-        Object at infinity; entrance pupil is the first-element aperture.
+        The entrance pupil is the first-element aperture; a finite object
+        distance moves the launch point to the object.
 
         Args:
             field_angle_deg: Off-axis field angle in degrees.
             wavelength_nm: Traced wavelength in nm.
+            object_distance_mm: Finite object distance in mm, or None for
+                collimated input.
 
         Returns:
             (coma_mm, astigmatism_mm), or None if tracing fails. Failure used
@@ -488,7 +566,9 @@ class AberrationsCalculator:
             geometries whose trace failed. The 2D tracer returns MISSED rather
             than raising, so these paths were reached in practice.
         """
-        cached = self._field_cache_get("estimators", field_angle_deg, wavelength_nm)
+        cached = self._field_cache_get(
+            "estimators", field_angle_deg, wavelength_nm, object_distance_mm
+        )
         if cached is not None:
             return cached
         try:
@@ -498,6 +578,7 @@ class AberrationsCalculator:
                 field_angle_deg=field_angle_deg,
                 wavelength_nm=wavelength_nm,
                 num_points=11,
+                object_distance_mm=object_distance_mm,
             )
             errors = fan.get("ray_errors_mm", fan.get("transverse_aberration", []))
             coma = (errors[0] + errors[-1]) / 2.0 if len(errors) >= 2 else 0.0
@@ -506,12 +587,19 @@ class AberrationsCalculator:
                 max_field_angle_deg=max(field_angle_deg, 0.5),
                 num_points=6,
                 wavelength_nm=wavelength_nm,
+                object_distance_mm=object_distance_mm,
             )
             astigmatism = abs(tan[-1] - sag[-1]) if tan and sag else 0.0
         except Exception as e:
             logger.warning("Field estimators ray trace failed: %s", e)
             return None
-        self._field_cache_put("estimators", field_angle_deg, wavelength_nm, (coma, astigmatism))
+        self._field_cache_put(
+            "estimators",
+            field_angle_deg,
+            wavelength_nm,
+            (coma, astigmatism),
+            object_distance_mm,
+        )
         return coma, astigmatism
 
     def _calculate_coma(
@@ -519,6 +607,7 @@ class AberrationsCalculator:
         focal_length: float,
         field_angle_deg: float,
         wavelength_nm: float = WAVELENGTH_GREEN,
+        object_distance_mm: Optional[float] = None,
     ) -> float:
         """Transverse coma from the traced ray fan (0.0 on axis by symmetry).
 
@@ -526,10 +615,13 @@ class AberrationsCalculator:
             focal_length: Kept for API compatibility (unused; the value is
                 traced, not scaled from paraxial quantities).
             wavelength_nm: Traced wavelength in nm.
+            object_distance_mm: Finite object distance in mm.
         """
         if abs(field_angle_deg) < EPSILON:
             return 0.0
-        coma, _ = self._calculate_field_estimators(field_angle_deg, wavelength_nm)
+        coma, _ = self._calculate_field_estimators(
+            field_angle_deg, wavelength_nm, object_distance_mm
+        )
         return coma
 
     def _calculate_astigmatism(
@@ -537,6 +629,7 @@ class AberrationsCalculator:
         focal_length: float,
         field_angle_deg: float,
         wavelength_nm: float = WAVELENGTH_GREEN,
+        object_distance_mm: Optional[float] = None,
     ) -> float:
         """Longitudinal astigmatism as the traced tan/sag focus split.
 
@@ -544,10 +637,13 @@ class AberrationsCalculator:
             focal_length: Kept for API compatibility (unused; the value is
                 traced, not f * theta^2).
             wavelength_nm: Traced wavelength in nm.
+            object_distance_mm: Finite object distance in mm.
         """
         if abs(field_angle_deg) < EPSILON:
             return 0.0
-        _, astigmatism = self._calculate_field_estimators(field_angle_deg, wavelength_nm)
+        _, astigmatism = self._calculate_field_estimators(
+            field_angle_deg, wavelength_nm, object_distance_mm
+        )
         return astigmatism
 
     def _calculate_petzval_radius(self, focal_length: float) -> float:
@@ -583,6 +679,7 @@ class AberrationsCalculator:
         wavelength_nm: float = WAVELENGTH_GREEN,
         num_points: int = 21,
         pupil_axis: str = "y",
+        object_distance_mm: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Interface for calculating ray fan.
@@ -595,6 +692,7 @@ class AberrationsCalculator:
         else:
             system = OpticalSystem(name=self.lens.name)
             system.add_lens(self.lens)
+            system.object_distance_mm = getattr(self.lens, "object_distance_mm", None)
 
         analysis = GeometricTraceAnalysis(system)
         return analysis.calculate_ray_fan(
@@ -602,6 +700,7 @@ class AberrationsCalculator:
             wavelength_nm=wavelength_nm,
             num_points=num_points,
             pupil_axis=pupil_axis,
+            object_distance_mm=object_distance_mm,
         )
 
     def calculate_field_curvature(
@@ -609,6 +708,7 @@ class AberrationsCalculator:
         max_field_angle_deg: float = 20.0,
         num_points: int = 11,
         wavelength_nm: float = WAVELENGTH_GREEN,
+        object_distance_mm: Optional[float] = None,
     ) -> Tuple[List[float], List[float], List[float]]:
         """
         Interface for field curvature calculation.
@@ -622,12 +722,14 @@ class AberrationsCalculator:
         else:
             system = OpticalSystem(name=self.lens.name)
             system.add_lens(self.lens)
+            system.object_distance_mm = getattr(self.lens, "object_distance_mm", None)
 
         analysis = GeometricTraceAnalysis(system)
         data = analysis.calculate_field_curvature_distortion(
             max_field_angle_deg=max_field_angle_deg,
             num_points=num_points,
             wavelength_nm=wavelength_nm,
+            object_distance_mm=object_distance_mm,
         )
         return (
             data["field_angles_deg"],
@@ -640,6 +742,7 @@ class AberrationsCalculator:
         max_field_angle_deg: float = 20.0,
         num_points: int = 11,
         wavelength_nm: float = WAVELENGTH_GREEN,
+        object_distance_mm: Optional[float] = None,
     ) -> Tuple[List[float], List[float]]:
         """
         Interface for distortion curve calculation.
@@ -653,12 +756,14 @@ class AberrationsCalculator:
         else:
             system = OpticalSystem(name=self.lens.name)
             system.add_lens(self.lens)
+            system.object_distance_mm = getattr(self.lens, "object_distance_mm", None)
 
         analysis = GeometricTraceAnalysis(system)
         data = analysis.calculate_field_curvature_distortion(
             max_field_angle_deg=max_field_angle_deg,
             num_points=num_points,
             wavelength_nm=wavelength_nm,
+            object_distance_mm=object_distance_mm,
         )
         return data["field_angles_deg"], data["distortion_pct"]
 
@@ -667,6 +772,7 @@ class AberrationsCalculator:
         focal_length: float,
         wavelength_nm: float = WAVELENGTH_GREEN,
         grid_size: int = 32,
+        object_distance_mm: Optional[float] = None,
     ) -> Tuple[float, float]:
         """Calculate the on-axis Strehl ratio from the traced wavefront error.
 
@@ -692,17 +798,23 @@ class AberrationsCalculator:
                 computation itself; kept for API compatibility).
             wavelength_nm: Wavelength in nm at which to evaluate.
             grid_size: Pupil sampling grid (grid_size x grid_size rays).
+            object_distance_mm: Finite object distance in mm. None uses the
+                target's setting; an unset target is collimated.
 
         Returns:
             Tuple of (strehl_ratio, wfe_rms_waves), both clamped to
             physical ranges. (0.0, 0.0) if the wavefront cannot be
             computed (e.g. numpy missing or all rays vignetted).
         """
-        key = self._strehl_state_key(wavelength_nm, grid_size)
+        if object_distance_mm is None:
+            object_distance_mm = getattr(self.target, "object_distance_mm", None)
+        key = self._strehl_state_key(wavelength_nm, grid_size, object_distance_mm)
         if key is not None and key in self._strehl_cache:
             return self._strehl_cache[key]
         wfe_rms = self._calculate_wavefront_rms_waves(
-            wavelength_nm=wavelength_nm, grid_size=grid_size
+            wavelength_nm=wavelength_nm,
+            grid_size=grid_size,
+            object_distance_mm=object_distance_mm,
         )
         if wfe_rms is None:
             return 0.0, 0.0
@@ -731,20 +843,40 @@ class AberrationsCalculator:
     #: Lens fields that do not affect the pupil trace. Excluded from the trace
     #: cache key so renaming a lens, reloading it from the database (a new id)
     #: or editing its free-form metadata does not throw the cache away.
-    _STREHL_NON_OPTICAL_FIELDS = frozenset({"id", "name", "created_at", "modified_at", "metadata"})
+    _STREHL_NON_OPTICAL_FIELDS = frozenset(
+        {
+            "id",
+            "name",
+            "created_at",
+            "modified_at",
+            "metadata",
+            "fields",
+        }
+    )
 
-    def _field_cache_get(self, kind: str, field_angle: float, wavelength_nm: float) -> Any:
+    def _field_cache_get(
+        self,
+        kind: str,
+        field_angle: float,
+        wavelength_nm: float,
+        object_distance_mm: Optional[float] = None,
+    ) -> Any:
         """Cached traced-field result, or None when it must be recomputed."""
-        key = self._field_state_key(kind, field_angle, wavelength_nm)
+        key = self._field_state_key(kind, field_angle, wavelength_nm, object_distance_mm)
         if key is None:
             return None
         return self._field_cache.get(key)
 
     def _field_cache_put(
-        self, kind: str, field_angle: float, wavelength_nm: float, value: Any
+        self,
+        kind: str,
+        field_angle: float,
+        wavelength_nm: float,
+        value: Any,
+        object_distance_mm: Optional[float] = None,
     ) -> None:
         """Store a traced-field result, dropping the oldest when full."""
-        key = self._field_state_key(kind, field_angle, wavelength_nm)
+        key = self._field_state_key(kind, field_angle, wavelength_nm, object_distance_mm)
         if key is None:
             return
         if len(self._field_cache) >= self._FIELD_CACHE_MAX:
@@ -754,28 +886,41 @@ class AberrationsCalculator:
         self._field_cache[key] = value
 
     def _field_state_key(
-        self, kind: str, field_angle: float, wavelength_nm: float
+        self,
+        kind: str,
+        field_angle: float,
+        wavelength_nm: float,
+        object_distance_mm: Optional[float] = None,
     ) -> Optional[tuple]:
         """Cache key for a traced field result.
 
         ``kind`` separates the result shapes that share one optical state
         (the metrics dict and the estimator tuple) so they cannot collide.
+        The object distance is part of the key: the same field traced from
+        a different conjugate is a different result.
         """
         state = self._trace_state_key(wavelength_nm)
         if state is None:
             return None
-        return (kind, round(float(field_angle), 9)) + state
+        distance = None if object_distance_mm is None else round(float(object_distance_mm), 9)
+        return (kind, round(float(field_angle), 9), distance) + state
 
-    def _strehl_state_key(self, wavelength_nm: float, grid_size: int) -> Optional[tuple]:
+    def _strehl_state_key(
+        self,
+        wavelength_nm: float,
+        grid_size: int,
+        object_distance_mm: Optional[float] = None,
+    ) -> Optional[tuple]:
         """Hashable snapshot of everything the pupil trace depends on.
 
-        The optical state plus the pupil grid: the grid size is a property of
-        this trace, not of the optics.
+        The optical state, the conjugate and the pupil grid: the grid size is
+        a property of this trace, not of the optics.
         """
         state = self._trace_state_key(wavelength_nm)
         if state is None:
             return None
-        return state + (grid_size,)
+        distance = None if object_distance_mm is None else round(float(object_distance_mm), 9)
+        return state + (distance, grid_size)
 
     def _trace_state_key(self, wavelength_nm: float) -> Optional[tuple]:
         """Hashable snapshot of everything a ray trace depends on.
@@ -849,6 +994,7 @@ class AberrationsCalculator:
         self,
         wavelength_nm: float = WAVELENGTH_GREEN,
         grid_size: int = 32,
+        object_distance_mm: Optional[float] = None,
     ) -> Optional[Tuple[float, Any]]:
         """Trace the exit-pupil wavefront and return its RMS error in waves.
 
@@ -860,6 +1006,8 @@ class AberrationsCalculator:
             wavelength_nm: Wavelength in nm (lens indices are temporarily
                 updated to this wavelength and restored afterwards).
             grid_size: Pupil sampling grid.
+            object_distance_mm: Finite object distance in mm. None uses the
+                target's setting; an unset target is collimated.
 
         Returns:
             (rms_waves, valid_waves_array) or None if unavailable.
@@ -877,6 +1025,8 @@ class AberrationsCalculator:
             logger.warning("Wavefront sensor unavailable: %s", e)
             return None
 
+        if object_distance_mm is None:
+            object_distance_mm = getattr(self.target, "object_distance_mm", None)
         if self.is_system:
             system = self.target
         else:
@@ -896,6 +1046,7 @@ class AberrationsCalculator:
                 field_angle_deg=0.0,
                 wavelength_nm=wavelength_nm,
                 grid_size=grid_size,
+                object_distance_mm=object_distance_mm,
             )
             w_map = np.asarray(wavefront.W, dtype=float)
             y_map = np.asarray(wavefront.Y, dtype=float)
@@ -947,42 +1098,40 @@ class AberrationsCalculator:
         wavelength_mm = wavelength_nm * 1e-6  # nm to mm
         return 1.0 / (wavelength_mm * f_num)
 
-    def _calculate_spot_rms(self) -> Optional[float]:
+    def _calculate_spot_rms(
+        self,
+        wavelength_nm: float = WAVELENGTH_GREEN,
+        object_distance_mm: Optional[float] = None,
+    ) -> Optional[float]:
         """Calculate RMS spot size using ray tracing (System only).
 
         The measurement plane is the system's configured
-        ``image_plane_x_mm`` when set; otherwise it is the back-focal plane.
+        ``image_plane_x_mm`` when set; otherwise it is the paraxial focus for
+        the current conjugate.
         """
         if not self.is_system:
             return 0
         try:
+            from .analysis.paraxial import resolve_image_plane_x
             from .ray_tracer import SystemRayTracer3D
 
             tracer = SystemRayTracer3D(self.target)
 
             # Use trace_off_axis_rays for consistent bundle generation
-            rays = tracer.trace_off_axis_rays(field_angle_deg=0.0, num_rays=21)
+            rays = tracer.trace_off_axis_rays(
+                field_angle_deg=0.0,
+                num_rays=21,
+                object_distance_mm=object_distance_mm,
+            )
 
-            focus_x = getattr(self.target, "image_plane_x_mm", None)
-            if focus_x is not None:
-                try:
-                    focus_x = float(focus_x)
-                except (TypeError, ValueError):
-                    focus_x = None
-                if focus_x is not None and not math.isfinite(focus_x):
-                    focus_x = None
-
+            focus_x = resolve_image_plane_x(
+                self.target,
+                wavelength_nm,
+                tracer=tracer,
+                object_distance_mm=object_distance_mm,
+            )
             if focus_x is None:
-                f = self.target.get_system_focal_length()
-                if not f:
-                    return None
-
-                bfl = self.target.calculate_back_focal_length()
-                if bfl is None:
-                    return None
-
-                last_elem = self.target.elements[-1]
-                focus_x = last_elem.position + last_elem.thickness + bfl
+                return None
 
             y_hits = []
             for ray in rays:
@@ -1002,7 +1151,11 @@ class AberrationsCalculator:
             logger.warning("Spot RMS ray-trace failed: %s", e)
             return None
 
-    def _calculate_spherical_aberration(self, focal_length: float) -> float:
+    def _calculate_spherical_aberration(
+        self,
+        focal_length: float,
+        object_distance_mm: Optional[float] = None,
+    ) -> float:
         """
         Calculate longitudinal spherical aberration (LSA).
 
@@ -1014,6 +1167,11 @@ class AberrationsCalculator:
         For Seidel approximation:
         LSA = -K * y^4 / f^3
 
+        Args:
+            focal_length: Effective focal length in mm.
+            object_distance_mm: Finite object distance in mm, or None for
+                collimated input.
+
         Returns:
             Longitudinal spherical aberration in mm
         """
@@ -1021,19 +1179,27 @@ class AberrationsCalculator:
             return 0
 
         # Try exact calculation first
-        exact_lsa = self._calculate_spherical_aberration_exact()
+        exact_lsa = self._calculate_spherical_aberration_exact(object_distance_mm)
         if exact_lsa is not None:
             return exact_lsa
 
         # Fallback to Seidel approximation (only for single lens)
         if not self.is_system:
-            return self._calculate_spherical_aberration_seidel(focal_length)
+            return self._calculate_spherical_aberration_seidel(focal_length, object_distance_mm)
         return 0
 
-    def _calculate_spherical_aberration_exact(self) -> Optional[float]:
+    def _calculate_spherical_aberration_exact(
+        self, object_distance_mm: Optional[float] = None
+    ) -> Optional[float]:
         """
         Calculate LSA using exact ray tracing.
-        Returns None if calculation fails (e.g. TIR, missing dependencies).
+
+        Args:
+            object_distance_mm: Finite object distance in mm, or None for
+                collimated input.
+
+        Returns:
+            None if calculation fails (e.g. TIR, missing dependencies).
         """
         try:
             if self.is_system:
@@ -1045,10 +1211,17 @@ class AberrationsCalculator:
                 tracer = SystemRayTracer3D(self.target)
 
                 # Trace Marginal Ray (near edge of pupil)
-                rays_m = tracer.trace_off_axis_rays(field_angle_deg=0.0, num_rays=10)
-                ray_m = rays_m[-1]  # Highest ray
+                rays_m = tracer.trace_off_axis_rays(
+                    field_angle_deg=0.0,
+                    num_rays=10,
+                    object_distance_mm=object_distance_mm,
+                )
+                # Outermost ray that actually reached the exit. At a finite
+                # conjugate the rim ray can graze the edge of the first
+                # surface and be vignetted, which is not a failed trace.
+                ray_m = next((ray for ray in reversed(rays_m) if not ray.terminated), None)
 
-                if ray_m.terminated or abs(ray_m.direction.y) < 1e-9:
+                if ray_m is None or abs(ray_m.direction.y) < 1e-9:
                     return None
                 m_focus = ray_m.origin.x - ray_m.origin.y * (ray_m.direction.x / ray_m.direction.y)
 
@@ -1058,7 +1231,12 @@ class AberrationsCalculator:
                 ep_x = self.target.elements[0].position
                 start_x = ep_x - 50.0
                 direction = vec3(1.0, 0.0, 0.0)
-                origin = vec3(ep_x, 0.001, 0.0) - direction * ((ep_x - start_x) / direction.x)
+                if object_distance_mm is None:
+                    origin = vec3(ep_x, 0.001, 0.0) - direction * ((ep_x - start_x) / direction.x)
+                else:
+                    # Same near-axis reference, launched from the object.
+                    origin = vec3(ep_x - object_distance_mm, 0.0, 0.0)
+                    direction = (vec3(ep_x, 0.001, 0.0) - origin).normalize()
                 ray_p = Ray3D(origin, direction)
                 tracer.trace_ray(ray_p)
 
@@ -1075,16 +1253,24 @@ class AberrationsCalculator:
 
                 # Original single lens logic
                 tracer = LensRayTracer(self.lens)
-                start_x = -10.0 - self.thickness
                 y_marginal = self.diameter / 2.0
-                ray_marginal = Ray(start_x, y_marginal, angle_rad=0.0)
+
+                def _ray_at(height: float):
+                    if object_distance_mm is None:
+                        start_x = -10.0 - self.thickness
+                        return Ray(start_x, height, angle_rad=0.0)
+                    origin_x = -float(object_distance_mm)
+                    angle = math.atan2(height, float(object_distance_mm))
+                    return Ray(origin_x, 0.0, angle_rad=angle)
+
+                ray_marginal = _ray_at(y_marginal)
                 tracer.trace_ray(ray_marginal)
                 if ray_marginal.terminated or abs(math.tan(ray_marginal.angle)) < 1e-9:
                     return None
                 marginal_focus = ray_marginal.x - ray_marginal.y / math.tan(ray_marginal.angle)
 
                 y_paraxial = self.diameter / 2.0 * 0.01
-                ray_paraxial = Ray(start_x, y_paraxial, angle_rad=0.0)
+                ray_paraxial = _ray_at(y_paraxial)
                 tracer.trace_ray(ray_paraxial)
                 if abs(math.tan(ray_paraxial.angle)) < 1e-9:
                     return None
@@ -1272,15 +1458,20 @@ INTERPRETATION:
 
         return summary
 
-    def _calculate_spherical_aberration_seidel(self, focal_length: float) -> float:
+    def _calculate_spherical_aberration_seidel(
+        self,
+        focal_length: float,
+        object_distance_mm: Optional[float] = None,
+    ) -> float:
         """Third-order Seidel longitudinal SA for a single spherical lens.
 
         Standard thin-lens form (Kingslake/Smith): with curvatures
         c1 = 1/R1, c2 = 1/R2 (0 for flat, so plano lenses work), shape
-        factor B = (c1+c2)/(c1-c2) and conjugate factor C = -1 (object at
-        infinity), LSA = -(y^2/8f)([(n/(n-1))^2 + (n+2)/(n(n-1)^2)
-        (B + 2(n^2-1)/(n+2) C)^2]). Last-resort fallback when exact
-        tracing fails; validated to agree with the exact trace within
+        factor B = (c1+c2)/(c1-c2) and conjugate factor C, LSA =
+        -(y^2/8f)([(n/(n-1))^2 + (n+2)/(n(n-1)^2)
+        (B + 2(n^2-1)/(n+2) C)^2]). C = -1 for an object at infinity and
+        (2f - s)/s at a finite object distance s. Last-resort fallback when
+        exact tracing fails; validated to agree with the exact trace within
         ~7% over an aperture x bending sweep (D = 10-40 mm).
         """
         c1 = 0.0 if not math.isfinite(self.radius_1) else 1.0 / self.radius_1
@@ -1290,7 +1481,10 @@ INTERPRETATION:
         else:
             B = (c1 + c2) / (c1 - c2)
 
-        C = -1.0  # Object at infinity
+        if object_distance_mm is None or abs(object_distance_mm) < EPSILON:
+            C = -1.0  # Object at infinity
+        else:
+            C = (2.0 * focal_length - object_distance_mm) / object_distance_mm
         n = self.n
         y = self.diameter / 2.0
 

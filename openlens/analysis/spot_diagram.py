@@ -4,10 +4,10 @@ from typing import List, Tuple, Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-from ..vector3 import vec3
-from ..ray_tracer import Ray3D, SystemRayTracer3D
+from ..ray_tracer import SystemRayTracer3D
 from ..optical_system import OpticalSystem
 from ..constants import NM_TO_MM, WAVELENGTH_GREEN
+from ..fields import launch_field_ray
 from .paraxial import resolve_image_plane_x
 
 
@@ -62,6 +62,7 @@ class SpotDiagram:
         image_plane_x_mm: Optional[float] = None,
         num_rings: int = 6,
         focus_shift_mm: float = 0.0,
+        object_distance_mm: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Trace rays to generate a spot diagram.
@@ -74,12 +75,16 @@ class SpotDiagram:
                 uses the system's configured plane, else the paraxial focus.
             num_rings: Sampling density.
             focus_shift_mm: Offset from the nominal image plane (defocus).
+            object_distance_mm: Finite object distance in mm. None uses the
+                system's setting; an unset system is collimated.
 
         Returns:
             Dictionary containing spot data and statistics.
         """
         # Convert wavelength to mm
         wl_mm = wavelength_nm * NM_TO_MM
+        if object_distance_mm is None:
+            object_distance_mm = getattr(self.system, "object_distance_mm", None)
 
         # Store original states and update lenses for this wavelength
         original_states = []
@@ -101,7 +106,10 @@ class SpotDiagram:
             # the focus, or well behind a collimated system.
             if image_plane_x_mm is None:
                 image_plane_x_mm = resolve_image_plane_x(
-                    self.system, wavelength_nm, tracer=self.tracer
+                    self.system,
+                    wavelength_nm,
+                    tracer=self.tracer,
+                    object_distance_mm=object_distance_mm,
                 )
                 if image_plane_x_mm is None:
                     image_plane_x_mm = self.system.get_total_length() + 100
@@ -111,29 +119,16 @@ class SpotDiagram:
             # Generate pupil points
             pupil_points = self.generate_hexapolar_grid(rings=num_rings)
 
-            # Calculate ray direction based on field angles
-            # Tan(theta)
-            tan_y = math.tan(math.radians(field_angle_y_deg))
-            tan_z = math.tan(math.radians(field_angle_x_deg))
-
-            # Direction vector (normalized later by Ray3D)
-            # dx=1, dy=tan_y, dz=tan_z
-            direction = vec3(1.0, tan_y, tan_z).normalize()
-
-            # Start rays before first element
-            start_x = self.system.elements[0].position - 50.0
-
-            first_lens_x = self.system.elements[0].position
-
             for py, pz in pupil_points:
-                # Launch ray from pupil coordinate projected back to start_x
-                # Back-propagate from aperture to start position
-                dist = first_lens_x - start_x
-
-                t = dist / direction.x
-                origin = vec3(first_lens_x, py, pz) - direction * t
-
-                ray = Ray3D(origin, direction, wavelength=wl_mm)
+                ray = launch_field_ray(
+                    self.system,
+                    angle_y_deg=field_angle_y_deg,
+                    angle_z_deg=field_angle_x_deg,
+                    pupil_y=py,
+                    pupil_z=pz,
+                    object_distance_mm=object_distance_mm,
+                    wavelength_mm=wl_mm,
+                )
                 self.tracer.trace_ray(ray)
 
                 if not ray.terminated:
@@ -217,6 +212,7 @@ class SpotDiagram:
         wavelength_nm: float = WAVELENGTH_GREEN,
         image_plane_x_mm: Optional[float] = None,
         focus_shift_mm: float = 0.0,
+        object_distance_mm: Optional[float] = None,
     ) -> Optional[Tuple[float, float]]:
         """Trace the single ray through the centre of the entrance pupil.
 
@@ -231,6 +227,8 @@ class SpotDiagram:
             image_plane_x_mm: Absolute X position of the image plane. If None,
                 uses the system's configured plane, else the paraxial focus.
             focus_shift_mm: Offset from the nominal image plane (defocus).
+            object_distance_mm: Finite object distance in mm. None uses the
+                system's setting; an unset system is collimated.
 
         Returns:
             The ``(y, z)`` intersection with the image plane, or None if the
@@ -238,6 +236,8 @@ class SpotDiagram:
         """
         if not self.system.elements:
             return None
+        if object_distance_mm is None:
+            object_distance_mm = getattr(self.system, "object_distance_mm", None)
 
         wl_mm = wavelength_nm * NM_TO_MM
         original_states = []
@@ -249,22 +249,22 @@ class SpotDiagram:
         try:
             if image_plane_x_mm is None:
                 image_plane_x_mm = resolve_image_plane_x(
-                    self.system, wavelength_nm, tracer=self.tracer
+                    self.system,
+                    wavelength_nm,
+                    tracer=self.tracer,
+                    object_distance_mm=object_distance_mm,
                 )
                 if image_plane_x_mm is None:
                     image_plane_x_mm = self.system.get_total_length() + 100
             target_x = image_plane_x_mm + focus_shift_mm
 
-            tan_y = math.tan(math.radians(field_angle_y_deg))
-            tan_z = math.tan(math.radians(field_angle_x_deg))
-            direction = vec3(1.0, tan_y, tan_z).normalize()
-
-            first_lens_x = self.system.elements[0].position
-            start_x = first_lens_x - 50.0
-            t = (first_lens_x - start_x) / direction.x
-            origin = vec3(first_lens_x, 0.0, 0.0) - direction * t
-
-            ray = Ray3D(origin, direction, wavelength=wl_mm)
+            ray = launch_field_ray(
+                self.system,
+                angle_y_deg=field_angle_y_deg,
+                angle_z_deg=field_angle_x_deg,
+                object_distance_mm=object_distance_mm,
+                wavelength_mm=wl_mm,
+            )
             self.tracer.trace_ray(ray)
             if ray.terminated or abs(ray.direction.x) <= 1e-6:
                 return None

@@ -77,8 +77,9 @@ except ImportError:  # pragma: no cover - depends on the environment
 
 # Import internal dependencies
 from ..vector3 import vec3
-from ..ray_tracer import Ray3D, SystemRayTracer3D
+from ..ray_tracer import SystemRayTracer3D
 from ..optical_system import OpticalSystem
+from ..fields import launch_field_ray
 from .paraxial import find_paraxial_focus
 
 logger = logging.getLogger(__name__)
@@ -109,6 +110,7 @@ class WavefrontSensor:
         field_angle_deg: float = 0.0,
         wavelength_nm: float = WAVELENGTH_GREEN,
         grid_size: int = 64,
+        object_distance_mm: Optional[float] = None,
     ) -> WavefrontError:
         """Calculate the pupil wavefront at *wavelength_nm*.
 
@@ -127,10 +129,14 @@ class WavefrontSensor:
             field_angle_deg: Field angle in degrees.
             wavelength_nm: Wavelength to trace at, in nm.
             grid_size: Number of pupil samples per axis.
+            object_distance_mm: Finite object distance in mm. None uses the
+                system's setting; an unset system is collimated.
 
         Returns:
             WavefrontError with the Y, Z pupil grids and W in waves.
         """
+        if object_distance_mm is None:
+            object_distance_mm = getattr(self.system, "object_distance_mm", None)
         saved = []
         try:
             # elements is None in the degraded (no-numpy) path, where the
@@ -153,6 +159,7 @@ class WavefrontSensor:
                 field_angle_deg=field_angle_deg,
                 wavelength_nm=wavelength_nm,
                 grid_size=grid_size,
+                object_distance_mm=object_distance_mm,
             )
         finally:
             for lens, index, wavelength in saved:
@@ -164,6 +171,7 @@ class WavefrontSensor:
         field_angle_deg: float = 0.0,
         wavelength_nm: float = WAVELENGTH_GREEN,
         grid_size: int = 64,
+        object_distance_mm: Optional[float] = None,
     ) -> WavefrontError:
         """
         Calculate wavefront error map at the exit pupil.
@@ -180,6 +188,13 @@ class WavefrontSensor:
         Note: lens refractive indices are used as currently set on the
         system lenses; callers needing another wavelength must call
         ``lens.update_refractive_index()`` first (and restore afterwards).
+
+        Args:
+            field_angle_deg: Field angle in degrees.
+            wavelength_nm: Wavelength in nm.
+            grid_size: Number of pupil samples per axis.
+            object_distance_mm: Finite object distance in mm, or None for
+                collimated input.
 
         Returns:
             WavefrontError object containing Y, Z grids (pupil coords) and W
@@ -208,19 +223,19 @@ class WavefrontSensor:
         def _nan_map() -> WavefrontError:
             return WavefrontError(Y, Z, np.full_like(Y, float("nan")))
 
-        angle_rad = math.radians(field_angle_deg)
-        dx = math.cos(angle_rad)
-        dy = math.sin(angle_rad)
-        direction = vec3(dx, dy, 0)
-
         pupil_x = self.system.elements[0].position
         # The pupil grid below launches from this plane; the shared paraxial
         # search uses the same offset (#460).
-        dist = PARAXIAL_LAUNCH_OFFSET_MM
+        start_x = pupil_x - PARAXIAL_LAUNCH_OFFSET_MM
 
         # 2. Gaussian image point from an on-axis paraxial ray. The shared
         # search sets and restores the lenses for the wavelength.
-        x_focus = find_paraxial_focus(self.system, wavelength_nm, tracer=self.tracer)
+        x_focus = find_paraxial_focus(
+            self.system,
+            wavelength_nm,
+            tracer=self.tracer,
+            object_distance_mm=object_distance_mm,
+        )
         if x_focus is None:
             logger.warning(
                 "Paraxial focus unavailable (collimated exit or failed trace); "
@@ -229,9 +244,15 @@ class WavefrontSensor:
             return _nan_map()
 
         # 3. Chief ray through the pupil centre; its image-plane intercept
-        # is the reference-sphere centre Q.
-        chief_origin = vec3(pupil_x, 0.0, 0.0) - direction * (dist / dx)
-        chief = Ray3D(chief_origin, direction, wavelength=wavelength_mm)
+        # is the reference-sphere centre Q. At a finite object distance all
+        # rays start at the object point instead of arriving collimated.
+        chief = launch_field_ray(
+            self.system,
+            angle_y_deg=field_angle_deg,
+            object_distance_mm=object_distance_mm,
+            wavelength_mm=wavelength_mm,
+            start_x=start_x,
+        )
         self.tracer.trace_ray(chief)
         # An untraced chief ray must invalidate the whole map. Without the
         # path check, a ray that was blocked but never flagged terminated (or
@@ -279,10 +300,15 @@ class WavefrontSensor:
                     W[i, j] = float("nan")
                     continue
 
-                # Ray through (pupil_x, py, pz), back-projected to start plane.
-                origin = vec3(pupil_x, py, pz) - direction * (dist / dx)
-
-                ray = Ray3D(origin, direction, wavelength=wavelength_mm)
+                ray = launch_field_ray(
+                    self.system,
+                    angle_y_deg=field_angle_deg,
+                    pupil_y=py,
+                    pupil_z=pz,
+                    object_distance_mm=object_distance_mm,
+                    wavelength_mm=wavelength_mm,
+                    start_x=start_x,
+                )
                 self.tracer.trace_ray(ray)
 
                 if ray.terminated:

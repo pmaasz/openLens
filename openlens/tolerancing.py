@@ -534,17 +534,43 @@ class MonteCarloAnalyzer:
         return perturbations
 
     def _spot_rms(self, focus_shift_mm: float = 0.0) -> float:
-        """RMS spot radius at an optional image-plane shift (inf on failure).
+        """Weighted RMS spot radius across the system's fields (inf on failure).
+
+        The same field list and conjugate the analyses use feed the trial
+        metric, so tolerancing does not tolerance a different design from the
+        one being reported. Empty fields keep the historical on-axis field.
 
         A vignetted result reports ``rms_radius: None`` rather than 0.0, so it
         becomes inf here - an unusable design, never a perfect one.
         """
         try:
-            spot = SpotDiagram(self.nominal_system)
-            value = spot.trace_spot(focus_shift_mm=focus_shift_mm)["rms_radius"]
-            if value is None:
+            system = self.nominal_system
+            distance = getattr(system, "object_distance_mm", None)
+            fields = list(getattr(system, "fields", None) or [])
+            if not fields:
+                fields = [None]
+
+            spot = SpotDiagram(system)
+            total = 0.0
+            total_weight = 0.0
+            for field in fields:
+                if field is None:
+                    angle, weight = 0.0, 1.0
+                else:
+                    angle, weight = field.resolve_angle_deg(distance), field.weight
+                result = spot.trace_spot(
+                    field_angle_y_deg=angle,
+                    focus_shift_mm=focus_shift_mm,
+                    object_distance_mm=distance,
+                )
+                value = result["rms_radius"]
+                if value is None:
+                    return float("inf")
+                total += weight * float(value) ** 2
+                total_weight += weight
+            if total_weight <= 0:
                 return float("inf")
-            return float(value)
+            return math.sqrt(total / total_weight)
         except Exception as e:
             logger.debug("Spot evaluation failed: %s", e)
             return float("inf")
