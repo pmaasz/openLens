@@ -58,7 +58,9 @@ def material_index(name: str, wavelength_nm: float = WAVELENGTH_D_LINE) -> float
             material = None
         if material is not None:
             try:
-                return float(material.get_refractive_index(wavelength_nm))  # type: ignore[attr-defined]
+                return float(
+                    material.get_refractive_index(wavelength_nm)  # type: ignore[attr-defined]
+                )
             except Exception:
                 pass
     return float(DEFAULT_MATERIAL_INDICES.get(name, REFRACTIVE_INDEX_BK7))
