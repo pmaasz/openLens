@@ -185,6 +185,14 @@ a hard physical boundary.
 Wavefront maps are sampled on a pupil grid. If too few rays reach the pupil,
 the result is reported as unavailable rather than as a good wavefront.
 
+The same map is decomposed into normalized Zernike modes. Coefficients are
+least-squares fits over the valid samples only, in waves, and can be labeled in
+Noll or OSA/ANSI indexing. The decomposition reports each term, its RMS, the
+residual RMS and the fraction of the pupil that was fitted, so an obscured or
+vignetted pupil is visible in the result instead of producing NaN
+coefficients. Piston and tilt are removed by default, matching the wavefront
+map's chief-ray reference.
+
 Through-Focus and Tolerancing
 -----------------------------
 
@@ -221,4 +229,5 @@ Where to Look in the Code
 - ``openlens/analysis/geometric.py``: field curves and distortion.
 - ``openlens/analysis/psf_mtf.py``: geometric and diffraction PSF/MTF.
 - ``openlens/analysis/diffraction_psf.py``: pupil wavefront propagation.
+- ``openlens/analysis/zernike.py``: Zernike decomposition of the pupil.
 - ``openlens/tolerancing.py``: Monte Carlo and sensitivity analysis.

@@ -363,3 +363,48 @@ def plot_wavefront(ax, wf_data) -> None:
     ax.set_title("Exit Pupil Wavefront Error")
     ax.set_xlabel("X Pupil")
     ax.set_ylabel("Y Pupil")
+
+
+def plot_zernike_bars(ax, fit) -> None:
+    """Bar chart of the fitted Zernike coefficients, in waves."""
+    values = list(fit.coefficients)
+    positions = np.arange(len(values))
+    colours = ["#4a90d9" if value >= 0 else "#d95f4a" for value in values]
+    ax.bar(positions, values, color=colours)
+    ax.axhline(0.0, color="0.5", linewidth=0.8)
+    ax.set_xticks(positions)
+    ax.set_xticklabels([str(term.index) for term in fit.terms], fontsize="x-small")
+    ax.set_xlabel(f"Zernike index ({fit.indexing.upper()})")
+    ax.set_ylabel("Coefficient (λ)")
+    ax.set_title("Zernike Coefficients")
+    ax.grid(True, axis="y", alpha=0.3)
+    ax.text(
+        0.02,
+        0.98,
+        f"residual {fit.residual_rms:.3f} λ\n"
+        f"pupil fitted {fit.fitted_fraction:.0%}\n"
+        f"piston/tilt {'removed' if fit.piston_tilt_removed else 'included'}",
+        transform=ax.transAxes,
+        va="top",
+        fontsize="x-small",
+    )
+
+
+def plot_zernike_table(ax, fit) -> None:
+    """Coefficient table for the wavefront analysis dialog."""
+    ax.set_axis_off()
+    rows = [
+        (str(index), name, f"{coefficient:+.3f}", f"{rms:.3f}")
+        for index, name, coefficient, rms in fit.rows()
+    ]
+    table = ax.table(
+        cellText=rows,
+        colLabels=["#", "Term", "Coeff (λ)", "RMS (λ)"],
+        cellLoc="left",
+        colLoc="left",
+        loc="center",
+        bbox=[0.0, 0.0, 1.0, 0.9],
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(7)
+    ax.set_title(f"Zernike Fit ({fit.indexing.upper()})", fontsize=10)

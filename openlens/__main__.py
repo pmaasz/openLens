@@ -57,12 +57,15 @@ from openlens.io.step_export import StepExporter  # noqa: F401
 from openlens.analysis.ghost import GhostAnalyzer
 from openlens.analysis.psf_mtf import ImageQualityAnalyzer
 from openlens.analysis.diffraction_psf import WavefrontSensor
+from openlens.analysis.zernike import fit_zernike_wavefront
 from openlens.analysis.plots import (
     apply_dark_axis_theme,
     plot_ghost_analysis,
     plot_mtf,
     plot_psf,
     plot_wavefront,
+    plot_zernike_bars,
+    plot_zernike_table,
 )
 from openlens.tolerancing import deserialize_operands, serialize_operands
 
@@ -1557,14 +1560,30 @@ Ctrl+6         Tolerancing
             aim_at_stop = bool(getattr(getattr(self, "_perf_tab", None), "aim_at_stop", False))
 
             def _compute_wavefront():
-                return WavefrontSensor(system).get_pupil_wavefront(
+                wavefront = WavefrontSensor(system).get_pupil_wavefront(
                     grid_size=64, aim_at_stop=aim_at_stop
                 )
+                try:
+                    fit = fit_zernike_wavefront(wavefront)
+                except Exception as exc:
+                    logger.warning("Zernike decomposition failed: %s", exc)
+                    fit = None
+                return wavefront, fit
 
-            def _draw_wavefront(ax, wf):
-                plot_wavefront(ax, wf.W)
+            def _draw_wavefront(axes, payload):
+                wavefront, fit = payload
+                ax_map, ax_bars, ax_table = axes
+                plot_wavefront(ax_map, wavefront.W)
+                if fit is None:
+                    ax_bars.set_axis_off()
+                    ax_table.set_axis_off()
+                    return
+                plot_zernike_bars(ax_bars, fit)
+                plot_zernike_table(ax_table, fit)
 
-            self._open_analysis_dialog("Wavefront Analysis", _compute_wavefront, _draw_wavefront)
+            self._open_analysis_dialog(
+                "Wavefront Analysis", _compute_wavefront, _draw_wavefront, columns=3
+            )
         except ImportError as e:
             _report_missing_plot_dependency(self, e)
         except Exception as e:
