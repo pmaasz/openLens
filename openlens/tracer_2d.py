@@ -22,6 +22,7 @@ from .lens import _is_flat
 from .asphere import asphere_sag, asphere_slope, is_asphere
 from .geometry import FresnelFacet, LensGeometry
 from .casing import wall_entry_2d
+from .aperture_shape import ApertureShape
 
 if TYPE_CHECKING:
     from .lens import Lens
@@ -893,6 +894,7 @@ class SystemRayTracer:
         stop = self.system.get_aperture_stop()
         stop_gap = stop["gap_index"] if stop is not None else None
         stop_semi = stop["diameter"] / 2 if stop is not None and stop.get("diameter") else None
+        stop_shape = ApertureShape.from_stop(stop if stop_semi is not None else None)
 
         for i, tracer in enumerate(self._tracers):
             element = self.system.elements[i]
@@ -908,7 +910,7 @@ class SystemRayTracer:
                 break
 
             if stop_gap is not None and stop_semi is not None and stop_gap == i:
-                if not self._apply_stop(ray, stop):
+                if not self._apply_stop(ray, stop, stop_shape):
                     break
 
             if i == len(self._tracers) - 1:
@@ -962,8 +964,12 @@ class SystemRayTracer:
         ray.absorbed = True
         return True
 
-    def _apply_stop(self, ray: Ray, stop: dict) -> bool:
+    def _apply_stop(self, ray: Ray, stop: dict, shape: ApertureShape) -> bool:
         """Vignette a ray at the aperture stop plane.
+
+        Spider vanes are skipped here: this is a meridional trace and a vane
+        that does not lie in the traced plane is not a line of constant
+        ``y``. The 3D tracer applies them.
 
         Returns True if the ray passes, False if it is stopped (ray is
         terminated with the stop-plane point appended).
@@ -976,7 +982,11 @@ class SystemRayTracer:
             return False
         t = (stop_x - ray.x) / cos_a
         y_stop = ray.y if t < 0 else ray.y + t * math.sin(ray.angle)
-        if abs(y_stop) > semi:
+        if shape.is_circular:
+            blocked = abs(y_stop) > semi
+        else:
+            blocked = not shape.contains(y_stop, 0.0, semi, include_spiders=False)
+        if blocked:
             if t >= 0:
                 ray.optical_path_length += math.hypot(stop_x - ray.x, y_stop - ray.y) * ray.n
                 ray.x = stop_x

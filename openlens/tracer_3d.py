@@ -23,6 +23,7 @@ from .asphere import asphere_sag, asphere_slope, is_asphere
 from .geometry import LensGeometry
 from .casing import wall_entry_3d
 from .fields import launch_field_ray
+from .aperture_shape import ApertureShape
 
 if TYPE_CHECKING:
     from .lens import Lens
@@ -896,9 +897,9 @@ class SystemRayTracer3D:
         stop_getter = getattr(self.system, "get_aperture_stop", None)
         stop = stop_getter() if callable(stop_getter) else None
         if stop:
-            parts.append(("stop", stop.get("gap_index"), stop.get("diameter")))
+            parts.append(("stop", stop.get("gap_index"), stop.get("diameter"), stop.get("shape")))
         else:
-            parts.append(("stop", None, None))
+            parts.append(("stop", None, None, None))
         return tuple(parts)
 
     def _scene_is_current(self, batch: Dict[str, Any]) -> bool:
@@ -938,6 +939,7 @@ class SystemRayTracer3D:
         stop = stop_getter() if callable(stop_getter) else None
         stop_gap = stop["gap_index"] if stop is not None else None
         stop_semi = stop["diameter"] / 2 if stop is not None and stop.get("diameter") else None
+        stop_shape = ApertureShape.from_stop(stop if stop_semi is not None else None)
         flat_gaps = list(getattr(self.system, "air_gaps", []) or [])
         stop_x = None
         if stop_gap is not None and 0 <= stop_gap < len(flat_gaps):
@@ -952,6 +954,7 @@ class SystemRayTracer3D:
             "revision": revision,
             "stop_gap": stop_gap,
             "stop_semi": stop_semi,
+            "stop_shape": stop_shape,
             "stop_x": stop_x,
         }
         return self._batch
@@ -979,7 +982,9 @@ class SystemRayTracer3D:
                 and batch["stop_x"] is not None
                 and batch["stop_gap"] == idx
             ):
-                if not self._apply_stop(ray, batch["stop_x"], batch["stop_semi"]):
+                if not self._apply_stop(
+                    ray, batch["stop_x"], batch["stop_semi"], batch["stop_shape"]
+                ):
                     break
 
         if not ray.terminated:
@@ -1029,8 +1034,11 @@ class SystemRayTracer3D:
         return True
 
     @staticmethod
-    def _apply_stop(ray: Ray3D, stop_x: float, semi: float) -> bool:
+    def _apply_stop(ray: Ray3D, stop_x: float, semi: float, shape: ApertureShape) -> bool:
         """Vignette a ray at the aperture stop plane (centered on axis).
+
+        The circular path is kept expression-for-expression identical so a
+        default stop produces exactly the traces it did before shapes existed.
 
         Returns True if the ray passes; on a miss the stop-plane point is
         appended (with its optical path) and the ray is terminated.
@@ -1041,7 +1049,11 @@ class SystemRayTracer3D:
             return False
         t = (stop_x - ray.origin.x) / dx
         hit = ray.origin + ray.direction * t if t >= 0 else ray.origin
-        if hit.y * hit.y + hit.z * hit.z > (semi + 1e-9) ** 2:
+        if shape.is_circular:
+            blocked = hit.y * hit.y + hit.z * hit.z > (semi + 1e-9) ** 2
+        else:
+            blocked = not shape.contains(hit.y, hit.z, semi)
+        if blocked:
             if t >= 0:
                 # Same rule as the surface hit: never append a point that
                 # repeats the current origin.

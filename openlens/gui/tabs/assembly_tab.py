@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QComboBox,
     QDoubleSpinBox,
+    QSpinBox,
     QPushButton,
     QListWidget,
     QListWidgetItem,
@@ -32,6 +33,7 @@ from ..widgets.assembly_viz import AssemblyVisualizationWidget
 from ...casing import Casing
 from ...mechanical_materials import get_mechanical_material_catalog
 from ...optical_system import OpticalSystem, AirGap
+from ...aperture_shape import ApertureShape
 from ...validation import ValidationError
 from ...constants import COLOR_ERROR, COLOR_WARNING
 
@@ -236,6 +238,46 @@ class AssemblyTab(BaseTab):
         self._stop_dia_input.setSuffix(" mm")
         self._stop_dia_input.setMinimumWidth(110)
         stop_layout.addRow("Diameter (0 = n/a):", self._stop_dia_input)
+
+        self._stop_shape_combo = QComboBox()
+        self._stop_shape_combo.addItem("Circular", 0)
+        self._stop_shape_combo.addItem("Polygon (iris)", 1)
+        self._stop_shape_combo.currentIndexChanged.connect(self._sync_stop_shape_controls)
+        stop_layout.addRow("Shape:", self._stop_shape_combo)
+
+        self._stop_blades_input = QSpinBox()
+        self._stop_blades_input.setRange(3, 32)
+        self._stop_blades_input.setValue(6)
+        self._stop_blades_input.setToolTip("Number of straight iris blades")
+        stop_layout.addRow("Blades:", self._stop_blades_input)
+
+        self._stop_rotation_input = QDoubleSpinBox()
+        self._stop_rotation_input.setRange(0.0, 360.0)
+        self._stop_rotation_input.setDecimals(1)
+        self._stop_rotation_input.setSingleStep(5.0)
+        self._stop_rotation_input.setSuffix(" deg")
+        stop_layout.addRow("Rotation:", self._stop_rotation_input)
+
+        self._stop_obscuration_input = QDoubleSpinBox()
+        self._stop_obscuration_input.setRange(0.0, 95.0)
+        self._stop_obscuration_input.setDecimals(1)
+        self._stop_obscuration_input.setSuffix(" %")
+        self._stop_obscuration_input.setToolTip(
+            "Central obstruction radius as a percentage of the stop radius"
+        )
+        stop_layout.addRow("Obscuration:", self._stop_obscuration_input)
+
+        self._stop_vanes_input = QSpinBox()
+        self._stop_vanes_input.setRange(0, 12)
+        stop_layout.addRow("Spider vanes:", self._stop_vanes_input)
+
+        self._stop_vane_width_input = QDoubleSpinBox()
+        self._stop_vane_width_input.setRange(0.0, 20.0)
+        self._stop_vane_width_input.setDecimals(3)
+        self._stop_vane_width_input.setSingleStep(0.1)
+        self._stop_vane_width_input.setSuffix(" mm")
+        stop_layout.addRow("Vane width:", self._stop_vane_width_input)
+        self._sync_stop_shape_controls()
         stop_btn_row = QHBoxLayout()
         stop_set_btn = QPushButton("Set")
         stop_set_btn.clicked.connect(self._on_stop_set_clicked)
@@ -425,6 +467,9 @@ class AssemblyTab(BaseTab):
                 if stop_gap is not None and i - 1 == stop_gap:
                     dia = stop.get("diameter")
                     gap_str += f" STOP{f' Ø{dia:.2f}mm' if dia else ''}"
+                    shape = ApertureShape.from_stop(stop)
+                    if not shape.is_circular:
+                        gap_str += f" ({shape.label()})"
             align_str = ""
             if any(
                 abs(getattr(element, attr, 0.0) or 0.0) > 1e-12
@@ -456,6 +501,13 @@ class AssemblyTab(BaseTab):
             combo.setEnabled(False)
             combo.blockSignals(False)
             self._stop_dia_input.setValue(0.0)
+            self._stop_shape_combo.setCurrentIndex(0)
+            self._stop_blades_input.setValue(6)
+            self._stop_rotation_input.setValue(0.0)
+            self._stop_obscuration_input.setValue(0.0)
+            self._stop_vanes_input.setValue(0)
+            self._stop_vane_width_input.setValue(0.0)
+            self._sync_stop_shape_controls()
             self._assembly_viz.update_system(None)
             self._refresh_casing_ui()
             return
@@ -647,6 +699,10 @@ class AssemblyTab(BaseTab):
         dialog.exec()
         self._refresh_casing_materials(dialog.added_material or current)
 
+    def _sync_stop_shape_controls(self) -> None:
+        """Only a polygonal stop uses the blade count."""
+        self._stop_blades_input.setEnabled(self._stop_shape_combo.currentData() == 1)
+
     def _refresh_stop_ui(self) -> None:
         """Rebuild the stop gap combo and reflect the current stop."""
         combo = self._stop_gap_combo
@@ -666,9 +722,23 @@ class AssemblyTab(BaseTab):
             combo.setCurrentIndex(idx if idx >= 0 else 0)
             dia = stop.get("diameter")
             self._stop_dia_input.setValue(dia if dia else 0.0)
+            shape = ApertureShape.from_stop(stop)
+            self._stop_shape_combo.setCurrentIndex(1 if shape.blades >= 3 else 0)
+            self._stop_blades_input.setValue(shape.blades if shape.blades >= 3 else 6)
+            self._stop_rotation_input.setValue(shape.rotation_deg % 360.0)
+            self._stop_obscuration_input.setValue(shape.obscuration_ratio * 100.0)
+            self._stop_vanes_input.setValue(shape.spider_vanes)
+            self._stop_vane_width_input.setValue(shape.spider_width_mm)
         else:
             combo.setCurrentIndex(0)
             self._stop_dia_input.setValue(0.0)
+            self._stop_shape_combo.setCurrentIndex(0)
+            self._stop_blades_input.setValue(6)
+            self._stop_rotation_input.setValue(0.0)
+            self._stop_obscuration_input.setValue(0.0)
+            self._stop_vanes_input.setValue(0)
+            self._stop_vane_width_input.setValue(0.0)
+        self._sync_stop_shape_controls()
         combo.blockSignals(False)
 
     @_undoable_assembly_edit("Set aperture stop")
@@ -678,9 +748,17 @@ class AssemblyTab(BaseTab):
         if gap_index is None or gap_index < 0:
             return
         diameter = self._stop_dia_input.value()
+        blades = self._stop_blades_input.value() if self._stop_shape_combo.currentData() == 1 else 0
+        shape = ApertureShape(
+            blades=blades,
+            rotation_deg=self._stop_rotation_input.value(),
+            obscuration_ratio=self._stop_obscuration_input.value() / 100.0,
+            spider_vanes=self._stop_vanes_input.value(),
+            spider_width_mm=self._stop_vane_width_input.value(),
+        )
         try:
             self._optical_system.set_aperture_stop(
-                int(gap_index), diameter if diameter > 0 else None
+                int(gap_index), diameter if diameter > 0 else None, shape=shape
             )
         except ValueError:
             return

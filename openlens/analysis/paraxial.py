@@ -18,6 +18,7 @@ from ..constants import (
     PARAXIAL_LAUNCH_OFFSET_MM,
     WAVELENGTH_GREEN,
 )
+from ..aperture_shape import ApertureShape
 from ..fields import launch_field_ray
 from ..optical_system import OpticalSystem
 from ..ray_tracer import SystemRayTracer3D
@@ -108,6 +109,17 @@ def find_paraxial_focus(
         (element.lens, element.lens.wavelength, element.lens.refractive_index)
         for element in system.elements
     ]
+    # An annular stop or a spider vane blocks the near-axis ray, but the
+    # focus still exists: find it through the circular opening and restore
+    # the real shape afterwards. The geometry revision is bumped so a cached
+    # tracer rebuilds with each temporary shape.
+    saved_shape = getattr(system, "aperture_stop_shape", None)
+    bump = getattr(system, "_bump_geometry_revision", None)
+    shape_changed = saved_shape is not None and not saved_shape.is_circular
+    if shape_changed:
+        system.aperture_stop_shape = ApertureShape()
+        if callable(bump):
+            bump()
     try:
         for element in system.elements:
             element.lens.update_refractive_index(wavelength_nm=wavelength_nm)
@@ -138,3 +150,7 @@ def find_paraxial_focus(
         for lens, wavelength, index in saved:
             lens.wavelength = wavelength
             lens.refractive_index = index
+        if shape_changed and saved_shape is not None:
+            system.aperture_stop_shape = saved_shape
+            if callable(bump):
+                bump()

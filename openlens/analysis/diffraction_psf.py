@@ -80,6 +80,7 @@ from ..vector3 import vec3
 from ..ray_tracer import SystemRayTracer3D
 from ..optical_system import OpticalSystem
 from ..fields import launch_field_ray
+from ..aperture_shape import ApertureShape
 from ..ray_aiming import (
     DEFAULT_AIM_MAX_ITERATIONS,
     DEFAULT_AIM_TOLERANCE_MM,
@@ -272,10 +273,10 @@ class WavefrontSensor:
         # rays start at the object point instead of arriving collimated.
         # The chief ray is the one through the stop centre, so aiming moves
         # it when the stop is not where the paraxial pupil puts it.
-        stop = get_stop_geometry(self.system) if aim_at_stop else None
+        aim_stop = get_stop_geometry(self.system) if aim_at_stop else None
         aimer = None
-        stop_scale = 1.0
-        if stop is not None and max_r > 0:
+        aim_scale = 1.0
+        if aim_stop is not None and max_r > 0:
             aimer = RayAimer(
                 self.system,
                 angle_y_deg=field_angle_deg,
@@ -285,22 +286,40 @@ class WavefrontSensor:
                 tolerance_mm=aim_tolerance_mm,
                 max_iterations=aim_max_iterations,
             )
-            stop_scale = stop.radius_mm / max_r
+            aim_scale = aim_stop.radius_mm / max_r
 
-        if aimer is not None:
-            chief_result = aimer.aim(0.0, 0.0)
-            chief = chief_result.ray
-            if not chief_result.converged:
-                self.aim_failures += 1
-        else:
-            chief = launch_field_ray(
-                self.system,
-                angle_y_deg=field_angle_deg,
-                object_distance_mm=object_distance_mm,
-                wavelength_mm=wavelength_mm,
-                start_x=start_x,
-            )
-            self.tracer.trace_ray(chief)
+        # An annular stop or spider vane blocks the chief ray that defines the
+        # reference sphere. The reference is still the stop centre, so trace
+        # that one ray through the circular opening and restore the real shape
+        # before the pupil grid. The revision bump makes the cached tracer
+        # notice both temporary states.
+        saved_shape = getattr(self.system, "aperture_stop_shape", None)
+        bump = getattr(self.system, "_bump_geometry_revision", None)
+        shape_hidden = saved_shape is not None and not saved_shape.is_circular
+        if shape_hidden:
+            self.system.aperture_stop_shape = ApertureShape()
+            if callable(bump):
+                bump()
+        try:
+            if aimer is not None:
+                chief_result = aimer.aim(0.0, 0.0)
+                chief = chief_result.ray
+                if not chief_result.converged:
+                    self.aim_failures += 1
+            else:
+                chief = launch_field_ray(
+                    self.system,
+                    angle_y_deg=field_angle_deg,
+                    object_distance_mm=object_distance_mm,
+                    wavelength_mm=wavelength_mm,
+                    start_x=start_x,
+                )
+                self.tracer.trace_ray(chief)
+        finally:
+            if shape_hidden:
+                self.system.aperture_stop_shape = saved_shape
+                if callable(bump):
+                    bump()
         # An untraced chief ray must invalidate the whole map. Without the
         # path check, a ray that was blocked but never flagged terminated (or
         # one whose path was cleared) still contributes its origin as the
@@ -342,15 +361,17 @@ class WavefrontSensor:
             for j in range(grid_size):
                 py, pz = Y[i, j], Z[i, j]
 
-                # Check aperture
+                # Check aperture. The stop shape needs no separate mask: the
+                # tracer clips the launch point against the real opening, so
+                # a blocked sample arrives here terminated.
                 if py**2 + pz**2 > max_r**2:
                     W[i, j] = float("nan")
                     continue
 
                 if aimer is not None:
                     aimed = aimer.aim(
-                        py * stop_scale,
-                        pz * stop_scale,
+                        py * aim_scale,
+                        pz * aim_scale,
                         pupil_y_mm=py,
                         pupil_z_mm=pz,
                     )
