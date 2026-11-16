@@ -7,9 +7,12 @@ from .spot_diagram import SpotDiagram
 # diffraction_psf supersedes it with piston+tilt removal, a real reference
 # sphere, pad_factor and NaN masking.
 from .diffraction_psf import DiffractionPSFCalculator, WavefrontSensor
+from .illumination import RelativeIlluminationAnalyzer, RelativeIlluminationResult
 
 __all__ = [
     "SpotDiagram",
     "DiffractionPSFCalculator",
     "WavefrontSensor",
+    "RelativeIlluminationAnalyzer",
+    "RelativeIlluminationResult",
 ]

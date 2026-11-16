@@ -140,6 +140,9 @@ The **Performance** tab calculates the image-quality dashboard:
 - RMS spot size and AIRY disk diameter;
 - Strehl ratio and RMS wavefront error;
 - MTF cutoff;
+- relative illumination per field, split into natural cos⁴ falloff,
+  geometric vignetting and the fraction of rays lost, normalized to 100% on
+  axis;
 - spot diagram, ray fan, field curves, PSF, MTF, wavefront, ghost, and bokeh
   views. The **Wavefront** dialog shows the OPD map, a bar chart and a table
   of the Zernike coefficients in waves (Noll or OSA/ANSI indexing, 15 terms by
