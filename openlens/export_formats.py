@@ -1206,7 +1206,13 @@ class ZemaxSystemImporter:
             return 1.0 / curv
 
         for surf in surfaces:
-            if surf.get("type", "STANDARD").upper() not in ("STANDARD", "EVENASPH", ""):
+            surface_type = surf.get("type", "STANDARD").upper()
+            if surface_type not in ("STANDARD", "EVENASPH", ""):
+                logger.warning(
+                    "Zemax import: unsupported surface type %r skipped (surface %s)",
+                    surf.get("type", "STANDARD"),
+                    surf.get("id", "?"),
+                )
                 continue
             disz = surf.get("disz", 0.0) or 0.0
             if disz >= float("inf"):

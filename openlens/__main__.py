@@ -59,6 +59,8 @@ from openlens.analysis.ghost import GhostAnalyzer
 from openlens.analysis.psf_mtf import ImageQualityAnalyzer
 from openlens.analysis.diffraction_psf import WavefrontSensor
 from openlens.analysis.zernike import fit_zernike_wavefront
+from openlens.export_formats import ZemaxSystemImporter
+from openlens.gui.workers import AnalysisWorker
 from openlens.analysis.plots import (
     apply_dark_axis_theme,
     plot_ghost_analysis,
@@ -102,6 +104,17 @@ TAB_SHORTCUTS = (
     (4, "Ctrl+5", "Optimization"),
     (5, "Ctrl+6", "Tolerancing"),
 )
+
+
+class _ZemaxImportWarningCollector(logging.Handler):
+    """Collect warning messages emitted during a Zemax import."""
+
+    def __init__(self) -> None:
+        super().__init__(logging.WARNING)
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.messages.append(record.getMessage())
 
 
 class OpenLensWindow(QMainWindow):
@@ -529,6 +542,7 @@ class OpenLensWindow(QMainWindow):
         # model it was built for - see _use_tolerances_for.
         self._tol_operands_target = None
 
+        self._zemax_import_worker = None
         self._update_status("Welcome to OpenLens")
 
     def _create_editor_area(self) -> QTabWidget:
@@ -710,6 +724,11 @@ class OpenLensWindow(QMainWindow):
         file_menu.addAction("New Lens", self._on_new_lens, QKeySequence.New)
         file_menu.addAction("New Lens from Target...", self._on_new_lens_from_target)
         file_menu.addAction("Open...", self._on_open, QKeySequence.Open)
+        import_menu = file_menu.addMenu("Import")
+        import_menu.addAction(
+            "Zemax Prescription (.zmx, simplified dialect)...",
+            self._on_import_zemax,
+        )
         file_menu.addAction("Save", self._on_save, QKeySequence("Ctrl+S"))
         file_menu.addAction("Save As...", self._on_save_as, QKeySequence("Ctrl+Shift+S"))
         file_menu.addSeparator()
@@ -719,6 +738,10 @@ class OpenLensWindow(QMainWindow):
         export_menu.addAction("Export to STL...", self._on_export_stl)
         export_menu.addAction("Export to STEP...", self._on_export_step)
         export_menu.addAction("Export to ISO 10110...", self._on_export_iso10110)
+        export_menu.addAction(
+            "Zemax Prescription (.zmx, simplified dialect)...",
+            self._on_export_zemax,
+        )
         export_menu.addAction("Export Report...", self._on_export_report)
 
         file_menu.addSeparator()
@@ -1349,6 +1372,92 @@ Ctrl+6         Tolerancing
     def _ensure_system(self, target: Any) -> OpticalSystem:
         """Return *target* as an OpticalSystem, wrapping a single Lens if needed."""
         return as_system(target)
+
+    def _on_import_zemax(self) -> None:
+        """Import a simplified Zemax .zmx prescription without replacing state on failure."""
+        filepath, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Zemax Prescription (simplified .zmx, not full OpticStudio)",
+            "",
+            "Simplified Zemax Prescription (*.zmx);;All Files (*)",
+        )
+        if not filepath:
+            return
+
+        if self._zemax_import_worker is not None and self._zemax_import_worker.isRunning():
+            self._update_status("A Zemax import is already running")
+            return
+
+        def _compute():
+            collector = _ZemaxImportWarningCollector()
+            target_logger = logging.getLogger("openlens.export_formats")
+            target_logger.addHandler(collector)
+            try:
+                name = os.path.splitext(os.path.basename(filepath))[0] or "Imported System"
+                system = ZemaxSystemImporter.import_system(filepath, name=name)
+            finally:
+                target_logger.removeHandler(collector)
+            return system, collector.messages
+
+        worker = AnalysisWorker(_compute, self)
+        self._zemax_import_worker = worker
+
+        def _done(payload):
+            system, warnings = payload
+            if warnings:
+                shown = "\n".join(f"- {m}" for m in warnings[:20])
+                if len(warnings) > 20:
+                    shown += f"\n- ... and {len(warnings) - 20} more"
+                QMessageBox.warning(
+                    self,
+                    "Zemax Import Warnings",
+                    "Simplified .zmx import (not a full OpticStudio interchange). "
+                    "Unsupported constructs were reported:\n\n" + shown,
+                )
+            self._load_lens_from_data(system)
+            self._save_to_database()
+            self._update_status(f"Imported Zemax prescription: {system.name}")
+
+        def _failed(message):
+            logger.error("Zemax import failed: %s", message)
+            QMessageBox.critical(
+                self,
+                "Import Error",
+                "Failed to import Zemax prescription "
+                "(simplified .zmx, not full OpticStudio interchange):\n\n" + message,
+            )
+            self._update_status("Zemax import failed")
+
+        worker.done.connect(_done)
+        worker.failed.connect(_failed)
+        worker.finished.connect(lambda: setattr(self, "_zemax_import_worker", None))
+        self._update_status("Importing Zemax prescription...")
+        worker.start()
+
+    def _on_export_zemax(self) -> None:
+        """Export the active lens or assembly as a simplified Zemax .zmx prescription."""
+        target = self._active_target()
+        if not target:
+            return
+
+        filepath, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Zemax Prescription (simplified .zmx, not full OpticStudio)",
+            f"{target.name}.zmx",
+            "Simplified Zemax Prescription (*.zmx);;All Files (*)",
+        )
+        if not filepath:
+            return
+
+        result = self._export_service.export_zemax(target, filepath)
+        if not result.ok:
+            QMessageBox.critical(
+                self,
+                "Export Error",
+                f"Failed to export Zemax prescription: {result.error}",
+            )
+        else:
+            self._update_status(f"Zemax prescription exported to {filepath}")
 
     def _on_export_stl(self) -> None:
         """Export current lens or assembly to STL"""
