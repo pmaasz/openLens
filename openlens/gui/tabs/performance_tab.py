@@ -186,12 +186,83 @@ class PerformanceTab(BaseTab):
         self._perf_wavelength.setFixedWidth(140)
         params_layout.addRow("Wavelength:", self._perf_wavelength)
 
+        self._perf_object_infinite = QCheckBox("Infinite (collimated)")
+        self._perf_object_infinite.setChecked(True)
+        self._perf_object_distance = QDoubleSpinBox()
+        self._perf_object_distance.setRange(0.01, 1e9)
+        self._perf_object_distance.setDecimals(3)
+        self._perf_object_distance.setValue(1000.0)
+        self._perf_object_distance.setSuffix(" mm")
+        self._perf_object_distance.setFixedWidth(140)
+        self._perf_object_distance.setEnabled(False)
+        self._perf_object_infinite.toggled.connect(
+            lambda checked: self._perf_object_distance.setEnabled(not checked)
+        )
+        object_row = QHBoxLayout()
+        object_row.addWidget(self._perf_object_infinite)
+        object_row.addWidget(self._perf_object_distance)
+        params_layout.addRow("Object Distance:", object_row)
+
+        self._perf_sensor_width = QDoubleSpinBox()
+        self._perf_sensor_width.setRange(0.1, 10000)
+        self._perf_sensor_width.setDecimals(3)
+        self._perf_sensor_width.setValue(29.969)
+        self._perf_sensor_width.setSuffix(" mm")
+        self._perf_sensor_width.setFixedWidth(100)
+        self._perf_sensor_height = QDoubleSpinBox()
+        self._perf_sensor_height.setRange(0.1, 10000)
+        self._perf_sensor_height.setDecimals(3)
+        self._perf_sensor_height.setValue(19.979)
+        self._perf_sensor_height.setSuffix(" mm")
+        self._perf_sensor_height.setFixedWidth(100)
         self._perf_sensor_size = QDoubleSpinBox()
-        self._perf_sensor_size.setRange(1, 100)
-        self._perf_sensor_size.setValue(36)
+        self._perf_sensor_size.setRange(0.1, 10000)
+        self._perf_sensor_size.setDecimals(3)
+        self._perf_sensor_size.setValue(36.0)
         self._perf_sensor_size.setSuffix(" mm")
         self._perf_sensor_size.setFixedWidth(100)
-        params_layout.addRow("Sensor Size:", self._perf_sensor_size)
+        self._perf_sensor_size.setToolTip("Sensor diagonal")
+        self._syncing_sensor = False
+
+        def _sync_from_wh(*_args):
+            if self._syncing_sensor:
+                return
+            self._syncing_sensor = True
+            import math
+
+            w = self._perf_sensor_width.value()
+            h = self._perf_sensor_height.value()
+            self._perf_sensor_size.setValue(math.hypot(w, h))
+            self._syncing_sensor = False
+
+        def _sync_from_diag(value):
+            if self._syncing_sensor:
+                return
+            self._syncing_sensor = True
+            import math
+
+            old = math.hypot(self._perf_sensor_width.value(), self._perf_sensor_height.value())
+            if old > 0:
+                scale = value / old
+                self._perf_sensor_width.setValue(self._perf_sensor_width.value() * scale)
+                self._perf_sensor_height.setValue(self._perf_sensor_height.value() * scale)
+            else:
+                side = value / math.sqrt(2.0)
+                self._perf_sensor_width.setValue(side)
+                self._perf_sensor_height.setValue(side)
+            self._syncing_sensor = False
+
+        self._perf_sensor_width.valueChanged.connect(_sync_from_wh)
+        self._perf_sensor_height.valueChanged.connect(_sync_from_wh)
+        self._perf_sensor_size.valueChanged.connect(_sync_from_diag)
+        sensor_row = QHBoxLayout()
+        sensor_row.addWidget(QLabel("W"))
+        sensor_row.addWidget(self._perf_sensor_width)
+        sensor_row.addWidget(QLabel("H"))
+        sensor_row.addWidget(self._perf_sensor_height)
+        sensor_row.addWidget(QLabel("Diag"))
+        sensor_row.addWidget(self._perf_sensor_size)
+        params_layout.addRow("Sensor:", sensor_row)
 
         self._perf_focus_range = QDoubleSpinBox()
         self._perf_focus_range.setRange(0.001, 100.0)
@@ -433,10 +504,18 @@ class PerformanceTab(BaseTab):
         wavelength = self._selected_wavelength()
         entrance_pupil = self._perf_entrance_pupil.value()
         system = self._wrap_in_system(active_system)
+        sensor_width = self._perf_sensor_width.value()
+        sensor_height = self._perf_sensor_height.value()
+        sensor_diagonal = self._perf_sensor_size.value()
+        imaging_object_distance = (
+            None if self._perf_object_infinite.isChecked() else self._perf_object_distance.value()
+        )
 
         def _compute():
+            import math
             from ...aberrations import AberrationsCalculator
             from ...optical_system import OpticalSystem
+            from ...performance_metrics import PerformanceMetrics
 
             # Fingerprint before measuring: it must describe the design the
             # report describes, not whatever the editor holds by the end.
@@ -511,6 +590,72 @@ class PerformanceTab(BaseTab):
                             f"{f'{bfl_C:.3f}' if bfl_C is not None else 'N/A'} mm\n"
                         )
 
+            # First-order imaging metrics from the calculation parameters.
+            # The object distance is labelled explicitly and is not fed into
+            # aberration or ray-trace metrics (finite-conjugate aberrations are
+            # separate); the traced analyses keep using the model's conjugate.
+            pm = PerformanceMetrics(system)
+            imaging = {}
+            try:
+                imaging["f_number"] = pm.calculate_f_number(entrance_pupil_diameter=entrance_pupil)
+                imaging["focal_length"] = (
+                    system.get_system_focal_length()
+                    if hasattr(system, "get_system_focal_length")
+                    else active_system.calculate_focal_length()
+                )
+                imaging["fov_h"] = pm.calculate_field_of_view(sensor_width)
+                imaging["fov_v"] = pm.calculate_field_of_view(sensor_height)
+                imaging["fov_d"] = pm.calculate_field_of_view(sensor_diagonal)
+                if imaging_object_distance is not None and imaging_object_distance > 0:
+                    imaging["magnification"] = pm.calculate_magnification(imaging_object_distance)
+                    m = imaging["magnification"]
+                    if m is not None and abs(m) > 1e-12:
+                        imaging["working_distance"] = pm.calculate_working_distance(abs(m))
+                    else:
+                        imaging["working_distance"] = None
+                    dof = pm.calculate_depth_of_field(imaging_object_distance)
+                else:
+                    imaging["magnification"] = 0.0 if imaging.get("focal_length") else None
+                    # At infinity the working distance is the back focal length.
+                    imaging["working_distance"] = (
+                        system.calculate_back_focal_length()
+                        if hasattr(system, "calculate_back_focal_length")
+                        else active_system.calculate_back_focal_length()
+                    )
+                    dof = None
+                imaging["dof"] = dof
+                imaging["hyperfocal"] = dof.get("hyperfocal") if dof else None
+                imaging["rayleigh_um"] = pm.estimate_resolution_rayleigh(
+                    wavelength, imaging.get("f_number")
+                )
+                imaging["rayleigh_urad"] = pm.calculate_resolution_rayleigh(wavelength)
+                # Required image circle for the sensor diagonal at this conjugate.
+                fl = imaging.get("focal_length")
+                if (
+                    fl
+                    and abs(fl) > 0
+                    and dof
+                    and imaging_object_distance is not None
+                    and imaging_object_distance != fl
+                ):
+                    image_distance = abs(
+                        (fl * imaging_object_distance) / (imaging_object_distance - fl)
+                    )
+                    imaging["image_circle"] = (
+                        sensor_diagonal * image_distance / imaging_object_distance
+                    )
+                elif fl and abs(fl) > 0:
+                    # Infinity focus: image height = f * tan(FOV/2)
+                    imaging["image_circle"] = (
+                        2.0 * abs(fl) * math.tan(math.radians((imaging.get("fov_d") or 0.0) / 2.0))
+                    )
+                else:
+                    imaging["image_circle"] = None
+                # Lens image circle is not specified by the optical model.
+                imaging["image_circle_coverage"] = None
+            except Exception as exc:
+                imaging = {"error": str(exc)}
+
             illumination_text = self._relative_illumination_text(system, wavelength)
 
             # Surface the calculator's own validity verdict, so a value that
@@ -544,12 +689,88 @@ class PerformanceTab(BaseTab):
                 if object_distance is None
                 else f"{object_distance:.2f} mm (finite conjugate)"
             )
+            calc_object_text = (
+                "infinity (collimated)"
+                if imaging_object_distance is None
+                else f"{imaging_object_distance:.3f} mm"
+            )
             model_fields = getattr(system, "fields", None)
             fields_text = (
                 ", ".join(f"{field.angle_deg:g} deg" for field in model_fields)
                 if model_fields
                 else "auto (sensor-derived)"
             )
+
+            def _ival(value, spec=".3f", suffix=""):
+                if value is None:
+                    return "N/A"
+                try:
+                    v = float(value)
+                except (TypeError, ValueError):
+                    return "N/A"
+                if not math.isfinite(v):
+                    return "N/A"
+                return f"{format(v, spec)}{suffix}"
+
+            dof = imaging.get("dof") or {}
+            dof_near = dof.get("near")
+            dof_far = dof.get("far")
+            if dof_near is None and dof_far is None:
+                dof_text = "N/A"
+            else:
+                far_text = _ival(dof_far, ".3f", " mm")
+                if dof_far is not None and math.isfinite(float(dof_far)):
+                    far_text = f"{float(dof_far):.3f} mm"
+                elif dof_far is not None:
+                    far_text = "infinity"
+                dof_text = f"{_ival(dof_near, '.3f', ' mm')} to {far_text}"
+            mag = imaging.get("magnification")
+            mag_text = "N/A"
+            if mag is not None:
+                try:
+                    mv = float(mag)
+                    if math.isfinite(mv):
+                        mag_text = f"{mv:.6g}"
+                except (TypeError, ValueError):
+                    pass
+            cov = imaging.get("image_circle_coverage")
+            cov_text = "N/A" if cov is None else f"{cov * 100.0:.1f}%"
+
+            fov_text = (
+                f'{_ival(imaging.get("fov_h"), ".3f", "°")} / '
+                f'{_ival(imaging.get("fov_v"), ".3f", "°")} / '
+                f'{_ival(imaging.get("fov_d"), ".3f", "°")}'
+            )
+            rayleigh_text = (
+                f'{_ival(imaging.get("rayleigh_um"), ".3f", " µm")} '
+                f'({_ival(imaging.get("rayleigh_urad"), ".3f", " µrad")} angular)'
+            )
+            imaging_lines = [
+                "",
+                "--- First-order / Imaging ---",
+                (
+                    f"Sensor (W x H, diagonal): {sensor_width:.3f} x "
+                    f"{sensor_height:.3f} mm, {sensor_diagonal:.3f} mm"
+                ),
+                (
+                    f"Calculation object distance: {calc_object_text} "
+                    "(first-order only; not used for aberration/ray-trace metrics)"
+                ),
+                f"Field of view (H/V/D): {fov_text}",
+                f"Magnification: {mag_text}",
+                f"Working distance: {_ival(imaging.get('working_distance'), '.3f', ' mm')}",
+                f"Depth of field (near/far): {dof_text}",
+                f"Hyperfocal distance: {_ival(imaging.get('hyperfocal'), '.3f', ' mm')}",
+                f"Rayleigh resolution: {rayleigh_text}",
+                (
+                    "Required image circle (diagonal): "
+                    f'{_ival(imaging.get("image_circle"), ".3f", " mm")}'
+                ),
+                f"Image-circle coverage: {cov_text}",
+            ]
+            imaging_section = "\n".join(imaging_lines)
+            if imaging.get("error"):
+                imaging_section += f"\nImaging metrics note: {imaging['error']}"
 
             text = f"""=== OPTICAL PERFORMANCE METRICS ===
 System: {system.name}
@@ -561,10 +782,10 @@ Optical Power: {f"{power:.4f} D" if power else "N/A"}
 Back Focal Length: {f"{bfl:.2f} mm" if bfl else "N/A"}
 {mount_line}Entrance Pupil: {results.get('entrance_pupil', entrance_pupil):.2f} mm
 f-number (f/#): {results.get('f_number', 0):.2f}
-{chromatic_text}
+{chromatic_text}{imaging_section}
 --- Calculation Parameters ---
 Wavelength: {wavelength} nm
-Object Distance: {object_text}
+Model object distance: {object_text}
 Image Plane: {plane_text}
 Fields: {fields_text}
 Max Field Angle: {field_angle:.2f} deg
