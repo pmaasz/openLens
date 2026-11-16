@@ -403,7 +403,8 @@ class TestMetricsRunOffTheGuiThread(_AsyncTabFixture):
             self.assertTrue(
                 _run_until(
                     lambda: self._metrics_finished()
-                    and "calculating metrics" not in self.tab._perf_metrics_text.toPlainText().lower()
+                    and "calculating metrics"
+                    not in self.tab._perf_metrics_text.toPlainText().lower()
                 )
             )
 
