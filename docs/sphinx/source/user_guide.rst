@@ -164,8 +164,10 @@ The **Optimization** tab builds a merit function from variables and targets:
 - choose radii, thicknesses, air gaps, and selected system parameters as
   variables;
 - target focal length, back focal length, aberration values, or other metrics;
-- run the default simplex optimizer, or choose another available algorithm;
-- inspect the merit value and variable values after convergence.
+- run the default simplex optimizer, or choose damped least squares (the
+  standard local solver for lens design) or a global search;
+- inspect the merit value, iteration and evaluation counts, and variable
+  values after convergence.
 
 The merit function penalizes invalid geometry such as negative edge thickness.
 Optimization runs on a copy of the model until the result is applied, so a

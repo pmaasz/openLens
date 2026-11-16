@@ -139,6 +139,10 @@ class OptimizationWorker(QThread):
             # cancellation hook covers all of them.
             if "Simplex" in self.algorithm:
                 result = optimizer.optimize(max_iterations=100, callback=self._check_interrupted)
+            elif "Damped" in self.algorithm:
+                result = optimizer.optimize_damped_least_squares(
+                    max_iterations=100, callback=self._check_interrupted
+                )
             elif "Simulated" in self.algorithm:
                 result = optimizer.optimize_simulated_annealing(
                     max_iterations=500, callback=self._check_interrupted
@@ -257,6 +261,7 @@ class OptimizationTab(BaseTab):
         self._opt_algorithm.addItems(
             [
                 "Local (Simplex)",
+                "Local (Damped Least Squares)",
                 "Global (Simulated Annealing)",
                 "Global (Genetic Algorithm)",
             ]
@@ -919,7 +924,10 @@ class OptimizationTab(BaseTab):
         if result.success:
             text = "Optimization Successful!\n\n"
             text += f"Final Merit Function: {result.final_merit:.4f}\n"
-            text += f"Iterations: {result.iterations}\n\n"
+            text += f"Iterations: {result.iterations}\n"
+            if result.evaluations:
+                text += f"Evaluations: {result.evaluations}\n"
+            text += "\n"
             text += "Optimized Values (Preview):\n"
 
             # Show parameter changes

@@ -99,6 +99,9 @@ class OptimizationResult:
     # second pass (the global optimizers) can report and bounds-check what
     # they actually return rather than the pre-refinement point.
     best_values: List[float] = field(default_factory=list)
+    # Merit evaluations performed. Only the damped least-squares solver counts
+    # them so far; zero means the algorithm did not report a count.
+    evaluations: int = 0
 
 
 class MeritFunction:
@@ -516,7 +519,36 @@ class MeritFunction:
         Combines physical constraint penalties with optical quality targets.
         """
         merit = self._penalty_physical(system)
+        for contribution in self._target_contributions(system):
+            merit += contribution
+        return merit
 
+    def residuals(self, system: OpticalSystem) -> List[float]:
+        """Return the least-squares residuals of the merit, for DLS.
+
+        Each target contribution is non-negative and the merit adds them, so
+        the square root of a contribution is the residual whose square the
+        merit contains. A negative contribution (a signed "minimize" metric)
+        clamps to zero: it is already the best a least-squares step can do.
+        The physical penalty is appended as one more residual, so geometry
+        constraints steer the step instead of being discovered only when a
+        trial merit is rejected.
+
+        Args:
+            system: The design to score.
+
+        Returns:
+            Residuals in target order, followed by one for the physical
+            penalty so the step also sees the geometry constraints.
+        """
+        residuals = [
+            math.sqrt(max(contribution, 0.0)) for contribution in self._target_contributions(system)
+        ]
+        residuals.append(math.sqrt(max(self._penalty_physical(system), 0.0)))
+        return residuals
+
+    def _target_contributions(self, system: OpticalSystem) -> List[float]:
+        """Evaluate every target and return its contribution in order."""
         # The same for every target; it used to be rebuilt inside the loop.
         statics = tuple(
             getattr(getattr(MeritFunction, n), "__func__", getattr(MeritFunction, n))
@@ -529,6 +561,7 @@ class MeritFunction:
             )
         )
 
+        contributions = []
         # The spherical/coma/astigmatism targets share one
         # calculate_all_aberrations pass (coma and astigmatism use the same
         # 5 degree field). The cache lives for this call only, per thread.
@@ -550,13 +583,13 @@ class MeritFunction:
                 # Compare underlying function via getattr to handle both
                 h = getattr(handler, "__func__", handler)
                 if h in statics:
-                    merit += handler(system, target)
+                    contributions.append(handler(system, target))
                 else:
-                    merit += handler(self, system, target)
+                    contributions.append(handler(self, system, target))
         finally:
             self._eval_state.aberrations = None
 
-        return merit
+        return contributions
 
 
 class LensOptimizer:
@@ -573,6 +606,18 @@ class LensOptimizer:
     #: Cap on the merit cache. Unbounded, it grew for the process lifetime on a
     #: hit rate too low to be worth much.
     MERIT_CACHE_MAX = 4096
+
+    #: Marquardt damping for optimize_damped_least_squares: start, growth on a
+    #: rejected step, shrink on an accepted one, and the give-up ceiling.
+    DLS_INITIAL_DAMPING = 1e-3
+    DLS_DAMPING_GROWTH = 10.0
+    DLS_DAMPING_SHRINK = 0.3
+    DLS_MIN_DAMPING = 1e-9
+    DLS_MAX_DAMPING = 1e12
+    #: Rejected damping trials before an iteration gives up.
+    DLS_MAX_REJECTIONS = 12
+    #: Relative finite-difference step for the residual Jacobian.
+    DLS_JACOBIAN_STEP = 1e-5
 
     def __init__(
         self,
@@ -608,16 +653,27 @@ class LensOptimizer:
         max_iterations: int = 100,
         tolerance: float = 1e-6,
         callback: Optional[Callable[[int, float, List[float]], None]] = None,
+        algorithm: str = "simplex",
     ) -> OptimizationResult:
         """
-        Run optimization using the default algorithm (Simplex).
-        Wrapper for compatibility with controllers.
+        Run optimization using a named local algorithm.
 
         Args:
             max_iterations: Maximum number of iterations.
             tolerance: Convergence threshold.
             callback: Function called at each iteration with (iteration, merit, current_values).
+            algorithm: ``"simplex"`` (the default, unchanged) or
+                ``"damped_least_squares"``.
+
+        Raises:
+            ValueError: If *algorithm* is not a local algorithm name.
         """
+        if algorithm in ("damped_least_squares", "dls"):
+            return self.optimize_damped_least_squares(max_iterations, tolerance, callback)
+        if algorithm != "simplex":
+            raise ValueError(
+                f"Unknown local algorithm {algorithm!r}; " "use 'simplex' or 'damped_least_squares'"
+            )
         return self.optimize_simplex(max_iterations, tolerance, callback)
 
     def _finalize(
@@ -630,6 +686,7 @@ class LensOptimizer:
         merit_history: List[float],
         converged_message: str,
         out_of_bounds_message: str,
+        evaluations: int = 0,
     ) -> OptimizationResult:
         """Build the result for any optimizer that settled on ``best_values``.
 
@@ -690,6 +747,7 @@ class LensOptimizer:
             merit_history=merit_history,
             message=message,
             best_values=list(best_values),
+            evaluations=evaluations,
         )
 
     def optimize_simplex(
@@ -990,6 +1048,219 @@ class LensOptimizer:
                 else f"Finished {last_iteration + 1} iterations outside variable bounds"
             ),
         )
+
+    def optimize_damped_least_squares(
+        self,
+        max_iterations: int = 100,
+        tolerance: float = 1e-6,
+        callback: Optional[Callable[[int, float, List[float]], None]] = None,
+        start: Optional[List[float]] = None,
+    ) -> OptimizationResult:
+        """Damped least squares (Levenberg-Marquardt) optimization.
+
+        The merit's target terms are treated as squared residuals, so one
+        Gauss-Newton step solves ``(JᵀJ + damping·diag(JᵀJ)) d = -Jᵀr``.
+        A rejected step raises the damping and retries; an accepted step
+        lowers it. Geometry and bound penalties stay in the merit used to
+        accept a step, so an infeasible trial is rejected rather than
+        returned. The best accepted design is kept if the search stalls.
+
+        Args:
+            max_iterations: Iteration cap.
+            tolerance: Merit reduction below which the search has converged.
+            callback: Optional per-iteration progress callback.
+            start: Optional explicit starting point, one value per variable.
+
+        Returns:
+            The best accepted design and its history.
+
+        Raises:
+            ValueError: If there are no variables or *start* has the wrong
+                length.
+        """
+        n_vars = len(self.variables)
+        if n_vars == 0:
+            raise ValueError(
+                "optimize_damped_least_squares needs at least one variable; "
+                "a design with nothing to optimise is not an optimisation problem"
+            )
+        if start is not None and len(start) != n_vars:
+            raise ValueError(f"start has {len(start)} value(s) but there are {n_vars} variable(s)")
+
+        values = list(start) if start is not None else [var.current_value for var in self.variables]
+        names = [var.name for var in self.variables]
+        initial_merit = self._evaluate_design(values)
+        evaluations = 1
+        current_merit = initial_merit
+        best_values = list(values)
+        variable_history = [dict(zip(names, values))]
+        merit_history = [initial_merit]
+        damping = self.DLS_INITIAL_DAMPING
+        last_iteration = 0
+        accepted_steps = 0
+
+        for iteration in range(max_iterations):
+            last_iteration = iteration
+            if callback:
+                callback(iteration, current_merit, list(values))
+
+            residuals = self.merit_function.residuals(self._apply_variables(values))
+            evaluations += 1
+            if not residuals:
+                break
+            jacobian = self._residual_jacobian(values, residuals)
+            evaluations += n_vars
+            normal, gradient = self._normal_equations(jacobian, residuals)
+
+            accepted = False
+            trial_values = values
+            trial_merit = current_merit
+            for _ in range(self.DLS_MAX_REJECTIONS):
+                step = self._solve_linear_system(
+                    self._damped_normal_matrix(normal, damping),
+                    [-entry for entry in gradient],
+                )
+                if step is None:
+                    damping = min(damping * self.DLS_DAMPING_GROWTH, self.DLS_MAX_DAMPING)
+                    continue
+                trial_values = [
+                    var.clamp(value + delta)
+                    for var, value, delta in zip(self.variables, values, step)
+                ]
+                trial_merit = self._evaluate_design(trial_values)
+                evaluations += 1
+                if trial_merit < current_merit:
+                    accepted = True
+                    break
+                damping = min(damping * self.DLS_DAMPING_GROWTH, self.DLS_MAX_DAMPING)
+
+            if not accepted:
+                logger.debug(
+                    "Damped least squares stalled at merit %.6g on iteration %d " "(damping %.3g)",
+                    current_merit,
+                    iteration + 1,
+                    damping,
+                )
+                break
+
+            improvement = current_merit - trial_merit
+            values = trial_values
+            current_merit = trial_merit
+            best_values = list(values)
+            accepted_steps += 1
+            damping = max(damping * self.DLS_DAMPING_SHRINK, self.DLS_MIN_DAMPING)
+            variable_history.append(dict(zip(names, values)))
+            merit_history.append(current_merit)
+
+            if improvement <= tolerance:
+                break
+
+        logger.debug(
+            "Damped least squares: %d accepted step(s) over %d iteration(s), merit %.6g -> %.6g",
+            accepted_steps,
+            last_iteration + 1,
+            initial_merit,
+            current_merit,
+        )
+
+        return self._finalize(
+            best_values=best_values,
+            final_merit=current_merit,
+            initial_merit=initial_merit,
+            iterations=last_iteration + 1,
+            variable_history=variable_history,
+            merit_history=merit_history,
+            converged_message=(
+                f"Converged after {last_iteration + 1} damped least-squares iterations"
+            ),
+            out_of_bounds_message=(
+                f"Finished after {last_iteration + 1} iterations outside variable bounds"
+            ),
+            evaluations=evaluations,
+        )
+
+    def _residual_jacobian(self, values: List[float], residuals: List[float]) -> List[List[float]]:
+        """Finite-difference Jacobian of the residuals, one column per variable.
+
+        The step flips inward at an upper bound so a variable parked on its
+        bound still gets a usable one-sided derivative instead of a column of
+        huge penalty-driven differences.
+        """
+        jacobian = []
+        for index, (var, value) in enumerate(zip(self.variables, values)):
+            step = self.DLS_JACOBIAN_STEP * max(1.0, abs(value))
+            if value + step > var.max_value:
+                step = -step
+            trial_value = var.clamp(value + step)
+            delta = trial_value - value
+            if abs(delta) < 1e-12:
+                jacobian.append([0.0] * len(residuals))
+                continue
+            trial = list(values)
+            trial[index] = trial_value
+            trial_residuals = self.merit_function.residuals(self._apply_variables(trial))
+            jacobian.append(
+                [(after - before) / delta for before, after in zip(residuals, trial_residuals)]
+            )
+        return jacobian
+
+    @staticmethod
+    def _normal_equations(
+        jacobian: List[List[float]], residuals: List[float]
+    ) -> Tuple[List[List[float]], List[float]]:
+        """Return ``JᵀJ`` and ``Jᵀr`` for the normal equations."""
+        n_vars = len(jacobian)
+        normal = [
+            [
+                sum(jacobian[i][k] * jacobian[j][k] for k in range(len(residuals)))
+                for j in range(n_vars)
+            ]
+            for i in range(n_vars)
+        ]
+        gradient = [
+            sum(jacobian[i][k] * residuals[k] for k in range(len(residuals))) for i in range(n_vars)
+        ]
+        return normal, gradient
+
+    @staticmethod
+    def _damped_normal_matrix(normal: List[List[float]], damping: float) -> List[List[float]]:
+        """Add Marquardt damping, scaled by each diagonal entry."""
+        matrix = [list(row) for row in normal]
+        for index in range(len(matrix)):
+            matrix[index][index] += damping * max(normal[index][index], 1e-12)
+        return matrix
+
+    @staticmethod
+    def _solve_linear_system(matrix: List[List[float]], rhs: List[float]) -> Optional[List[float]]:
+        """Solve a small dense system by Gaussian elimination with pivoting.
+
+        Pure Python keeps the optimizer usable without numpy, which is an
+        optional dependency in this project. Returns None when the system is
+        singular so the caller can raise the damping.
+        """
+        size = len(rhs)
+        rows = [list(matrix[i]) + [rhs[i]] for i in range(size)]
+        for column in range(size):
+            pivot = max(range(column, size), key=lambda row: abs(rows[row][column]))
+            if abs(rows[pivot][column]) < 1e-15:
+                return None
+            rows[column], rows[pivot] = rows[pivot], rows[column]
+            for row in range(column + 1, size):
+                factor = rows[row][column] / rows[column][column]
+                if factor == 0.0:
+                    continue
+                for entry in range(column, size + 1):
+                    rows[row][entry] -= factor * rows[column][entry]
+
+        solution = [0.0] * size
+        for row in range(size - 1, -1, -1):
+            total = rows[row][size] - sum(
+                rows[row][col] * solution[col] for col in range(row + 1, size)
+            )
+            solution[row] = total / rows[row][row]
+        if not all(math.isfinite(value) for value in solution):
+            return None
+        return solution
 
     @staticmethod
     def _merit_range_converged(
