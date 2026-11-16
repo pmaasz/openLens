@@ -40,6 +40,7 @@ from openlens.gui.tabs import (
     AssemblyTab,
     OptimizationTab,
     TolerancingTab,
+    PrescriptionTab,
 )
 from openlens.gui.dialogs import StartupDialog, require_analysis_plot_dialog
 from openlens.gui.workers import stop_worker
@@ -561,6 +562,9 @@ class OpenLensWindow(QMainWindow):
         self._tol_tab = TolerancingTab(self)
         self._editor_tabs.addTab(self._tol_tab, "Tolerancing")
 
+        self._prescription_tab = PrescriptionTab(self)
+        self._editor_tabs.addTab(self._prescription_tab, "Prescription")
+
         # Ctrl+1 ... Ctrl+6 were documented in the shortcuts dialog but never
         # created; the keys did nothing. Parent them to the window so they
         # live as long as it does.
@@ -819,6 +823,9 @@ class OpenLensWindow(QMainWindow):
 
         if hasattr(self, "_assembly_tab_widget"):
             self._assembly_tab_widget.refresh()
+
+        if hasattr(self, "_prescription_tab"):
+            self._prescription_tab.refresh()
 
     def _stop_worker(self, worker, timeout_ms: int = 3000) -> bool:
         """Stop one QThread and report whether it actually stopped.

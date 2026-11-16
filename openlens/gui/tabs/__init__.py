@@ -10,6 +10,7 @@ from .performance_tab import PerformanceTab
 from .assembly_tab import AssemblyTab
 from .optimization_tab import OptimizationTab
 from .tolerancing_tab import TolerancingTab
+from .prescription_tab import PrescriptionTab
 
 __all__ = [
     "BaseTab",
@@ -20,4 +21,5 @@ __all__ = [
     "AssemblyTab",
     "OptimizationTab",
     "TolerancingTab",
+    "PrescriptionTab",
 ]
