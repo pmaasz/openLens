@@ -704,6 +704,7 @@ class OpenLensWindow(QMainWindow):
         # File menu
         file_menu = menubar.addMenu("File")
         file_menu.addAction("New Lens", self._on_new_lens, QKeySequence.New)
+        file_menu.addAction("New Lens from Target...", self._on_new_lens_from_target)
         file_menu.addAction("Open...", self._on_open, QKeySequence.Open)
         file_menu.addAction("Save", self._on_save, QKeySequence("Ctrl+S"))
         file_menu.addAction("Save As...", self._on_save_as, QKeySequence("Ctrl+Shift+S"))
@@ -979,6 +980,34 @@ class OpenLensWindow(QMainWindow):
         self._lens_editor.load_lens(lens)
         self._update_all_tabs()
         self._update_status(f"Created: {lens.name}")
+
+    def _on_new_lens_from_target(self) -> None:
+        """Open the goal-driven wizard and add its result to the library."""
+        from openlens.gui.dialogs.target_wizard import TargetLensWizardDialog
+        from openlens.optical_system import OpticalSystem
+
+        self._flush_pending_edit()
+        dialog = TargetLensWizardDialog(self)
+        if dialog.exec() != TargetLensWizardDialog.DialogCode.Accepted:
+            return
+        target = dialog.designed_target()
+        if target is None:
+            return
+        if isinstance(target, OpticalSystem):
+            self._assemblies.append(target)
+            self._current_assembly = target
+            self._current_lens = None
+            self._optical_system = target
+            self._show_assembly_editor(True)
+            self._editor_tabs.setCurrentIndex(1)
+        else:
+            self._lenses.append(target)
+            self._current_lens = target
+            self._current_assembly = None
+            self._editor_tabs.setCurrentIndex(0)
+            self._lens_editor.load_lens(target)
+        self._update_all_tabs()
+        self._update_status(f"Created from target: {target.name}")
 
     def _on_new_assembly(self) -> None:
         """Create new assembly"""
