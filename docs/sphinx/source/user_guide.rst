@@ -99,7 +99,9 @@ The **Assembly** tab edits a multi-element ``OpticalSystem``:
 
 - add, remove, reorder, and nest lens elements;
 - set the air gap before each element;
-- place an aperture stop in a gap and set its diameter;
+- place an aperture stop in a gap and set its diameter and opening shape
+  (circular, polygonal iris blades with a rotation, an annular obscuration,
+  and optional spider vanes);
 - apply decenter and tilt to individual elements;
 - inspect the optical layout and element positions;
 - edit tolerances and alignment values for the assembly.
@@ -138,7 +140,10 @@ The **Performance** tab calculates the image-quality dashboard:
 - RMS spot size and AIRY disk diameter;
 - Strehl ratio and RMS wavefront error;
 - MTF cutoff;
-- spot diagram, ray fan, field curves, PSF, MTF, wavefront, and ghost views.
+- spot diagram, ray fan, field curves, PSF, MTF, wavefront, ghost, and bokeh
+  views. **Bokeh** renders the out-of-focus image of the stop at the defocus
+  entered in the calculation parameters, so iris blades, an annular
+  obscuration, and spider vanes change the visible blur shape.
 
 Enable **Ray Aiming** in the calculation parameters to launch each ray at the
 aperture stop instead of the paraxial entrance pupil. This preserves wide-angle

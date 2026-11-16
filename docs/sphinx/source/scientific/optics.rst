@@ -185,7 +185,12 @@ Apertures, Bevels, and Stops
   aperture near the edge.
 - An optical system may define an aperture stop in an air gap. The stop has a
   diameter and is applied before the following element; rays outside it are
-  blocked and reported as vignetted.
+  blocked and reported as vignetted. The diameter is the circumscribed size of
+  the opening: the opening may be a circle, a regular polygon of ``N`` iris
+  blades (rotated about the axis), an annulus with a central obscuration
+  ratio, or a circle crossed by spider vanes. A polygonal stop still passes the
+  circle inscribed in it, and the central hole of an annular stop leaves a hole
+  in the diffraction pupil and a ring in the bokeh rendering.
 - Surface profiles are clamped to their real domain at the rim. A diameter
   larger than a spherical cap can support is therefore a validation issue, not
   a reason to invent a complex surface.

@@ -209,6 +209,15 @@ class PerformanceTab(BaseTab):
         self._perf_focus_step.setFixedWidth(100)
         params_layout.addRow("Focus Step:", self._perf_focus_step)
 
+        self._perf_bokeh_defocus = QDoubleSpinBox()
+        self._perf_bokeh_defocus.setRange(0.01, 20.0)
+        self._perf_bokeh_defocus.setDecimals(3)
+        self._perf_bokeh_defocus.setSingleStep(0.1)
+        self._perf_bokeh_defocus.setValue(1.0)
+        self._perf_bokeh_defocus.setSuffix(" mm")
+        self._perf_bokeh_defocus.setFixedWidth(100)
+        params_layout.addRow("Bokeh Defocus:", self._perf_bokeh_defocus)
+
         self._perf_mtf_frequency = QDoubleSpinBox()
         self._perf_mtf_frequency.setRange(0.1, 1000.0)
         self._perf_mtf_frequency.setDecimals(1)
@@ -253,6 +262,8 @@ class PerformanceTab(BaseTab):
         image_sim_btn.clicked.connect(self._on_show_image_simulation)
         through_focus_btn = QPushButton("Through-Focus")
         through_focus_btn.clicked.connect(self._on_show_through_focus)
+        bokeh_btn = QPushButton("Bokeh")
+        bokeh_btn.clicked.connect(self._on_show_bokeh)
         self._perf_export_focus_btn = QPushButton("Export Focus CSV")
         self._perf_export_focus_btn.setEnabled(False)
         self._perf_export_focus_btn.clicked.connect(self._on_export_through_focus_csv)
@@ -262,6 +273,7 @@ class PerformanceTab(BaseTab):
         btn_layout2.addWidget(wavefront_btn)
         btn_layout2.addWidget(image_sim_btn)
         btn_layout2.addWidget(through_focus_btn)
+        btn_layout2.addWidget(bokeh_btn)
         btn_layout2.addWidget(self._perf_export_focus_btn)
         btn_layout2.addStretch()
         layout.addLayout(btn_layout2)
@@ -865,6 +877,37 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
             return
         if self._parent:
             self._parent._update_status(f"Through-focus exported to {path}")
+
+    def _on_show_bokeh(self) -> None:
+        """Render the defocused shaped-pupil PSF."""
+        active_system = self._current_system()
+        if not active_system:
+            QMessageBox.warning(self, "No Selection", "Please select a lens or assembly first")
+            return
+
+        try:
+            from ...analysis.bokeh import BokehRenderer
+            from ...analysis.plots import plot_psf
+
+            system = self._wrap_in_system(active_system)
+            defocus = self._perf_bokeh_defocus.value()
+            wavelength = self._selected_wavelength()
+
+            def _compute():
+                return BokehRenderer(system).render(
+                    defocus_mm=defocus, wavelength_nm=wavelength, pixels=96
+                )
+
+            def _plot(ax, payload):
+                plot_psf(ax, payload)
+                ax.set_title(f"Bokeh ({payload['defocus_mm']:g} mm defocus)")
+
+            self._parent._open_analysis_dialog(f"Bokeh - {system.name}", _compute, _plot)
+        except ImportError as e:
+            self._report_missing_matplotlib(e)
+        except Exception as e:
+            logger.error("Bokeh error: %s", e)
+            QMessageBox.critical(self, "Analysis Error", f"Failed to render bokeh: {e}")
 
     def _on_show_psf(self) -> None:
         """Show PSF Analysis through parent."""

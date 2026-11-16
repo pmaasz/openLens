@@ -15,6 +15,7 @@ from datetime import datetime
 
 from .lens import Lens, json_safe_radii, validate_image_plane_x
 from .casing import Casing, casing_interference, validate_casing
+from .aperture_shape import ApertureShape
 from .constants import (
     WAVELENGTH_D_LINE,
     WAVELENGTH_C_LINE,
@@ -112,6 +113,7 @@ _SYSTEM_SERIALIZED_KEYS = frozenset(
         "modified_at",
         "aperture_stop_gap",
         "aperture_stop_diameter",
+        "aperture_stop_shape",
         "elements",
         "air_gaps",
         "metadata",
@@ -148,9 +150,10 @@ class OpticalSystem:
         # the matching note in Lens.
         self.metadata: Dict[str, Any] = dict(metadata) if metadata else {}
         # Aperture stop: index into air_gaps where the stop sits, plus its
-        # diameter (mm). None gap = no defined stop.
+        # circumscribed diameter (mm) and opening shape. None gap = no stop.
         self.aperture_stop_gap: Optional[int] = None
         self.aperture_stop_diameter: Optional[float] = None
+        self.aperture_stop_shape: ApertureShape = ApertureShape()
         # Geometry edits are counted rather than hashed: a tracer that caches
         # a prepared scene reads this number on every trace, which is cheap,
         # while re-walking the node tree per ray is what the cache avoids.
@@ -186,17 +189,24 @@ class OpticalSystem:
         """Record that the scene geometry changed."""
         self._geometry_revision += 1
 
-    def set_aperture_stop(self, gap_index: int, diameter: Optional[float] = None) -> None:
+    def set_aperture_stop(
+        self,
+        gap_index: int,
+        diameter: Optional[float] = None,
+        shape: Optional[ApertureShape] = None,
+    ) -> None:
         """Place the aperture stop in an air gap.
 
         Args:
             gap_index: Index into ``air_gaps`` (gap before element
                 ``gap_index + 1``).
-            diameter: Stop diameter in mm, or None for unspecified.
+            diameter: Stop diameter in mm, or None for unspecified. This is
+                the circumscribed diameter of a shaped opening.
+            shape: Opening shape; None is a plain circle.
 
         Raises:
-            ValueError: If the gap index is out of range or the diameter
-                is non-positive.
+            ValueError: If the gap index is out of range, the diameter is
+                non-positive, or the shape is invalid.
         """
         from .validation import validate_diameter
 
@@ -206,8 +216,13 @@ class OpticalSystem:
             )
         if diameter is not None:
             validate_diameter(diameter, param_name="stop diameter")
+        if shape is None:
+            shape = ApertureShape()
+        elif isinstance(shape, dict):
+            shape = ApertureShape.from_dict(shape)
         self.aperture_stop_gap = gap_index
         self.aperture_stop_diameter = diameter
+        self.aperture_stop_shape = shape
         self._bump_geometry_revision()
         self.modified_at = datetime.now().isoformat()
 
@@ -215,6 +230,7 @@ class OpticalSystem:
         """Remove the aperture stop definition."""
         self.aperture_stop_gap = None
         self.aperture_stop_diameter = None
+        self.aperture_stop_shape = ApertureShape()
         self._bump_geometry_revision()
         self.modified_at = datetime.now().isoformat()
 
@@ -253,6 +269,7 @@ class OpticalSystem:
             "gap_index": self.aperture_stop_gap,
             "position": gap.position,
             "diameter": self.aperture_stop_diameter,
+            "shape": self.aperture_stop_shape,
         }
 
     def set_element_alignment(
@@ -662,6 +679,7 @@ class OpticalSystem:
             "modified_at": self.modified_at,
             "aperture_stop_gap": self.aperture_stop_gap,
             "aperture_stop_diameter": self.aperture_stop_diameter,
+            "aperture_stop_shape": self.aperture_stop_shape.to_dict(),
             "thermal_state_temperature": self.thermal_state_temperature,
             "image_plane_x_mm": self.image_plane_x_mm,
             "fields": [field.to_dict() for field in self.fields],
@@ -717,6 +735,12 @@ class OpticalSystem:
         system.modified_at = data.get("modified_at", system.modified_at)
         system.aperture_stop_gap = data.get("aperture_stop_gap")
         system.aperture_stop_diameter = data.get("aperture_stop_diameter")
+        try:
+            system.aperture_stop_shape = ApertureShape.from_dict(data.get("aperture_stop_shape"))
+        except (TypeError, ValueError) as error:
+            # A hand-edited file must not make the whole assembly unloadable.
+            logger.warning("Ignoring invalid aperture stop shape: %s", error)
+            system.aperture_stop_shape = ApertureShape()
         system.thermal_state_temperature = data.get(
             "thermal_state_temperature", DEFAULT_TEMPERATURE
         )

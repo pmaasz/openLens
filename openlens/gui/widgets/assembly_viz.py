@@ -3,12 +3,14 @@ OpenLens PySide6 Assembly Visualization Widget
 2D visualization of optical system (multiple lenses)
 """
 
+import math
 from PySide6.QtWidgets import QWidget
 from PySide6.QtGui import QPainter, QPen, QPainterPath, QBrush, QColor
-from PySide6.QtCore import Qt, QRectF
+from PySide6.QtCore import Qt, QRectF, QPointF
 from typing import Optional, TYPE_CHECKING
 
 from ..theme import DARK, get_palette
+from ...aperture_shape import ApertureShape
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QPaintEvent
@@ -120,6 +122,79 @@ class AssemblyVisualizationWidget(QWidget):
                 cx += lens.thickness * scale + self._system.air_gaps[i].thickness * scale
             else:
                 cx += lens.thickness * scale
+
+        self._draw_stop(painter, 30, cy, scale, max_diameter)
+
+    def _draw_stop(
+        self,
+        painter: QPainter,
+        origin_cx: float,
+        cy: float,
+        scale: float,
+        max_diameter: float,
+    ) -> None:
+        """Draw the stop plane and an inset of its opening shape."""
+        stop = self._system.get_aperture_stop()
+        if stop is None:
+            return
+        shape = ApertureShape.from_stop(stop)
+        diameter = stop.get("diameter")
+        semi = (float(diameter) / 2.0) if diameter else max_diameter / 2.0
+        if semi <= 0.0:
+            return
+        origin_x = float(self._system.elements[0].position)
+        stop_x = origin_cx + (float(stop["position"]) - origin_x) * scale
+        outer = max_diameter / 2.0 * scale
+        semi_px = semi * scale
+        pen = QPen(self._text_color, 2)
+        painter.setPen(pen)
+        painter.setBrush(QBrush(Qt.NoBrush))
+        painter.drawLine(QPointF(stop_x, cy - outer), QPointF(stop_x, cy - semi_px))
+        painter.drawLine(QPointF(stop_x, cy + semi_px), QPointF(stop_x, cy + outer))
+        painter.drawText(QRectF(stop_x + 3, cy - outer - 16, 150, 14), "STOP")
+        self._draw_stop_glyph(painter, shape, semi)
+
+    def _draw_stop_glyph(self, painter: QPainter, shape: ApertureShape, semi: float) -> None:
+        """Draw the aperture opening in the top-right corner."""
+        radius_px = 28.0
+        center = QPointF(self.width() - radius_px - 22, radius_px + 18)
+        outline = shape.outline(semi)
+        if not outline:
+            return
+        path = QPainterPath()
+        for index, (y, z) in enumerate(outline):
+            point = QPointF(
+                center.x() + y / semi * radius_px,
+                center.y() - z / semi * radius_px,
+            )
+            if index == 0:
+                path.moveTo(point)
+            else:
+                path.lineTo(point)
+        path.closeSubpath()
+        painter.setPen(QPen(self._text_color, 1.5))
+        painter.setBrush(QBrush(Qt.NoBrush))
+        painter.drawPath(path)
+
+        if shape.obscuration_ratio > 0.0:
+            inner = radius_px * shape.obscuration_ratio
+            painter.drawEllipse(
+                QRectF(center.x() - inner, center.y() - inner, 2 * inner, 2 * inner)
+            )
+        if shape.spider_vanes > 0 and shape.spider_width_mm > 0.0:
+            for index in range(shape.spider_vanes):
+                angle = math.radians(shape.rotation_deg) + index * math.pi / shape.spider_vanes
+                dy = radius_px * math.cos(angle)
+                dz = radius_px * math.sin(angle)
+                painter.drawLine(
+                    QPointF(center.x() - dy, center.y() + dz),
+                    QPointF(center.x() + dy, center.y() - dz),
+                )
+        painter.drawText(
+            QRectF(center.x() - 58, center.y() + radius_px + 6, 116, 14),
+            Qt.AlignHCenter,
+            shape.label(),
+        )
 
     def _draw_casing(
         self,
