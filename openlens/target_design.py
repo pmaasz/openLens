@@ -54,14 +54,14 @@ def material_index(name: str, wavelength_nm: float = WAVELENGTH_D_LINE) -> float
     if HAS_MATERIAL_DATABASE and _get_material_database is not None:
         try:
             material = _get_material_database().get_material(name)
-        except Exception:
+        except (AttributeError, KeyError, TypeError, ValueError):
             material = None
         if material is not None:
             try:
                 return float(
                     material.get_refractive_index(wavelength_nm)  # type: ignore[attr-defined]
                 )
-            except Exception:
+            except (AttributeError, TypeError, ValueError):
                 pass
     return float(DEFAULT_MATERIAL_INDICES.get(name, REFRACTIVE_INDEX_BK7))
 
@@ -202,7 +202,7 @@ def design_singlet_from_target(
                 refractive_index=n,
                 wavelength=wavelength_nm,
             )
-        except Exception as exc:
+        except (ArithmeticError, TypeError, ValueError) as exc:
             if fallback_warning is None:
                 fallback_warning = f"could not build lens: {exc}"
             continue
@@ -280,12 +280,12 @@ def design_doublet_from_target(
             )
         else:
             raise ValueError("material database unavailable")
-    except Exception as exc:
+    except (ArithmeticError, AttributeError, KeyError, TypeError, ValueError) as exc:
         # Fallback: build from default indices so the wizard still works.
         try:
             system = _fallback_doublet(f, diameter, crown_material, flint_material, wavelength_nm)
             result.warnings.append(f"used default material data ({exc})")
-        except Exception as inner:
+        except (ArithmeticError, AttributeError, KeyError, TypeError, ValueError) as inner:
             result.warnings.append(f"could not design doublet: {inner}")
             return result
 
