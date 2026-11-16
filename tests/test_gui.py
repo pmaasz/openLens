@@ -66,7 +66,7 @@ else:
         def test_initial_state(self):
             """Test that the window initializes with a default lens"""
             self.assertIsNotNone(self.window._current_lens)
-            self.assertEqual(self.window._editor_tabs.count(), 6)
+            self.assertEqual(self.window._editor_tabs.count(), 7)
             # Lens Editor should be the first tab and visible
             self.assertEqual(self.window._editor_tabs.currentIndex(), 0)
 
