@@ -723,6 +723,7 @@ class OpenLensWindow(QMainWindow):
         file_menu = menubar.addMenu("File")
         file_menu.addAction("New Lens", self._on_new_lens, QKeySequence.New)
         file_menu.addAction("New Lens from Target...", self._on_new_lens_from_target)
+        file_menu.addAction("New from Preset...", self._on_new_from_preset)
         file_menu.addAction("Open...", self._on_open, QKeySequence.Open)
         import_menu = file_menu.addMenu("Import")
         import_menu.addAction(
@@ -1010,6 +1011,26 @@ class OpenLensWindow(QMainWindow):
         self._lens_editor.load_lens(lens)
         self._update_all_tabs()
         self._update_status(f"Created: {lens.name}")
+
+    def _on_new_from_preset(self) -> None:
+        """Create a new lens by copying a read-only preset into the workspace."""
+        from openlens.gui.dialogs.preset_browser import PresetBrowserDialog
+
+        self._flush_pending_edit()
+        dialog = PresetBrowserDialog(self)
+        if dialog.exec() != PresetBrowserDialog.DialogCode.Accepted:
+            return
+        lens = dialog.selected_copy()
+        if lens is None:
+            return
+        self._lenses.append(lens)
+        self._current_lens = lens
+        self._current_assembly = None
+        self._show_assembly_editor(False)
+        self._editor_tabs.setCurrentIndex(0)
+        self._lens_editor.load_lens(lens)
+        self._update_all_tabs()
+        self._update_status(f"Created from preset: {lens.name}")
 
     def _on_new_lens_from_target(self) -> None:
         """Open the goal-driven wizard and add its result to the library."""
