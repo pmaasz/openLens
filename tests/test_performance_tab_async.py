@@ -400,7 +400,13 @@ class TestMetricsRunOffTheGuiThread(_AsyncTabFixture):
             self.assertTrue(_run_until(started.is_set))
             self.lens.radius_of_curvature_1 = 30.0
             gate.set()
-            self.assertTrue(_run_until(self._metrics_finished))
+            self.assertTrue(
+                _run_until(
+                    lambda: self._metrics_finished()
+                    and "calculating metrics"
+                    not in self.tab._perf_metrics_text.toPlainText().lower()
+                )
+            )
 
         text = self.tab._perf_metrics_text.toPlainText()
         self.assertNotIn(

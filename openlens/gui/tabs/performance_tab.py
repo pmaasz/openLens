@@ -137,6 +137,9 @@ class PerformanceTab(BaseTab):
         # The in-flight metrics computation. Held so a second click cannot
         # stack another trace on top, and so quitting can stop it.
         self._metrics_worker = None
+        # finished can be delivered before done/failed; keep the identity so a
+        # valid result is never dropped as "replaced".
+        self._metrics_finished_worker = None
 
         # Add the visualization widget
         from ..widgets import PerformanceVisualizationWidget
@@ -352,6 +355,20 @@ class PerformanceTab(BaseTab):
         max_field = self._max_field_angle(system)
         return [0, max_field * 0.7, max_field]
 
+    def _relative_illumination_text(self, system, wavelength_nm: float) -> str:
+        """Per-field relative-illumination table for the metrics report."""
+        from ...analysis.illumination import RelativeIlluminationAnalyzer
+
+        system = as_system(system)
+        try:
+            result = RelativeIlluminationAnalyzer(system).analyze(
+                fields=self._analysis_fields(system), wavelength_nm=wavelength_nm
+            )
+        except Exception as exc:
+            logger.warning("Relative illumination unavailable: %s", exc)
+            return f"\n--- Relative Illumination ---\nUnavailable: {exc}\n"
+        return f"\n{result.format_table()}\n"
+
     def _report_missing_matplotlib(self, error) -> None:
         """Tell the user an analysis needs matplotlib rather than crash."""
         logger.warning("Analysis plot dependency missing: %s", error)
@@ -494,6 +511,8 @@ class PerformanceTab(BaseTab):
                             f"{f'{bfl_C:.3f}' if bfl_C is not None else 'N/A'} mm\n"
                         )
 
+            illumination_text = self._relative_illumination_text(system, wavelength)
+
             # Surface the calculator's own validity verdict, so a value that
             # could not be measured is visibly absent rather than silently 0.
             if results.get("error"):
@@ -563,7 +582,7 @@ Strehl Ratio: {_fmt(results.get('strehl'), '.3f')} (from traced RMS wavefront er
 RMS Wavefront Error: {_fmt(results.get('wfe_rms_waves'), '.3f')} waves
 Spot Size (RMS): {_fmt(results.get('spot_rms'), '.3f')} µm
 Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
-{validity_note}"""
+{illumination_text}{validity_note}"""
             return active_system, text, results, stamp
 
         self._perf_metrics_text.setPlainText(
@@ -571,6 +590,7 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
         )
         worker = AnalysisWorker(_compute, self)
         self._metrics_worker = worker
+        self._metrics_finished_worker = None
         worker.done.connect(lambda payload, w=worker: self._on_metrics_ready(w, payload))
         worker.failed.connect(lambda message, w=worker: self._on_metrics_failed(w, message))
         worker.finished.connect(lambda w=worker: self._on_metrics_finished(w))
@@ -578,7 +598,7 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
 
     def _on_metrics_ready(self, worker, payload) -> None:
         """Publish a finished report if it still describes the current design."""
-        if self._metrics_worker is not worker:
+        if self._metrics_worker is not worker and self._metrics_finished_worker is not worker:
             # A newer run replaced this one; only its result is current.
             return
 
@@ -632,7 +652,7 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
 
     def _on_metrics_failed(self, worker, message: str) -> None:
         """Report a failed metrics run in the report pane."""
-        if self._metrics_worker is not worker:
+        if self._metrics_worker is not worker and self._metrics_finished_worker is not worker:
             return
         logger.error("Performance calculation error: %s", message)
         self._perf_metrics_text.setPlainText(f"Error calculating metrics: {message}")
@@ -641,6 +661,7 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
         """Drop the finished worker so a later run can start cleanly."""
         if self._metrics_worker is worker:
             self._metrics_worker = None
+            self._metrics_finished_worker = worker
 
     def _on_show_spot_diagram(self) -> None:
         """Show the spot diagram; the ray trace runs off the GUI thread."""

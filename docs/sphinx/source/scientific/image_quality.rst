@@ -193,6 +193,33 @@ vignetted pupil is visible in the result instead of producing NaN
 coefficients. Piston and tilt are removed by default, matching the wavefront
 map's chief-ray reference.
 
+Relative Illumination and Vignetting
+------------------------------------
+
+Relative illumination is the light reaching a field divided by the light
+reaching the axis. OpenLens measures it by tracing a uniform grid across the
+entrance pupil at each field and counting the rays the clear apertures and the
+aperture stop let through. The sampled pupil is the axial entrance pupil
+unless a diameter is supplied. Rays are launched at the field angle rather
+than aimed at the stop, because aiming would move the bundle to fit the
+opening and hide the clipping being measured.
+
+The result separates the two causes of a dark corner:
+
+.. math::
+
+   I_{\mathrm{rel}}(\theta) =
+   \frac{N(\theta)}{N(0)} \cos^4 \theta',
+
+where ``N`` is the number of rays that survive the apertures and ``θ'`` is
+the chief ray's angle in image space. The first factor is geometric
+vignetting; the second is the natural cosine-fourth falloff of an oblique
+bundle. Both are reported per field, together with the image height and the
+fraction of the launched bundle that was lost. A field whose chief ray is
+blocked reports the natural term as unavailable rather than zero, and the
+value is normalized to the on-axis throughput, so the axis is 100% by
+definition.
+
 Through-Focus and Tolerancing
 -----------------------------
 
@@ -230,4 +257,5 @@ Where to Look in the Code
 - ``openlens/analysis/psf_mtf.py``: geometric and diffraction PSF/MTF.
 - ``openlens/analysis/diffraction_psf.py``: pupil wavefront propagation.
 - ``openlens/analysis/zernike.py``: Zernike decomposition of the pupil.
+- ``openlens/analysis/illumination.py``: relative illumination and vignetting.
 - ``openlens/tolerancing.py``: Monte Carlo and sensitivity analysis.
