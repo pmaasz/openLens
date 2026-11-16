@@ -77,7 +77,7 @@ def _semi_diameters(lens: Lens, side: int):
 def _coating(lens: Lens, side: int) -> str:
     try:
         return lens.coating_label(side)
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         return ""
 
 
@@ -89,7 +89,7 @@ def _image_distance(system: OpticalSystem) -> Optional[float]:
             return None
     try:
         bfl = system.calculate_back_focal_length()
-    except Exception:
+    except (ArithmeticError, AttributeError, TypeError, ValueError, ZeroDivisionError):
         return None
     if bfl is None:
         return None
