@@ -692,7 +692,7 @@ class PerformanceTab(BaseTab):
             calc_object_text = (
                 "infinity (collimated)"
                 if imaging_object_distance is None
-                else f"{imaging_object_distance:.2f} mm"
+                else f"{imaging_object_distance:.3f} mm"
             )
             model_fields = getattr(system, "fields", None)
             fields_text = (

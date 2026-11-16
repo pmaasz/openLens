@@ -3,9 +3,9 @@
 
 The tab read its "Entrance Pupil" spin box, printed the value in the report,
 and built the aberration calculator without it, so every pupil produced the
-same f-number and the same metrics. The "Object Distance" spin box was worse:
-the aberration model only supports an object at infinity, so the widget's
-value was never usable at all.
+same f-number and the same metrics. The object-distance control is for
+first-order imaging only and must not drive aberration or ray-trace metrics;
+the model's conjugate is reported separately.
 """
 
 import os
@@ -132,14 +132,20 @@ class TestPerformanceTabEntrancePupil(unittest.TestCase):
     def test_the_object_distance_is_stated_as_infinity(self):
         text = self._report(10.0)
 
-        self.assertIn("Object Distance: infinity", text)
-        self.assertNotIn("Object Distance: 1000", text)
+        self.assertIn("Model object distance: infinity (collimated)", text)
+        self.assertIn("Calculation object distance: infinity (collimated)", text)
+        self.assertIn("first-order only; not used for aberration/ray-trace metrics", text)
 
-    def test_the_finite_object_distance_control_is_gone(self):
-        self.assertFalse(
-            hasattr(self.tab, "_perf_object_distance"),
-            "the tab still offers an object distance the aberration model " "cannot honour",
-        )
+    def test_the_object_distance_control_is_imaging_only(self):
+        # The control exists for first-order imaging, but the aberration/ray
+        # trace report still states the model conjugate separately.
+        self.assertTrue(hasattr(self.tab, "_perf_object_distance"))
+        self.assertTrue(hasattr(self.tab, "_perf_object_infinite"))
+        self.tab._perf_object_infinite.setChecked(False)
+        self.tab._perf_object_distance.setValue(1000.0)
+        text = self._report(10.0)
+        self.assertIn("Model object distance: infinity (collimated)", text)
+        self.assertIn("Calculation object distance: 1000.000 mm", text)
 
 
 if __name__ == "__main__":
