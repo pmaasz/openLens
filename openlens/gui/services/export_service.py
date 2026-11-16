@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from openlens.export_formats import ZemaxExporter, ZemaxSystemExporter
 from openlens.io.export import ISO10110Generator
 from openlens.io.step_export import StepExporter
 from openlens.lens import Lens, json_safe_radii
@@ -189,6 +190,25 @@ class ExportService:
             return self._failure("step", path, exc, dependency_missing=True)
         except Exception as exc:
             return self._failure("step", path, exc)
+
+    def export_zemax(self, target: Any, path: str) -> ExportResult:
+        """Export a lens or system as a simplified Zemax .zmx prescription.
+
+        Args:
+            target: Lens or OpticalSystem to export.
+            path: Output path.
+
+        Returns:
+            ExportResult with ``ok`` set on success.
+        """
+        try:
+            if isinstance(target, Lens):
+                ZemaxExporter.export_lens(target, path)
+            else:
+                ZemaxSystemExporter.export_system(as_system(target), path)
+            return self._success("zemax", path)
+        except Exception as exc:  # noqa: BLE001 - reported to caller
+            return self._failure("zemax", path, exc)
 
     def export_iso10110(
         self, target: Any, path: str, *, width: int = 800, height: int = 600
