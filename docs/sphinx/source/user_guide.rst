@@ -141,9 +141,13 @@ The **Performance** tab calculates the image-quality dashboard:
 - Strehl ratio and RMS wavefront error;
 - MTF cutoff;
 - spot diagram, ray fan, field curves, PSF, MTF, wavefront, ghost, and bokeh
-  views. **Bokeh** renders the out-of-focus image of the stop at the defocus
-  entered in the calculation parameters, so iris blades, an annular
-  obscuration, and spider vanes change the visible blur shape.
+  views. The **Wavefront** dialog shows the OPD map, a bar chart and a table
+  of the Zernike coefficients in waves (Noll or OSA/ANSI indexing, 15 terms by
+  default), with the residual RMS and the fraction of the pupil that was
+  fitted; obscured and vignetted samples are excluded rather than producing
+  NaN coefficients. **Bokeh** renders the out-of-focus image of the stop at
+  the defocus entered in the calculation parameters, so iris blades, an
+  annular obscuration, and spider vanes change the visible blur shape.
 
 Enable **Ray Aiming** in the calculation parameters to launch each ray at the
 aperture stop instead of the paraxial entrance pupil. This preserves wide-angle

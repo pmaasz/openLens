@@ -40,6 +40,11 @@ PSF, MTF, and Diffraction
    :undoc-members:
    :show-inheritance:
 
+.. automodule:: openlens.analysis.zernike
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 .. automodule:: openlens.analysis.bokeh
    :members:
    :undoc-members:

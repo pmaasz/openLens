@@ -18,6 +18,11 @@ from openlens.lens import Lens, json_safe_radii
 from openlens.optical_system import OpticalSystem, as_system
 from openlens.stl_export import export_lens_stl
 
+#: Pupil grid used when a report includes the Zernike table. The interactive
+#: wavefront map uses 64; half that keeps the synchronous report export quick
+#: while still resolving the first 15 terms of a smooth wavefront.
+REPORT_WAVEFRONT_GRID = 32
+
 
 @dataclass(frozen=True)
 class ExportResult:
@@ -238,9 +243,44 @@ class ExportService:
                         handle.write(f"  Thickness: {element.lens.thickness} mm\n")
                         handle.write(f"  Material: {element.lens.material}\n")
 
+                self._write_zernike_table(handle, target)
+
             return self._success("report", path)
         except Exception as exc:
             return self._failure("report", path, exc)
+
+    @staticmethod
+    def _write_zernike_table(handle, target: Any) -> None:
+        """Append the exit-pupil Zernike decomposition to a text report.
+
+        The analysis is imported lazily so the export service stays usable
+        without numpy (the table is then replaced by a note) and so the heavy
+        analysis modules are not pulled in just by importing the GUI.
+
+        Args:
+            handle: Open text file to write to.
+            target: Lens or OpticalSystem the report describes.
+        """
+        try:
+            from openlens.analysis.diffraction_psf import WavefrontSensor
+            from openlens.analysis.zernike import fit_zernike_wavefront
+
+            system = as_system(target)
+            wavefront = WavefrontSensor(system).get_pupil_wavefront(grid_size=REPORT_WAVEFRONT_GRID)
+            fit = fit_zernike_wavefront(wavefront)
+        except Exception as exc:
+            handle.write(f"\nZernike decomposition unavailable: {exc}\n")
+            return
+
+        handle.write("\nZernike Decomposition (waves)\n")
+        handle.write("-----------------------------\n")
+        handle.write(f"Indexing: {fit.indexing.upper()}\n")
+        handle.write(f"Piston/tilt: {'removed' if fit.piston_tilt_removed else 'included'}\n")
+        handle.write(f"Fitted pupil fraction: {fit.fitted_fraction:.1%}\n")
+        handle.write(f"Residual RMS: {fit.residual_rms:.4f}\n\n")
+        handle.write(f"{'#':>3}  {'Term':<34}{'Coefficient':>12}{'RMS':>10}\n")
+        for index, name, coefficient, rms in fit.rows():
+            handle.write(f"{index:>3}  {name:<34}{coefficient:>12.4f}{rms:>10.4f}\n")
 
     @staticmethod
     def _success(
