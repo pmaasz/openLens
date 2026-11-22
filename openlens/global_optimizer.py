@@ -31,8 +31,9 @@ class GlobalOptimizer(LensOptimizer):
         targets: List[OptimizationTarget],
         constraints: Optional[Dict[str, float]] = None,
         seed: Optional[int] = None,
+        config_indices: Optional[List[int]] = None,
     ):
-        super().__init__(system, variables, targets, constraints)
+        super().__init__(system, variables, targets, constraints, config_indices=config_indices)
         # Private generator, not self._rng.seed(). This __init__ runs inside a
         # QThread (optimization_tab.py), so reseeding the module-level stream
         # mutated RNG state the Qt thread could be consuming concurrently -

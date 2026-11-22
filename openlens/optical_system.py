@@ -101,6 +101,9 @@ class AirGap:
         return format(self.thickness, format_spec)
 
 
+DEFAULT_CONFIG_NAME = "Configuration 1"
+
+
 # Keys OpticalSystem.to_dict emits; the flat metadata blob carries these
 # alongside the user's own settings, so from_dict subtracts them to keep
 # metadata to what has no home on the model.
@@ -125,6 +128,8 @@ _SYSTEM_SERIALIZED_KEYS = frozenset(
         "fields",
         "object_distance_mm",
         "casing",
+        "configurations",
+        "active_config",
     }
 )
 
@@ -171,9 +176,14 @@ class OpticalSystem:
         # None object distance means collimated input.
         self.fields: List[FieldPoint] = []
         self.object_distance_mm: Optional[float] = None
+        # Multi-configuration (zoom/varifocal): configs store air-gap thickness
+        # sets; ``air_gaps`` is the active live view for compatibility.
+        self.configurations: List[Dict[str, Any]] = []
+        self.active_config: int = 0
         self.root = OpticalAssembly(name="Root")
         self.root._geometry_owner = self
         self._update_positions()
+        self._ensure_configurations()
 
     @property
     def geometry_revision(self) -> int:
@@ -527,6 +537,8 @@ class OpticalSystem:
 
         self.elements = new_elements
         self.air_gaps = new_gaps
+        if hasattr(self, "configurations"):
+            self._ensure_configurations()
 
     def _update_positions(self) -> None:
         """Update positions of all elements.
@@ -590,6 +602,12 @@ class OpticalSystem:
                 self.air_gaps[i].position = current_pos
                 current_pos += self.air_gaps[i].thickness
 
+        # Keep the active config's live view in sync when callers mutate
+        # air_gaps directly then call _update_positions().
+        if getattr(self, "configurations", None):
+            self._normalize_configurations()
+            self.configurations[self.active_config]["air_gaps"] = self._air_gap_thicknesses()
+
     def get_total_length(self) -> float:
         """Get total system length"""
         if not self.elements:
@@ -604,6 +622,151 @@ class OpticalSystem:
         if efl is None or abs(efl) < 1e-10:
             return 0.0
         return 1000.0 / efl
+
+    # --- Multi-configuration (zoom/varifocal) -----------------------------
+
+    def _air_gap_thicknesses(self) -> List[float]:
+        return [float(g.thickness) for g in self.air_gaps]
+
+    def _normalize_configurations(self) -> None:
+        """Ensure at least one config exists and matches the current gap count."""
+        gap_count = len(self.air_gaps)
+        if not self.configurations:
+            self.configurations = [
+                {"name": DEFAULT_CONFIG_NAME, "air_gaps": self._air_gap_thicknesses()}
+            ]
+        normalized: List[Dict[str, Any]] = []
+        for idx, cfg in enumerate(self.configurations):
+            if not isinstance(cfg, dict):
+                cfg = {}
+            name = str(cfg.get("name") or f"Configuration {idx + 1}")
+            raw_gaps = cfg.get("air_gaps")
+            gaps: List[float] = []
+            if isinstance(raw_gaps, list):
+                for g in raw_gaps:
+                    if isinstance(g, dict):
+                        val = g.get("thickness", 0.0)
+                    else:
+                        val = g
+                    try:
+                        gaps.append(float(val))
+                    except (TypeError, ValueError):
+                        gaps.append(0.0)
+            if len(gaps) < gap_count:
+                live = self._air_gap_thicknesses()
+                for i in range(len(gaps), gap_count):
+                    gaps.append(live[i] if i < len(live) else 0.0)
+            elif len(gaps) > gap_count:
+                gaps = gaps[:gap_count]
+            normalized.append({"name": name, "air_gaps": gaps})
+        self.configurations = normalized
+        if not (0 <= self.active_config < len(self.configurations)):
+            self.active_config = 0
+
+    def _sync_active_config_from_air_gaps(self) -> None:
+        self._normalize_configurations()
+        self.configurations[self.active_config]["air_gaps"] = self._air_gap_thicknesses()
+
+    def _ensure_configurations(self) -> None:
+        self._normalize_configurations()
+        self._sync_active_config_from_air_gaps()
+
+    def _apply_active_configuration(self) -> None:
+        self._normalize_configurations()
+        thicknesses = self.configurations[self.active_config].get("air_gaps", [])
+        for i, gap in enumerate(self.air_gaps):
+            if i < len(thicknesses):
+                try:
+                    gap.thickness = float(thicknesses[i])
+                except (TypeError, ValueError):
+                    gap.thickness = 0.0
+        self._update_positions()
+
+    def set_active_config(self, index: int) -> None:
+        """Switch the active configuration, preserving element identities."""
+        self._sync_active_config_from_air_gaps()
+        self._normalize_configurations()
+        if not isinstance(index, int) or not 0 <= index < len(self.configurations):
+            raise ValueError(f"Configuration index {index} out of range")
+        if index == self.active_config:
+            return
+        self.active_config = index
+        self._apply_active_configuration()
+        self.modified_at = datetime.now().isoformat()
+
+    def add_configuration(
+        self, name: Optional[str] = None, source_index: Optional[int] = None
+    ) -> int:
+        """Add a configuration copied from source (default: active)."""
+        self._sync_active_config_from_air_gaps()
+        src = self.active_config if source_index is None else int(source_index)
+        if not 0 <= src < len(self.configurations):
+            raise ValueError(f"Configuration index {src} out of range")
+        cfg = {
+            "name": str(name or f"Configuration {len(self.configurations) + 1}"),
+            "air_gaps": list(self.configurations[src]["air_gaps"]),
+        }
+        self.configurations.append(cfg)
+        self.modified_at = datetime.now().isoformat()
+        return len(self.configurations) - 1
+
+    def remove_configuration(self, index: int) -> None:
+        """Remove a configuration; at least one must remain."""
+        self._sync_active_config_from_air_gaps()
+        if not isinstance(index, int) or not 0 <= index < len(self.configurations):
+            raise ValueError(f"Configuration index {index} out of range")
+        if len(self.configurations) <= 1:
+            raise ValueError("Cannot remove the last configuration")
+        del self.configurations[index]
+        if self.active_config == index:
+            self.active_config = min(index, len(self.configurations) - 1)
+            self._apply_active_configuration()
+        elif self.active_config > index:
+            self.active_config -= 1
+        self.modified_at = datetime.now().isoformat()
+
+    def rename_configuration(self, index: int, name: str) -> None:
+        self._normalize_configurations()
+        if not isinstance(index, int) or not 0 <= index < len(self.configurations):
+            raise ValueError(f"Configuration index {index} out of range")
+        new_name = str(name or "").strip()
+        if not new_name:
+            raise ValueError("Configuration name cannot be empty")
+        self.configurations[index]["name"] = new_name
+        self.modified_at = datetime.now().isoformat()
+
+    def _load_configurations(self, data: Dict[str, Any]) -> None:
+        """Load multi-config data, defaulting to legacy single-config behavior."""
+        configs = data.get("configurations")
+        if isinstance(configs, list) and configs:
+            self.configurations = []
+            for idx, cfg in enumerate(configs):
+                if not isinstance(cfg, dict):
+                    continue
+                name = str(cfg.get("name") or f"Configuration {idx + 1}")
+                raw_gaps = cfg.get("air_gaps", [])
+                gaps: List[float] = []
+                if isinstance(raw_gaps, list):
+                    for g in raw_gaps:
+                        if isinstance(g, dict):
+                            val = g.get("thickness", 0.0)
+                        else:
+                            val = g
+                        try:
+                            gaps.append(float(val))
+                        except (TypeError, ValueError):
+                            gaps.append(0.0)
+                self.configurations.append({"name": name, "air_gaps": gaps})
+        if not self.configurations:
+            self.configurations = [
+                {"name": DEFAULT_CONFIG_NAME, "air_gaps": self._air_gap_thicknesses()}
+            ]
+        try:
+            self.active_config = int(data.get("active_config", 0))
+        except (TypeError, ValueError):
+            self.active_config = 0
+        self._normalize_configurations()
+        self._apply_active_configuration()
 
     def get_system_focal_length(self) -> Optional[float]:
         """
@@ -671,6 +834,7 @@ class OpticalSystem:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert system to dictionary for serialization"""
+        self._sync_active_config_from_air_gaps()
         return {
             "id": self.id,
             "name": self.name,
@@ -713,6 +877,14 @@ class OpticalSystem:
             "node_tree": self.root.to_dict(),
             # A copy, so the exported dict is not a live handle on the model.
             "metadata": dict(self.metadata),
+            "configurations": [
+                {
+                    "name": str(c.get("name", DEFAULT_CONFIG_NAME)),
+                    "air_gaps": list(c.get("air_gaps", [])),
+                }
+                for c in self.configurations
+            ],
+            "active_config": int(self.active_config),
         }
 
     @classmethod
@@ -791,6 +963,7 @@ class OpticalSystem:
         node_tree = data.get("node_tree")
         if node_tree:
             system._restore_node_tree(node_tree, lens_lookup)
+            system._load_configurations(data)
             return system
 
         saved_positions = [elem_data.get("position") for elem_data in elements_data]
@@ -801,6 +974,7 @@ class OpticalSystem:
                 node.position = vec3(float(saved), node.position.y, node.position.z)
             system._rebuild_from_tree()
 
+        system._load_configurations(data)
         return system
 
     def _restore_node_tree(self, tree: Dict[str, Any], lens_lookup: Optional[dict] = None):

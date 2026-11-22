@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # openlens/constants.py: it is meaningless anywhere except the migration ladder in
 # DatabaseManager._initialize_db, and keeping it there keeps this module free
 # of intra-package imports.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def _coating_json(value) -> Optional[str]:
@@ -346,6 +346,19 @@ class DatabaseManager:
                         )
                     """)
 
+                    # Multi-configuration (zoom/varifocal) per assembly.
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS assembly_configurations (
+                            assembly_id TEXT NOT NULL,
+                            order_index INTEGER NOT NULL,
+                            name TEXT NOT NULL,
+                            is_active INTEGER NOT NULL DEFAULT 0,
+                            air_gaps TEXT NOT NULL,
+                            PRIMARY KEY (assembly_id, order_index),
+                            FOREIGN KEY (assembly_id) REFERENCES assemblies (id) ON DELETE CASCADE
+                        )
+                    """)
+
                     # A legacy file is stamped 1 so the ladder below adds every
                     # column it is missing; a genuinely new file is already at
                     # the current version.
@@ -421,6 +434,22 @@ class DatabaseManager:
                 if cursor.fetchone()[0] == 6:
                     _add_column(cursor, "lenses", "conic_constant_1", "REAL NOT NULL DEFAULT 0.0")
                     _add_column(cursor, "lenses", "conic_constant_2", "REAL NOT NULL DEFAULT 0.0")
+                    cursor.execute("PRAGMA user_version = 7")
+
+                # v7 -> v8: multi-configuration (zoom/varifocal) assemblies.
+                cursor.execute("PRAGMA user_version")
+                if cursor.fetchone()[0] == 7:
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS assembly_configurations (
+                            assembly_id TEXT NOT NULL,
+                            order_index INTEGER NOT NULL,
+                            name TEXT NOT NULL,
+                            is_active INTEGER NOT NULL DEFAULT 0,
+                            air_gaps TEXT NOT NULL,
+                            PRIMARY KEY (assembly_id, order_index),
+                            FOREIGN KEY (assembly_id) REFERENCES assemblies (id) ON DELETE CASCADE
+                        )
+                    """)
                     cursor.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     def set_library_membership(self, library_lens_ids, demote: bool = False) -> None:
@@ -671,6 +700,8 @@ class DatabaseManager:
                             "elements",
                             "air_gaps",
                             "metadata",
+                            "configurations",
+                            "active_config",
                         ]
                     }
                     | dict(assembly_dict.get("metadata") or {})
@@ -685,6 +716,10 @@ class DatabaseManager:
         )
         cursor.execute(
             "DELETE FROM assembly_air_gaps WHERE assembly_id = ?",
+            (assembly_id,),
+        )
+        cursor.execute(
+            "DELETE FROM assembly_configurations WHERE assembly_id = ?",
             (assembly_id,),
         )
 
@@ -716,14 +751,64 @@ class DatabaseManager:
                 ),
             )
 
-        # 4. Save air gaps
-        for i, gap in enumerate(assembly_dict.get("air_gaps", [])):
+        # 4. Save air gaps (legacy/active view) and configurations.
+        gaps_data = list(assembly_dict.get("air_gaps", []))
+        configs = assembly_dict.get("configurations")
+        active_config = assembly_dict.get("active_config", 0)
+        if not isinstance(configs, list) or not configs:
+            configs = [
+                {
+                    "name": "Configuration 1",
+                    "air_gaps": [g.get("thickness", 0.0) for g in gaps_data],
+                }
+            ]
+            active_config = 0
+        try:
+            active_config = int(active_config)
+        except (TypeError, ValueError):
+            active_config = 0
+        if not 0 <= active_config < len(configs):
+            active_config = 0
+
+        # Legacy table stores active config gaps for compatibility.
+        for i, gap in enumerate(gaps_data):
             cursor.execute(
                 """
                 INSERT INTO assembly_air_gaps (assembly_id, thickness, position, order_index)
                 VALUES (?, ?, ?, ?)
             """,
                 (assembly_id, gap.get("thickness"), gap.get("position"), i),
+            )
+
+        for i, cfg in enumerate(configs):
+            if not isinstance(cfg, dict):
+                cfg = {}
+            name = str(cfg.get("name") or f"Configuration {i + 1}")
+            raw_gaps = cfg.get("air_gaps", [])
+            thicknesses = []
+            if isinstance(raw_gaps, list):
+                for g in raw_gaps:
+                    if isinstance(g, dict):
+                        val = g.get("thickness", 0.0)
+                    else:
+                        val = g
+                    try:
+                        thicknesses.append(float(val))
+                    except (TypeError, ValueError):
+                        thicknesses.append(0.0)
+            cursor.execute(
+                """
+                INSERT INTO assembly_configurations
+                (assembly_id, order_index, name, is_active, air_gaps)
+                VALUES (?, ?, ?, ?, ?)
+            """,
+                (
+                    assembly_id,
+                    i,
+                    name,
+                    1 if i == active_config else 0,
+                    json.dumps(thicknesses),
+                ),
             )
 
     def load_all(self) -> List[Dict[str, Any]]:
@@ -910,6 +995,62 @@ class DatabaseManager:
                         }
                     )
                 assembly["air_gaps"] = gaps
+
+                # Load configurations (v8+); fall back to legacy single config.
+                configurations: List[Dict[str, Any]] = []
+                active_config = 0
+                try:
+                    cursor.execute(
+                        """
+                        SELECT name, is_active, air_gaps
+                        FROM assembly_configurations
+                        WHERE assembly_id = ?
+                        ORDER BY order_index
+                    """,
+                        (assembly_id,),
+                    )
+                    for cfg_row in cursor.fetchall():
+                        cfg = dict(cfg_row)
+                        try:
+                            cfg_gaps = json.loads(cfg.get("air_gaps") or "[]")
+                        except (TypeError, ValueError, json.JSONDecodeError):
+                            cfg_gaps = []
+                        if not isinstance(cfg_gaps, list):
+                            cfg_gaps = []
+                        configurations.append(
+                            {
+                                "name": str(
+                                    cfg.get("name") or f"Configuration {len(configurations) + 1}"
+                                ),
+                                "air_gaps": cfg_gaps,
+                            }
+                        )
+                        if int(cfg.get("is_active") or 0):
+                            active_config = len(configurations) - 1
+                except sqlite3.OperationalError:
+                    configurations = []
+
+                if not configurations:
+                    configurations = [
+                        {
+                            "name": "Configuration 1",
+                            "air_gaps": [g.get("thickness", 0.0) for g in gaps],
+                        }
+                    ]
+                    active_config = 0
+                if not 0 <= active_config < len(configurations):
+                    active_config = 0
+
+                assembly["configurations"] = configurations
+                assembly["active_config"] = active_config
+                # Keep legacy air_gaps view consistent with active config.
+                active_gaps = configurations[active_config].get("air_gaps", [])
+                for i, gap in enumerate(assembly["air_gaps"]):
+                    if i < len(active_gaps):
+                        try:
+                            gap["thickness"] = float(active_gaps[i])
+                        except (TypeError, ValueError):
+                            pass
 
                 results.append(assembly)
 

@@ -153,6 +153,10 @@ class PerformanceTab(BaseTab):
         params_group = QGroupBox("Calculation Parameters")
         params_layout = QFormLayout(params_group)
 
+        self._perf_config_combo = QComboBox()
+        self._perf_config_combo.currentIndexChanged.connect(self._on_config_changed)
+        params_layout.addRow("Configuration:", self._perf_config_combo)
+
         self._perf_entrance_pupil = QDoubleSpinBox()
         self._perf_entrance_pupil.setRange(1, 100)
         self._perf_entrance_pupil.setValue(10.0)
@@ -1167,6 +1171,39 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
         """Show Ghost Analysis through parent."""
         self._parent._on_show_ghost_analysis()
 
+    def _refresh_config_combo(self, target) -> None:
+        configs = list(getattr(target, "configurations", []) or []) if target is not None else []
+        if not configs:
+            configs = [{"name": "Configuration 1"}]
+        active = int(getattr(target, "active_config", 0) or 0) if target is not None else 0
+        self._perf_config_combo.blockSignals(True)
+        self._perf_config_combo.clear()
+        for i, cfg in enumerate(configs):
+            name = str(cfg.get("name", f"Configuration {i + 1}") if isinstance(cfg, dict) else cfg)
+            self._perf_config_combo.addItem(name, i)
+        if 0 <= active < self._perf_config_combo.count():
+            self._perf_config_combo.setCurrentIndex(active)
+        self._perf_config_combo.setEnabled(len(configs) > 1)
+        self._perf_config_combo.blockSignals(False)
+
+    def _on_config_changed(self, index: int) -> None:
+        target = self._active_target()
+        if target is None or not hasattr(target, "set_active_config"):
+            return
+        cfg_index = self._perf_config_combo.itemData(index)
+        if cfg_index is None:
+            return
+        try:
+            if int(cfg_index) == int(getattr(target, "active_config", 0)):
+                return
+            target.set_active_config(int(cfg_index))
+        except (ValueError, TypeError, IndexError):
+            return
+        if self._parent and hasattr(self._parent, "_update_all_tabs"):
+            self._parent._update_all_tabs()
+        if self._parent and hasattr(self._parent, "_save_to_database"):
+            self._parent._save_to_database()
+
     def refresh(self) -> None:
         """Refresh performance tab state.
 
@@ -1180,6 +1217,7 @@ Airy Disk (Dia): {_fmt(results.get('airy_disk_diameter'), '.2f', 1000.0)} µm
         exists.
         """
         active_system = self._active_target()
+        self._refresh_config_combo(active_system)
         if not active_system:
             self._cached_metrics_text = None
             self._cached_metrics_for = None
