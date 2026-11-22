@@ -112,6 +112,7 @@ class MeritFunction:
         system: OpticalSystem,
         targets: List[OptimizationTarget],
         constraints: Optional[Dict[str, float]] = None,
+        config_indices: Optional[List[int]] = None,
     ):
         self.system = system
         self.targets = targets
@@ -122,6 +123,7 @@ class MeritFunction:
             "min_air_gap": 0.1,
             "min_edge_clearance": 0.1,
         }
+        self.config_indices = list(config_indices) if config_indices else None
         # Per-evaluation cache of calculate_all_aberrations results. Thread
         # local because gradient descent evaluates perturbed designs in
         # parallel threads on this same instance; each evaluate() call gets
@@ -512,16 +514,39 @@ class MeritFunction:
     # Main entry point
     # ------------------------------------------------------------------
 
+    def _iter_eval_configs(self, system: OpticalSystem):
+        indices = self.config_indices
+        configs = getattr(system, "configurations", None)
+        if not indices or not configs:
+            yield system
+            return
+        seen = set()
+        for idx in indices:
+            try:
+                i = int(idx)
+            except (TypeError, ValueError):
+                continue
+            if i in seen or not 0 <= i < len(configs):
+                continue
+            seen.add(i)
+            if hasattr(system, "set_active_config"):
+                system.set_active_config(i)
+            yield system
+
     def evaluate(self, system: OpticalSystem) -> float:
         """
         Evaluate merit function (lower is better).
 
         Combines physical constraint penalties with optical quality targets.
+        When ``config_indices`` is set, sums merit over selected configurations.
         """
-        merit = self._penalty_physical(system)
-        for contribution in self._target_contributions(system):
-            merit += contribution
-        return merit
+        total = 0.0
+        for sys in self._iter_eval_configs(system):
+            merit = self._penalty_physical(sys)
+            for contribution in self._target_contributions(sys):
+                merit += contribution
+            total += merit
+        return total
 
     def residuals(self, system: OpticalSystem) -> List[float]:
         """Return the least-squares residuals of the merit, for DLS.
@@ -534,6 +559,9 @@ class MeritFunction:
         constraints steer the step instead of being discovered only when a
         trial merit is rejected.
 
+        When ``config_indices`` is set, residuals are concatenated per config,
+        so sum of squares equals summed merit across configs.
+
         Args:
             system: The design to score.
 
@@ -541,10 +569,13 @@ class MeritFunction:
             Residuals in target order, followed by one for the physical
             penalty so the step also sees the geometry constraints.
         """
-        residuals = [
-            math.sqrt(max(contribution, 0.0)) for contribution in self._target_contributions(system)
-        ]
-        residuals.append(math.sqrt(max(self._penalty_physical(system), 0.0)))
+        residuals: List[float] = []
+        for sys in self._iter_eval_configs(system):
+            residuals.extend(
+                math.sqrt(max(contribution, 0.0))
+                for contribution in self._target_contributions(sys)
+            )
+            residuals.append(math.sqrt(max(self._penalty_physical(sys), 0.0)))
         return residuals
 
     def _target_contributions(self, system: OpticalSystem) -> List[float]:
@@ -625,11 +656,15 @@ class LensOptimizer:
         variables: List[OptimizationVariable],
         targets: List[OptimizationTarget],
         constraints: Optional[Dict[str, float]] = None,
+        config_indices: Optional[List[int]] = None,
     ):
         self.system = system
         self.variables = variables
         self.targets = targets
-        self.merit_function = MeritFunction(system, targets, constraints)
+        self.config_indices = list(config_indices) if config_indices else None
+        self.merit_function = MeritFunction(
+            system, targets, constraints, config_indices=self.config_indices
+        )
         self._merit_cache = {}
 
     def _set_merit_function(self, merit_function) -> None:

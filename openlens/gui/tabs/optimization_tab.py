@@ -5,7 +5,7 @@ Tab for lens and system optimization
 
 import logging
 from enum import Enum
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from PySide6.QtWidgets import (
     QWidget,
@@ -20,8 +20,10 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
 )
-from PySide6.QtCore import Slot, Signal, QThread
+from PySide6.QtCore import Slot, Signal, QThread, Qt
 
 from .base_tab import BaseTab
 from ..theme import DARK, get_monospace_qss
@@ -87,6 +89,7 @@ class OptimizationWorker(QThread):
         targets: List[OptimizationTarget],
         constraints: Dict[str, float],
         algorithm: str,
+        config_indices: Optional[List[int]] = None,
     ) -> None:
         """Initialize the worker inputs.
 
@@ -96,6 +99,7 @@ class OptimizationWorker(QThread):
             targets: Merit targets the optimizer should satisfy.
             constraints: Geometric limits keyed by constraint name.
             algorithm: Name of the selected optimization algorithm.
+            config_indices: Configurations to sum merit over (None = active).
         """
         super().__init__()
         self.active_target = active_target
@@ -103,6 +107,7 @@ class OptimizationWorker(QThread):
         self.targets = targets
         self.constraints = constraints
         self.algorithm = algorithm
+        self.config_indices = list(config_indices) if config_indices else None
 
     def _check_interrupted(self, iteration, merit, values) -> None:
         """Per-iteration callback: abort when Stop has requested interruption.
@@ -131,7 +136,11 @@ class OptimizationWorker(QThread):
             system = as_system(self.active_target, copy_system=True, name="Optimization")
 
             optimizer = GlobalOptimizer(
-                system, self.variables, self.targets, constraints=self.constraints
+                system,
+                self.variables,
+                self.targets,
+                constraints=self.constraints,
+                config_indices=self.config_indices,
             )
 
             # Run optimization based on algorithm selection. Every algorithm
@@ -269,6 +278,15 @@ class OptimizationTab(BaseTab):
         self._opt_algorithm.setCurrentIndex(0)
         constraints_layout.addRow("Algorithm:", self._opt_algorithm)
 
+        self._opt_active_config = QComboBox()
+        self._opt_active_config.currentIndexChanged.connect(self._on_active_config_changed)
+        constraints_layout.addRow("Active config:", self._opt_active_config)
+
+        self._opt_config_list = QListWidget()
+        self._opt_config_list.setMaximumHeight(70)
+        self._opt_config_list.setToolTip("Merit is summed over checked configurations.")
+        constraints_layout.addRow("Merit configs:", self._opt_config_list)
+
         self._opt_robust = QCheckBox("Robust Mode (Yield Optimization)")
         constraints_layout.addRow("", self._opt_robust)
 
@@ -394,6 +412,7 @@ class OptimizationTab(BaseTab):
         if not active_target:
             self._opt_vars_layout.addWidget(QLabel("No system selected"))
             self._opt_selection_target = None
+            self._refresh_config_list(None)
             return
 
         from ...optical_system import OpticalSystem
@@ -404,6 +423,7 @@ class OptimizationTab(BaseTab):
             previous = {}
 
         self._opt_selection_target = active_target
+        self._refresh_config_list(active_target)
 
         if isinstance(active_target, OpticalSystem):
             self._opt_lens_viz.setVisible(False)
@@ -527,6 +547,87 @@ class OptimizationTab(BaseTab):
         if self._parent:
             self._parent._update_status("Optimization stopped.")
         self._opt_apply_btn.setEnabled(False)
+
+    def _on_active_config_changed(self, index: int) -> None:
+        target = self._active_target()
+        if target is None or not hasattr(target, "set_active_config"):
+            return
+        cfg_index = self._opt_active_config.itemData(index)
+        if cfg_index is None:
+            return
+        try:
+            if int(cfg_index) == int(getattr(target, "active_config", 0)):
+                return
+            target.set_active_config(int(cfg_index))
+        except Exception:
+            return
+        if self._parent and hasattr(self._parent, "_update_all_tabs"):
+            self._parent._update_all_tabs()
+        if self._parent and hasattr(self._parent, "_save_to_database"):
+            self._parent._save_to_database()
+
+    def _refresh_config_list(self, active_target) -> None:
+        """Populate merit-config checkboxes from the active target."""
+        from ...optical_system import OpticalSystem
+
+        previous_checked = None
+        if self._opt_config_list.count() > 0:
+            previous_checked = {
+                int(self._opt_config_list.item(i).data(Qt.UserRole))
+                for i in range(self._opt_config_list.count())
+                if self._opt_config_list.item(i).checkState() == Qt.Checked
+            }
+
+        self._opt_config_list.blockSignals(True)
+        self._opt_config_list.clear()
+        configs = []
+        if isinstance(active_target, OpticalSystem):
+            configs = list(getattr(active_target, "configurations", []) or [])
+        elif active_target is not None and hasattr(active_target, "air_gaps"):
+            configs = list(getattr(active_target, "configurations", []) or [])
+        if not configs:
+            configs = [{"name": "Configuration 1"}]
+
+        same_target = active_target is getattr(self, "_opt_config_selection_target", None)
+        self._opt_config_selection_target = active_target
+        for i, cfg in enumerate(configs):
+            name = str(cfg.get("name", f"Configuration {i + 1}") if isinstance(cfg, dict) else cfg)
+            item = QListWidgetItem(name)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            checked = True
+            if same_target and previous_checked is not None:
+                checked = i in previous_checked
+            item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
+            item.setData(Qt.UserRole, i)
+            self._opt_config_list.addItem(item)
+        self._opt_config_list.blockSignals(False)
+
+        active = (
+            int(getattr(active_target, "active_config", 0) or 0) if active_target is not None else 0
+        )
+        self._opt_active_config.blockSignals(True)
+        self._opt_active_config.clear()
+        for i, cfg in enumerate(configs):
+            name = str(cfg.get("name", f"Configuration {i + 1}") if isinstance(cfg, dict) else cfg)
+            self._opt_active_config.addItem(name, i)
+        if 0 <= active < self._opt_active_config.count():
+            self._opt_active_config.setCurrentIndex(active)
+        self._opt_active_config.setEnabled(len(configs) > 1)
+        self._opt_active_config.blockSignals(False)
+
+    def _selected_config_indices(self) -> Optional[List[int]]:
+        """Return checked config indices, or None for single-config default."""
+        indices: List[int] = []
+        for i in range(self._opt_config_list.count()):
+            item = self._opt_config_list.item(i)
+            if item.checkState() == Qt.Checked:
+                idx = item.data(Qt.UserRole)
+                if idx is not None:
+                    indices.append(int(idx))
+        # Single config or all selected -> behave like normal evaluation.
+        if len(indices) <= 1:
+            return None
+        return indices
 
     def _collect_variables(self, active_target) -> List[OptimizationVariable]:
         """Build optimization variables from checkbox state and live flags.
@@ -890,6 +991,7 @@ class OptimizationTab(BaseTab):
             targets,
             constraints,
             self._opt_algorithm.currentText(),
+            config_indices=self._selected_config_indices(),
         )
         self._opt_worker.finished.connect(self._on_optimization_finished)
         self._opt_worker.failed.connect(self._on_optimization_failed)

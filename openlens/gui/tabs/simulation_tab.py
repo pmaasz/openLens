@@ -81,6 +81,13 @@ class SimulationTab(BaseTab):
         controls = QWidget()
         controls_layout = QVBoxLayout(controls)
 
+        config_group = QGroupBox("Configuration")
+        config_layout = QFormLayout(config_group)
+        self._sim_config_combo = QComboBox()
+        self._sim_config_combo.currentIndexChanged.connect(self._on_config_changed)
+        config_layout.addRow("Active:", self._sim_config_combo)
+        controls_layout.addWidget(config_group)
+
         # Source configuration
         source_group = QGroupBox("Ray Source")
         source_layout = QFormLayout(source_group)
@@ -482,6 +489,40 @@ class SimulationTab(BaseTab):
         self._sim_custom_wavelength.setVisible(is_custom)
         self._sim_custom_wavelength.setEnabled(is_custom)
 
+    def _refresh_config_combo(self) -> None:
+        target = self._active_target()
+        configs = list(getattr(target, "configurations", []) or []) if target is not None else []
+        if not configs:
+            configs = [{"name": "Configuration 1"}]
+        active = int(getattr(target, "active_config", 0) or 0) if target is not None else 0
+        self._sim_config_combo.blockSignals(True)
+        self._sim_config_combo.clear()
+        for i, cfg in enumerate(configs):
+            name = str(cfg.get("name", f"Configuration {i + 1}") if isinstance(cfg, dict) else cfg)
+            self._sim_config_combo.addItem(name, i)
+        if 0 <= active < self._sim_config_combo.count():
+            self._sim_config_combo.setCurrentIndex(active)
+        self._sim_config_combo.setEnabled(len(configs) > 1)
+        self._sim_config_combo.blockSignals(False)
+
+    def _on_config_changed(self, index: int) -> None:
+        target = self._active_target()
+        if target is None or not hasattr(target, "set_active_config"):
+            return
+        cfg_index = self._sim_config_combo.itemData(index)
+        if cfg_index is None:
+            return
+        try:
+            if int(cfg_index) == int(getattr(target, "active_config", 0)):
+                return
+            target.set_active_config(int(cfg_index))
+        except Exception:
+            return
+        if self._parent and hasattr(self._parent, "_update_all_tabs"):
+            self._parent._update_all_tabs()
+        if self._parent and hasattr(self._parent, "_save_to_database"):
+            self._parent._save_to_database()
+
     def _on_clear_simulation(self) -> None:
         """Clear simulation visualization."""
         self._sim_viz.clear_simulation()
@@ -507,6 +548,7 @@ class SimulationTab(BaseTab):
         Returns:
             None
         """
+        self._refresh_config_combo()
         self._sync_focal_plane_controls()
         self._sim_viz.refresh()
         self._update_focal_plane_status()
