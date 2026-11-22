@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.9.0](https://github.com/pmaasz/openLens/compare/openlens-v0.8.0...openlens-v0.9.0) (2026-11-22)
+
+
+### Features
+
+* **analysis:** aim rays at the aperture stop ([#800](https://github.com/pmaasz/openLens/issues/800)) ([#807](https://github.com/pmaasz/openLens/issues/807)) ([63db855](https://github.com/pmaasz/openLens/commit/63db8551a5f0dfcb3f4cdd4e95c53818271f50a8))
+* **analysis:** relative illumination and vignetting ([#811](https://github.com/pmaasz/openLens/issues/811)) ([0a964dc](https://github.com/pmaasz/openLens/commit/0a964dcdede7526116576c859690848930b05655))
+* **analysis:** support field lists and finite-conjugate tracing ([#789](https://github.com/pmaasz/openLens/issues/789)) ([#804](https://github.com/pmaasz/openLens/issues/804)) ([816de73](https://github.com/pmaasz/openLens/commit/816de732ea11ed1ef1d30d8d97a9d22f9773784c))
+* **analysis:** through-focus MTF and RMS spot sweeps ([#806](https://github.com/pmaasz/openLens/issues/806)) ([d4014a7](https://github.com/pmaasz/openLens/commit/d4014a7aa6c0dded4db80f3771f4ea142a234943))
+* **analysis:** Zernike decomposition of the pupil wavefront ([#796](https://github.com/pmaasz/openLens/issues/796)) ([#810](https://github.com/pmaasz/openLens/issues/810)) ([e4687de](https://github.com/pmaasz/openLens/commit/e4687de75274c5b703acb5e531f37101fd91ce34))
+* **gui:** first-order imaging metrics in performance dashboard ([#813](https://github.com/pmaasz/openLens/issues/813)) ([9aaf09a](https://github.com/pmaasz/openLens/commit/9aaf09a0b4d5b54a110182979ab3627ded7c493a))
+* **gui:** new-lens wizard from target ([#812](https://github.com/pmaasz/openLens/issues/812)) ([d7856dd](https://github.com/pmaasz/openLens/commit/d7856dde8b4c597d21636f6338a10492eda293a5))
+* **gui:** preset/stock lens browser ([#816](https://github.com/pmaasz/openLens/issues/816)) ([b540b37](https://github.com/pmaasz/openLens/commit/b540b37dc726ae28f4677d4665a23b03a085d03a)), closes [#782](https://github.com/pmaasz/openLens/issues/782)
+* **gui:** read-only prescription table with CSV export ([#814](https://github.com/pmaasz/openLens/issues/814)) ([eb39bdb](https://github.com/pmaasz/openLens/commit/eb39bdb1c341ad5def3794a964b076327bcf2a30))
+* **gui:** Zemax .zmx import/export actions ([#815](https://github.com/pmaasz/openLens/issues/815)) ([070160d](https://github.com/pmaasz/openLens/commit/070160d5c77e9b85b81ffcf0162c16b7b36cdbf8)), closes [#783](https://github.com/pmaasz/openLens/issues/783)
+* **optics:** even-order polynomial asphere surfaces ([#803](https://github.com/pmaasz/openLens/issues/803)) ([5ae1c35](https://github.com/pmaasz/openLens/commit/5ae1c35ca7e8c538648b544b6aeffccc7d258b3e))
+* **optics:** shaped aperture stops with bokeh rendering ([#798](https://github.com/pmaasz/openLens/issues/798)) ([#808](https://github.com/pmaasz/openLens/issues/808)) ([2b776cc](https://github.com/pmaasz/openLens/commit/2b776cca3e9b423e2b50fbc7200f8c6a3249be0d))
+* **optimizer:** damped least-squares solver ([#797](https://github.com/pmaasz/openLens/issues/797)) ([#809](https://github.com/pmaasz/openLens/issues/809)) ([e62e2b5](https://github.com/pmaasz/openLens/commit/e62e2b5523c071203ca050b569380537cb2a4e1c))
+* **optimizer:** substitute catalog glasses and show an nd-Vd map ([#802](https://github.com/pmaasz/openLens/issues/802)) ([#805](https://github.com/pmaasz/openLens/issues/805)) ([31795d3](https://github.com/pmaasz/openLens/commit/31795d3cce1cad6a62339f6cc56a16188afd2b3c))
+* support multi-configuration systems ([#825](https://github.com/pmaasz/openLens/issues/825)) ([b823dd7](https://github.com/pmaasz/openLens/commit/b823dd70543aba56104bbfc3fdf2cf01a8882aab))
+
+
+### Bug Fixes
+
+* **flat-surface:** accept null, zero and infinite radii at every boundary ([#794](https://github.com/pmaasz/openLens/issues/794)) ([1d4e7b1](https://github.com/pmaasz/openLens/commit/1d4e7b1b41760f25c89ce192e20f6dc8d85c2ee5))
+* **geometry:** scale edge profile with diameter changes ([#774](https://github.com/pmaasz/openLens/issues/774)) ([cc72001](https://github.com/pmaasz/openLens/commit/cc7200189b8849985f6a6277f9b3fa57781c933f)), closes [#769](https://github.com/pmaasz/openLens/issues/769)
+* **gui:** ignore lenses outside the casing when warning about interference ([#781](https://github.com/pmaasz/openLens/issues/781)) ([7580795](https://github.com/pmaasz/openLens/commit/7580795fa6d562511ae02c8e14bf0b488d1084a3)), closes [#767](https://github.com/pmaasz/openLens/issues/767)
+* **mcp:** resolve create_lens' index from the requested material ([#779](https://github.com/pmaasz/openLens/issues/779)) ([19ff994](https://github.com/pmaasz/openLens/commit/19ff99439f2f64a23b275409fa6126c170f997f1)), closes [#771](https://github.com/pmaasz/openLens/issues/771)
+* **optimizer:** restore lens state after each robust perturbation ([#780](https://github.com/pmaasz/openLens/issues/780)) ([98539d6](https://github.com/pmaasz/openLens/commit/98539d6883c2de7eafddd1f7ed31229b03e4cc07)), closes [#772](https://github.com/pmaasz/openLens/issues/772)
+* **performance:** let cached tracers see layout edits ([#793](https://github.com/pmaasz/openLens/issues/793)) ([6a76d24](https://github.com/pmaasz/openLens/commit/6a76d249dab9869dc59dfc6b78ca6096d7933626)), closes [#614](https://github.com/pmaasz/openLens/issues/614)
+* **physics:** honour the casing material's opaque flag ([#777](https://github.com/pmaasz/openLens/issues/777)) ([71b9301](https://github.com/pmaasz/openLens/commit/71b9301a3ca88835e5c1b7d83459c588383065a6)), closes [#768](https://github.com/pmaasz/openLens/issues/768)
+* **physics:** resolve preset indices from the material catalogue ([#776](https://github.com/pmaasz/openLens/issues/776)) ([153565a](https://github.com/pmaasz/openLens/commit/153565aa73d89e61d5013369807861695c6a0be9)), closes [#773](https://github.com/pmaasz/openLens/issues/773)
+* **physics:** scale all lens lengths when conditioning thermally ([#778](https://github.com/pmaasz/openLens/issues/778)) ([5a5f3c5](https://github.com/pmaasz/openLens/commit/5a5f3c5921b6bc2dfe8bab70c2d64cfe1171f419)), closes [#770](https://github.com/pmaasz/openLens/issues/770)
+
 ## [0.8.0](https://github.com/pmaasz/openLens/compare/openlens-v0.7.0...openlens-v0.8.0) (2026-10-26)
 
 
