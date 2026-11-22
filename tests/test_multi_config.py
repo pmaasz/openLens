@@ -110,7 +110,7 @@ class TestMultiConfig(unittest.TestCase):
     def test_spot_and_mtf_change_with_config(self):
         try:
             import numpy  # noqa: F401
-        except Exception:
+        except ImportError:
             self.skipTest("numpy not available")
         from openlens.analysis.spot_diagram import SpotDiagram
 

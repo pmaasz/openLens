@@ -559,7 +559,7 @@ class OptimizationTab(BaseTab):
             if int(cfg_index) == int(getattr(target, "active_config", 0)):
                 return
             target.set_active_config(int(cfg_index))
-        except Exception:
+        except (ValueError, TypeError, IndexError):
             return
         if self._parent and hasattr(self._parent, "_update_all_tabs"):
             self._parent._update_all_tabs()
